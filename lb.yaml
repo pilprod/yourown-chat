@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: yourown-chat-rtcd-lb
+  namespace: mattermost
+  annotations:
+    networking.gke.io/load-balancer-type: "Internal"
+spec:
+  type: LoadBalancer
+  loadBalancerIP: 10.201.4.21
+  selector:
+    app.kubernetes.io/name: yourown-chat-rtcd
+  ports:
+  - name: rtc-udp
+    port: 8443
+    targetPort: 8443
+    protocol: UDP
+  - name: rtc-tcp
+    port: 8443
+    targetPort: 8443
+    protocol: TCP

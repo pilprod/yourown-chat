@@ -1,0 +1,49 @@
+# This file contains verbose example of Mattermost Custom Resource  configured to
+# run with external database and file storage (recommended for production scenario).
+# Most of the fields are optional or have a sensible defaults and do not need to be specified.
+
+apiVersion: installation.mattermost.com/v1beta1
+kind: Mattermost
+metadata:
+  name: yourown-chat
+spec:
+  # size: 5000users
+  serviceAnnotations: {}
+  ingress:
+    enabled: false
+    host: yourown.chat
+    annotations:
+      kubernetes.io/ingress.global-static-ip-name: "mattermost-global"
+      kubernetes.io/ingress.class: "gce"
+      # kubernetes.io/ingress.allow-http: "true"
+      # ingress.gcp.kubernetes.io/redirect-http-to-https: "true"
+    tlsSecret: "yourown-chat-tls"
+  mattermostEnv:
+    - name: MM_FILESETTINGS_AMAZONS3SSE
+      value: "true"
+    - name: MM_FILESETTINGS_AMAZONS3SSL
+      value: "true"
+    - name: MM_SERVICESETTINGS_SITEURL
+      value: "https://yourown.chat"
+    # Disable read replicas; overrides any stale DB config that may include an empty replica DSN
+    - name: MM_SQLSETTINGS_DATASOURCEREPLICAS
+      value: "[]"
+  # licenseSecret: ""
+  database:
+    external:
+      secret: postgres-connection
+  fileStore:
+    external:
+      url: storage.googleapis.com
+      bucket: mattermost-asia-southeast1
+      secret: s3-credentials
+  elasticSearch:
+    host: ""
+    username: ""
+    password: ""
+#  volumeMounts: {}
+#  volumes: {}
+#  replicas: 1
+  scheduling:
+    resources: {}
+    affinity: {}
