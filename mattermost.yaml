@@ -1,7 +1,3 @@
-# This file contains verbose example of Mattermost Custom Resource  configured to
-# run with external database and file storage (recommended for production scenario).
-# Most of the fields are optional or have a sensible defaults and do not need to be specified.
-
 apiVersion: installation.mattermost.com/v1beta1
 kind: Mattermost
 metadata:
