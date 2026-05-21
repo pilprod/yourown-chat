@@ -1,4 +1,4 @@
-# YourOwn.Chat Server open config
+# YourOwn.Chat server config
 
 
 ```sh
