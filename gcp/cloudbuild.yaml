@@ -2,6 +2,7 @@ substitutions:
   _GKE_CLUSTER: yourown-chat
   _GKE_LOCATION: asia-southeast1
   _NAMESPACE: mattermost
+  _HELM_IMAGE: alpine/helm:3.15.4
 
 steps:
   - name: gcr.io/cloud-builders/gcloud
@@ -9,17 +10,54 @@ steps:
     args:
       - -ceu
       - |
-        curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-
-        gcloud container clusters get-credentials "${_GKE_CLUSTER}" \
+        endpoint="$(gcloud container clusters describe "${_GKE_CLUSTER}" \
           --location "${_GKE_LOCATION}" \
-          --project "${PROJECT_ID}"
+          --project "${PROJECT_ID}" \
+          --format='value(endpoint)')"
+        ca_cert="$(gcloud container clusters describe "${_GKE_CLUSTER}" \
+          --location "${_GKE_LOCATION}" \
+          --project "${PROJECT_ID}" \
+          --format='value(masterAuth.clusterCaCertificate)')"
+        token="$(gcloud auth print-access-token)"
 
-        helm repo add mattermost https://helm.mattermost.com --force-update
+        cat > /workspace/kubeconfig <<EOF
+        apiVersion: v1
+        kind: Config
+        clusters:
+        - name: gke
+          cluster:
+            server: https://${endpoint}
+            certificate-authority-data: ${ca_cert}
+        contexts:
+        - name: gke
+          context:
+            cluster: gke
+            user: cloud-build
+        current-context: gke
+        users:
+        - name: cloud-build
+          user:
+            token: ${token}
+        EOF
+
+  - name: gcr.io/cloud-builders/kubectl
+    entrypoint: bash
+    env:
+      - KUBECONFIG=/workspace/kubeconfig
+    args:
+      - -ceu
+      - |
         kubectl create namespace "${_NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
-
         kubectl apply -n "${_NAMESPACE}" -f certs.yaml
 
+  - name: ${_HELM_IMAGE}
+    entrypoint: sh
+    env:
+      - KUBECONFIG=/workspace/kubeconfig
+    args:
+      - -ceu
+      - |
+        helm repo add mattermost https://helm.mattermost.com --force-update
         helm upgrade --install mattermost \
           -n "${_NAMESPACE}" \
           --create-namespace \
@@ -27,9 +65,24 @@ steps:
           mattermost/mattermost-operator \
           --wait
 
+  - name: gcr.io/cloud-builders/kubectl
+    entrypoint: bash
+    env:
+      - KUBECONFIG=/workspace/kubeconfig
+    args:
+      - -ceu
+      - |
         kubectl apply -n "${_NAMESPACE}" -f mattermost.yaml
         kubectl apply -n "${_NAMESPACE}" -f ingress.yaml
 
+  - name: ${_HELM_IMAGE}
+    entrypoint: sh
+    env:
+      - KUBECONFIG=/workspace/kubeconfig
+    args:
+      - -ceu
+      - |
+        helm repo add mattermost https://helm.mattermost.com --force-update
         helm upgrade --install yourown-chat-rtcd \
           -n "${_NAMESPACE}" \
           --create-namespace \
@@ -37,6 +90,13 @@ steps:
           mattermost/yourown-chat-rtcd \
           --wait
 
+  - name: gcr.io/cloud-builders/kubectl
+    entrypoint: bash
+    env:
+      - KUBECONFIG=/workspace/kubeconfig
+    args:
+      - -ceu
+      - |
         kubectl apply -n "${_NAMESPACE}" -f lb.yaml
 
 timeout: 1200s
