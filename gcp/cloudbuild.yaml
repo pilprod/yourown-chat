@@ -52,12 +52,23 @@ steps:
 
   - name: ${_HELM_IMAGE}
     entrypoint: sh
-    env:
+    env: &helm-env
       - KUBECONFIG=/workspace/kubeconfig
+      - HELM_REPOSITORY_CONFIG=/workspace/helm/repositories.yaml
+      - HELM_REPOSITORY_CACHE=/workspace/helm/cache
+      - HELM_REGISTRY_CONFIG=/workspace/helm/registry/config.json
     args:
       - -ceu
       - |
+        mkdir -p /workspace/helm/cache /workspace/helm/registry
         helm repo add mattermost https://helm.mattermost.com --force-update
+
+  - name: ${_HELM_IMAGE}
+    entrypoint: sh
+    env: *helm-env
+    args:
+      - -ceu
+      - |
         helm upgrade --install mattermost \
           -n "${_NAMESPACE}" \
           --create-namespace \
@@ -77,12 +88,10 @@ steps:
 
   - name: ${_HELM_IMAGE}
     entrypoint: sh
-    env:
-      - KUBECONFIG=/workspace/kubeconfig
+    env: *helm-env
     args:
       - -ceu
       - |
-        helm repo add mattermost https://helm.mattermost.com --force-update
         helm upgrade --install yourown-chat-rtcd \
           -n "${_NAMESPACE}" \
           --create-namespace \
