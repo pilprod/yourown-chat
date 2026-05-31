@@ -1,0 +1,44 @@
+substitutions:
+  _GKE_CLUSTER: yourown-chat
+  _GKE_LOCATION: asia-southeast1
+  _NAMESPACE: mattermost
+
+steps:
+  - name: gcr.io/cloud-builders/gcloud
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+        gcloud container clusters get-credentials "${_GKE_CLUSTER}" \
+          --location "${_GKE_LOCATION}" \
+          --project "${PROJECT_ID}"
+
+        helm repo add mattermost https://helm.mattermost.com --force-update
+        kubectl create namespace "${_NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
+
+        kubectl apply -n "${_NAMESPACE}" -f certs.yaml
+
+        helm upgrade --install mattermost \
+          -n "${_NAMESPACE}" \
+          --create-namespace \
+          -f operator.yaml \
+          mattermost/mattermost-operator \
+          --wait
+
+        kubectl apply -n "${_NAMESPACE}" -f mattermost.yaml
+        kubectl apply -n "${_NAMESPACE}" -f ingress.yaml
+
+        helm upgrade --install yourown-chat-rtcd \
+          -n "${_NAMESPACE}" \
+          --create-namespace \
+          -f rtcd.yaml \
+          mattermost/yourown-chat-rtcd \
+          --wait
+
+        kubectl apply -n "${_NAMESPACE}" -f lb.yaml
+
+timeout: 1200s
+options:
+  logging: CLOUD_LOGGING_ONLY
