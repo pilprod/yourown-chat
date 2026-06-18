@@ -1,0 +1,40 @@
+steps:
+  - name: gcr.io/google.com/cloudsdktool/google-cloud-cli:slim
+    id: deploy-to-rke2
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        apt-get update
+        apt-get install -y ca-certificates curl
+
+        curl -fsSL -o /usr/local/bin/kubectl \
+          "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+        chmod +x /usr/local/bin/kubectl
+
+        curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+        gcloud secrets versions access latest \
+          --project="${_PROJECT_ID}" \
+          --secret="${_KUBECONFIG_SECRET}" \
+          >/tmp/kubeconfig.yaml
+
+        export KUBECONFIG=/tmp/kubeconfig.yaml
+        export PROJECT_ID="${_PROJECT_ID}"
+        export IMAGE_REPO="${_IMAGE_REPO}"
+        export IMAGE_TAG="${TAG_NAME:-${_IMAGE_TAG}}"
+        export BUCKET_NAME="${_BUCKET_NAME}"
+        export SITE_URL="${_SITE_URL}"
+
+        bash gcp/deploy.sh
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+substitutions:
+  _PROJECT_ID: gcloud-production-1
+  _IMAGE_REPO: southamerica-east1-docker.pkg.dev/gcloud-production-1/mattermost/mattermost
+  _IMAGE_TAG: latest
+  _BUCKET_NAME: gcloud-production-1-mattermost-southamerica-east1
+  _SITE_URL: https://yourown.chat
+  _KUBECONFIG_SECRET: mattermost-rke2-kubeconfig

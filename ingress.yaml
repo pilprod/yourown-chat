@@ -1,15 +1,16 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: mattermost-internal
+  name: mattermost
   namespace: mattermost
   annotations:
-    kubernetes.io/ingress.class: "gce-internal"
-    ingress.gcp.kubernetes.io/redirect-http-to-https: "true"
-    kubernetes.io/ingress.allow-http: "false"
-    kubernetes.io/ingress.regional-static-ip-name: "mattermost-asia-static-ip"
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
 spec:
-  ingressClassName: gce-internal
+  ingressClassName: nginx
   tls:
     - hosts:
         - yourown.chat

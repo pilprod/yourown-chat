@@ -9,10 +9,7 @@ spec:
     enabled: false
     host: yourown.chat
     annotations:
-      kubernetes.io/ingress.global-static-ip-name: "mattermost-global"
-      kubernetes.io/ingress.class: "gce"
-      # kubernetes.io/ingress.allow-http: "true"
-      # ingress.gcp.kubernetes.io/redirect-http-to-https: "true"
+      kubernetes.io/ingress.class: "nginx"
     tlsSecret: "yourown-chat-tls"
   mattermostEnv:
     - name: MM_FILESETTINGS_AMAZONS3SSE
@@ -31,7 +28,7 @@ spec:
   fileStore:
     external:
       url: storage.googleapis.com
-      bucket: mattermost-asia-southeast1
+      bucket: gcloud-production-1-mattermost-southamerica-east1
       secret: s3-credentials
   elasticSearch:
     host: ""
