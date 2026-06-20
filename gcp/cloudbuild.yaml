@@ -73,7 +73,7 @@ steps:
           printf '[%s](%s)' "$${label}" "$${url}"
         }
 
-        pipeline_registry="prod image: $$(artifact_link "${_IMAGE_REPO}:$${pipeline_image_tag}"); dev image: $$(artifact_link "${_IMAGE_REPO}:$${pipeline_dev_image_tag}"); chart: $$(artifact_link "$${chart_registry_path}/yourown-chat:$${pipeline_chart_version}")"
+        pipeline_artifacts=""
         pipeline_log="/tmp/mattermost-cicd-$${pipeline_build_id}.log"
         firewall_rule_name=""
 
@@ -109,9 +109,8 @@ steps:
           if [[ -n "$${pipeline_github_repo}" ]]; then
             project_text="[$${pipeline_project}]($${pipeline_github_repo})"
           fi
-          local registry_text="$${pipeline_registry}"
           local text
-          printf -v text '%s Build %s: **%s**\n\nProject: %s\nTag: %s\nCommit: %s\nBuild: [%s](%s)\nRegistry: %s' \
+          printf -v text '%s Build %s: **%s**\n\nProject: %s\nTag: %s\nCommit: %s\nBuild: [%s](%s)' \
             "$${icon}" \
             "$${state_label}" \
             "$${pipeline_name}" \
@@ -119,10 +118,12 @@ steps:
             "$${tag_text}" \
             "$${commit_text}" \
             "$${pipeline_build_id}" \
-            "$${pipeline_build_url}" \
-            "$${registry_text}"
+            "$${pipeline_build_url}"
 
           if [[ -n "$${exit_code}" ]]; then
+            if [[ -n "$${pipeline_artifacts}" ]]; then
+              printf -v text '%s\nArtifacts:\n%s' "$${text}" "$${pipeline_artifacts}"
+            fi
             printf -v text '%s\nDuration: `%ss`  ' "$${text}" "$${duration_seconds}"
             if [[ -s "$${pipeline_log}" ]]; then
               local report
@@ -177,6 +178,11 @@ steps:
         else
           echo "Branch deploy: using latest published chart version $${CHART_VERSION}"
         fi
+
+        printf -v pipeline_artifacts 'Prod image: %s\nDev image: %s\nChart: %s' \
+          "$$(artifact_link "${_IMAGE_REPO}:$${pipeline_image_tag}")" \
+          "$$(artifact_link "${_IMAGE_REPO}:$${pipeline_dev_image_tag}")" \
+          "$$(artifact_link "$${chart_registry_path}/yourown-chat:$${pipeline_chart_version}")"
 
         firewall_rule_name="yourown-chat-rke2-api-cb-${BUILD_ID}"
 
