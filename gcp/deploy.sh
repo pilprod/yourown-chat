@@ -12,6 +12,16 @@ required_vars=(
   SITE_URL
 )
 
+MATTERMOST_NAME="${MATTERMOST_NAME:-yourown-chat}"
+INGRESS_NAME="${INGRESS_NAME:-mattermost}"
+INGRESS_HOST="${INGRESS_HOST:-${SITE_URL#https://}}"
+TLS_SECRET="${TLS_SECRET:-yourown-chat-tls}"
+DB_SECRET_ID="${DB_SECRET_ID:-mattermost-db-datasource}"
+DB_EXTERNAL_SECRET="${DB_EXTERNAL_SECRET:-postgres-connection}"
+S3_EXTERNAL_SECRET="${S3_EXTERNAL_SECRET:-s3-credentials}"
+DEPLOY_MATTERBRIDGE="${DEPLOY_MATTERBRIDGE:-true}"
+DEPLOY_DEV_POSTGRES="${DEPLOY_DEV_POSTGRES:-false}"
+
 for var_name in "${required_vars[@]}"; do
   if [[ -z "${!var_name:-}" ]]; then
     echo "Missing required environment variable: ${var_name}" >&2
@@ -116,13 +126,39 @@ kubectl apply -f ingress-nginx-autoupdate.yaml
 
 sed \
   -e "s|__PROJECT_ID__|${PROJECT_ID}|g" \
+  -e "s|__S3_EXTERNAL_SECRET__|${S3_EXTERNAL_SECRET}|g" \
   gcp/externalsecrets.yaml >/tmp/externalsecrets.yaml
 
 kubectl apply -f /tmp/externalsecrets.yaml
-kubectl -n mattermost wait externalsecret/postgres-connection --for=condition=Ready --timeout=180s
-kubectl -n mattermost wait externalsecret/s3-credentials --for=condition=Ready --timeout=180s
-if ! kubectl -n mattermost wait externalsecret/matterbridge --for=condition=Ready --timeout=30s; then
-  echo "matterbridge ExternalSecret is not ready yet; create the matterbridge-* GCP secrets to start the bridge."
+kubectl -n mattermost wait "externalsecret/${S3_EXTERNAL_SECRET}" --for=condition=Ready --timeout=180s
+
+if [[ "${DEPLOY_DEV_POSTGRES}" == "true" ]]; then
+  if ! kubectl -n mattermost get secret "${DB_EXTERNAL_SECRET}" >/dev/null 2>&1; then
+    dev_postgres_password="$(python3 -c 'import secrets,string; alphabet=string.ascii_letters+string.digits; print("".join(secrets.choice(alphabet) for _ in range(32)))')"
+    dev_postgres_dsn="postgres://mmuser:${dev_postgres_password}@mattermost-dev-postgres:5432/mattermost?sslmode=disable&connect_timeout=10"
+
+    kubectl -n mattermost create secret generic "${DB_EXTERNAL_SECRET}" \
+      --from-literal=DEV_POSTGRES_PASSWORD="${dev_postgres_password}" \
+      --from-literal=DB_CONNECTION_STRING="${dev_postgres_dsn}" \
+      --from-literal=MM_SQLSETTINGS_DRIVERNAME=postgres \
+      --from-literal=MM_SQLSETTINGS_DATASOURCE="${dev_postgres_dsn}"
+  fi
+
+  kubectl apply -f gcp/dev-postgres.yaml
+  kubectl -n mattermost rollout status statefulset/mattermost-dev-postgres --timeout=180s
+else
+  sed \
+    -e "s|__DB_SECRET_ID__|${DB_SECRET_ID}|g" \
+    -e "s|__DB_EXTERNAL_SECRET__|${DB_EXTERNAL_SECRET}|g" \
+    gcp/db-externalsecret.yaml >/tmp/db-externalsecret.yaml
+
+  kubectl apply -f /tmp/db-externalsecret.yaml
+  kubectl -n mattermost wait "externalsecret/${DB_EXTERNAL_SECRET}" --for=condition=Ready --timeout=180s
+fi
+if [[ "${DEPLOY_MATTERBRIDGE}" == "true" ]]; then
+  if ! kubectl -n mattermost wait externalsecret/matterbridge --for=condition=Ready --timeout=30s; then
+    echo "matterbridge ExternalSecret is not ready yet; create the matterbridge-* GCP secrets to start the bridge."
+  fi
 fi
 
 helm upgrade -i mattermost \
@@ -141,13 +177,27 @@ if [[ -f certs.yaml ]]; then
 fi
 
 sed \
+  -e "s|^  name: .*|  name: ${MATTERMOST_NAME}|" \
   -e "s|^  image: .*|  image: ${IMAGE_REPO}|" \
   -e "s|^  version: .*|  version: ${IMAGE_TAG}|" \
+  -e "s|host: .*|host: ${INGRESS_HOST}|" \
+  -e "s|tlsSecret: .*|tlsSecret: \"${TLS_SECRET}\"|" \
+  -e "s|secret: postgres-connection|secret: ${DB_EXTERNAL_SECRET}|" \
+  -e "s|secret: s3-credentials|secret: ${S3_EXTERNAL_SECRET}|" \
   -e "s|bucket: .*|bucket: ${BUCKET_NAME}|" \
   -e "/name: MM_SERVICESETTINGS_SITEURL/{n;s|value: .*|value: \"${SITE_URL}\"|}" \
   mattermost.yaml >/tmp/mattermost.yaml
 
 kubectl apply -n mattermost -f /tmp/mattermost.yaml
-kubectl apply -n mattermost -f ingress.yaml
-kubectl apply -n mattermost -f matterbridge.yaml
+sed \
+  -e "s|name: mattermost|name: ${INGRESS_NAME}|" \
+  -e "s|yourown.chat|${INGRESS_HOST}|g" \
+  -e "s|yourown-chat-tls|${TLS_SECRET}|g" \
+  -e "s|name: yourown-chat|name: ${MATTERMOST_NAME}|g" \
+  ingress.yaml >/tmp/ingress.yaml
+
+kubectl apply -n mattermost -f /tmp/ingress.yaml
+if [[ "${DEPLOY_MATTERBRIDGE}" == "true" ]]; then
+  kubectl apply -n mattermost -f matterbridge.yaml
+fi
 kubectl -n mattermost get mattermost,pods,svc,endpoints || true

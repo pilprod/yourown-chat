@@ -14,6 +14,18 @@ spec:
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
+  name: yourown-chat-dev-crt
+spec:
+  secretName: yourown-chat-dev-tls
+  issuerRef:
+    name: letsencrypt
+    kind: ClusterIssuer
+  dnsNames:
+    - 'dev.yourown.chat'
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
   name: yourown-chat-rtcd-crt
 spec:
   secretName: yourown-chat-rtcd-tls

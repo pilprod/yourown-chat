@@ -2,7 +2,7 @@ steps:
   - name: gcr.io/google.com/cloudsdktool/google-cloud-cli:slim
     id: deploy-to-rke2
     env:
-      - PIPELINE_NAME=yourown-chat deploy
+      - PIPELINE_NAME=${_PIPELINE_NAME}
       - PIPELINE_PROJECT_ID=$PROJECT_ID
       - PIPELINE_BUILD_ID=$BUILD_ID
       - PIPELINE_GITHUB_REPO=https://github.com/pilprod/yourown-chat
@@ -15,7 +15,7 @@ steps:
       - -ceu
       - |
         apt-get update
-        apt-get install -y ca-certificates curl
+        apt-get install -y ca-certificates curl python3
 
         pipeline_started_at="$$(date -u +%s)"
         pipeline_tag="$${PIPELINE_TAG:-manual-or-untagged}"
@@ -146,6 +146,15 @@ steps:
         export BUCKET_NAME="${_BUCKET_NAME}"
         export SITE_URL="${_SITE_URL}"
         export IMAGE_TAG="${_IMAGE_TAG}"
+        export MATTERMOST_NAME="${_MATTERMOST_NAME}"
+        export INGRESS_NAME="${_INGRESS_NAME}"
+        export INGRESS_HOST="${_INGRESS_HOST}"
+        export TLS_SECRET="${_TLS_SECRET}"
+        export DB_SECRET_ID="${_DB_SECRET_ID}"
+        export DB_EXTERNAL_SECRET="${_DB_EXTERNAL_SECRET}"
+        export S3_EXTERNAL_SECRET="${_S3_EXTERNAL_SECRET}"
+        export DEPLOY_MATTERBRIDGE="${_DEPLOY_MATTERBRIDGE}"
+        export DEPLOY_DEV_POSTGRES="${_DEPLOY_DEV_POSTGRES}"
 
         bash gcp/deploy.sh
 
@@ -153,11 +162,21 @@ options:
   logging: CLOUD_LOGGING_ONLY
 
 substitutions:
+  _PIPELINE_NAME: yourown-chat deploy
   _PROJECT_ID: gcloud-production-1
   _IMAGE_REPO: southamerica-east1-docker.pkg.dev/gcloud-production-1/mattermost/mattermost
   _IMAGE_TAG: latest
   _BUCKET_NAME: gcloud-production-1-mattermost-southamerica-east1
   _SITE_URL: https://yourown.chat
+  _MATTERMOST_NAME: yourown-chat
+  _INGRESS_NAME: mattermost
+  _INGRESS_HOST: yourown.chat
+  _TLS_SECRET: yourown-chat-tls
+  _DB_SECRET_ID: mattermost-db-datasource
+  _DB_EXTERNAL_SECRET: postgres-connection
+  _S3_EXTERNAL_SECRET: s3-credentials
+  _DEPLOY_MATTERBRIDGE: "true"
+  _DEPLOY_DEV_POSTGRES: "false"
   _KUBECONFIG_SECRET: mattermost-rke2-kubeconfig
   _MATTERMOST_CICD_WEBHOOK_SECRET_VERSION: projects/gcloud-production-1/secrets/mattermost-cicd-webhook-url/versions/latest
   _RKE2_API_FIREWALL_NETWORK: mattermost-southamerica-east1
