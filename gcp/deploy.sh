@@ -24,7 +24,7 @@ wait_api_resource() {
   local attempts="${2:-30}"
 
   for attempt in $(seq 1 "${attempts}"); do
-    if kubectl api-resources --api-group=external-secrets.io -o name | grep -qx "${resource_name}"; then
+    if kubectl api-resources --api-group=external-secrets.io -o name | grep -Eq "^${resource_name}(\.external-secrets\.io)?$"; then
       return 0
     fi
 
