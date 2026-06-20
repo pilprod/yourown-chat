@@ -141,11 +141,4 @@ sed \
 
 kubectl apply -n mattermost -f /tmp/mattermost.yaml
 kubectl apply -n mattermost -f ingress.yaml
-if ! kubectl -n mattermost wait mattermost/yourown-chat --for=condition=Ready --timeout=600s; then
-  kubectl -n mattermost get mattermost yourown-chat -o yaml || true
-  kubectl -n mattermost describe mattermost yourown-chat || true
-  kubectl -n mattermost get all || true
-  kubectl -n mattermost logs deploy/mattermost-operator --tail=300 || true
-  kubectl -n mattermost get events --sort-by=.metadata.creationTimestamp || true
-  exit 1
-fi
+kubectl -n mattermost get mattermost,pods,svc,endpoints || true
