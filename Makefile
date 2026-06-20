@@ -83,7 +83,7 @@ deploy:
 	@kubectl -n mattermost get mattermost,pods,svc,endpoints || true
 
 verify-mattermost-versions:
-	@set -euo pipefail; : "$${IMAGE_TAG:?IMAGE_TAG is required}"; : "$${DEV_IMAGE_TAG:?DEV_IMAGE_TAG is required}"; prod_version="$$(kubectl -n mattermost get mattermost/yourown-chat -o jsonpath='{.spec.version}')"; dev_version="$$(kubectl -n mattermost get mattermost/yourown-chat-dev -o jsonpath='{.spec.version}')"; if [[ "$${prod_version}" != "$${IMAGE_TAG}" ]]; then echo "yourown-chat Mattermost CR version is $${prod_version}, expected $${IMAGE_TAG}" >&2; exit 1; fi; if [[ "$${dev_version}" != "$${DEV_IMAGE_TAG}" ]]; then echo "yourown-chat-dev Mattermost CR version is $${dev_version}, expected $${DEV_IMAGE_TAG}" >&2; exit 1; fi; echo "Mattermost CR versions match expected image tags: prod=$${prod_version}, dev=$${dev_version}"
+	@set -euo pipefail; : "$${IMAGE_REPO:?IMAGE_REPO is required}"; : "$${IMAGE_TAG:?IMAGE_TAG is required}"; : "$${DEV_IMAGE_TAG:?DEV_IMAGE_TAG is required}"; python3 gcp/verify-mattermost-rollout.py --namespace mattermost --instance "yourown-chat=$${IMAGE_REPO}:$${IMAGE_TAG}" --instance "yourown-chat-dev=$${IMAGE_REPO}:$${DEV_IMAGE_TAG}"
 
 verify-running-images:
 	@set -euo pipefail; : "$${IMAGE_REPO:?IMAGE_REPO is required}"; : "$${IMAGE_TAG:?IMAGE_TAG is required}"; : "$${DEV_IMAGE_TAG:?DEV_IMAGE_TAG is required}"; python3 gcp/verify-running-images.py --namespace mattermost --image "Prod image=$${IMAGE_REPO}:$${IMAGE_TAG}" --image "Dev image=$${IMAGE_REPO}:$${DEV_IMAGE_TAG}"
