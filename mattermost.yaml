@@ -39,7 +39,13 @@ spec:
     password: ""
 #  volumeMounts: {}
 #  volumes: {}
-#  replicas: 1
+  replicas: 1
   scheduling:
-    resources: {}
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: "2"
+        memory: 3Gi
     affinity: {}
