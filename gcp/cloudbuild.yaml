@@ -19,12 +19,15 @@ steps:
 
         pipeline_started_at="$$(date -u +%s)"
         pipeline_tag="$${PIPELINE_TAG:-manual-or-untagged}"
-        pipeline_repo_label="pilprod/yourown-chat"
         pipeline_github_repo="$${PIPELINE_GITHUB_REPO:-}"
+        pipeline_project="$${pipeline_github_repo#https://github.com/}"
         pipeline_short_sha="$${PIPELINE_SHORT_SHA:-unknown-sha}"
         pipeline_build_id="$${PIPELINE_BUILD_ID:-unknown-build}"
         pipeline_project_id="$${PIPELINE_PROJECT_ID:-${_PROJECT_ID}}"
         pipeline_name="$${PIPELINE_NAME:-Cloud Build}"
+        if [[ -z "$${pipeline_project}" || "$${pipeline_project}" == "$${pipeline_github_repo}" ]]; then
+          pipeline_project="$${pipeline_name}"
+        fi
         pipeline_build_url="https://console.cloud.google.com/cloud-build/builds;region=$${LOCATION:-global}/$${pipeline_build_id}?project=$${pipeline_project_id}"
         pipeline_log="/tmp/mattermost-cicd-$${pipeline_build_id}.log"
         firewall_rule_name=""
@@ -57,24 +60,32 @@ steps:
           if [[ -n "$${pipeline_github_repo}" && "$${pipeline_short_sha}" != "unknown-sha" ]]; then
             commit_text="[$${pipeline_short_sha}]($${pipeline_github_repo}/commit/$${pipeline_short_sha})"
           fi
+          local project_text="$${pipeline_project}"
+          if [[ -n "$${pipeline_github_repo}" ]]; then
+            project_text="[$${pipeline_project}]($${pipeline_github_repo})"
+          fi
           local text
-          printf -v text '%s Build %s: `%s`\n\nProject: `%s`\nPipeline: `%s`\nTag: %s\nCommit: %s\nBuild: [%s](%s)' \
+          printf -v text '%s Build %s: **%s**\n\nProject: %s\nTag: %s\nCommit: %s\nBuild: [%s](%s)\nGCP project: `%s`' \
             "$${icon}" \
             "$${state_label}" \
-            "$${pipeline_repo_label}" \
-            "$${pipeline_project_id}" \
             "$${pipeline_name}" \
+            "$${project_text}" \
             "$${tag_text}" \
             "$${commit_text}" \
             "$${pipeline_build_id}" \
-            "$${pipeline_build_url}"
+            "$${pipeline_build_url}" \
+            "$${pipeline_project_id}"
 
           if [[ -n "$${exit_code}" ]]; then
-            printf -v text '%s\nExit code: `%s`\nDuration: `%ss`' "$${text}" "$${exit_code}" "$${duration_seconds}"
+            local result_text="completed successfully"
+            if [[ "$${exit_code}" -ne 0 ]]; then
+              result_text="failed with exit code \`$${exit_code}\`"
+            fi
+            printf -v text '%s\nResult: %s\nDuration: `%ss`' "$${text}" "$${result_text}" "$${duration_seconds}"
             if [[ -s "$${pipeline_log}" ]]; then
               local report
               report="$$(tail -n 40 "$${pipeline_log}")"
-              printf -v text '%s\nReport:\n```diff\n%s\n```' "$${text}" "$${report}"
+              printf -v text '%s\n\nReport:\n```diff\n%s\n```' "$${text}" "$${report}"
             fi
           fi
 
