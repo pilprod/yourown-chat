@@ -20,6 +20,24 @@ Runtime secrets expected in GCP Secret Manager:
 - `mattermost-s3-access-key`
 - `mattermost-s3-secret-key`
 
+Matterbridge is deployed as an optional workload. Terragrunt creates these GCP
+Secret Manager entries; add secret versions before expecting the bridge pod to
+start:
+
+- `matterbridge-local-mattermost-token`
+- `matterbridge-local-mattermost-team`
+- `matterbridge-local-mattermost-channel`
+- `matterbridge-external-mattermost-server`
+- `matterbridge-external-mattermost-team`
+- `matterbridge-external-mattermost-token`
+- `matterbridge-external-mattermost-channel`
+- `matterbridge-rocketchat-server`
+- `matterbridge-rocketchat-user-id`
+- `matterbridge-rocketchat-token`
+- `matterbridge-rocketchat-channel`
+- `matterbridge-telegram-token`
+- `matterbridge-telegram-chat-id`
+
 ```sh
 export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
 export PROJECT_ID=gcloud-production-1

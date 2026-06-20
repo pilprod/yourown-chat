@@ -14,6 +14,26 @@ steps:
 
         curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
+        firewall_rule_name="yourown-chat-rke2-api-cb-${BUILD_ID}"
+        cleanup_firewall() {
+          gcloud compute firewall-rules delete "${firewall_rule_name}" \
+            --project="${_PROJECT_ID}" \
+            --quiet >/dev/null 2>&1 || true
+        }
+        trap cleanup_firewall EXIT
+
+        cloudbuild_ip="$(curl -fsSL https://api.ipify.org)"
+        gcloud compute firewall-rules create "${firewall_rule_name}" \
+          --project="${_PROJECT_ID}" \
+          --network="${_RKE2_API_FIREWALL_NETWORK}" \
+          --direction=INGRESS \
+          --priority=900 \
+          --action=ALLOW \
+          --rules=tcp:6443 \
+          --source-ranges="${cloudbuild_ip}/32" \
+          --target-tags="${_RKE2_API_TARGET_TAG}" \
+          --description="Temporary Cloud Build access to yourown-chat RKE2 API for ${BUILD_ID}"
+
         gcloud secrets versions access latest \
           --project="${_PROJECT_ID}" \
           --secret="${_KUBECONFIG_SECRET}" \
@@ -38,3 +58,5 @@ substitutions:
   _BUCKET_NAME: gcloud-production-1-mattermost-southamerica-east1
   _SITE_URL: https://yourown.chat
   _KUBECONFIG_SECRET: mattermost-rke2-kubeconfig
+  _RKE2_API_FIREWALL_NETWORK: mattermost-southamerica-east1
+  _RKE2_API_TARGET_TAG: yourown-chat-rke2

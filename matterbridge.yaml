@@ -1,0 +1,120 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: matterbridge-config
+data:
+  matterbridge.toml.template: |
+    [telegram]
+      [telegram.yourown]
+      Token = "${MATTERBRIDGE_TELEGRAM_TOKEN}"
+      UseFullName = true
+      EditSuffix = " (edited)"
+      UseInsecureURL = false
+
+    [mattermost]
+      [mattermost.local]
+      Server = "${MATTERBRIDGE_LOCAL_MM_SERVER}"
+      Team = "${MATTERBRIDGE_LOCAL_MM_TEAM}"
+      Token = "${MATTERBRIDGE_LOCAL_MM_TOKEN}"
+      PrefixMessagesWithNick = true
+      RemoteNickFormat = "[yourown/{NICK}] "
+
+      [mattermost.external]
+      Server = "${MATTERBRIDGE_EXTERNAL_MM_SERVER}"
+      Team = "${MATTERBRIDGE_EXTERNAL_MM_TEAM}"
+      Token = "${MATTERBRIDGE_EXTERNAL_MM_TOKEN}"
+      PrefixMessagesWithNick = true
+      RemoteNickFormat = "[mm/{NICK}] "
+
+    [rocketchat]
+      [rocketchat.external]
+      Server = "${MATTERBRIDGE_ROCKETCHAT_SERVER}"
+      Login = "${MATTERBRIDGE_ROCKETCHAT_USER_ID}"
+      Token = "${MATTERBRIDGE_ROCKETCHAT_TOKEN}"
+      PrefixMessagesWithNick = true
+      RemoteNickFormat = "[rocket/{NICK}] "
+
+    [[gateway]]
+    name = "yourown-chatops"
+    enable = true
+
+      [[gateway.inout]]
+      account = "mattermost.local"
+      channel = "${MATTERBRIDGE_LOCAL_MM_CHANNEL}"
+
+      [[gateway.inout]]
+      account = "mattermost.external"
+      channel = "${MATTERBRIDGE_EXTERNAL_MM_CHANNEL}"
+
+      [[gateway.inout]]
+      account = "rocketchat.external"
+      channel = "${MATTERBRIDGE_ROCKETCHAT_CHANNEL}"
+
+      [[gateway.inout]]
+      account = "telegram.yourown"
+      channel = "${MATTERBRIDGE_TELEGRAM_CHAT_ID}"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: matterbridge
+  labels:
+    app.kubernetes.io/name: matterbridge
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: matterbridge
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: matterbridge
+    spec:
+      initContainers:
+        - name: render-config
+          image: alpine:3.20
+          command:
+            - sh
+            - -ec
+            - |
+              apk add --no-cache gettext
+              envsubst < /config/matterbridge.toml.template > /work/matterbridge.toml
+              test -s /work/matterbridge.toml
+          env:
+            - name: MATTERBRIDGE_LOCAL_MM_SERVER
+              value: yourown-chat.mattermost.svc.cluster.local:8065
+          envFrom:
+            - secretRef:
+                name: matterbridge
+          volumeMounts:
+            - name: config-template
+              mountPath: /config
+              readOnly: true
+            - name: rendered-config
+              mountPath: /work
+      containers:
+        - name: matterbridge
+          image: 42wim/matterbridge:1.26.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - -conf
+            - /etc/matterbridge/matterbridge.toml
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          volumeMounts:
+            - name: rendered-config
+              mountPath: /etc/matterbridge
+              readOnly: true
+      volumes:
+        - name: config-template
+          configMap:
+            name: matterbridge-config
+        - name: rendered-config
+          emptyDir: {}

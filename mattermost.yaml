@@ -31,6 +31,16 @@ spec:
       value: "true"
     - name: MM_EMAILSETTINGS_PUSHNOTIFICATIONCONTENTS
       value: "full"
+    - name: MM_SERVICESETTINGS_ENABLEINCOMINGWEBHOOKS
+      value: "true"
+    - name: MM_SERVICESETTINGS_ENABLEOUTGOINGWEBHOOKS
+      value: "true"
+    - name: MM_SERVICESETTINGS_ENABLECOMMANDS
+      value: "true"
+    - name: MM_SERVICESETTINGS_ENABLEPOSTUSERNAMEOVERRIDE
+      value: "true"
+    - name: MM_SERVICESETTINGS_ENABLEPOSTICONOVERRIDE
+      value: "true"
   # licenseSecret: ""
   database:
     external:
