@@ -140,6 +140,5 @@ sed \
   mattermost.yaml >/tmp/mattermost.yaml
 
 kubectl apply -n mattermost -f /tmp/mattermost.yaml
-kubectl -n mattermost wait mattermost/yourown-chat --for=condition=Ready --timeout=600s || true
-
 kubectl apply -n mattermost -f ingress.yaml
+kubectl -n mattermost wait mattermost/yourown-chat --for=condition=Ready --timeout=600s || true
