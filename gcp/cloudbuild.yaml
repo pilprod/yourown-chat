@@ -48,7 +48,32 @@ steps:
           echo "Chart version must be numeric semver, got: $${pipeline_chart_version}" >&2
           exit 1
         fi
-        pipeline_registry="prod image: ${_IMAGE_REPO}:$${pipeline_image_tag}; dev image: ${_IMAGE_REPO}:$${pipeline_dev_image_tag}; chart: ${_CHART_REPOSITORY}/yourown-chat:$${pipeline_chart_version}"
+
+        artifact_link() {
+          local artifact_ref="$$1"
+          local artifact_repo="$${artifact_ref%:*}"
+          local artifact_tag="$${artifact_ref##*:}"
+          local artifact_host="$${artifact_repo%%/*}"
+          local artifact_path="$${artifact_repo#*/}"
+          local artifact_location="$${artifact_host%-docker.pkg.dev}"
+          local artifact_project_id="$${artifact_path%%/*}"
+          local artifact_path_remainder="$${artifact_path#*/}"
+          local artifact_registry_repo="$${artifact_path_remainder%%/*}"
+          local artifact_name="$${artifact_path_remainder#*/}"
+          local artifact_digest
+          artifact_digest="$$(gcloud artifacts docker images describe "$${artifact_ref}" --format='value(image_summary.digest)' 2>/dev/null || true)"
+
+          local label="$${artifact_ref}"
+          local url="https://console.cloud.google.com/artifacts/docker/$${artifact_project_id}/$${artifact_location}/$${artifact_registry_repo}/$${artifact_name}/$${artifact_tag}?project=$${artifact_project_id}"
+          if [[ -n "$${artifact_digest}" ]]; then
+            label="$${artifact_repo}@$${artifact_digest}"
+            url="https://console.cloud.google.com/artifacts/docker/$${artifact_project_id}/$${artifact_location}/$${artifact_registry_repo}/$${artifact_name}/$${artifact_digest}?project=$${artifact_project_id}"
+          fi
+
+          printf '[%s](%s)' "$${label}" "$${url}"
+        }
+
+        pipeline_registry="prod image: $$(artifact_link "${_IMAGE_REPO}:$${pipeline_image_tag}"); dev image: $$(artifact_link "${_IMAGE_REPO}:$${pipeline_dev_image_tag}"); chart: $$(artifact_link "$${chart_registry_path}/yourown-chat:$${pipeline_chart_version}")"
         pipeline_log="/tmp/mattermost-cicd-$${pipeline_build_id}.log"
         firewall_rule_name=""
 
@@ -84,7 +109,7 @@ steps:
           if [[ -n "$${pipeline_github_repo}" ]]; then
             project_text="[$${pipeline_project}]($${pipeline_github_repo})"
           fi
-          local registry_text="\`$${pipeline_registry}\`"
+          local registry_text="$${pipeline_registry}"
           local text
           printf -v text '%s Build %s: **%s**\n\nProject: %s\nTag: %s\nCommit: %s\nBuild: [%s](%s)\nRegistry: %s' \
             "$${icon}" \
