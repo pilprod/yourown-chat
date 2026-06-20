@@ -65,7 +65,7 @@ steps:
             project_text="[$${pipeline_project}]($${pipeline_github_repo})"
           fi
           local text
-          printf -v text '%s Build %s: **%s**\n\nProject: %s\nTag: %s\nCommit: %s\nBuild: [%s](%s)\nGCP project: `%s`' \
+          printf -v text '%s Build %s: **%s**\n\nProject: %s\nTag: %s\nCommit: %s\nBuild: [%s](%s)' \
             "$${icon}" \
             "$${state_label}" \
             "$${pipeline_name}" \
@@ -73,19 +73,14 @@ steps:
             "$${tag_text}" \
             "$${commit_text}" \
             "$${pipeline_build_id}" \
-            "$${pipeline_build_url}" \
-            "$${pipeline_project_id}"
+            "$${pipeline_build_url}"
 
           if [[ -n "$${exit_code}" ]]; then
-            local result_text="completed successfully"
-            if [[ "$${exit_code}" -ne 0 ]]; then
-              result_text="failed with exit code \`$${exit_code}\`"
-            fi
-            printf -v text '%s\nResult: %s\nDuration: `%ss`' "$${text}" "$${result_text}" "$${duration_seconds}"
+            printf -v text '%s\nDuration: `%ss`' "$${text}" "$${duration_seconds}"
             if [[ -s "$${pipeline_log}" ]]; then
               local report
               report="$$(tail -n 40 "$${pipeline_log}")"
-              printf -v text '%s\n\nReport:\n```diff\n%s\n```' "$${text}" "$${report}"
+              printf -v text '%s\n\n```diff\n%s\n```' "$${text}" "$${report}"
             fi
           fi
 
