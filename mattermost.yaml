@@ -21,9 +21,6 @@ spec:
       value: "true"
     - name: MM_SERVICESETTINGS_SITEURL
       value: "https://yourown.chat"
-    # Disable read replicas; overrides any stale DB config that may include an empty replica DSN
-    - name: MM_SQLSETTINGS_DATASOURCEREPLICAS
-      value: "[]"
   # licenseSecret: ""
   database:
     external:
