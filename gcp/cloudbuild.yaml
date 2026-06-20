@@ -76,11 +76,11 @@ steps:
             "$${pipeline_build_url}"
 
           if [[ -n "$${exit_code}" ]]; then
-            printf -v text '%s\nDuration: `%ss`' "$${text}" "$${duration_seconds}"
+            printf -v text '%s\nDuration: `%ss`  ' "$${text}" "$${duration_seconds}"
             if [[ -s "$${pipeline_log}" ]]; then
               local report
               report="$$(tail -n 40 "$${pipeline_log}")"
-              printf -v text '%s\n\n---\n\n```diff\n%s\n```' "$${text}" "$${report}"
+              printf -v text '%s\n\n```diff\n%s\n```' "$${text}" "$${report}"
             fi
           fi
 
