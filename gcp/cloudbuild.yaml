@@ -2,10 +2,9 @@ steps:
   - name: gcr.io/google.com/cloudsdktool/google-cloud-cli:slim
     id: deploy-to-rke2
     env:
-      - PIPELINE_NAME=yourown-chat RKE2 deploy
+      - PIPELINE_NAME=yourown-chat deploy
       - PIPELINE_PROJECT_ID=$PROJECT_ID
       - PIPELINE_BUILD_ID=$BUILD_ID
-      - PIPELINE_TRIGGER=$TRIGGER_NAME
       - PIPELINE_GITHUB_REPO=https://github.com/pilprod/yourown-chat
       - PIPELINE_TAG=$TAG_NAME
       - PIPELINE_SHORT_SHA=$SHORT_SHA
@@ -20,7 +19,6 @@ steps:
 
         pipeline_started_at="$$(date -u +%s)"
         pipeline_tag="$${PIPELINE_TAG:-manual-or-untagged}"
-        pipeline_trigger="$${PIPELINE_TRIGGER:-manual}"
         pipeline_repo_label="pilprod/yourown-chat"
         pipeline_github_repo="$${PIPELINE_GITHUB_REPO:-}"
         pipeline_short_sha="$${PIPELINE_SHORT_SHA:-unknown-sha}"
@@ -60,13 +58,12 @@ steps:
             commit_text="[$${pipeline_short_sha}]($${pipeline_github_repo}/commit/$${pipeline_short_sha})"
           fi
           local text
-          printf -v text '%s Build %s: `%s`\n\nProject: `%s`\nPipeline: `%s`\nTrigger: `%s`\nTag: %s\nCommit: %s\nBuild: [%s](%s)' \
+          printf -v text '%s Build %s: `%s`\n\nProject: `%s`\nPipeline: `%s`\nTag: %s\nCommit: %s\nBuild: [%s](%s)' \
             "$${icon}" \
             "$${state_label}" \
             "$${pipeline_repo_label}" \
             "$${pipeline_project_id}" \
             "$${pipeline_name}" \
-            "$${pipeline_trigger}" \
             "$${tag_text}" \
             "$${commit_text}" \
             "$${pipeline_build_id}" \
