@@ -27,8 +27,12 @@ steps:
 
         tag_name="${TAG_NAME}"
         ref_name="${REF_NAME}"
-        image_tag="$${tag_name:-$${ref_name}}"
+        image_tag="$$tag_name"
         version_pattern='^[^.]+\.[^.]+\.[^.]+$'
+
+        if [[ -z "$$image_tag" ]]; then
+          image_tag="$$ref_name"
+        fi
 
         if [[ -z "$${image_tag}" ]]; then
           echo "No tag ref found; skipping yourown-chat deploy for non-tag build." >&2
