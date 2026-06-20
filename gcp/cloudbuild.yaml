@@ -60,7 +60,7 @@ steps:
             commit_text="[$${pipeline_short_sha}]($${pipeline_github_repo}/commit/$${pipeline_short_sha})"
           fi
           local text
-          printf -v text '%s Build %s: `%s`\nProject: `%s`\nPipeline: `%s`\nTrigger: `%s`\nTag: %s\nCommit: %s\nBuild: [%s](%s)' \
+          printf -v text '%s Build %s: `%s`\n\nProject: `%s`\nPipeline: `%s`\nTrigger: `%s`\nTag: %s\nCommit: %s\nBuild: [%s](%s)' \
             "$${icon}" \
             "$${state_label}" \
             "$${pipeline_repo_label}" \

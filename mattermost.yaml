@@ -40,13 +40,15 @@ spec:
     - name: MM_SERVICESETTINGS_ENABLECOMMANDS
       value: "false"
     - name: MM_SERVICESETTINGS_ENABLEPOSTUSERNAMEOVERRIDE
-      value: "false"
+      value: "true"
     - name: MM_SERVICESETTINGS_ENABLEPOSTICONOVERRIDE
-      value: "false"
+      value: "true"
     - name: MM_SERVICESETTINGS_ENABLEBOTACCOUNTCREATION
       value: "false"
     - name: MM_SERVICESETTINGS_DISABLEBOTSWHENOWNERISDEACTIVATED
       value: "true"
+    # - name: MM_PLUGINSETTINGS_PLUGINSTATES
+    #   value: '{"com.mattermost.calls":{"Enable":false},"com.mattermost.nps":{"Enable":false},"playbooks":{"Enable":false}}'
   # licenseSecret: ""
   database:
     external:
