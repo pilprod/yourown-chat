@@ -26,7 +26,7 @@ steps:
         export SITE_URL="${_SITE_URL}"
 
         if [[ -z "${TAG_NAME:-}" ]]; then
-          echo "TAG_NAME is empty; deploy must run from a release tag matching ^v*.*-patched$" >&2
+          echo "TAG_NAME is empty; deploy must run from a version tag matching *.*.*" >&2
           exit 1
         fi
 
