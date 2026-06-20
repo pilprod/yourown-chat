@@ -56,11 +56,13 @@ helm upgrade -i external-secrets \
   external-secrets/external-secrets \
   --wait
 
+kubectl wait crd/clustersecretstores.external-secrets.io --for=condition=Established --timeout=180s
+kubectl wait crd/externalsecrets.external-secrets.io --for=condition=Established --timeout=180s
+
 helm upgrade -i cert-manager \
   -n cert-manager \
   --create-namespace \
   --set crds.enabled=true \
-  --set installCRDs=true \
   jetstack/cert-manager \
   --wait
 
