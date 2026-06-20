@@ -25,12 +25,22 @@ steps:
         export BUCKET_NAME="${_BUCKET_NAME}"
         export SITE_URL="${_SITE_URL}"
 
-        if [[ -z "${TAG_NAME:-}" ]]; then
-          echo "TAG_NAME is empty; deploy must run from a version tag matching *.*.*" >&2
-          exit 1
+        tag_name="${TAG_NAME}"
+        ref_name="${REF_NAME}"
+        image_tag="$${tag_name:-$${ref_name}}"
+        version_pattern='^[^.]+\.[^.]+\.[^.]+$'
+
+        if [[ -z "$${image_tag}" ]]; then
+          echo "No tag ref found; skipping yourown-chat deploy for non-tag build." >&2
+          exit 0
         fi
 
-        export IMAGE_TAG="${TAG_NAME}"
+        if [[ ! "$${image_tag}" =~ $${version_pattern} ]]; then
+          echo "Ref '$${image_tag}' does not match version tag pattern *.*.*; skipping yourown-chat deploy." >&2
+          exit 0
+        fi
+
+        export IMAGE_TAG="$${image_tag}"
 
         bash gcp/deploy.sh
 
