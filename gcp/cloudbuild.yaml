@@ -139,7 +139,7 @@ steps:
 
           if [[ -n "$${exit_code}" ]]; then
             if [[ -n "$${pipeline_artifacts}" ]]; then
-              printf -v text '%s\nArtifacts:\n%s' "$${text}" "$${pipeline_artifacts}"
+              printf -v text '%s\n\n%s\n' "$${text}" "$${pipeline_artifacts}"
             fi
             printf -v text '%s\nDuration: `%ss`  ' "$${text}" "$${duration_seconds}"
             if [[ -s "$${pipeline_log}" ]]; then
@@ -196,7 +196,7 @@ steps:
           echo "Branch deploy: using latest published chart version $${CHART_VERSION}"
         fi
 
-        printf -v pipeline_artifacts 'Prod image: %s\nDev image: %s\nChart: %s' \
+        printf -v pipeline_artifacts 'Images:\n%s\n%s\n\nHelm Chart:\n%s' \
           "$$(artifact_link "${_IMAGE_REPO}:$${pipeline_image_tag}" "mattermost:$${pipeline_image_tag}" '^v.*-patched$$')" \
           "$$(artifact_link "${_IMAGE_REPO}:$${pipeline_dev_image_tag}" "mattermost:$${pipeline_dev_image_tag}" '^v.*patched-dev$$')" \
           "$$(artifact_link "$${chart_registry_path}/yourown-chat:$${pipeline_chart_version}" "yourown-chat:$${pipeline_chart_version}")"
