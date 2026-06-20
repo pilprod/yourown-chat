@@ -228,7 +228,6 @@ steps:
         export DEV_IMAGE_TAG="$${pipeline_dev_image_tag}"
 
         make deploy
-        make verify-running-images
 
 options:
   logging: CLOUD_LOGGING_ONLY

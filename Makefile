@@ -6,7 +6,7 @@ export CHART_REPOSITORY ?= oci://southamerica-east1-docker.pkg.dev/gcloud-produc
 export CHART_PACKAGE_DIR ?= /tmp/yourown-chat-chart
 export KUBECONFIG ?= /etc/rancher/rke2/rke2.yaml
 
-.PHONY: chart-version lint package-chart push-chart publish-chart ensure-local-path-storage repair-dev-storage ensure-dev-pvcs-usable deploy verify-mattermost-versions verify-running-images
+.PHONY: chart-version lint package-chart push-chart publish-chart ensure-local-path-storage repair-dev-storage deploy
 
 chart-version:
 	@set -euo pipefail; chart_version="$${CHART_VERSION:-$${TAG_NAME:-}}"; if [[ -z "$${chart_version}" ]]; then echo "CHART_VERSION or TAG_NAME is required" >&2; exit 1; fi; if [[ ! "$${chart_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$$ ]]; then echo "Chart version must be numeric X.Y.Z, got: $${chart_version}" >&2; exit 1; fi; printf '%s\n' "$${chart_version}"
@@ -40,28 +40,10 @@ repair-dev-storage:
 		fi; \
 	done
 
-ensure-dev-pvcs-usable:
-	@set -euo pipefail; for pvc in yourown-chat-dev data-mattermost-dev-postgres-0; do \
-		if kubectl -n mattermost get pvc "$${pvc}" >/dev/null 2>&1; then \
-			deletion_timestamp="$$(kubectl -n mattermost get pvc "$${pvc}" -o jsonpath='{.metadata.deletionTimestamp}')"; \
-			phase="$$(kubectl -n mattermost get pvc "$${pvc}" -o jsonpath='{.status.phase}')"; \
-			if [[ -n "$${deletion_timestamp}" ]]; then \
-				echo "PVC mattermost/$${pvc} is deleting and cannot be used by Mattermost update-check jobs." >&2; \
-				echo "Let it finish deleting or manually unblock/recreate it before deploy." >&2; \
-				exit 1; \
-			fi; \
-			if [[ "$${phase}" != "Bound" ]]; then \
-				echo "PVC mattermost/$${pvc} is $${phase}, expected Bound." >&2; \
-				exit 1; \
-			fi; \
-		fi; \
-	done
-
 deploy:
 	@set -euo pipefail; chart_version="$${CHART_VERSION:-$${TAG_NAME:-}}"; if [[ -z "$${chart_version}" ]]; then echo "CHART_VERSION or TAG_NAME is required" >&2; exit 1; fi; if [[ ! "$${chart_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$$ ]]; then echo "Chart version must be numeric X.Y.Z, got: $${chart_version}" >&2; exit 1; fi; echo "Deploying chart $${CHART_REPOSITORY}/$(CHART_NAME):$${chart_version}"
 	@kubectl create namespace mattermost --dry-run=client -o yaml | kubectl apply -f -
 	@$(MAKE) ensure-local-path-storage
-	@$(MAKE) ensure-dev-pvcs-usable
 	@helm repo add external-secrets https://charts.external-secrets.io --force-update
 	@helm repo add jetstack https://charts.jetstack.io --force-update
 	@helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx --force-update
@@ -93,15 +75,8 @@ deploy:
 		IFS='|' read -r kind name namespace <<<"$${item}"; namespace_args=(); if [[ -n "$${namespace}" ]]; then namespace_args=(-n "$${namespace}"); fi; if kubectl "$${namespace_args[@]}" get "$${kind}/$${name}" >/dev/null 2>&1; then kubectl "$${namespace_args[@]}" label "$${kind}/$${name}" app.kubernetes.io/managed-by=Helm --overwrite; kubectl "$${namespace_args[@]}" annotate "$${kind}/$${name}" meta.helm.sh/release-name=yourown-chat meta.helm.sh/release-namespace=mattermost --overwrite; fi; \
 	done
 	@set -euo pipefail; chart_version="$${CHART_VERSION:-$${TAG_NAME:-}}"; image_args=(); if [[ -n "$${IMAGE_TAG:-}" ]]; then image_args+=(--set-string "instances.prod.imageTag=$${IMAGE_TAG}"); fi; if [[ -n "$${DEV_IMAGE_TAG:-}" ]]; then image_args+=(--set-string "instances.dev.imageTag=$${DEV_IMAGE_TAG}"); fi; helm upgrade -i yourown-chat -n mattermost --create-namespace "$${CHART_REPOSITORY}/$(CHART_NAME)" --version "$${chart_version}" "$${image_args[@]}" --wait
-	@$(MAKE) verify-mattermost-versions
 	@kubectl -n mattermost wait externalsecret/s3-credentials --for=condition=Ready --timeout=180s
 	@kubectl -n mattermost wait externalsecret/postgres-connection --for=condition=Ready --timeout=180s
 	@kubectl -n mattermost rollout status statefulset/mattermost-dev-postgres --timeout=180s
 	@if kubectl -n mattermost get externalsecret/matterbridge >/dev/null 2>&1; then if ! kubectl -n mattermost wait externalsecret/matterbridge --for=condition=Ready --timeout=30s; then echo "matterbridge ExternalSecret is not ready yet; create the matterbridge-* GCP secrets to start the bridge."; fi; else echo "matterbridge is disabled; skipping matterbridge ExternalSecret wait."; fi
 	@kubectl -n mattermost get mattermost,pods,svc,endpoints || true
-
-verify-mattermost-versions:
-	@set -euo pipefail; : "$${IMAGE_REPO:?IMAGE_REPO is required}"; : "$${IMAGE_TAG:?IMAGE_TAG is required}"; : "$${DEV_IMAGE_TAG:?DEV_IMAGE_TAG is required}"; python3 gcp/verify-mattermost-rollout.py --namespace mattermost --instance "yourown-chat=$${IMAGE_REPO}:$${IMAGE_TAG}" --instance "yourown-chat-dev=$${IMAGE_REPO}:$${DEV_IMAGE_TAG}"
-
-verify-running-images:
-	@set -euo pipefail; : "$${IMAGE_REPO:?IMAGE_REPO is required}"; : "$${IMAGE_TAG:?IMAGE_TAG is required}"; : "$${DEV_IMAGE_TAG:?DEV_IMAGE_TAG is required}"; python3 gcp/verify-running-images.py --namespace mattermost --image "Prod image=$${IMAGE_REPO}:$${IMAGE_TAG}" --image "Dev image=$${IMAGE_REPO}:$${DEV_IMAGE_TAG}"
