@@ -6,6 +6,8 @@ export PATH="/var/lib/rancher/rke2/bin:${PATH}"
 
 required_vars=(
   PROJECT_ID
+  IMAGE_REPO
+  IMAGE_TAG
   BUCKET_NAME
   SITE_URL
 )
@@ -16,6 +18,9 @@ for var_name in "${required_vars[@]}"; do
     exit 1
   fi
 done
+
+echo "Deploying Mattermost image ${IMAGE_REPO}:${IMAGE_TAG}"
+gcloud artifacts docker images describe "${IMAGE_REPO}:${IMAGE_TAG}" >/dev/null
 
 kubectl create namespace mattermost --dry-run=client -o yaml | kubectl apply -f -
 # kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
@@ -89,10 +94,13 @@ if [[ -f certs.yaml ]]; then
 fi
 
 sed \
+  -e "s|^  image: .*|  image: ${IMAGE_REPO}|" \
+  -e "s|^  version: .*|  version: ${IMAGE_TAG}|" \
   -e "s|bucket: .*|bucket: ${BUCKET_NAME}|" \
   -e "/name: MM_SERVICESETTINGS_SITEURL/{n;s|value: .*|value: \"${SITE_URL}\"|}" \
   mattermost.yaml >/tmp/mattermost.yaml
 
 kubectl apply -n mattermost -f /tmp/mattermost.yaml
+kubectl -n mattermost wait mattermost/yourown-chat --for=condition=Ready --timeout=600s || true
 
 kubectl apply -n mattermost -f ingress.yaml

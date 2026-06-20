@@ -3,6 +3,9 @@ kind: Mattermost
 metadata:
   name: yourown-chat
 spec:
+  image: southamerica-east1-docker.pkg.dev/gcloud-production-1/mattermost/mattermost
+  imagePullPolicy: IfNotPresent
+  version: latest
   # size: 5000users
   serviceAnnotations: {}
   ingress:

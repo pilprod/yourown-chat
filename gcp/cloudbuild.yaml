@@ -22,9 +22,15 @@ steps:
         export KUBECONFIG=/tmp/kubeconfig.yaml
         export PROJECT_ID="${_PROJECT_ID}"
         export IMAGE_REPO="${_IMAGE_REPO}"
-        export IMAGE_TAG="${TAG_NAME:-${_IMAGE_TAG}}"
         export BUCKET_NAME="${_BUCKET_NAME}"
         export SITE_URL="${_SITE_URL}"
+
+        if [[ -z "${TAG_NAME:-}" ]]; then
+          echo "TAG_NAME is empty; deploy must run from a release tag matching ^v*.*-pached$" >&2
+          exit 1
+        fi
+
+        export IMAGE_TAG="${TAG_NAME}"
 
         bash gcp/deploy.sh
 
