@@ -37,34 +37,6 @@ wait_api_resource() {
   done
 }
 
-external_secrets_api_version() {
-  kubectl api-versions | awk '
-    $0 == "external-secrets.io/v1" { version = "external-secrets.io/v1" }
-    $0 == "external-secrets.io/v1beta1" && version == "" { version = "external-secrets.io/v1beta1" }
-    END { if (version != "") print version }
-  '
-}
-
-wait_external_secrets_api_version() {
-  local attempts="${1:-30}"
-  local api_version
-
-  for attempt in $(seq 1 "${attempts}"); do
-    api_version="$(external_secrets_api_version)"
-    if [[ -n "${api_version}" ]]; then
-      printf '%s\n' "${api_version}"
-      return 0
-    fi
-
-    if [[ "${attempt}" == "${attempts}" ]]; then
-      echo "No served external-secrets.io API version is available" >&2
-      return 1
-    fi
-
-    sleep 2
-  done
-}
-
 echo "Deploying Mattermost image ${IMAGE_REPO}:${IMAGE_TAG}"
 
 image_ref="${IMAGE_REPO}:${IMAGE_TAG}"
@@ -106,7 +78,6 @@ kubectl wait crd/clustersecretstores.external-secrets.io --for=condition=Establi
 kubectl wait crd/externalsecrets.external-secrets.io --for=condition=Established --timeout=180s
 wait_api_resource clustersecretstores
 wait_api_resource externalsecrets
-external_secrets_served_api_version="$(wait_external_secrets_api_version)"
 
 helm upgrade -i cert-manager \
   -n cert-manager \
@@ -140,7 +111,6 @@ helm upgrade -i ingress-nginx \
 
 sed \
   -e "s|__PROJECT_ID__|${PROJECT_ID}|g" \
-  -e "s|external-secrets.io/v1beta1|${external_secrets_served_api_version}|g" \
   gcp/externalsecrets.yaml >/tmp/externalsecrets.yaml
 
 kubectl apply -f /tmp/externalsecrets.yaml
