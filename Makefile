@@ -6,7 +6,7 @@ export CHART_REPOSITORY ?= oci://southamerica-east1-docker.pkg.dev/gcloud-produc
 export CHART_PACKAGE_DIR ?= /tmp/yourown-chat-chart
 export KUBECONFIG ?= /etc/rancher/rke2/rke2.yaml
 
-.PHONY: chart-version lint package-chart push-chart publish-chart ensure-local-path-storage repair-dev-storage deploy verify-mattermost-versions verify-running-images
+.PHONY: chart-version lint package-chart push-chart publish-chart ensure-local-path-storage repair-dev-storage ensure-dev-pvcs-usable deploy verify-mattermost-versions verify-running-images
 
 chart-version:
 	@set -euo pipefail; chart_version="$${CHART_VERSION:-$${TAG_NAME:-}}"; if [[ -z "$${chart_version}" ]]; then echo "CHART_VERSION or TAG_NAME is required" >&2; exit 1; fi; if [[ ! "$${chart_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$$ ]]; then echo "Chart version must be numeric X.Y.Z, got: $${chart_version}" >&2; exit 1; fi; printf '%s\n' "$${chart_version}"
@@ -40,10 +40,28 @@ repair-dev-storage:
 		fi; \
 	done
 
+ensure-dev-pvcs-usable:
+	@set -euo pipefail; for pvc in yourown-chat-dev data-mattermost-dev-postgres-0; do \
+		if kubectl -n mattermost get pvc "$${pvc}" >/dev/null 2>&1; then \
+			deletion_timestamp="$$(kubectl -n mattermost get pvc "$${pvc}" -o jsonpath='{.metadata.deletionTimestamp}')"; \
+			phase="$$(kubectl -n mattermost get pvc "$${pvc}" -o jsonpath='{.status.phase}')"; \
+			if [[ -n "$${deletion_timestamp}" ]]; then \
+				echo "PVC mattermost/$${pvc} is deleting and cannot be used by Mattermost update-check jobs." >&2; \
+				echo "Let it finish deleting or manually unblock/recreate it before deploy." >&2; \
+				exit 1; \
+			fi; \
+			if [[ "$${phase}" != "Bound" ]]; then \
+				echo "PVC mattermost/$${pvc} is $${phase}, expected Bound." >&2; \
+				exit 1; \
+			fi; \
+		fi; \
+	done
+
 deploy:
 	@set -euo pipefail; chart_version="$${CHART_VERSION:-$${TAG_NAME:-}}"; if [[ -z "$${chart_version}" ]]; then echo "CHART_VERSION or TAG_NAME is required" >&2; exit 1; fi; if [[ ! "$${chart_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$$ ]]; then echo "Chart version must be numeric X.Y.Z, got: $${chart_version}" >&2; exit 1; fi; echo "Deploying chart $${CHART_REPOSITORY}/$(CHART_NAME):$${chart_version}"
 	@kubectl create namespace mattermost --dry-run=client -o yaml | kubectl apply -f -
 	@$(MAKE) ensure-local-path-storage
+	@$(MAKE) ensure-dev-pvcs-usable
 	@helm repo add external-secrets https://charts.external-secrets.io --force-update
 	@helm repo add jetstack https://charts.jetstack.io --force-update
 	@helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx --force-update
