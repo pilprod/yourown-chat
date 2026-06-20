@@ -20,7 +20,24 @@ for var_name in "${required_vars[@]}"; do
 done
 
 echo "Deploying Mattermost image ${IMAGE_REPO}:${IMAGE_TAG}"
-gcloud artifacts docker images describe "${IMAGE_REPO}:${IMAGE_TAG}" >/dev/null
+
+image_ref="${IMAGE_REPO}:${IMAGE_TAG}"
+image_wait_attempts="${IMAGE_WAIT_ATTEMPTS:-60}"
+image_wait_seconds="${IMAGE_WAIT_SECONDS:-30}"
+
+for attempt in $(seq 1 "${image_wait_attempts}"); do
+  if gcloud artifacts docker images describe "${image_ref}" >/dev/null 2>&1; then
+    break
+  fi
+
+  if [[ "${attempt}" == "${image_wait_attempts}" ]]; then
+    echo "Mattermost image not found after ${image_wait_attempts} attempts: ${image_ref}" >&2
+    exit 1
+  fi
+
+  echo "Mattermost image is not available yet (${attempt}/${image_wait_attempts}): ${image_ref}"
+  sleep "${image_wait_seconds}"
+done
 
 kubectl create namespace mattermost --dry-run=client -o yaml | kubectl apply -f -
 # kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -

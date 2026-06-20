@@ -24,27 +24,7 @@ steps:
         export IMAGE_REPO="${_IMAGE_REPO}"
         export BUCKET_NAME="${_BUCKET_NAME}"
         export SITE_URL="${_SITE_URL}"
-
-        tag_name="${TAG_NAME}"
-        ref_name="${REF_NAME}"
-        image_tag="$$tag_name"
-        version_pattern='^[^.]+\.[^.]+\.[^.]+$'
-
-        if [[ -z "$$image_tag" ]]; then
-          image_tag="$$ref_name"
-        fi
-
-        if [[ -z "$${image_tag}" ]]; then
-          echo "No tag ref found; skipping yourown-chat deploy for non-tag build." >&2
-          exit 0
-        fi
-
-        if [[ ! "$${image_tag}" =~ $${version_pattern} ]]; then
-          echo "Ref '$${image_tag}' does not match version tag pattern *.*.*; skipping yourown-chat deploy." >&2
-          exit 0
-        fi
-
-        export IMAGE_TAG="$${image_tag}"
+        export IMAGE_TAG="${_IMAGE_TAG}"
 
         bash gcp/deploy.sh
 
