@@ -6,7 +6,7 @@ export CHART_REPOSITORY ?= oci://southamerica-east1-docker.pkg.dev/gcloud-produc
 export CHART_PACKAGE_DIR ?= /tmp/yourown-chat-chart
 export KUBECONFIG ?= /etc/rancher/rke2/rke2.yaml
 
-.PHONY: chart-version lint package-chart push-chart publish-chart deploy
+.PHONY: chart-version lint package-chart push-chart publish-chart ensure-local-path-storage repair-dev-storage deploy
 
 chart-version:
 	@set -euo pipefail; chart_version="$${CHART_VERSION:-$${TAG_NAME:-}}"; if [[ -z "$${chart_version}" ]]; then echo "CHART_VERSION or TAG_NAME is required" >&2; exit 1; fi; if [[ ! "$${chart_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$$ ]]; then echo "Chart version must be numeric X.Y.Z, got: $${chart_version}" >&2; exit 1; fi; printf '%s\n' "$${chart_version}"
@@ -22,9 +22,28 @@ push-chart: package-chart
 
 publish-chart: push-chart
 
+ensure-local-path-storage:
+	@if ! kubectl get storageclass/local-path >/dev/null 2>&1 || ! kubectl -n local-path-storage get deployment/local-path-provisioner >/dev/null 2>&1; then kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.31/deploy/local-path-storage.yaml; fi
+	@kubectl wait -n local-path-storage deployment/local-path-provisioner --for=condition=Available --timeout=180s
+	@kubectl annotate storageclass/local-path storageclass.kubernetes.io/is-default-class=true --overwrite
+
+repair-dev-storage:
+	@set -euo pipefail; for pvc in yourown-chat-dev data-mattermost-dev-postgres-0; do \
+		if kubectl -n mattermost get pvc "$${pvc}" >/dev/null 2>&1; then \
+			phase="$$(kubectl -n mattermost get pvc "$${pvc}" -o jsonpath='{.status.phase}')"; \
+			storage_class="$$(kubectl -n mattermost get pvc "$${pvc}" -o jsonpath='{.spec.storageClassName}')"; \
+			if [[ "$${phase}" == "Pending" && -z "$${storage_class}" ]]; then \
+				echo "Deleting broken dev PVC $${pvc}: Pending with no storageClassName"; \
+				kubectl -n mattermost delete pvc "$${pvc}" --wait=false; \
+				kubectl -n mattermost wait --for=delete "pvc/$${pvc}" --timeout=120s >/dev/null 2>&1 || true; \
+			fi; \
+		fi; \
+	done
+
 deploy:
 	@set -euo pipefail; chart_version="$${CHART_VERSION:-$${TAG_NAME:-}}"; if [[ -z "$${chart_version}" ]]; then echo "CHART_VERSION or TAG_NAME is required" >&2; exit 1; fi; if [[ ! "$${chart_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$$ ]]; then echo "Chart version must be numeric X.Y.Z, got: $${chart_version}" >&2; exit 1; fi; echo "Deploying chart $${CHART_REPOSITORY}/$(CHART_NAME):$${chart_version}"
 	@kubectl create namespace mattermost --dry-run=client -o yaml | kubectl apply -f -
+	@$(MAKE) ensure-local-path-storage
 	@helm repo add external-secrets https://charts.external-secrets.io --force-update
 	@helm repo add jetstack https://charts.jetstack.io --force-update
 	@helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx --force-update
