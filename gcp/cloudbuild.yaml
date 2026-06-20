@@ -80,7 +80,7 @@ steps:
             if [[ -s "$${pipeline_log}" ]]; then
               local report
               report="$$(tail -n 40 "$${pipeline_log}")"
-              printf -v text '%s\n\n\n```diff\n%s\n```' "$${text}" "$${report}"
+              printf -v text '%s\n\n---\n\n```diff\n%s\n```' "$${text}" "$${report}"
             fi
           fi
 
