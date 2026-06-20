@@ -1,12 +1,116 @@
 steps:
   - name: gcr.io/google.com/cloudsdktool/google-cloud-cli:slim
     id: deploy-to-rke2
+    env:
+      - PIPELINE_NAME=yourown-chat RKE2 deploy
+      - PIPELINE_PROJECT_ID=$PROJECT_ID
+      - PIPELINE_BUILD_ID=$BUILD_ID
+      - PIPELINE_TRIGGER=$TRIGGER_NAME
+      - PIPELINE_GITHUB_REPO=https://github.com/pilprod/yourown-chat
+      - PIPELINE_TAG=$TAG_NAME
+      - PIPELINE_SHORT_SHA=$SHORT_SHA
     entrypoint: bash
+    secretEnv:
+      - MATTERMOST_CICD_WEBHOOK_URL
     args:
       - -ceu
       - |
         apt-get update
         apt-get install -y ca-certificates curl
+
+        pipeline_started_at="$$(date -u +%s)"
+        pipeline_tag="$${PIPELINE_TAG:-manual-or-untagged}"
+        pipeline_trigger="$${PIPELINE_TRIGGER:-manual}"
+        pipeline_repo_label="pilprod/yourown-chat"
+        pipeline_github_repo="$${PIPELINE_GITHUB_REPO:-}"
+        pipeline_short_sha="$${PIPELINE_SHORT_SHA:-unknown-sha}"
+        pipeline_build_id="$${PIPELINE_BUILD_ID:-unknown-build}"
+        pipeline_project_id="$${PIPELINE_PROJECT_ID:-${_PROJECT_ID}}"
+        pipeline_name="$${PIPELINE_NAME:-Cloud Build}"
+        pipeline_build_url="https://console.cloud.google.com/cloud-build/builds;region=$${LOCATION:-global}/$${pipeline_build_id}?project=$${pipeline_project_id}"
+        pipeline_log="/tmp/mattermost-cicd-$${pipeline_build_id}.log"
+        firewall_rule_name=""
+
+        notify_mattermost() {
+          local state="$$1"
+          local exit_code="$${2:-}"
+          local duration_seconds="$${3:-}"
+          local icon="🔔"
+          local state_label="$${state}"
+          case "$${state}" in
+            started)
+              icon="🚀"
+              state_label="started"
+              ;;
+            succeeded)
+              icon="✅"
+              state_label="succeeded"
+              ;;
+            failed)
+              icon="❌"
+              state_label="failed"
+              ;;
+          esac
+          local tag_text="\`$${pipeline_tag}\`"
+          if [[ -n "$${pipeline_github_repo}" && "$${pipeline_tag}" != "manual-or-untagged" ]]; then
+            tag_text="[$${pipeline_tag}]($${pipeline_github_repo}/tree/$${pipeline_tag})"
+          fi
+          local commit_text="\`$${pipeline_short_sha}\`"
+          if [[ -n "$${pipeline_github_repo}" && "$${pipeline_short_sha}" != "unknown-sha" ]]; then
+            commit_text="[$${pipeline_short_sha}]($${pipeline_github_repo}/commit/$${pipeline_short_sha})"
+          fi
+          local text
+          printf -v text '%s Build %s: `%s`\nProject: `%s`\nPipeline: `%s`\nTrigger: `%s`\nTag: %s\nCommit: %s\nBuild: [%s](%s)' \
+            "$${icon}" \
+            "$${state_label}" \
+            "$${pipeline_repo_label}" \
+            "$${pipeline_project_id}" \
+            "$${pipeline_name}" \
+            "$${pipeline_trigger}" \
+            "$${tag_text}" \
+            "$${commit_text}" \
+            "$${pipeline_build_id}" \
+            "$${pipeline_build_url}"
+
+          if [[ -n "$${exit_code}" ]]; then
+            printf -v text '%s\nExit code: `%s`\nDuration: `%ss`' "$${text}" "$${exit_code}" "$${duration_seconds}"
+            if [[ -s "$${pipeline_log}" ]]; then
+              local report
+              report="$$(tail -n 40 "$${pipeline_log}")"
+              printf -v text '%s\nReport:\n```diff\n%s\n```' "$${text}" "$${report}"
+            fi
+          fi
+
+          python3 -c 'import json,sys; print(json.dumps({"text": sys.stdin.read()}))' <<<"$${text}" >/tmp/mattermost-cicd-payload.json
+          curl -fsS -X POST -H 'Content-Type: application/json' --data-binary @/tmp/mattermost-cicd-payload.json "$$MATTERMOST_CICD_WEBHOOK_URL" >/dev/null || true
+        }
+
+        cleanup_firewall() {
+          if [[ -n "$${firewall_rule_name}" ]]; then
+            gcloud compute firewall-rules delete "$${firewall_rule_name}" \
+              --project="${_PROJECT_ID}" \
+              --quiet >/dev/null 2>&1 || true
+          fi
+        }
+
+        notify_done() {
+          local exit_code="$$?"
+          local duration_seconds="$$(( $$(date -u +%s) - pipeline_started_at ))"
+
+          cleanup_firewall
+
+          if [[ "$${exit_code}" -eq 0 ]]; then
+            notify_mattermost "succeeded" "$${exit_code}" "$${duration_seconds}"
+          else
+            notify_mattermost "failed" "$${exit_code}" "$${duration_seconds}"
+          fi
+
+          exit "$${exit_code}"
+        }
+
+        trap notify_done EXIT
+        notify_mattermost "started"
+        exec > >(tee -a "$${pipeline_log}") 2>&1
 
         curl -fsSL -o /usr/local/bin/kubectl \
           "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
@@ -15,12 +119,6 @@ steps:
         curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
         firewall_rule_name="yourown-chat-rke2-api-cb-${BUILD_ID}"
-        cleanup_firewall() {
-          gcloud compute firewall-rules delete "${firewall_rule_name}" \
-            --project="${_PROJECT_ID}" \
-            --quiet >/dev/null 2>&1 || true
-        }
-        trap cleanup_firewall EXIT
 
         cloudbuild_ip="$(curl -fsSL https://api.ipify.org)"
         gcloud compute firewall-rules create "${firewall_rule_name}" \
@@ -58,5 +156,11 @@ substitutions:
   _BUCKET_NAME: gcloud-production-1-mattermost-southamerica-east1
   _SITE_URL: https://yourown.chat
   _KUBECONFIG_SECRET: mattermost-rke2-kubeconfig
+  _MATTERMOST_CICD_WEBHOOK_SECRET_VERSION: projects/gcloud-production-1/secrets/mattermost-cicd-webhook-url/versions/latest
   _RKE2_API_FIREWALL_NETWORK: mattermost-southamerica-east1
   _RKE2_API_TARGET_TAG: yourown-chat-rke2
+
+availableSecrets:
+  secretManager:
+    - versionName: ${_MATTERMOST_CICD_WEBHOOK_SECRET_VERSION}
+      env: MATTERMOST_CICD_WEBHOOK_URL

@@ -11,6 +11,14 @@ The deploy installs:
 - ingress-nginx
 - Mattermost Operator and the Mattermost custom resource
 
+Mattermost integration settings are hardened in `mattermost.yaml`: personal
+access tokens are disabled, incoming webhooks are enforced as locked to their
+configured channel, outgoing webhooks remain enabled because Mattermost only
+allows them in public channels, and username/icon overrides plus bot account
+creation are disabled. Create the CI/CD incoming webhook against a public channel;
+Mattermost does not provide an environment setting that makes incoming webhooks
+public-channel-only by itself.
+
 Lightweight Prometheus monitoring is present in the deploy script but commented
 out for now.
 
