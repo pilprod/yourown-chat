@@ -11,7 +11,7 @@ The deploy installs:
 - ingress-nginx
 - Mattermost Operator and the Mattermost custom resource
 
-Mattermost integration settings are hardened in `mattermost.yaml`: personal
+Mattermost integration settings are hardened in the Helm chart: personal
 access tokens are disabled, incoming webhooks are enforced as locked to their
 configured channel, outgoing webhooks remain enabled because Mattermost only
 allows them in public channels, and username/icon overrides plus bot account
@@ -19,8 +19,8 @@ creation are disabled. Create the CI/CD incoming webhook against a public channe
 Mattermost does not provide an environment setting that makes incoming webhooks
 public-channel-only by itself.
 
-Lightweight Prometheus monitoring is present in the deploy script but commented
-out for now.
+Cloud Build packages the chart from `helm/yourown-chat`, pushes it as an OCI
+Helm chart to Artifact Registry, then deploys that exact chart version.
 
 Runtime secrets expected in GCP Secret Manager:
 
@@ -49,8 +49,12 @@ start:
 ```sh
 export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
 export PROJECT_ID=gcloud-production-1
+export IMAGE_REPO=southamerica-east1-docker.pkg.dev/gcloud-production-1/mattermost/mattermost
+export IMAGE_TAG=0.1.0
+export CHART_REPOSITORY=oci://southamerica-east1-docker.pkg.dev/gcloud-production-1/mattermost
+export TAG_NAME=0.1.0
 export BUCKET_NAME=gcloud-production-1-mattermost-southamerica-east1
 export SITE_URL=https://yourown.chat
 
-bash gcp/deploy.sh
+make deploy
 ```

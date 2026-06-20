@@ -1,0 +1,91 @@
+{{- if .Values.devPostgres.enabled }}
+{{- $secretName := default .Values.devPostgres.secretName .Values.instances.dev.database.secret -}}
+{{- $secret := lookup "v1" "Secret" .Release.Namespace $secretName -}}
+{{- $password := randAlphaNum 32 -}}
+{{- if and $secret (hasKey $secret.data "DEV_POSTGRES_PASSWORD") -}}
+{{- $password = index $secret.data "DEV_POSTGRES_PASSWORD" | b64dec -}}
+{{- end -}}
+{{- $dsn := printf "postgres://%s:%s@%s:5432/%s?sslmode=disable&connect_timeout=10" .Values.devPostgres.user $password .Values.devPostgres.name .Values.devPostgres.database -}}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $secretName }}
+  namespace: {{ .Release.Namespace }}
+type: Opaque
+stringData:
+  DEV_POSTGRES_PASSWORD: {{ $password | quote }}
+  DB_CONNECTION_STRING: {{ $dsn | quote }}
+  MM_SQLSETTINGS_DRIVERNAME: postgres
+  MM_SQLSETTINGS_DATASOURCE: {{ $dsn | quote }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Values.devPostgres.name }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  serviceName: {{ .Values.devPostgres.name }}
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .Values.devPostgres.name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ .Values.devPostgres.name }}
+    spec:
+      containers:
+        - name: postgres
+          image: {{ .Values.devPostgres.image }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: POSTGRES_DB
+              value: {{ .Values.devPostgres.database }}
+            - name: POSTGRES_USER
+              value: {{ .Values.devPostgres.user }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: DEV_POSTGRES_PASSWORD
+          ports:
+            - name: postgres
+              containerPort: 5432
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - {{ .Values.devPostgres.user }}
+                - -d
+                - {{ .Values.devPostgres.database }}
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+{{ toYaml .Values.devPostgres.resources | indent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: {{ .Values.devPostgres.storageSize }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.devPostgres.name }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector:
+    app.kubernetes.io/name: {{ .Values.devPostgres.name }}
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+{{- end }}

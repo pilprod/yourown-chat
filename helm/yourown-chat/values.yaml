@@ -1,0 +1,82 @@
+projectId: gcloud-production-1
+
+mattermost:
+  image:
+    repository: southamerica-east1-docker.pkg.dev/gcloud-production-1/mattermost/mattermost
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 3Gi
+
+instances:
+  prod:
+    enabled: true
+    name: yourown-chat
+    imageTag: latest
+    siteUrl: https://yourown.chat
+    fileStore:
+      type: s3
+      bucketName: gcloud-production-1-mattermost-southamerica-east1
+      s3Secret: s3-credentials
+    ingress:
+      name: mattermost
+      host: yourown.chat
+      tlsSecret: yourown-chat-tls
+    database:
+      secret: postgres-connection
+      externalSecret:
+        enabled: true
+        datasourceSecretId: mattermost-db-datasource
+  dev:
+    enabled: true
+    name: yourown-chat-dev
+    imageTag: dev
+    siteUrl: https://dev.yourown.chat
+    fileStore:
+      type: local
+      storageSize: 20Gi
+      accessModes:
+        - ReadWriteOnce
+    ingress:
+      name: mattermost-dev
+      host: dev.yourown.chat
+      tlsSecret: yourown-chat-dev-tls
+    database:
+      secret: postgres-connection-dev
+      externalSecret:
+        enabled: false
+
+externalSecrets:
+  storeName: gcp-secret-manager
+  s3:
+    enabled: true
+    accessKeySecretId: mattermost-s3-access-key
+    secretKeySecretId: mattermost-s3-secret-key
+  database:
+    enabled: true
+  matterbridge:
+    enabled: true
+
+devPostgres:
+  enabled: true
+  name: mattermost-dev-postgres
+  secretName: postgres-connection-dev
+  image: postgres:16-alpine
+  database: mattermost
+  user: mmuser
+  storageSize: 10Gi
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+matterbridge:
+  enabled: true
+  localMattermostName: yourown-chat
+  image: 42wim/matterbridge:1.26.0

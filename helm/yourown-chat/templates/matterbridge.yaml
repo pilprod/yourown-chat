@@ -1,7 +1,9 @@
+{{- if .Values.matterbridge.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: matterbridge-config
+  namespace: {{ .Release.Namespace }}
 data:
   matterbridge.toml.template: |
     [telegram]
@@ -58,6 +60,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: matterbridge
+  namespace: {{ .Release.Namespace }}
   labels:
     app.kubernetes.io/name: matterbridge
 spec:
@@ -84,7 +87,7 @@ spec:
               test -s /work/matterbridge.toml
           env:
             - name: MATTERBRIDGE_LOCAL_MM_SERVER
-              value: yourown-chat.mattermost.svc.cluster.local:8065
+              value: {{ printf "%s.%s.svc.cluster.local:8065" .Values.matterbridge.localMattermostName .Release.Namespace }}
           envFrom:
             - secretRef:
                 name: matterbridge
@@ -96,7 +99,7 @@ spec:
               mountPath: /work
       containers:
         - name: matterbridge
-          image: 42wim/matterbridge:1.26.0
+          image: {{ .Values.matterbridge.image }}
           imagePullPolicy: IfNotPresent
           args:
             - -conf
@@ -118,3 +121,4 @@ spec:
             name: matterbridge-config
         - name: rendered-config
           emptyDir: {}
+{{- end }}

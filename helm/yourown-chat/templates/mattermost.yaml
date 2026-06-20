@@ -1,26 +1,32 @@
+{{- $root := . -}}
+{{- range $instanceName, $instance := .Values.instances }}
+{{- if $instance.enabled }}
+---
 apiVersion: installation.mattermost.com/v1beta1
 kind: Mattermost
 metadata:
-  name: yourown-chat
+  name: {{ $instance.name }}
+  namespace: {{ $root.Release.Namespace }}
 spec:
-  image: southamerica-east1-docker.pkg.dev/gcloud-production-1/mattermost/mattermost
+  image: {{ $root.Values.mattermost.image.repository }}
   imagePullPolicy: IfNotPresent
-  version: latest
-  # size: 5000users
+  version: {{ $instance.imageTag | quote }}
   serviceAnnotations: {}
   ingress:
     enabled: false
-    host: yourown.chat
+    host: {{ $instance.ingress.host }}
     annotations:
       kubernetes.io/ingress.class: "nginx"
-    tlsSecret: "yourown-chat-tls"
+    tlsSecret: {{ $instance.ingress.tlsSecret | quote }}
   mattermostEnv:
+{{- if eq $instance.fileStore.type "s3" }}
     - name: MM_FILESETTINGS_AMAZONS3SSE
       value: "true"
     - name: MM_FILESETTINGS_AMAZONS3SSL
       value: "true"
+{{- end }}
     - name: MM_SERVICESETTINGS_SITEURL
-      value: "https://yourown.chat"
+      value: {{ $instance.siteUrl | quote }}
     - name: MM_SERVICESETTINGS_ENABLEUSERACCESSTOKENS
       value: "false"
     - name: MM_TEAMSETTINGS_TEAMMATENAMEDISPLAY
@@ -47,30 +53,30 @@ spec:
       value: "false"
     - name: MM_SERVICESETTINGS_DISABLEBOTSWHENOWNERISDEACTIVATED
       value: "true"
-    # - name: MM_PLUGINSETTINGS_PLUGINSTATES
-    #   value: '{"com.mattermost.calls":{"Enable":false},"com.mattermost.nps":{"Enable":false},"playbooks":{"Enable":false}}'
-  # licenseSecret: ""
   database:
     external:
-      secret: postgres-connection
+      secret: {{ $instance.database.secret }}
   fileStore:
+{{- if eq $instance.fileStore.type "s3" }}
     external:
       url: storage.googleapis.com
-      bucket: gcloud-production-1-mattermost-southamerica-east1
-      secret: s3-credentials
+      bucket: {{ $instance.fileStore.bucketName }}
+      secret: {{ $instance.fileStore.s3Secret }}
+{{- else if eq $instance.fileStore.type "local" }}
+    local:
+      enabled: true
+      storageSize: {{ $instance.fileStore.storageSize | quote }}
+      accessModes:
+{{ toYaml $instance.fileStore.accessModes | indent 8 }}
+{{- end }}
   elasticSearch:
     host: ""
     username: ""
     password: ""
-#  volumeMounts: {}
-#  volumes: {}
   replicas: 1
   scheduling:
     resources:
-      requests:
-        cpu: 100m
-        memory: 512Mi
-      limits:
-        cpu: "2"
-        memory: 3Gi
+{{ toYaml $root.Values.mattermost.resources | indent 6 }}
     affinity: {}
+{{- end }}
+{{- end }}

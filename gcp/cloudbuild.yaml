@@ -5,6 +5,7 @@ steps:
       - PIPELINE_NAME=${_PIPELINE_NAME}
       - PIPELINE_PROJECT_ID=$PROJECT_ID
       - PIPELINE_BUILD_ID=$BUILD_ID
+      - PIPELINE_CLOUDBUILD_REGION=${_CLOUDBUILD_REGION}
       - PIPELINE_GITHUB_REPO=https://github.com/pilprod/yourown-chat
       - PIPELINE_TAG=$TAG_NAME
       - PIPELINE_SHORT_SHA=$SHORT_SHA
@@ -15,7 +16,7 @@ steps:
       - -ceu
       - |
         apt-get update
-        apt-get install -y ca-certificates curl python3
+        apt-get install -y ca-certificates curl make python3
 
         pipeline_started_at="$$(date -u +%s)"
         pipeline_tag="$${PIPELINE_TAG:-manual-or-untagged}"
@@ -24,11 +25,30 @@ steps:
         pipeline_short_sha="$${PIPELINE_SHORT_SHA:-unknown-sha}"
         pipeline_build_id="$${PIPELINE_BUILD_ID:-unknown-build}"
         pipeline_project_id="$${PIPELINE_PROJECT_ID:-${_PROJECT_ID}}"
+        pipeline_cloudbuild_region="$${PIPELINE_CLOUDBUILD_REGION:-southamerica-east1}"
         pipeline_name="$${PIPELINE_NAME:-Cloud Build}"
         if [[ -z "$${pipeline_project}" || "$${pipeline_project}" == "$${pipeline_github_repo}" ]]; then
           pipeline_project="$${pipeline_name}"
         fi
-        pipeline_build_url="https://console.cloud.google.com/cloud-build/builds;region=$${LOCATION:-global}/$${pipeline_build_id}?project=$${pipeline_project_id}"
+        pipeline_build_url="https://console.cloud.google.com/cloud-build/builds;region=$${pipeline_cloudbuild_region}/$${pipeline_build_id}?project=$${pipeline_project_id}"
+        chart_repository="${_CHART_REPOSITORY}"
+        chart_registry_path="$${chart_repository#oci://}"
+        pipeline_image_tag="${_IMAGE_TAG}"
+        pipeline_dev_image_tag="${_DEV_IMAGE_TAG}"
+        pipeline_chart_version="$${PIPELINE_TAG:-}"
+        if [[ -z "$${pipeline_chart_version}" ]]; then
+          pipeline_chart_version="$$(gcloud artifacts docker tags list "$${chart_registry_path}/yourown-chat" \
+            --format='value(tag)' \
+            | sed 's|.*/||' \
+            | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$$' \
+            | sort -V \
+            | tail -n 1)"
+        fi
+        if [[ ! "$${pipeline_chart_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$$ ]]; then
+          echo "Chart version must be numeric semver, got: $${pipeline_chart_version}" >&2
+          exit 1
+        fi
+        pipeline_registry="prod image: ${_IMAGE_REPO}:$${pipeline_image_tag}; dev image: ${_IMAGE_REPO}:$${pipeline_dev_image_tag}; chart: ${_CHART_REPOSITORY}/yourown-chat:$${pipeline_chart_version}"
         pipeline_log="/tmp/mattermost-cicd-$${pipeline_build_id}.log"
         firewall_rule_name=""
 
@@ -64,8 +84,9 @@ steps:
           if [[ -n "$${pipeline_github_repo}" ]]; then
             project_text="[$${pipeline_project}]($${pipeline_github_repo})"
           fi
+          local registry_text="\`$${pipeline_registry}\`"
           local text
-          printf -v text '%s Build %s: **%s**\n\nProject: %s\nTag: %s\nCommit: %s\nBuild: [%s](%s)' \
+          printf -v text '%s Build %s: **%s**\n\nProject: %s\nTag: %s\nCommit: %s\nBuild: [%s](%s)\nRegistry: %s' \
             "$${icon}" \
             "$${state_label}" \
             "$${pipeline_name}" \
@@ -73,7 +94,8 @@ steps:
             "$${tag_text}" \
             "$${commit_text}" \
             "$${pipeline_build_id}" \
-            "$${pipeline_build_url}"
+            "$${pipeline_build_url}" \
+            "$${registry_text}"
 
           if [[ -n "$${exit_code}" ]]; then
             printf -v text '%s\nDuration: `%ss`  ' "$${text}" "$${duration_seconds}"
@@ -121,6 +143,16 @@ steps:
 
         curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
+        export TAG_NAME="$${PIPELINE_TAG:-}"
+        export SHORT_SHA="$${PIPELINE_SHORT_SHA:-dev}"
+        export CHART_REPOSITORY="${_CHART_REPOSITORY}"
+        export CHART_VERSION="$${pipeline_chart_version}"
+        if [[ -n "$${TAG_NAME}" ]]; then
+          make publish-chart
+        else
+          echo "Branch deploy: using latest published chart version $${CHART_VERSION}"
+        fi
+
         firewall_rule_name="yourown-chat-rke2-api-cb-${BUILD_ID}"
 
         cloudbuild_ip="$(curl -fsSL https://api.ipify.org)"
@@ -141,22 +173,10 @@ steps:
           >/tmp/kubeconfig.yaml
 
         export KUBECONFIG=/tmp/kubeconfig.yaml
-        export PROJECT_ID="${_PROJECT_ID}"
-        export IMAGE_REPO="${_IMAGE_REPO}"
-        export BUCKET_NAME="${_BUCKET_NAME}"
-        export SITE_URL="${_SITE_URL}"
-        export IMAGE_TAG="${_IMAGE_TAG}"
-        export MATTERMOST_NAME="${_MATTERMOST_NAME}"
-        export INGRESS_NAME="${_INGRESS_NAME}"
-        export INGRESS_HOST="${_INGRESS_HOST}"
-        export TLS_SECRET="${_TLS_SECRET}"
-        export DB_SECRET_ID="${_DB_SECRET_ID}"
-        export DB_EXTERNAL_SECRET="${_DB_EXTERNAL_SECRET}"
-        export S3_EXTERNAL_SECRET="${_S3_EXTERNAL_SECRET}"
-        export DEPLOY_MATTERBRIDGE="${_DEPLOY_MATTERBRIDGE}"
-        export DEPLOY_DEV_POSTGRES="${_DEPLOY_DEV_POSTGRES}"
+        export CHART_REPOSITORY="${_CHART_REPOSITORY}"
+        export CHART_VERSION="$${CHART_VERSION}"
 
-        bash gcp/deploy.sh
+        make deploy
 
 options:
   logging: CLOUD_LOGGING_ONLY
@@ -164,19 +184,11 @@ options:
 substitutions:
   _PIPELINE_NAME: yourown-chat deploy
   _PROJECT_ID: gcloud-production-1
+  _CLOUDBUILD_REGION: southamerica-east1
   _IMAGE_REPO: southamerica-east1-docker.pkg.dev/gcloud-production-1/mattermost/mattermost
   _IMAGE_TAG: latest
-  _BUCKET_NAME: gcloud-production-1-mattermost-southamerica-east1
-  _SITE_URL: https://yourown.chat
-  _MATTERMOST_NAME: yourown-chat
-  _INGRESS_NAME: mattermost
-  _INGRESS_HOST: yourown.chat
-  _TLS_SECRET: yourown-chat-tls
-  _DB_SECRET_ID: mattermost-db-datasource
-  _DB_EXTERNAL_SECRET: postgres-connection
-  _S3_EXTERNAL_SECRET: s3-credentials
-  _DEPLOY_MATTERBRIDGE: "true"
-  _DEPLOY_DEV_POSTGRES: "false"
+  _DEV_IMAGE_TAG: dev
+  _CHART_REPOSITORY: oci://southamerica-east1-docker.pkg.dev/gcloud-production-1/mattermost
   _KUBECONFIG_SECRET: mattermost-rke2-kubeconfig
   _MATTERMOST_CICD_WEBHOOK_SECRET_VERSION: projects/gcloud-production-1/secrets/mattermost-cicd-webhook-url/versions/latest
   _RKE2_API_FIREWALL_NETWORK: mattermost-southamerica-east1
