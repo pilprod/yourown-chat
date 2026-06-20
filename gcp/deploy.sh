@@ -94,8 +94,13 @@ helm upgrade -i ingress-nginx \
   --set controller.dnsPolicy=ClusterFirstWithHostNet \
   --set controller.service.enabled=false \
   --set controller.ingressClassResource.default=true \
+  --set controller.allowSnippetAnnotations=false \
+  --set controller.config.annotations-risk-level=Medium \
+  --set controller.config.server-tokens=false \
   ingress-nginx/ingress-nginx \
   --wait
+
+kubectl apply -f ingress-nginx-autoupdate.yaml
 
 # helm upgrade -i monitoring \
 #   -n monitoring \
