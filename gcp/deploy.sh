@@ -19,6 +19,24 @@ for var_name in "${required_vars[@]}"; do
   fi
 done
 
+wait_api_resource() {
+  local resource_name="$1"
+  local attempts="${2:-30}"
+
+  for attempt in $(seq 1 "${attempts}"); do
+    if kubectl api-resources --api-group=external-secrets.io -o name | grep -qx "${resource_name}"; then
+      return 0
+    fi
+
+    if [[ "${attempt}" == "${attempts}" ]]; then
+      echo "Kubernetes API resource is not available: ${resource_name}.external-secrets.io" >&2
+      return 1
+    fi
+
+    sleep 2
+  done
+}
+
 echo "Deploying Mattermost image ${IMAGE_REPO}:${IMAGE_TAG}"
 
 image_ref="${IMAGE_REPO}:${IMAGE_TAG}"
@@ -58,6 +76,8 @@ helm upgrade -i external-secrets \
 
 kubectl wait crd/clustersecretstores.external-secrets.io --for=condition=Established --timeout=180s
 kubectl wait crd/externalsecrets.external-secrets.io --for=condition=Established --timeout=180s
+wait_api_resource clustersecretstores
+wait_api_resource externalsecrets
 
 helm upgrade -i cert-manager \
   -n cert-manager \
