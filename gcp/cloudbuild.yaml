@@ -223,10 +223,12 @@ steps:
         export KUBECONFIG=/tmp/kubeconfig.yaml
         export CHART_REPOSITORY="${_CHART_REPOSITORY}"
         export CHART_VERSION="$${CHART_VERSION}"
+        export IMAGE_REPO="${_IMAGE_REPO}"
         export IMAGE_TAG="$${pipeline_image_tag}"
         export DEV_IMAGE_TAG="$${pipeline_dev_image_tag}"
 
         make deploy
+        make verify-running-images
 
 options:
   logging: CLOUD_LOGGING_ONLY

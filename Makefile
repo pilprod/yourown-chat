@@ -6,7 +6,7 @@ export CHART_REPOSITORY ?= oci://southamerica-east1-docker.pkg.dev/gcloud-produc
 export CHART_PACKAGE_DIR ?= /tmp/yourown-chat-chart
 export KUBECONFIG ?= /etc/rancher/rke2/rke2.yaml
 
-.PHONY: chart-version lint package-chart push-chart publish-chart ensure-local-path-storage repair-dev-storage deploy
+.PHONY: chart-version lint package-chart push-chart publish-chart ensure-local-path-storage repair-dev-storage deploy verify-running-images
 
 chart-version:
 	@set -euo pipefail; chart_version="$${CHART_VERSION:-$${TAG_NAME:-}}"; if [[ -z "$${chart_version}" ]]; then echo "CHART_VERSION or TAG_NAME is required" >&2; exit 1; fi; if [[ ! "$${chart_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$$ ]]; then echo "Chart version must be numeric X.Y.Z, got: $${chart_version}" >&2; exit 1; fi; printf '%s\n' "$${chart_version}"
@@ -80,3 +80,6 @@ deploy:
 	@kubectl -n mattermost rollout status statefulset/mattermost-dev-postgres --timeout=180s
 	@if kubectl -n mattermost get externalsecret/matterbridge >/dev/null 2>&1; then if ! kubectl -n mattermost wait externalsecret/matterbridge --for=condition=Ready --timeout=30s; then echo "matterbridge ExternalSecret is not ready yet; create the matterbridge-* GCP secrets to start the bridge."; fi; else echo "matterbridge is disabled; skipping matterbridge ExternalSecret wait."; fi
 	@kubectl -n mattermost get mattermost,pods,svc,endpoints || true
+
+verify-running-images:
+	@set -euo pipefail; : "$${IMAGE_REPO:?IMAGE_REPO is required}"; : "$${IMAGE_TAG:?IMAGE_TAG is required}"; : "$${DEV_IMAGE_TAG:?DEV_IMAGE_TAG is required}"; python3 gcp/verify-running-images.py --namespace mattermost --image "Prod image=$${IMAGE_REPO}:$${IMAGE_TAG}" --image "Dev image=$${IMAGE_REPO}:$${DEV_IMAGE_TAG}"
