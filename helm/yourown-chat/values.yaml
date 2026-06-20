@@ -58,7 +58,7 @@ externalSecrets:
   database:
     enabled: true
   matterbridge:
-    enabled: true
+    enabled: false
 
 devPostgres:
   enabled: true
@@ -77,6 +77,6 @@ devPostgres:
       memory: 512Mi
 
 matterbridge:
-  enabled: true
+  enabled: false
   localMattermostName: yourown-chat
   image: 42wim/matterbridge:1.26.0

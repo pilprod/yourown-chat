@@ -78,5 +78,5 @@ deploy:
 	@kubectl -n mattermost wait externalsecret/s3-credentials --for=condition=Ready --timeout=180s
 	@kubectl -n mattermost wait externalsecret/postgres-connection --for=condition=Ready --timeout=180s
 	@kubectl -n mattermost rollout status statefulset/mattermost-dev-postgres --timeout=180s
-	@if ! kubectl -n mattermost wait externalsecret/matterbridge --for=condition=Ready --timeout=30s; then echo "matterbridge ExternalSecret is not ready yet; create the matterbridge-* GCP secrets to start the bridge."; fi
+	@if kubectl -n mattermost get externalsecret/matterbridge >/dev/null 2>&1; then if ! kubectl -n mattermost wait externalsecret/matterbridge --for=condition=Ready --timeout=30s; then echo "matterbridge ExternalSecret is not ready yet; create the matterbridge-* GCP secrets to start the bridge."; fi; else echo "matterbridge is disabled; skipping matterbridge ExternalSecret wait."; fi
 	@kubectl -n mattermost get mattermost,pods,svc,endpoints || true
