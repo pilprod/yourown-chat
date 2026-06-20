@@ -16,7 +16,7 @@ steps:
       - -ceu
       - |
         apt-get update
-        apt-get install -y ca-certificates curl make python3
+        apt-get install -y ca-certificates curl make python3 python3-yaml
 
         pipeline_started_at="$$(date -u +%s)"
         pipeline_tag="$${PIPELINE_TAG:-manual-or-untagged}"
@@ -33,8 +33,11 @@ steps:
         pipeline_build_url="https://console.cloud.google.com/cloud-build/builds;region=$${pipeline_cloudbuild_region}/$${pipeline_build_id}?project=$${pipeline_project_id}"
         chart_repository="${_CHART_REPOSITORY}"
         chart_registry_path="$${chart_repository#oci://}"
-        pipeline_image_tag="${_IMAGE_TAG}"
-        pipeline_dev_image_tag="${_DEV_IMAGE_TAG}"
+        read_helm_value() {
+          python3 -c 'import sys,yaml; data=yaml.safe_load(open(sys.argv[1])); value=data; [value := value[key] for key in sys.argv[2].split(".")]; print(value)' "$$1" "$$2"
+        }
+        pipeline_image_tag="$$(read_helm_value helm/yourown-chat/values.yaml instances.prod.imageTag)"
+        pipeline_dev_image_tag="$$(read_helm_value helm/yourown-chat/values.yaml instances.dev.imageTag)"
         pipeline_chart_version="$${PIPELINE_TAG:-}"
         if [[ -z "$${pipeline_chart_version}" ]]; then
           pipeline_chart_version="$$(gcloud artifacts docker tags list "$${chart_registry_path}/yourown-chat" \
@@ -51,6 +54,8 @@ steps:
 
         artifact_link() {
           local artifact_ref="$$1"
+          local display_label="$${2:-$${artifact_ref}}"
+          local display_tag_pattern="$${3:-}"
           local artifact_repo="$${artifact_ref%:*}"
           local artifact_tag="$${artifact_ref##*:}"
           local artifact_host="$${artifact_repo%%/*}"
@@ -63,11 +68,23 @@ steps:
           local artifact_digest
           artifact_digest="$$(gcloud artifacts docker images describe "$${artifact_ref}" --format='value(image_summary.digest)' 2>/dev/null || true)"
 
-          local label="$${artifact_ref}"
+          local label="$${display_label}"
           local url="https://console.cloud.google.com/artifacts/docker/$${artifact_project_id}/$${artifact_location}/$${artifact_registry_repo}/$${artifact_name}/$${artifact_tag}?project=$${artifact_project_id}"
           if [[ -n "$${artifact_digest}" ]]; then
-            label="$${artifact_repo}@$${artifact_digest}"
             url="https://console.cloud.google.com/artifacts/docker/$${artifact_project_id}/$${artifact_location}/$${artifact_registry_repo}/$${artifact_name}/$${artifact_digest}?project=$${artifact_project_id}"
+            if [[ -n "$${display_tag_pattern}" ]]; then
+              local resolved_tag=""
+              while IFS= read -r candidate_tag; do
+                local candidate_digest
+                candidate_digest="$$(gcloud artifacts docker images describe "$${artifact_repo}:$${candidate_tag}" --format='value(image_summary.digest)' 2>/dev/null || true)"
+                if [[ "$${candidate_digest}" == "$${artifact_digest}" ]]; then
+                  resolved_tag="$${candidate_tag}"
+                fi
+              done < <(gcloud artifacts docker tags list "$${artifact_repo}" --format='value(tag)' 2>/dev/null | sed 's|.*/||' | grep -E "$${display_tag_pattern}" | sort -V)
+              if [[ -n "$${resolved_tag}" ]]; then
+                label="$${artifact_name}:$${resolved_tag}"
+              fi
+            fi
           fi
 
           printf '[%s](%s)' "$${label}" "$${url}"
@@ -180,9 +197,9 @@ steps:
         fi
 
         printf -v pipeline_artifacts 'Prod image: %s\nDev image: %s\nChart: %s' \
-          "$$(artifact_link "${_IMAGE_REPO}:$${pipeline_image_tag}")" \
-          "$$(artifact_link "${_IMAGE_REPO}:$${pipeline_dev_image_tag}")" \
-          "$$(artifact_link "$${chart_registry_path}/yourown-chat:$${pipeline_chart_version}")"
+          "$$(artifact_link "${_IMAGE_REPO}:$${pipeline_image_tag}" "mattermost:$${pipeline_image_tag}" '^v.*-patched$$')" \
+          "$$(artifact_link "${_IMAGE_REPO}:$${pipeline_dev_image_tag}" "mattermost:$${pipeline_dev_image_tag}" '^v.*patched-dev$$')" \
+          "$$(artifact_link "$${chart_registry_path}/yourown-chat:$${pipeline_chart_version}" "yourown-chat:$${pipeline_chart_version}")"
 
         firewall_rule_name="yourown-chat-rke2-api-cb-${BUILD_ID}"
 
@@ -206,6 +223,8 @@ steps:
         export KUBECONFIG=/tmp/kubeconfig.yaml
         export CHART_REPOSITORY="${_CHART_REPOSITORY}"
         export CHART_VERSION="$${CHART_VERSION}"
+        export IMAGE_TAG="$${pipeline_image_tag}"
+        export DEV_IMAGE_TAG="$${pipeline_dev_image_tag}"
 
         make deploy
 
@@ -217,8 +236,6 @@ substitutions:
   _PROJECT_ID: gcloud-production-1
   _CLOUDBUILD_REGION: southamerica-east1
   _IMAGE_REPO: southamerica-east1-docker.pkg.dev/gcloud-production-1/mattermost/mattermost
-  _IMAGE_TAG: latest
-  _DEV_IMAGE_TAG: dev
   _CHART_REPOSITORY: oci://southamerica-east1-docker.pkg.dev/gcloud-production-1/mattermost
   _KUBECONFIG_SECRET: mattermost-rke2-kubeconfig
   _MATTERMOST_CICD_WEBHOOK_SECRET_VERSION: projects/gcloud-production-1/secrets/mattermost-cicd-webhook-url/versions/latest

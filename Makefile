@@ -74,7 +74,7 @@ deploy:
 		"ingress|mattermost-dev|mattermost"; do \
 		IFS='|' read -r kind name namespace <<<"$${item}"; namespace_args=(); if [[ -n "$${namespace}" ]]; then namespace_args=(-n "$${namespace}"); fi; if kubectl "$${namespace_args[@]}" get "$${kind}/$${name}" >/dev/null 2>&1; then kubectl "$${namespace_args[@]}" label "$${kind}/$${name}" app.kubernetes.io/managed-by=Helm --overwrite; kubectl "$${namespace_args[@]}" annotate "$${kind}/$${name}" meta.helm.sh/release-name=yourown-chat meta.helm.sh/release-namespace=mattermost --overwrite; fi; \
 	done
-	@set -euo pipefail; chart_version="$${CHART_VERSION:-$${TAG_NAME:-}}"; helm upgrade -i yourown-chat -n mattermost --create-namespace "$${CHART_REPOSITORY}/$(CHART_NAME)" --version "$${chart_version}" --wait
+	@set -euo pipefail; chart_version="$${CHART_VERSION:-$${TAG_NAME:-}}"; image_args=(); if [[ -n "$${IMAGE_TAG:-}" ]]; then image_args+=(--set-string "instances.prod.imageTag=$${IMAGE_TAG}"); fi; if [[ -n "$${DEV_IMAGE_TAG:-}" ]]; then image_args+=(--set-string "instances.dev.imageTag=$${DEV_IMAGE_TAG}"); fi; helm upgrade -i yourown-chat -n mattermost --create-namespace "$${CHART_REPOSITORY}/$(CHART_NAME)" --version "$${chart_version}" "$${image_args[@]}" --wait
 	@kubectl -n mattermost wait externalsecret/s3-credentials --for=condition=Ready --timeout=180s
 	@kubectl -n mattermost wait externalsecret/postgres-connection --for=condition=Ready --timeout=180s
 	@kubectl -n mattermost rollout status statefulset/mattermost-dev-postgres --timeout=180s

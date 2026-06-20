@@ -15,7 +15,7 @@ instances:
   prod:
     enabled: true
     name: yourown-chat
-    imageTag: latest
+    imageTag: v11.7-patched
     siteUrl: https://yourown.chat
     fileStore:
       type: s3
@@ -33,7 +33,7 @@ instances:
   dev:
     enabled: true
     name: yourown-chat-dev
-    imageTag: dev
+    imageTag: v11.8.1-patched-dev
     siteUrl: https://dev.yourown.chat
     fileStore:
       type: local
