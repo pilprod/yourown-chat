@@ -145,6 +145,8 @@ steps:
           local report_name="${pipeline_name}"
           if [[ "${stage}" == "workflow" ]]; then
             report_name="${workflow_name}"
+          elif [[ "${stage}" == "deploy" ]]; then
+            report_name="yourown-chat deploy"
           fi
           CICD_REPORT_WORKFLOW_ID="${pipeline_workflow_id}" \
           CICD_REPORT_WORKFLOW_NAME="${workflow_name}" \
@@ -159,10 +161,12 @@ steps:
           CICD_REPORT_COMMIT_URL="${pipeline_commit_url}" \
           CICD_REPORT_BUILD_ID="${pipeline_build_id}" \
           CICD_REPORT_BUILD_URL="${pipeline_build_url}" \
+          CICD_REPORT_RELEASE_LABEL="${clouddeploy_release_name:-}" \
+          CICD_REPORT_RELEASE_URL="${clouddeploy_release_url:-}" \
           CICD_REPORT_EXIT_CODE="${exit_code}" \
           CICD_REPORT_DURATION_SECONDS="${duration_seconds}" \
           CICD_REPORT_ARTIFACTS_JSON="${pipeline_artifacts_json}" \
-          python3 -c 'import json, os; payload = {"workflow_id": os.environ["CICD_REPORT_WORKFLOW_ID"], "workflow_name": os.environ["CICD_REPORT_WORKFLOW_NAME"], "stage": os.environ["CICD_REPORT_STAGE"], "state": os.environ["CICD_REPORT_STATE"], "name": os.environ["CICD_REPORT_NAME"], "build_id": os.environ["CICD_REPORT_BUILD_ID"], "project": {"label": os.environ["CICD_REPORT_PROJECT_LABEL"], "url": os.environ.get("CICD_REPORT_PROJECT_URL", "")}, "tag": {"label": os.environ["CICD_REPORT_TAG_LABEL"], "url": os.environ.get("CICD_REPORT_TAG_URL", "")}, "commit": {"label": os.environ["CICD_REPORT_COMMIT_LABEL"], "url": os.environ.get("CICD_REPORT_COMMIT_URL", "")}, "build": {"label": os.environ["CICD_REPORT_BUILD_ID"], "url": os.environ["CICD_REPORT_BUILD_URL"]}}; payload.update({"exit_code": int(os.environ["CICD_REPORT_EXIT_CODE"])} if os.environ.get("CICD_REPORT_EXIT_CODE") else {}); payload.update({"duration_seconds": int(os.environ["CICD_REPORT_DURATION_SECONDS"])} if os.environ.get("CICD_REPORT_DURATION_SECONDS") else {}); artifacts = json.loads(os.environ.get("CICD_REPORT_ARTIFACTS_JSON") or "{}"); payload.update({"artifacts": artifacts} if artifacts else {}); print("CICD_REPORT " + json.dumps(payload, separators=(",", ":")))'
+          python3 -c 'import json, os; payload = {"workflow_id": os.environ["CICD_REPORT_WORKFLOW_ID"], "workflow_name": os.environ["CICD_REPORT_WORKFLOW_NAME"], "stage": os.environ["CICD_REPORT_STAGE"], "state": os.environ["CICD_REPORT_STATE"], "name": os.environ["CICD_REPORT_NAME"], "build_id": os.environ["CICD_REPORT_BUILD_ID"], "project": {"label": os.environ["CICD_REPORT_PROJECT_LABEL"], "url": os.environ.get("CICD_REPORT_PROJECT_URL", "")}, "tag": {"label": os.environ["CICD_REPORT_TAG_LABEL"], "url": os.environ.get("CICD_REPORT_TAG_URL", "")}, "commit": {"label": os.environ["CICD_REPORT_COMMIT_LABEL"], "url": os.environ.get("CICD_REPORT_COMMIT_URL", "")}, "build": {"label": os.environ["CICD_REPORT_BUILD_ID"], "url": os.environ["CICD_REPORT_BUILD_URL"]}}; payload.update({"release_id": os.environ["CICD_REPORT_RELEASE_LABEL"], "release": {"label": os.environ["CICD_REPORT_RELEASE_LABEL"], "url": os.environ["CICD_REPORT_RELEASE_URL"]}} if os.environ.get("CICD_REPORT_RELEASE_LABEL") else {}); payload.update({"exit_code": int(os.environ["CICD_REPORT_EXIT_CODE"])} if os.environ.get("CICD_REPORT_EXIT_CODE") else {}); payload.update({"duration_seconds": int(os.environ["CICD_REPORT_DURATION_SECONDS"])} if os.environ.get("CICD_REPORT_DURATION_SECONDS") else {}); artifacts = json.loads(os.environ.get("CICD_REPORT_ARTIFACTS_JSON") or "{}"); payload.update({"artifacts": artifacts} if artifacts else {}); print("CICD_REPORT " + json.dumps(payload, separators=(",", ":")))'
         }
 
         notify_done() {
@@ -179,8 +183,8 @@ steps:
         }
 
         trap notify_done EXIT
-      emit_cicd_report "workflow" "started"
-      emit_cicd_report "build" "started"
+        emit_cicd_report "workflow" "started"
+        emit_cicd_report "build" "started"
 
         export TAG_NAME="${PIPELINE_TAG:-}"
         export SHORT_SHA="${PIPELINE_SHORT_SHA:-dev}"
@@ -249,11 +253,12 @@ steps:
 
         clouddeploy_release_url="https://console.cloud.google.com/deploy/delivery-pipelines/${CLOUDDEPLOY_REGION}/${CLOUDDEPLOY_DELIVERY_PIPELINE}/releases/${clouddeploy_release_name}?project=${TARGET_PROJECT_ID}"
         pipeline_clouddeploy_artifact="$(ARTIFACT_LABEL="${clouddeploy_release_name}" ARTIFACT_URL="${clouddeploy_release_url}" python3 -c 'import json, os; print(json.dumps({"label": os.environ["ARTIFACT_LABEL"], "url": os.environ["ARTIFACT_URL"]}, separators=(",", ":")))')"
+        pipeline_artifacts_json="$(CICD_CLOUD_DEPLOY="${pipeline_clouddeploy_artifact}" python3 -c 'import json, os; print(json.dumps({"cloud_deploy": json.loads(os.environ["CICD_CLOUD_DEPLOY"])}, separators=(",", ":")))')"
+        emit_cicd_report "deploy" "started"
         CICD_IMAGE_PROD="${pipeline_prod_image_artifact}" \
         CICD_IMAGE_DEV="${pipeline_dev_image_artifact}" \
         CICD_CHART="${pipeline_chart_artifact}" \
-        CICD_CLOUD_DEPLOY="${pipeline_clouddeploy_artifact}" \
-          python3 -c 'import json, os; payload = {"images": [json.loads(os.environ["CICD_IMAGE_PROD"]), json.loads(os.environ["CICD_IMAGE_DEV"])], "chart": json.loads(os.environ["CICD_CHART"]), "cloud_deploy": json.loads(os.environ["CICD_CLOUD_DEPLOY"])}; print(json.dumps(payload, separators=(",", ":")))' >/tmp/yourown-chat-build-artifacts.json
+          python3 -c 'import json, os; payload = {"images": [json.loads(os.environ["CICD_IMAGE_PROD"]), json.loads(os.environ["CICD_IMAGE_DEV"])], "chart": json.loads(os.environ["CICD_CHART"])}; print(json.dumps(payload, separators=(",", ":")))' >/tmp/yourown-chat-build-artifacts.json
         pipeline_artifacts_json="$(cat /tmp/yourown-chat-build-artifacts.json)"
 
 options:
