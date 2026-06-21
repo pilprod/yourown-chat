@@ -1,0 +1,24 @@
+apiVersion: skaffold/v4beta13
+kind: Config
+metadata:
+  name: yourown-chat-cloud-deploy
+customActions:
+  - name: render-yourown-chat
+    containers:
+      - name: render
+        image: gcr.io/google.com/cloudsdktool/google-cloud-cli:slim
+        command:
+          - /bin/bash
+        args:
+          - -ceu
+          - |
+            test -f clouddeploy-release.env
+            echo "yourown-chat Cloud Deploy source is ready"
+  - name: deploy-yourown-chat
+    containers:
+      - name: deploy
+        image: gcr.io/google.com/cloudsdktool/google-cloud-cli:slim
+        command:
+          - /bin/bash
+        args:
+          - clouddeploy/deploy-yourown-chat.sh
