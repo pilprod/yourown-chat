@@ -9,10 +9,6 @@ steps:
       - PIPELINE_GITHUB_REPO=https://github.com/pilprod/yourown-chat
       - PIPELINE_TAG=$TAG_NAME
       - PIPELINE_SHORT_SHA=$SHORT_SHA
-      - MATTERMOST_SITE_URL=${_MATTERMOST_SITE_URL}
-      - MATTERMOST_CICD_TOKEN_ID_SECRET_VERSION=${_MATTERMOST_CICD_TOKEN_ID_SECRET_VERSION}
-      - MATTERMOST_CICD_TOKEN_SECRET_VERSION=${_MATTERMOST_CICD_TOKEN_SECRET_VERSION}
-      - MATTERMOST_CICD_CHANNEL_ID_SECRET_VERSION=${_MATTERMOST_CICD_CHANNEL_ID_SECRET_VERSION}
       - TARGET_PROJECT_ID=${_PROJECT_ID}
       - IMAGE_REPO=${_IMAGE_REPO}
       - CHART_REPOSITORY=${_CHART_REPOSITORY}
@@ -21,10 +17,6 @@ steps:
       - KUBECONFIG_SECRET=${_KUBECONFIG_SECRET}
       - RKE2_API_FIREWALL_NETWORK=${_RKE2_API_FIREWALL_NETWORK}
       - RKE2_API_TARGET_TAG=${_RKE2_API_TARGET_TAG}
-    secretEnv:
-      - MATTERMOST_CICD_TOKEN_ID
-      - MATTERMOST_CICD_TOKEN_SECRET
-      - MATTERMOST_CICD_CHANNEL_ID
     script: |
       #!/usr/bin/env bash
       set -euo pipefail
@@ -45,6 +37,15 @@ steps:
           pipeline_project="${pipeline_name}"
         fi
         pipeline_build_url="https://console.cloud.google.com/cloud-build/builds;region=${pipeline_cloudbuild_region}/${pipeline_build_id}?project=${pipeline_project_id}"
+        pipeline_workflow_id="${pipeline_project}|${pipeline_tag}|${pipeline_short_sha}"
+        pipeline_tag_url=""
+        if [[ -n "${pipeline_github_repo}" && "${pipeline_tag}" != "manual-or-untagged" ]]; then
+          pipeline_tag_url="${pipeline_github_repo}/tree/${pipeline_tag}"
+        fi
+        pipeline_commit_url=""
+        if [[ -n "${pipeline_github_repo}" && "${pipeline_short_sha}" != "unknown-sha" ]]; then
+          pipeline_commit_url="${pipeline_github_repo}/commit/${pipeline_short_sha}"
+        fi
         chart_repository="${CHART_REPOSITORY}"
         chart_registry_path="${chart_repository#oci://}"
         pipeline_chart_version="${PIPELINE_TAG:-}"
@@ -61,7 +62,7 @@ steps:
           exit 1
         fi
 
-        artifact_link() {
+        artifact_json() {
           local artifact_ref="$1"
           local display_label="${2:-${artifact_ref}}"
           local display_tag_pattern="${3:-}"
@@ -96,7 +97,8 @@ steps:
             fi
           fi
 
-          printf '[%s](%s)' "${label}" "${url}"
+          ARTIFACT_LABEL="${label}" ARTIFACT_URL="${url}" ARTIFACT_REF="${artifact_ref}" \
+            python3 -c 'import json, os; print(json.dumps({"label": os.environ["ARTIFACT_LABEL"], "url": os.environ["ARTIFACT_URL"], "ref": os.environ["ARTIFACT_REF"]}, separators=(",", ":")))'
         }
 
         latest_image_tag() {
@@ -133,130 +135,34 @@ steps:
         pipeline_image_digest="$(image_digest "${pipeline_image_tag}")"
         pipeline_dev_image_digest="$(image_digest "${pipeline_dev_image_tag}")"
 
-        pipeline_artifacts=""
-        pipeline_log="/tmp/mattermost-cicd-${pipeline_build_id}.log"
-        pipeline_root_post_id_file="/tmp/mattermost-cicd-root-post-id"
-        if [[ -z "${MATTERMOST_CICD_TOKEN_ID:-}" || -z "${MATTERMOST_CICD_TOKEN_SECRET:-}" ]]; then
-          echo "Mattermost CI/CD token id and token secret must both be configured" >&2
-          exit 1
-        fi
+        pipeline_artifacts_json=""
 
-        mattermost_post() {
-          local text="$1"
-          local root_id="${2:-}"
-          local attach_log="${3:-false}"
-          local site_url="${MATTERMOST_SITE_URL%/}"
-          local file_ids_json="[]"
-
-          if [[ "${attach_log}" == "true" && -s "${pipeline_log}" ]]; then
-            local upload_response
-            upload_response="$(curl -fsS \
-              -H "Authorization: Bearer $MATTERMOST_CICD_TOKEN_SECRET" \
-              -F "channel_id=$MATTERMOST_CICD_CHANNEL_ID" \
-              -F "files=@${pipeline_log};filename=${pipeline_build_id}.log" \
-              "${site_url}/api/v4/files" 2>/dev/null || true)"
-            if [[ -n "${upload_response}" ]]; then
-              file_ids_json="$(python3 -c 'import json,sys; data=json.load(sys.stdin); print(json.dumps([item["id"] for item in data.get("file_infos", []) if item.get("id")]))' <<<"${upload_response}" 2>/dev/null || printf '[]')"
-            fi
+        emit_cicd_report() {
+          local stage="$1"
+          local state="$2"
+          local exit_code="${3:-}"
+          local duration_seconds="${4:-}"
+          local report_name="${pipeline_name}"
+          if [[ "${stage}" == "workflow" ]]; then
+            report_name="${workflow_name}"
           fi
-
-          local response
-          response="$(MATTERMOST_POST_TEXT="${text}" MATTERMOST_POST_ROOT_ID="${root_id}" MATTERMOST_POST_FILE_IDS="${file_ids_json}" python3 -c 'import json, os; payload = {"channel_id": os.environ["MATTERMOST_CICD_CHANNEL_ID"], "message": os.environ["MATTERMOST_POST_TEXT"]}; root_id = os.environ.get("MATTERMOST_POST_ROOT_ID", ""); file_ids = json.loads(os.environ.get("MATTERMOST_POST_FILE_IDS", "[]")); payload.update({"root_id": root_id} if root_id else {}); payload.update({"file_ids": file_ids} if file_ids else {}); print(json.dumps(payload))' | curl -fsS -X POST -H "Authorization: Bearer $MATTERMOST_CICD_TOKEN_SECRET" -H 'Content-Type: application/json' --data-binary @- "${site_url}/api/v4/posts" 2>/dev/null || true)"
-          if [[ -n "${response}" ]]; then
-            python3 -c 'import json,sys; print(json.load(sys.stdin).get("id", ""))' <<<"${response}" 2>/dev/null || true
-          fi
-        }
-
-        start_workflow() {
-          local tag_text="\`${pipeline_tag}\`"
-          if [[ -n "${pipeline_github_repo}" && "${pipeline_tag}" != "manual-or-untagged" ]]; then
-            tag_text="[${pipeline_tag}](${pipeline_github_repo}/tree/${pipeline_tag})"
-          fi
-          local commit_text="\`${pipeline_short_sha}\`"
-          if [[ -n "${pipeline_github_repo}" && "${pipeline_short_sha}" != "unknown-sha" ]]; then
-            commit_text="[${pipeline_short_sha}](${pipeline_github_repo}/commit/${pipeline_short_sha})"
-          fi
-          local project_text="${pipeline_project}"
-          if [[ -n "${pipeline_github_repo}" ]]; then
-            project_text="[${pipeline_project}](${pipeline_github_repo})"
-          fi
-
-          local text
-          printf -v text '🚀 Workflow start for: **%s**\n\nProject: %s\nTag: %s\nCommit: %s\nBuild: [%s](%s)' \
-            "${workflow_name}" \
-            "${project_text}" \
-            "${tag_text}" \
-            "${commit_text}" \
-            "${pipeline_build_id}" \
-            "${pipeline_build_url}"
-
-          local post_id
-          post_id="$(mattermost_post "${text}" "" "false")"
-          if [[ -n "${post_id}" ]]; then
-            printf '%s' "${post_id}" >"${pipeline_root_post_id_file}"
-          fi
-        }
-
-        notify_mattermost() {
-          local state="$1"
-          local exit_code="${2:-}"
-          local duration_seconds="${3:-}"
-          local icon="🔔"
-          local state_label="${state}"
-          case "${state}" in
-            started)
-              icon="🚀"
-              state_label="started"
-              ;;
-            succeeded)
-              icon="✅"
-              state_label="succeeded"
-              ;;
-            failed)
-              icon="❌"
-              state_label="failed"
-              ;;
-          esac
-          local tag_text="\`${pipeline_tag}\`"
-          if [[ -n "${pipeline_github_repo}" && "${pipeline_tag}" != "manual-or-untagged" ]]; then
-            tag_text="[${pipeline_tag}](${pipeline_github_repo}/tree/${pipeline_tag})"
-          fi
-          local commit_text="\`${pipeline_short_sha}\`"
-          if [[ -n "${pipeline_github_repo}" && "${pipeline_short_sha}" != "unknown-sha" ]]; then
-            commit_text="[${pipeline_short_sha}](${pipeline_github_repo}/commit/${pipeline_short_sha})"
-          fi
-          local project_text="${pipeline_project}"
-          if [[ -n "${pipeline_github_repo}" ]]; then
-            project_text="[${pipeline_project}](${pipeline_github_repo})"
-          fi
-          local text
-          printf -v text '%s Build %s: **%s**\n\nProject: %s\nTag: %s\nCommit: %s\nBuild: [%s](%s)' \
-            "${icon}" \
-            "${state_label}" \
-            "${pipeline_name}" \
-            "${project_text}" \
-            "${tag_text}" \
-            "${commit_text}" \
-            "${pipeline_build_id}" \
-            "${pipeline_build_url}"
-
-          if [[ -n "${exit_code}" ]]; then
-            if [[ -n "${pipeline_artifacts}" ]]; then
-              printf -v text '%s\n\n%s\n' "${text}" "${pipeline_artifacts}"
-            fi
-            printf -v text '%s\nDuration: `%ss`  ' "${text}" "${duration_seconds}"
-          fi
-
-          local root_post_id=""
-          if [[ -f "${pipeline_root_post_id_file}" ]]; then
-            root_post_id="$(cat "${pipeline_root_post_id_file}")"
-          fi
-
-          local attach_log="false"
-          if [[ -n "${exit_code}" ]]; then
-            attach_log="true"
-          fi
-          mattermost_post "${text}" "${root_post_id}" "${attach_log}" >/dev/null || true
+          CICD_REPORT_WORKFLOW_ID="${pipeline_workflow_id}" \
+          CICD_REPORT_WORKFLOW_NAME="${workflow_name}" \
+          CICD_REPORT_STAGE="${stage}" \
+          CICD_REPORT_STATE="${state}" \
+          CICD_REPORT_NAME="${report_name}" \
+          CICD_REPORT_PROJECT_LABEL="${pipeline_project}" \
+          CICD_REPORT_PROJECT_URL="${pipeline_github_repo}" \
+          CICD_REPORT_TAG_LABEL="${pipeline_tag}" \
+          CICD_REPORT_TAG_URL="${pipeline_tag_url}" \
+          CICD_REPORT_COMMIT_LABEL="${pipeline_short_sha}" \
+          CICD_REPORT_COMMIT_URL="${pipeline_commit_url}" \
+          CICD_REPORT_BUILD_ID="${pipeline_build_id}" \
+          CICD_REPORT_BUILD_URL="${pipeline_build_url}" \
+          CICD_REPORT_EXIT_CODE="${exit_code}" \
+          CICD_REPORT_DURATION_SECONDS="${duration_seconds}" \
+          CICD_REPORT_ARTIFACTS_JSON="${pipeline_artifacts_json}" \
+          python3 -c 'import json, os; payload = {"workflow_id": os.environ["CICD_REPORT_WORKFLOW_ID"], "workflow_name": os.environ["CICD_REPORT_WORKFLOW_NAME"], "stage": os.environ["CICD_REPORT_STAGE"], "state": os.environ["CICD_REPORT_STATE"], "name": os.environ["CICD_REPORT_NAME"], "build_id": os.environ["CICD_REPORT_BUILD_ID"], "project": {"label": os.environ["CICD_REPORT_PROJECT_LABEL"], "url": os.environ.get("CICD_REPORT_PROJECT_URL", "")}, "tag": {"label": os.environ["CICD_REPORT_TAG_LABEL"], "url": os.environ.get("CICD_REPORT_TAG_URL", "")}, "commit": {"label": os.environ["CICD_REPORT_COMMIT_LABEL"], "url": os.environ.get("CICD_REPORT_COMMIT_URL", "")}, "build": {"label": os.environ["CICD_REPORT_BUILD_ID"], "url": os.environ["CICD_REPORT_BUILD_URL"]}}; payload.update({"exit_code": int(os.environ["CICD_REPORT_EXIT_CODE"])} if os.environ.get("CICD_REPORT_EXIT_CODE") else {}); payload.update({"duration_seconds": int(os.environ["CICD_REPORT_DURATION_SECONDS"])} if os.environ.get("CICD_REPORT_DURATION_SECONDS") else {}); artifacts = json.loads(os.environ.get("CICD_REPORT_ARTIFACTS_JSON") or "{}"); payload.update({"artifacts": artifacts} if artifacts else {}); print("CICD_REPORT " + json.dumps(payload, separators=(",", ":")))'
         }
 
         notify_done() {
@@ -264,18 +170,17 @@ steps:
           local duration_seconds="$(( $(date -u +%s) - pipeline_started_at ))"
 
           if [[ "${exit_code}" -eq 0 ]]; then
-            notify_mattermost "succeeded" "${exit_code}" "${duration_seconds}"
+            emit_cicd_report "build" "succeeded" "${exit_code}" "${duration_seconds}"
           else
-            notify_mattermost "failed" "${exit_code}" "${duration_seconds}"
+            emit_cicd_report "build" "failed" "${exit_code}" "${duration_seconds}"
           fi
 
           exit "${exit_code}"
         }
 
         trap notify_done EXIT
-        start_workflow
-        notify_mattermost "started"
-        exec > >(tee -a "${pipeline_log}") 2>&1
+      emit_cicd_report "workflow" "started"
+      emit_cicd_report "build" "started"
 
         export TAG_NAME="${PIPELINE_TAG:-}"
         export SHORT_SHA="${PIPELINE_SHORT_SHA:-dev}"
@@ -287,10 +192,9 @@ steps:
           echo "Branch deploy: using latest published chart version ${CHART_VERSION}"
         fi
 
-        printf -v pipeline_artifacts 'Images:\n%s\n%s\n\nHelm Chart: %s' \
-          "$(artifact_link "${IMAGE_REPO}:${pipeline_image_tag}" "mattermost:${pipeline_image_tag}")" \
-          "$(artifact_link "${IMAGE_REPO}:${pipeline_dev_image_tag}" "mattermost:${pipeline_dev_image_tag}")" \
-          "$(artifact_link "${chart_registry_path}/yourown-chat:${pipeline_chart_version}" "yourown-chat:${pipeline_chart_version}")"
+        pipeline_prod_image_artifact="$(artifact_json "${IMAGE_REPO}:${pipeline_image_tag}" "mattermost:${pipeline_image_tag}")"
+        pipeline_dev_image_artifact="$(artifact_json "${IMAGE_REPO}:${pipeline_dev_image_tag}" "mattermost:${pipeline_dev_image_tag}")"
+        pipeline_chart_artifact="$(artifact_json "${chart_registry_path}/yourown-chat:${pipeline_chart_version}" "yourown-chat:${pipeline_chart_version}")"
 
         release_version="${pipeline_chart_version//./-}"
         release_suffix="$(printf '%s' "${pipeline_build_id}" | tr -cd '[:alnum:]' | cut -c1-8)"
@@ -323,13 +227,16 @@ steps:
           printf 'KUBECONFIG_SECRET=%s\n' "${KUBECONFIG_SECRET}"
           printf 'RKE2_API_FIREWALL_NETWORK=%s\n' "${RKE2_API_FIREWALL_NETWORK}"
           printf 'RKE2_API_TARGET_TAG=%s\n' "${RKE2_API_TARGET_TAG}"
-          printf 'MATTERMOST_SITE_URL=%s\n' "${MATTERMOST_SITE_URL}"
-          printf 'MATTERMOST_CICD_TOKEN_ID_SECRET_VERSION=%s\n' "${MATTERMOST_CICD_TOKEN_ID_SECRET_VERSION}"
-          printf 'MATTERMOST_CICD_TOKEN_SECRET_VERSION=%s\n' "${MATTERMOST_CICD_TOKEN_SECRET_VERSION}"
-          printf 'MATTERMOST_CICD_CHANNEL_ID_SECRET_VERSION=%s\n' "${MATTERMOST_CICD_CHANNEL_ID_SECRET_VERSION}"
-          if [[ -s "${pipeline_root_post_id_file}" ]]; then
-            printf 'MATTERMOST_WORKFLOW_ROOT_POST_ID=%s\n' "$(<"${pipeline_root_post_id_file}")"
-          fi
+          printf 'CICD_WORKFLOW_ID=%q\n' "${pipeline_workflow_id}"
+          printf 'CICD_WORKFLOW_NAME=%q\n' "${workflow_name}"
+          printf 'CICD_PROJECT_LABEL=%q\n' "${pipeline_project}"
+          printf 'CICD_PROJECT_URL=%q\n' "${pipeline_github_repo}"
+          printf 'CICD_TAG_LABEL=%q\n' "${pipeline_tag}"
+          printf 'CICD_TAG_URL=%q\n' "${pipeline_tag_url}"
+          printf 'CICD_COMMIT_LABEL=%q\n' "${pipeline_short_sha}"
+          printf 'CICD_COMMIT_URL=%q\n' "${pipeline_commit_url}"
+          printf 'CICD_BUILD_ID=%q\n' "${pipeline_build_id}"
+          printf 'CICD_BUILD_URL=%q\n' "${pipeline_build_url}"
         } >"${clouddeploy_source_dir}/clouddeploy-release.env"
 
         clouddeploy_release_args=(
@@ -338,16 +245,16 @@ steps:
           --delivery-pipeline="${CLOUDDEPLOY_DELIVERY_PIPELINE}"
           --source="${clouddeploy_source_dir}"
         )
-        if [[ -s "${pipeline_root_post_id_file}" ]]; then
-          clouddeploy_release_args+=(--annotations="mattermost-workflow-root-post-id=$(<"${pipeline_root_post_id_file}")")
-        fi
         gcloud deploy releases create "${clouddeploy_release_name}" "${clouddeploy_release_args[@]}"
 
         clouddeploy_release_url="https://console.cloud.google.com/deploy/delivery-pipelines/${CLOUDDEPLOY_REGION}/${CLOUDDEPLOY_DELIVERY_PIPELINE}/releases/${clouddeploy_release_name}?project=${TARGET_PROJECT_ID}"
-        printf -v pipeline_artifacts '%s\n\nCloud Deploy: [%s](%s)' \
-          "${pipeline_artifacts}" \
-          "${clouddeploy_release_name}" \
-          "${clouddeploy_release_url}"
+        pipeline_clouddeploy_artifact="$(ARTIFACT_LABEL="${clouddeploy_release_name}" ARTIFACT_URL="${clouddeploy_release_url}" python3 -c 'import json, os; print(json.dumps({"label": os.environ["ARTIFACT_LABEL"], "url": os.environ["ARTIFACT_URL"]}, separators=(",", ":")))')"
+        CICD_IMAGE_PROD="${pipeline_prod_image_artifact}" \
+        CICD_IMAGE_DEV="${pipeline_dev_image_artifact}" \
+        CICD_CHART="${pipeline_chart_artifact}" \
+        CICD_CLOUD_DEPLOY="${pipeline_clouddeploy_artifact}" \
+          python3 -c 'import json, os; payload = {"images": [json.loads(os.environ["CICD_IMAGE_PROD"]), json.loads(os.environ["CICD_IMAGE_DEV"])], "chart": json.loads(os.environ["CICD_CHART"]), "cloud_deploy": json.loads(os.environ["CICD_CLOUD_DEPLOY"])}; print(json.dumps(payload, separators=(",", ":")))' >/tmp/yourown-chat-build-artifacts.json
+        pipeline_artifacts_json="$(cat /tmp/yourown-chat-build-artifacts.json)"
 
 options:
   logging: CLOUD_LOGGING_ONLY
@@ -357,22 +264,9 @@ substitutions:
   _PROJECT_ID: gcloud-production-1
   _CLOUDBUILD_REGION: southamerica-east1
   _IMAGE_REPO: southamerica-east1-docker.pkg.dev/gcloud-production-1/mattermost/mattermost
-  _MATTERMOST_SITE_URL: https://yourown.chat
   _CHART_REPOSITORY: oci://southamerica-east1-docker.pkg.dev/gcloud-production-1/mattermost
   _CLOUDDEPLOY_DELIVERY_PIPELINE: yourown-chat
   _CLOUDDEPLOY_REGION: southamerica-east1
   _KUBECONFIG_SECRET: mattermost-rke2-kubeconfig
-  _MATTERMOST_CICD_TOKEN_ID_SECRET_VERSION: projects/gcloud-production-1/secrets/mattermost-cicd-token-id/versions/latest
-  _MATTERMOST_CICD_TOKEN_SECRET_VERSION: projects/gcloud-production-1/secrets/mattermost-cicd-token-secret/versions/latest
-  _MATTERMOST_CICD_CHANNEL_ID_SECRET_VERSION: projects/gcloud-production-1/secrets/mattermost-cicd-channel-id/versions/latest
   _RKE2_API_FIREWALL_NETWORK: mattermost-southamerica-east1
   _RKE2_API_TARGET_TAG: yourown-chat-rke2
-
-availableSecrets:
-  secretManager:
-    - versionName: ${_MATTERMOST_CICD_TOKEN_ID_SECRET_VERSION}
-      env: MATTERMOST_CICD_TOKEN_ID
-    - versionName: ${_MATTERMOST_CICD_TOKEN_SECRET_VERSION}
-      env: MATTERMOST_CICD_TOKEN_SECRET
-    - versionName: ${_MATTERMOST_CICD_CHANNEL_ID_SECRET_VERSION}
-      env: MATTERMOST_CICD_CHANNEL_ID
