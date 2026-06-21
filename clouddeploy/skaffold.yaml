@@ -8,17 +8,52 @@ customActions:
       - name: render
         image: gcr.io/google.com/cloudsdktool/google-cloud-cli:alpine
         command:
-          - /bin/bash
+          - /bin/sh
         args:
           - -ceu
           - |
             test -f clouddeploy-release.env
-            echo "yourown-chat Cloud Deploy source is ready"
+            . ./clouddeploy-release.env
+
+            output_path="${CLOUD_DEPLOY_OUTPUT_GCS_PATH%/}"
+            manifest_uri="${output_path}/manifest.yaml"
+            results_uri="${output_path}/results.json"
+
+            cat >/tmp/manifest.yaml <<EOF
+            apiVersion: clouddeploy.yourown.chat/v1
+            kind: HelmReleasePlan
+            metadata:
+              name: ${CLOUD_DEPLOY_RELEASE}
+            spec:
+              chart: ${CHART_REPOSITORY}/yourown-chat:${CHART_VERSION}
+              images:
+                prod: ${PROD_IMAGE_WITH_DIGEST}
+                dev: ${DEV_IMAGE_WITH_DIGEST}
+            EOF
+
+            gcloud storage cp /tmp/manifest.yaml "${manifest_uri}"
+            MANIFEST_URI="${manifest_uri}" python3 - <<'PY' >/tmp/results.json
+            import json
+            import os
+
+            print(json.dumps({
+                "resultStatus": "SUCCEEDED",
+                "manifestFile": os.environ["MANIFEST_URI"],
+                "metadata": {
+                    "custom-target-source": "yourown-chat-rke2-helm",
+                },
+            }))
+            PY
+            gcloud storage cp /tmp/results.json "${results_uri}"
+            echo "Uploaded Cloud Deploy render results to ${results_uri}"
   - name: deploy-yourown-chat
     containers:
       - name: deploy
         image: gcr.io/google.com/cloudsdktool/google-cloud-cli:alpine
         command:
-          - /bin/bash
+          - /bin/sh
         args:
-          - clouddeploy/deploy-yourown-chat.sh
+          - -ceu
+          - |
+            apk add --no-cache bash ca-certificates curl helm kubectl make python3
+            exec /bin/bash clouddeploy/deploy-yourown-chat.sh

@@ -22,7 +22,52 @@ cleanup_firewall() {
       --quiet >/dev/null 2>&1 || true
   fi
 }
-trap cleanup_firewall EXIT
+
+deploy_result_uploaded=false
+upload_deploy_result() {
+  local result_status="$1"
+  local failure_message="${2:-}"
+  if [[ -z "${CLOUD_DEPLOY_OUTPUT_GCS_PATH:-}" ]]; then
+    return 0
+  fi
+
+  DEPLOY_RESULT_STATUS="${result_status}" \
+  DEPLOY_FAILURE_MESSAGE="${failure_message}" \
+  DEPLOY_CHART_VERSION="${CHART_VERSION}" \
+  DEPLOY_PROD_IMAGE_TAG="${PROD_IMAGE_TAG:-${IMAGE_TAG}}" \
+  DEPLOY_DEV_IMAGE_TAG="${DEV_IMAGE_TAG}" \
+    python3 - <<'PY' >/tmp/clouddeploy-deploy-results.json
+import json
+import os
+
+payload = {
+    "resultStatus": os.environ["DEPLOY_RESULT_STATUS"],
+    "metadata": {
+        "custom-target-source": "yourown-chat-rke2-helm",
+        "chart-version": os.environ["DEPLOY_CHART_VERSION"],
+        "prod-image-tag": os.environ["DEPLOY_PROD_IMAGE_TAG"],
+        "dev-image-tag": os.environ["DEPLOY_DEV_IMAGE_TAG"],
+    },
+}
+failure_message = os.environ.get("DEPLOY_FAILURE_MESSAGE", "")
+if failure_message:
+    payload["failureMessage"] = failure_message
+print(json.dumps(payload))
+PY
+
+  gcloud storage cp /tmp/clouddeploy-deploy-results.json "${CLOUD_DEPLOY_OUTPUT_GCS_PATH%/}/results.json"
+  deploy_result_uploaded=true
+}
+
+finish_deploy() {
+  local exit_code="$?"
+  if [[ "${exit_code}" -ne 0 && "${deploy_result_uploaded}" != "true" ]]; then
+    upload_deploy_result "FAILED" "deploy script exited with ${exit_code}" || true
+  fi
+  cleanup_firewall
+  exit "${exit_code}"
+}
+trap finish_deploy EXIT
 
 clouddeploy_ip="$(curl -fsSL https://api.ipify.org)"
 gcloud compute firewall-rules create "${firewall_rule_name}" \
@@ -57,3 +102,4 @@ echo "Deploying prod image ${PROD_IMAGE_TAG:-${IMAGE_TAG}} (${PROD_IMAGE_DIGEST:
 echo "Deploying dev image ${DEV_IMAGE_TAG} (${DEV_IMAGE_DIGEST:-unknown-digest})"
 
 make deploy
+upload_deploy_result "SUCCEEDED"
