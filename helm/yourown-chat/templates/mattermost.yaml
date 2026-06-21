@@ -9,7 +9,7 @@ metadata:
   namespace: {{ $root.Release.Namespace }}
 spec:
   image: {{ $root.Values.mattermost.image.repository }}
-  imagePullPolicy: IfNotPresent
+  imagePullPolicy: {{ $root.Values.mattermost.image.pullPolicy | default "Always" | quote }}
   version: {{ $instance.imageTag | quote }}
   serviceAnnotations: {}
   ingress:
@@ -22,6 +22,10 @@ spec:
 {{- with $instance.env }}
 {{ toYaml . | indent 4 }}
 {{- end }}
+    - name: YOUROWN_CHAT_IMAGE_TAG
+      value: {{ $instance.imageTag | quote }}
+    - name: YOUROWN_CHAT_IMAGE_DIGEST
+      value: {{ $instance.imageDigest | default "" | quote }}
   database:
     external:
       secret: {{ $instance.database.secret }}

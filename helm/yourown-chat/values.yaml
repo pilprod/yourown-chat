@@ -3,6 +3,7 @@ projectId: gcloud-production-1
 mattermost:
   image:
     repository: southamerica-east1-docker.pkg.dev/gcloud-production-1/mattermost/mattermost
+    pullPolicy: Always
   resources:
     requests:
       cpu: 100m
@@ -16,6 +17,7 @@ instances:
     enabled: true
     name: yourown-chat
     imageTag: v11.8.1-patched
+    imageDigest: ""
     env:
       - name: MM_SERVICESETTINGS_SITEURL
         value: https://yourown.chat
@@ -70,6 +72,7 @@ instances:
     enabled: true
     name: yourown-chat-dev
     imageTag: v11.8.1-patched-dev
+    imageDigest: ""
     env:
       - name: MM_SERVICESETTINGS_SITEURL
         value: https://dev.yourown.chat
