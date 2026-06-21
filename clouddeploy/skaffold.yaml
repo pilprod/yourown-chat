@@ -2,6 +2,18 @@ apiVersion: skaffold/v4beta13
 kind: Config
 metadata:
   name: yourown-chat-cloud-deploy
+verify:
+  - name: yourown-chat-public-health
+    container:
+      name: public-health
+      image: curlimages/curl:8.11.1
+      command:
+        - /bin/sh
+      args:
+        - -ceu
+        - |
+          curl -fsS --retry 12 --retry-delay 10 --retry-all-errors --connect-timeout 10 https://yourown.chat/api/v4/system/ping >/dev/null
+          curl -fsS --retry 12 --retry-delay 10 --retry-all-errors --connect-timeout 10 https://dev.yourown.chat/api/v4/system/ping >/dev/null
 customActions:
   - name: render-yourown-chat
     containers:
