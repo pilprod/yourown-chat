@@ -10,6 +10,9 @@ steps:
       - PIPELINE_TAG=$TAG_NAME
       - PIPELINE_SHORT_SHA=$SHORT_SHA
       - MATTERMOST_SITE_URL=${_MATTERMOST_SITE_URL}
+      - MATTERMOST_CICD_TOKEN_ID_SECRET_VERSION=${_MATTERMOST_CICD_TOKEN_ID_SECRET_VERSION}
+      - MATTERMOST_CICD_TOKEN_SECRET_VERSION=${_MATTERMOST_CICD_TOKEN_SECRET_VERSION}
+      - MATTERMOST_CICD_CHANNEL_ID_SECRET_VERSION=${_MATTERMOST_CICD_CHANNEL_ID_SECRET_VERSION}
       - TARGET_PROJECT_ID=${_PROJECT_ID}
       - IMAGE_REPO=${_IMAGE_REPO}
       - CHART_REPOSITORY=${_CHART_REPOSITORY}
@@ -292,6 +295,10 @@ steps:
           printf 'KUBECONFIG_SECRET=%s\n' "${KUBECONFIG_SECRET}"
           printf 'RKE2_API_FIREWALL_NETWORK=%s\n' "${RKE2_API_FIREWALL_NETWORK}"
           printf 'RKE2_API_TARGET_TAG=%s\n' "${RKE2_API_TARGET_TAG}"
+          printf 'MATTERMOST_SITE_URL=%s\n' "${MATTERMOST_SITE_URL}"
+          printf 'MATTERMOST_CICD_TOKEN_ID_SECRET_VERSION=%s\n' "${MATTERMOST_CICD_TOKEN_ID_SECRET_VERSION}"
+          printf 'MATTERMOST_CICD_TOKEN_SECRET_VERSION=%s\n' "${MATTERMOST_CICD_TOKEN_SECRET_VERSION}"
+          printf 'MATTERMOST_CICD_CHANNEL_ID_SECRET_VERSION=%s\n' "${MATTERMOST_CICD_CHANNEL_ID_SECRET_VERSION}"
         } >"${clouddeploy_source_dir}/clouddeploy-release.env"
 
         gcloud deploy releases create "${clouddeploy_release_name}" \
@@ -310,7 +317,7 @@ options:
   logging: CLOUD_LOGGING_ONLY
 
 substitutions:
-  _PIPELINE_NAME: yourown-chat deploy
+  _PIPELINE_NAME: yourown-chat build
   _PROJECT_ID: gcloud-production-1
   _CLOUDBUILD_REGION: southamerica-east1
   _IMAGE_REPO: southamerica-east1-docker.pkg.dev/gcloud-production-1/mattermost/mattermost
