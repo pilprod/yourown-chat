@@ -37,7 +37,10 @@ steps:
           pipeline_project="${pipeline_name}"
         fi
         pipeline_build_url="https://console.cloud.google.com/cloud-build/builds;region=${pipeline_cloudbuild_region}/${pipeline_build_id}?project=${pipeline_project_id}"
-        pipeline_workflow_id="${pipeline_project}|${pipeline_tag}|${pipeline_short_sha}"
+        pipeline_workflow_id="${pipeline_project}|${pipeline_tag}"
+        if [[ "${pipeline_tag}" == "manual-or-untagged" ]]; then
+          pipeline_workflow_id="${pipeline_workflow_id}|${pipeline_short_sha}"
+        fi
         pipeline_tag_url=""
         if [[ -n "${pipeline_github_repo}" && "${pipeline_tag}" != "manual-or-untagged" ]]; then
           pipeline_tag_url="${pipeline_github_repo}/tree/${pipeline_tag}"
@@ -136,6 +139,7 @@ steps:
         pipeline_dev_image_digest="$(image_digest "${pipeline_dev_image_tag}")"
 
         pipeline_artifacts_json=""
+          pipeline_final_report_sent=false
 
         emit_cicd_report() {
           local stage="$1"
@@ -172,6 +176,10 @@ steps:
         notify_done() {
           local exit_code="$?"
           local duration_seconds="$(( $(date -u +%s) - pipeline_started_at ))"
+
+          if [[ "${pipeline_final_report_sent}" == "true" ]]; then
+            exit "${exit_code}"
+          fi
 
           if [[ "${exit_code}" -eq 0 ]]; then
             emit_cicd_report "build" "succeeded" "${exit_code}" "${duration_seconds}"
@@ -253,13 +261,16 @@ steps:
 
         clouddeploy_release_url="https://console.cloud.google.com/deploy/delivery-pipelines/${CLOUDDEPLOY_REGION}/${CLOUDDEPLOY_DELIVERY_PIPELINE}/releases/${clouddeploy_release_name}?project=${TARGET_PROJECT_ID}"
         pipeline_clouddeploy_artifact="$(ARTIFACT_LABEL="${clouddeploy_release_name}" ARTIFACT_URL="${clouddeploy_release_url}" python3 -c 'import json, os; print(json.dumps({"label": os.environ["ARTIFACT_LABEL"], "url": os.environ["ARTIFACT_URL"]}, separators=(",", ":")))')"
-        pipeline_artifacts_json="$(CICD_CLOUD_DEPLOY="${pipeline_clouddeploy_artifact}" python3 -c 'import json, os; print(json.dumps({"cloud_deploy": json.loads(os.environ["CICD_CLOUD_DEPLOY"])}, separators=(",", ":")))')"
-        emit_cicd_report "deploy" "started"
         CICD_IMAGE_PROD="${pipeline_prod_image_artifact}" \
         CICD_IMAGE_DEV="${pipeline_dev_image_artifact}" \
         CICD_CHART="${pipeline_chart_artifact}" \
           python3 -c 'import json, os; payload = {"images": [json.loads(os.environ["CICD_IMAGE_PROD"]), json.loads(os.environ["CICD_IMAGE_DEV"])], "chart": json.loads(os.environ["CICD_CHART"])}; print(json.dumps(payload, separators=(",", ":")))' >/tmp/yourown-chat-build-artifacts.json
         pipeline_artifacts_json="$(cat /tmp/yourown-chat-build-artifacts.json)"
+        emit_cicd_report "build" "succeeded" "0" "$(( $(date -u +%s) - pipeline_started_at ))"
+        pipeline_final_report_sent=true
+
+        pipeline_artifacts_json="$(CICD_CLOUD_DEPLOY="${pipeline_clouddeploy_artifact}" python3 -c 'import json, os; print(json.dumps({"cloud_deploy": json.loads(os.environ["CICD_CLOUD_DEPLOY"])}, separators=(",", ":")))')"
+        emit_cicd_report "deploy" "started"
 
 options:
   logging: CLOUD_LOGGING_ONLY
