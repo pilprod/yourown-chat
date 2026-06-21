@@ -9,6 +9,10 @@ steps:
       - PIPELINE_GITHUB_REPO=https://github.com/pilprod/yourown-chat
       - PIPELINE_TAG=$TAG_NAME
       - PIPELINE_SHORT_SHA=$SHORT_SHA
+      - IMAGE_TRIGGER_TAG=${_IMAGE_TRIGGER_TAG}
+      - IMAGE_TRIGGER_PROJECT=${_IMAGE_TRIGGER_PROJECT}
+      - IMAGE_TRIGGER_REPO=${_IMAGE_TRIGGER_REPO}
+      - IMAGE_TRIGGER_SHORT_SHA=${_IMAGE_TRIGGER_SHORT_SHA}
       - TARGET_PROJECT_ID=${_PROJECT_ID}
       - IMAGE_REPO=${_IMAGE_REPO}
       - CHART_REPOSITORY=${_CHART_REPOSITORY}
@@ -33,6 +37,22 @@ steps:
         pipeline_cloudbuild_region="${PIPELINE_CLOUDBUILD_REGION:-southamerica-east1}"
         pipeline_name="${PIPELINE_NAME:-Cloud Build}"
         workflow_name="yourown-chat deploy"
+        image_trigger_tag="${IMAGE_TRIGGER_TAG:-}"
+        if [[ -n "${image_trigger_tag}" ]]; then
+          pipeline_tag="${image_trigger_tag}"
+          workflow_name="mattermost image"
+          if [[ -n "${IMAGE_TRIGGER_REPO:-}" ]]; then
+            pipeline_github_repo="${IMAGE_TRIGGER_REPO}"
+          fi
+          if [[ -n "${IMAGE_TRIGGER_SHORT_SHA:-}" ]]; then
+            pipeline_short_sha="${IMAGE_TRIGGER_SHORT_SHA}"
+          fi
+          if [[ -n "${IMAGE_TRIGGER_PROJECT:-}" ]]; then
+            pipeline_project="${IMAGE_TRIGGER_PROJECT}"
+          else
+            pipeline_project="${pipeline_github_repo#https://github.com/}"
+          fi
+        fi
         if [[ -z "${pipeline_project}" || "${pipeline_project}" == "${pipeline_github_repo}" ]]; then
           pipeline_project="${pipeline_name}"
         fi
@@ -218,7 +238,6 @@ steps:
           Makefile \
           certs.yaml \
           clusterissuer.yaml \
-          ingress-nginx-autoupdate.yaml \
           operator.yaml \
           helm \
           clouddeploy \
@@ -286,3 +305,7 @@ substitutions:
   _KUBECONFIG_SECRET: mattermost-rke2-kubeconfig
   _RKE2_API_FIREWALL_NETWORK: mattermost-southamerica-east1
   _RKE2_API_TARGET_TAG: yourown-chat-rke2
+  _IMAGE_TRIGGER_TAG: ''
+  _IMAGE_TRIGGER_PROJECT: ''
+  _IMAGE_TRIGGER_REPO: ''
+  _IMAGE_TRIGGER_SHORT_SHA: ''

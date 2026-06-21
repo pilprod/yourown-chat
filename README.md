@@ -4,12 +4,17 @@ Cloud Build deploys this repository into the RKE2 VM created by Terragrunt. It
 reads only the kubeconfig from Secret Manager. Application secrets stay in GCP
 Secret Manager and are synced into Kubernetes by External Secrets Operator.
 
-The deploy installs:
+The runtime bootstrap from `../terragruntcore/scripts/yourown-chat/bootstrap-rke2-runtime.sh`
+installs the shared RKE2 components. In production it runs from the
+`terragruntcore` tag CI after `terragrunt run --all -- apply`:
 
+- local-path storage
 - External Secrets Operator
 - cert-manager
 - ingress-nginx
-- Mattermost Operator and the Mattermost custom resource
+
+This repository deploys the Mattermost-specific layer: Mattermost Operator,
+site certificates, and the Mattermost custom resource.
 
 Mattermost integration settings are hardened in the Helm chart: personal
 access tokens are disabled, incoming webhooks are enforced as locked to their
@@ -56,5 +61,6 @@ export TAG_NAME=0.1.0
 export BUCKET_NAME=gcloud-production-1-mattermost-southamerica-east1
 export SITE_URL=https://yourown.chat
 
+bash ../terragruntcore/scripts/yourown-chat/bootstrap-rke2-runtime.sh
 make deploy
 ```

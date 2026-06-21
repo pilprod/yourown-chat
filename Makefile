@@ -6,7 +6,7 @@ export CHART_REPOSITORY ?= oci://southamerica-east1-docker.pkg.dev/gcloud-produc
 export CHART_PACKAGE_DIR ?= /tmp/yourown-chat-chart
 export KUBECONFIG ?= /etc/rancher/rke2/rke2.yaml
 
-.PHONY: chart-version lint package-chart push-chart publish-chart ensure-local-path-storage repair-dev-storage deploy
+.PHONY: chart-version lint package-chart push-chart publish-chart repair-dev-storage deploy
 
 chart-version:
 	@set -euo pipefail; chart_version="$${CHART_VERSION:-$${TAG_NAME:-}}"; if [[ -z "$${chart_version}" ]]; then echo "CHART_VERSION or TAG_NAME is required" >&2; exit 1; fi; if [[ ! "$${chart_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$$ ]]; then echo "Chart version must be numeric X.Y.Z, got: $${chart_version}" >&2; exit 1; fi; printf '%s\n' "$${chart_version}"
@@ -21,11 +21,6 @@ push-chart: package-chart
 	@set -euo pipefail; chart_version="$${CHART_VERSION:-$${TAG_NAME:-}}"; if [[ -z "$${chart_version}" ]]; then echo "CHART_VERSION or TAG_NAME is required" >&2; exit 1; fi; if [[ ! "$${chart_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$$ ]]; then echo "Chart version must be numeric X.Y.Z, got: $${chart_version}" >&2; exit 1; fi; registry_host="$${CHART_REPOSITORY#oci://}"; registry_host="$${registry_host%%/*}"; gcloud auth print-access-token | helm registry login -u oauth2accesstoken --password-stdin "https://$${registry_host}"; helm push "$(CHART_PACKAGE_DIR)/$(CHART_NAME)-$${chart_version}.tgz" "$${CHART_REPOSITORY}"
 
 publish-chart: push-chart
-
-ensure-local-path-storage:
-	@if ! kubectl get storageclass/local-path >/dev/null 2>&1 || ! kubectl -n local-path-storage get deployment/local-path-provisioner >/dev/null 2>&1; then kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.31/deploy/local-path-storage.yaml; fi
-	@kubectl wait -n local-path-storage deployment/local-path-provisioner --for=condition=Available --timeout=180s
-	@kubectl annotate storageclass/local-path storageclass.kubernetes.io/is-default-class=true --overwrite
 
 repair-dev-storage:
 	@set -euo pipefail; for pvc in yourown-chat-dev data-mattermost-dev-postgres-0; do \
@@ -43,18 +38,8 @@ repair-dev-storage:
 deploy:
 	@set -euo pipefail; chart_version="$${CHART_VERSION:-$${TAG_NAME:-}}"; if [[ -z "$${chart_version}" ]]; then echo "CHART_VERSION or TAG_NAME is required" >&2; exit 1; fi; if [[ ! "$${chart_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$$ ]]; then echo "Chart version must be numeric X.Y.Z, got: $${chart_version}" >&2; exit 1; fi; echo "Deploying chart $${CHART_REPOSITORY}/$(CHART_NAME):$${chart_version}"
 	@kubectl create namespace mattermost --dry-run=client -o yaml | kubectl apply -f -
-	@$(MAKE) ensure-local-path-storage
-	@helm repo add external-secrets https://charts.external-secrets.io --force-update
-	@helm repo add jetstack https://charts.jetstack.io --force-update
-	@helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx --force-update
 	@helm repo add mattermost https://helm.mattermost.com --force-update
 	@helm repo update
-	@helm upgrade -i external-secrets -n external-secrets --create-namespace --set installCRDs=true external-secrets/external-secrets --wait
-	@kubectl wait crd/clustersecretstores.external-secrets.io --for=condition=Established --timeout=180s
-	@kubectl wait crd/externalsecrets.external-secrets.io --for=condition=Established --timeout=180s
-	@helm upgrade -i cert-manager -n cert-manager --create-namespace --set crds.enabled=true jetstack/cert-manager --wait
-	@helm upgrade -i ingress-nginx -n ingress-nginx --create-namespace --set controller.kind=DaemonSet --set controller.hostNetwork=true --set controller.dnsPolicy=ClusterFirstWithHostNet --set controller.service.enabled=false --set controller.ingressClassResource.default=true --set controller.allowSnippetAnnotations=false --set controller.config.annotations-risk-level=Medium --set controller.config.server-tokens=false ingress-nginx/ingress-nginx --wait
-	@kubectl apply -f ingress-nginx-autoupdate.yaml
 	@helm upgrade -i mattermost -n mattermost --create-namespace -f operator.yaml mattermost/mattermost-operator --wait
 	@if [[ -f clusterissuer.yaml ]]; then kubectl apply -f clusterissuer.yaml; fi
 	@if [[ -f certs.yaml ]]; then kubectl apply -n mattermost -f certs.yaml; fi
