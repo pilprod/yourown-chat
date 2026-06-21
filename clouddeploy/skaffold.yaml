@@ -6,13 +6,88 @@ verify:
   - name: yourown-chat-public-health
     container:
       name: public-health
-      image: curlimages/curl:8.11.1
+      image: gcr.io/google.com/cloudsdktool/google-cloud-cli:alpine
       command:
         - /bin/sh
       args:
         - -ceu
         - |
+          apk add --no-cache curl python3
+
+          if [ -f clouddeploy-release.env ]; then
+            . ./clouddeploy-release.env
+          elif [ -f /workspace/source/clouddeploy-release.env ]; then
+            . /workspace/source/clouddeploy-release.env
+          fi
+
+          verify_started_at="$(date -u +%s)"
+          verify_name="yourown-chat verify"
+          verify_release="${CLOUD_DEPLOY_RELEASE:-manual-release}"
+          verify_rollout="${CLOUD_DEPLOY_ROLLOUT:-manual-rollout}"
+          verify_target="${CLOUD_DEPLOY_TARGET:-yourown-chat-rke2}"
+          verify_region="${CLOUD_DEPLOY_LOCATION:-southamerica-east1}"
+          verify_pipeline="${CLOUD_DEPLOY_DELIVERY_PIPELINE:-yourown-chat}"
+          cicd_workflow_id="${CICD_WORKFLOW_ID:-${verify_pipeline}|${verify_release}}"
+          cicd_workflow_name="${CICD_WORKFLOW_NAME:-yourown-chat deploy}"
+          cicd_project_label="${CICD_PROJECT_LABEL:-yourown-chat}"
+          cicd_project_url="${CICD_PROJECT_URL:-}"
+          cicd_tag_label="${CICD_TAG_LABEL:-${CHART_VERSION:-unknown-tag}}"
+          cicd_tag_url="${CICD_TAG_URL:-}"
+          cicd_commit_label="${CICD_COMMIT_LABEL:-unknown-sha}"
+          cicd_commit_url="${CICD_COMMIT_URL:-}"
+          cicd_build_id="${CICD_BUILD_ID:-}"
+          cicd_build_url="${CICD_BUILD_URL:-}"
+          verify_artifacts_json=""
+
+          emit_verify_report() {
+            state="$1"
+            exit_code="${2:-}"
+            duration_seconds="${3:-}"
+            artifacts_json="${4:-}"
+            release_url="https://console.cloud.google.com/deploy/delivery-pipelines/${verify_region}/${verify_pipeline}/releases/${verify_release}?project=${TARGET_PROJECT_ID:-gcloud-production-1}"
+            rollout_url="${release_url}/rollouts/${verify_rollout}"
+            CICD_REPORT_WORKFLOW_ID="${cicd_workflow_id}" \
+            CICD_REPORT_WORKFLOW_NAME="${cicd_workflow_name}" \
+            CICD_REPORT_STATE="${state}" \
+            CICD_REPORT_NAME="${verify_name}" \
+            CICD_REPORT_PROJECT_LABEL="${cicd_project_label}" \
+            CICD_REPORT_PROJECT_URL="${cicd_project_url}" \
+            CICD_REPORT_TAG_LABEL="${cicd_tag_label}" \
+            CICD_REPORT_TAG_URL="${cicd_tag_url}" \
+            CICD_REPORT_COMMIT_LABEL="${cicd_commit_label}" \
+            CICD_REPORT_COMMIT_URL="${cicd_commit_url}" \
+            CICD_REPORT_BUILD_ID="${cicd_build_id}" \
+            CICD_REPORT_BUILD_URL="${cicd_build_url}" \
+            CICD_REPORT_RELEASE="${verify_release}" \
+            CICD_REPORT_RELEASE_URL="${release_url}" \
+            CICD_REPORT_ROLLOUT="${verify_rollout}" \
+            CICD_REPORT_ROLLOUT_URL="${rollout_url}" \
+            CICD_REPORT_TARGET="${verify_target}" \
+            CICD_REPORT_EXIT_CODE="${exit_code}" \
+            CICD_REPORT_DURATION_SECONDS="${duration_seconds}" \
+            CICD_REPORT_ARTIFACTS_JSON="${artifacts_json}" \
+              python3 -c 'import json, os; payload = {"workflow_id": os.environ["CICD_REPORT_WORKFLOW_ID"], "workflow_name": os.environ["CICD_REPORT_WORKFLOW_NAME"], "stage": "verify", "state": os.environ["CICD_REPORT_STATE"], "name": os.environ["CICD_REPORT_NAME"], "project": {"label": os.environ["CICD_REPORT_PROJECT_LABEL"], "url": os.environ.get("CICD_REPORT_PROJECT_URL", "")}, "tag": {"label": os.environ["CICD_REPORT_TAG_LABEL"], "url": os.environ.get("CICD_REPORT_TAG_URL", "")}, "commit": {"label": os.environ["CICD_REPORT_COMMIT_LABEL"], "url": os.environ.get("CICD_REPORT_COMMIT_URL", "")}, "release_id": os.environ["CICD_REPORT_RELEASE"], "rollout_id": os.environ["CICD_REPORT_ROLLOUT"], "release": {"label": os.environ["CICD_REPORT_RELEASE"], "url": os.environ["CICD_REPORT_RELEASE_URL"]}, "rollout": {"label": os.environ["CICD_REPORT_ROLLOUT"], "url": os.environ["CICD_REPORT_ROLLOUT_URL"]}, "target": os.environ["CICD_REPORT_TARGET"]}; payload.update({"build_id": os.environ["CICD_REPORT_BUILD_ID"], "build": {"label": os.environ["CICD_REPORT_BUILD_ID"], "url": os.environ.get("CICD_REPORT_BUILD_URL", "")}} if os.environ.get("CICD_REPORT_BUILD_ID") else {}); payload.update({"exit_code": int(os.environ["CICD_REPORT_EXIT_CODE"])} if os.environ.get("CICD_REPORT_EXIT_CODE") else {}); payload.update({"duration_seconds": int(os.environ["CICD_REPORT_DURATION_SECONDS"])} if os.environ.get("CICD_REPORT_DURATION_SECONDS") else {}); artifacts = json.loads(os.environ.get("CICD_REPORT_ARTIFACTS_JSON") or "{}"); payload.update({"artifacts": artifacts} if artifacts else {}); print("CICD_REPORT " + json.dumps(payload, separators=(",", ":")))'
+          }
+
+          finish_verify() {
+            exit_code="$?"
+            duration_seconds="$(( $(date -u +%s) - verify_started_at ))"
+            if [ "${exit_code}" -eq 0 ]; then
+              emit_verify_report "succeeded" "${exit_code}" "${duration_seconds}" "${verify_artifacts_json}" || true
+            else
+              emit_verify_report "failed" "${exit_code}" "${duration_seconds}" "${verify_artifacts_json}" || true
+            fi
+            exit "${exit_code}"
+          }
+          trap finish_verify EXIT
+
+          verify_artifacts_json="$(python3 -c 'import json; print(json.dumps({"checks": ["https://yourown.chat/api/v4/system/ping", "https://dev.yourown.chat/api/v4/system/ping"]}, separators=(",", ":")))')"
+          emit_verify_report "started" || true
+          echo "Cloud Deploy verify release=${verify_release} rollout=${verify_rollout} target=${verify_target}"
+
+          echo "Verifying prod public health"
           curl -fsS --retry 12 --retry-delay 10 --retry-all-errors --connect-timeout 10 https://yourown.chat/api/v4/system/ping >/dev/null
+          echo "Verifying dev public health"
           curl -fsS --retry 12 --retry-delay 10 --retry-all-errors --connect-timeout 10 https://dev.yourown.chat/api/v4/system/ping >/dev/null
 customActions:
   - name: render-yourown-chat

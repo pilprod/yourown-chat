@@ -161,6 +161,7 @@ finish_deploy() {
 trap finish_deploy EXIT
 
 emit_deploy_report "started" || true
+echo "Cloud Deploy deploy release=${deploy_release} rollout=${deploy_rollout} target=${deploy_target}"
 
 registry_host="${CHART_REPOSITORY#oci://}"
 registry_host="${registry_host%%/*}"
