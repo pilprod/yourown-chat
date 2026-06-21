@@ -4,13 +4,22 @@ set -euo pipefail
 source clouddeploy-release.env
 
 apt-get update
-apt-get install -y ca-certificates curl make python3
+apt-get install -y ca-certificates curl gnupg make python3
+
+install_helm() {
+  install -d -m 0755 /etc/apt/keyrings
+  curl -fsSL https://baltocdn.com/helm/signing.asc | gpg --dearmor -o /etc/apt/keyrings/helm.gpg
+  chmod 0644 /etc/apt/keyrings/helm.gpg
+  printf 'deb [arch=%s signed-by=/etc/apt/keyrings/helm.gpg] https://baltocdn.com/helm/stable/debian/ all main\n' "$(dpkg --print-architecture)" >/etc/apt/sources.list.d/helm-stable-debian.list
+  apt-get update
+  apt-get install -y helm
+}
 
 curl -fsSL -o /usr/local/bin/kubectl \
   "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
 chmod +x /usr/local/bin/kubectl
 
-curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+install_helm
 
 registry_host="${CHART_REPOSITORY#oci://}"
 registry_host="${registry_host%%/*}"
