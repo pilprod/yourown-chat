@@ -248,7 +248,7 @@ steps:
           "$(artifact_link "${IMAGE_REPO}:${pipeline_dev_image_tag}" "mattermost:${pipeline_dev_image_tag}" '^v.*patched-dev$')" \
           "$(artifact_link "${chart_registry_path}/yourown-chat:${pipeline_chart_version}" "yourown-chat:${pipeline_chart_version}")"
 
-        firewall_rule_name="yourown-chat-rke2-api-cb-${BUILD_ID}"
+        firewall_rule_name="yourown-chat-rke2-api-cb-${pipeline_build_id}"
 
         cloudbuild_ip="$(curl -fsSL https://api.ipify.org)"
         gcloud compute firewall-rules create "${firewall_rule_name}" \
@@ -260,7 +260,7 @@ steps:
           --rules=tcp:6443 \
           --source-ranges="${cloudbuild_ip}/32" \
           --target-tags="${RKE2_API_TARGET_TAG}" \
-          --description="Temporary Cloud Build access to yourown-chat RKE2 API for ${BUILD_ID}"
+          --description="Temporary Cloud Build access to yourown-chat RKE2 API for ${pipeline_build_id}"
 
         gcloud secrets versions access latest \
           --project="${TARGET_PROJECT_ID}" \
