@@ -332,11 +332,16 @@ steps:
           fi
         } >"${clouddeploy_source_dir}/clouddeploy-release.env"
 
-        gcloud deploy releases create "${clouddeploy_release_name}" \
-          --project="${TARGET_PROJECT_ID}" \
-          --region="${CLOUDDEPLOY_REGION}" \
-          --delivery-pipeline="${CLOUDDEPLOY_DELIVERY_PIPELINE}" \
+        clouddeploy_release_args=(
+          --project="${TARGET_PROJECT_ID}"
+          --region="${CLOUDDEPLOY_REGION}"
+          --delivery-pipeline="${CLOUDDEPLOY_DELIVERY_PIPELINE}"
           --source="${clouddeploy_source_dir}"
+        )
+        if [[ -s "${pipeline_root_post_id_file}" ]]; then
+          clouddeploy_release_args+=(--annotations="mattermost-workflow-root-post-id=$(<"${pipeline_root_post_id_file}")")
+        fi
+        gcloud deploy releases create "${clouddeploy_release_name}" "${clouddeploy_release_args[@]}"
 
         clouddeploy_release_url="https://console.cloud.google.com/deploy/delivery-pipelines/${CLOUDDEPLOY_REGION}/${CLOUDDEPLOY_DELIVERY_PIPELINE}/releases/${clouddeploy_release_name}?project=${TARGET_PROJECT_ID}"
         printf -v pipeline_artifacts '%s\n\nCloud Deploy: [%s](%s)' \
