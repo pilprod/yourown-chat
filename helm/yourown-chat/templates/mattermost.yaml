@@ -49,7 +49,7 @@ spec:
   replicas: 1
   scheduling:
     resources:
-{{ toYaml $root.Values.mattermost.resources | indent 6 }}
+{{ toYaml ($instance.resources | default $root.Values.mattermost.resources) | indent 6 }}
     affinity: {}
 {{- end }}
 {{- end }}
