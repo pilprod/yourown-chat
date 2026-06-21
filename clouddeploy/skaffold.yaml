@@ -13,12 +13,39 @@ customActions:
           - -ceu
           - |
             apk add --no-cache python3
-            test -f clouddeploy-release.env
-            . ./clouddeploy-release.env
-
             output_path="${CLOUD_DEPLOY_OUTPUT_GCS_PATH%/}"
             manifest_uri="${output_path}/manifest.yaml"
             results_uri="${output_path}/results.json"
+            source_uri="${output_path}/source.tgz"
+
+            upload_failed_render() {
+              exit_code="$?"
+              if [ "${exit_code}" -ne 0 ]; then
+                RENDER_FAILURE_MESSAGE="render container exited with ${exit_code}" python3 - <<'PY' >/tmp/results.json || true
+            import json
+            import os
+
+            print(json.dumps({
+                "resultStatus": "FAILED",
+                "failureMessage": os.environ["RENDER_FAILURE_MESSAGE"],
+                "metadata": {
+                    "custom-target-source": "yourown-chat-rke2-helm",
+                },
+            }))
+            PY
+                gcloud storage cp /tmp/results.json "${results_uri}" || true
+              fi
+              exit "${exit_code}"
+            }
+            trap upload_failed_render EXIT
+
+            gcloud storage cp "${CLOUD_DEPLOY_INPUT_GCS_PATH}" /tmp/source.tgz
+            mkdir -p /workspace/source
+            tar -xzf /tmp/source.tgz -C /workspace/source
+            cd /workspace/source
+
+            test -f clouddeploy-release.env
+            . ./clouddeploy-release.env
 
             cat >/tmp/manifest.yaml <<EOF
             apiVersion: clouddeploy.yourown.chat/v1
@@ -32,6 +59,7 @@ customActions:
                 dev: ${DEV_IMAGE_WITH_DIGEST}
             EOF
 
+            gcloud storage cp /tmp/source.tgz "${source_uri}"
             gcloud storage cp /tmp/manifest.yaml "${manifest_uri}"
             MANIFEST_URI="${manifest_uri}" python3 - <<'PY' >/tmp/results.json
             import json
@@ -47,6 +75,7 @@ customActions:
             PY
             gcloud storage cp /tmp/results.json "${results_uri}"
             echo "Uploaded Cloud Deploy render results to ${results_uri}"
+            trap - EXIT
   - name: deploy-yourown-chat
     containers:
       - name: deploy
@@ -57,4 +86,8 @@ customActions:
           - -ceu
           - |
             apk add --no-cache bash ca-certificates curl helm kubectl make python3
+            gcloud storage cp "${CLOUD_DEPLOY_INPUT_GCS_PATH%/}/source.tgz" /tmp/source.tgz
+            mkdir -p /workspace/source
+            tar -xzf /tmp/source.tgz -C /workspace/source
+            cd /workspace/source
             exec /bin/bash clouddeploy/deploy-yourown-chat.sh
