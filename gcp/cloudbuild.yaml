@@ -1,5 +1,5 @@
 steps:
-  - name: gcr.io/google.com/cloudsdktool/google-cloud-cli:slim
+  - name: gcr.io/google.com/cloudsdktool/google-cloud-cli:alpine
     id: deploy-to-rke2
     env:
       - PIPELINE_NAME=${_PIPELINE_NAME}
@@ -26,17 +26,7 @@ steps:
       #!/usr/bin/env bash
       set -euo pipefail
 
-        apt-get update
-        apt-get install -y ca-certificates curl gnupg make python3
-
-        install_helm() {
-          install -d -m 0755 /etc/apt/keyrings
-          curl -fsSL https://baltocdn.com/helm/signing.asc | gpg --dearmor -o /etc/apt/keyrings/helm.gpg
-          chmod 0644 /etc/apt/keyrings/helm.gpg
-          printf 'deb [arch=%s signed-by=/etc/apt/keyrings/helm.gpg] https://baltocdn.com/helm/stable/debian/ all main\n' "$(dpkg --print-architecture)" >/etc/apt/sources.list.d/helm-stable-debian.list
-          apt-get update
-          apt-get install -y helm
-        }
+        apk add --no-cache bash ca-certificates curl helm kubectl make python3
 
         pipeline_started_at="$(date -u +%s)"
         pipeline_tag="${PIPELINE_TAG:-manual-or-untagged}"
@@ -255,12 +245,6 @@ steps:
         trap notify_done EXIT
         notify_mattermost "started"
         exec > >(tee -a "${pipeline_log}") 2>&1
-
-        curl -fsSL -o /usr/local/bin/kubectl \
-          "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-        chmod +x /usr/local/bin/kubectl
-
-        install_helm
 
         export TAG_NAME="${PIPELINE_TAG:-}"
         export SHORT_SHA="${PIPELINE_SHORT_SHA:-dev}"

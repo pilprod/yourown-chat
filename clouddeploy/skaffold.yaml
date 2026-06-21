@@ -6,7 +6,7 @@ customActions:
   - name: render-yourown-chat
     containers:
       - name: render
-        image: gcr.io/google.com/cloudsdktool/google-cloud-cli:slim
+        image: gcr.io/google.com/cloudsdktool/google-cloud-cli:alpine
         command:
           - /bin/bash
         args:
@@ -17,7 +17,7 @@ customActions:
   - name: deploy-yourown-chat
     containers:
       - name: deploy
-        image: gcr.io/google.com/cloudsdktool/google-cloud-cli:slim
+        image: gcr.io/google.com/cloudsdktool/google-cloud-cli:alpine
         command:
           - /bin/bash
         args:
