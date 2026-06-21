@@ -13,7 +13,7 @@ deploy_target="${CLOUD_DEPLOY_TARGET:-yourown-chat-rke2}"
 deploy_region="${CLOUD_DEPLOY_LOCATION:-southamerica-east1}"
 deploy_pipeline="${CLOUD_DEPLOY_DELIVERY_PIPELINE:-yourown-chat}"
 deploy_log="/tmp/mattermost-deploy-${deploy_rollout}.log"
-deploy_root_post_id_file="/tmp/mattermost-deploy-root-post-id"
+workflow_root_post_id="${MATTERMOST_WORKFLOW_ROOT_POST_ID:-}"
 
 access_secret_version() {
   local version_name="$1"
@@ -67,6 +67,33 @@ mattermost_post() {
   fi
 }
 
+docker_artifact_link() {
+  local image_ref="$1"
+  local display_label="$2"
+  local image_digest="${3:-}"
+  local artifact_repo="${image_ref%:*}"
+  local artifact_tag="${image_ref##*:}"
+  local artifact_host="${artifact_repo%%/*}"
+  local artifact_path="${artifact_repo#*/}"
+  local artifact_location="${artifact_host%-docker.pkg.dev}"
+  local artifact_project_id="${artifact_path%%/*}"
+  local artifact_path_remainder="${artifact_path#*/}"
+  local artifact_registry_repo="${artifact_path_remainder%%/*}"
+  local artifact_name="${artifact_path_remainder#*/}"
+  local artifact_selector="${artifact_tag}"
+  if [[ -n "${image_digest}" && "${image_digest}" != "unknown-digest" ]]; then
+    artifact_selector="${image_digest}"
+  fi
+  local artifact_url="https://console.cloud.google.com/artifacts/docker/${artifact_project_id}/${artifact_location}/${artifact_registry_repo}/${artifact_name}/${artifact_selector}?project=${artifact_project_id}"
+  printf '[%s](%s)' "${display_label}" "${artifact_url}"
+}
+
+helm_chart_link() {
+  local chart_version="$1"
+  local chart_registry_path="${CHART_REPOSITORY#oci://}"
+  docker_artifact_link "${chart_registry_path}/yourown-chat:${chart_version}" "yourown-chat:${chart_version}"
+}
+
 notify_deploy() {
   local state="$1"
   local exit_code="${2:-}"
@@ -91,7 +118,7 @@ notify_deploy() {
   local release_url="https://console.cloud.google.com/deploy/delivery-pipelines/${deploy_region}/${deploy_pipeline}/releases/${deploy_release}?project=${TARGET_PROJECT_ID}"
   local rollout_url="${release_url}/rollouts/${deploy_rollout}"
   local text
-  printf -v text '%s Deploy %s: **%s**\n\nRelease: [%s](%s)\nRollout: [%s](%s)\nTarget: `%s`\n\nImages:\n`mattermost:%s` `%s`\n`mattermost:%s` `%s`\n\nHelm Chart: `yourown-chat:%s`' \
+  printf -v text '%s Deploy %s: **%s**\n\nRelease: [%s](%s)\nRollout: [%s](%s)\nTarget: `%s`' \
     "${icon}" \
     "${state_label}" \
     "${deploy_name}" \
@@ -99,31 +126,28 @@ notify_deploy() {
     "${release_url}" \
     "${deploy_rollout}" \
     "${rollout_url}" \
-    "${deploy_target}" \
-    "${PROD_IMAGE_TAG:-${IMAGE_TAG}}" \
-    "${PROD_IMAGE_DIGEST:-unknown-digest}" \
-    "${DEV_IMAGE_TAG}" \
-    "${DEV_IMAGE_DIGEST:-unknown-digest}" \
-    "${CHART_VERSION}"
+    "${deploy_target}"
 
   if [[ -n "${exit_code}" ]]; then
+    local prod_image_link
+    local dev_image_link
+    local chart_link
+    prod_image_link="$(docker_artifact_link "${IMAGE_REPO}:${PROD_IMAGE_TAG:-${IMAGE_TAG}}" "mattermost:${PROD_IMAGE_TAG:-${IMAGE_TAG}}" "${PROD_IMAGE_DIGEST:-}")"
+    dev_image_link="$(docker_artifact_link "${IMAGE_REPO}:${DEV_IMAGE_TAG}" "mattermost:${DEV_IMAGE_TAG}" "${DEV_IMAGE_DIGEST:-}")"
+    chart_link="$(helm_chart_link "${CHART_VERSION}")"
+    printf -v text '%s\n\nImages:\n%s\n%s\n\nHelm Chart: %s' \
+      "${text}" \
+      "${prod_image_link}" \
+      "${dev_image_link}" \
+      "${chart_link}"
     printf -v text '%s\nDuration: `%ss`  ' "${text}" "${duration_seconds}"
   fi
 
-  local root_post_id=""
-  if [[ -f "${deploy_root_post_id_file}" ]]; then
-    root_post_id="$(cat "${deploy_root_post_id_file}")"
+  local attach_log="false"
+  if [[ -n "${exit_code}" ]]; then
+    attach_log="true"
   fi
-
-  local post_id
-  if [[ "${state}" == "started" ]]; then
-    post_id="$(mattermost_post "${text}" "" "false")"
-    if [[ -n "${post_id}" ]]; then
-      printf '%s' "${post_id}" >"${deploy_root_post_id_file}"
-    fi
-  else
-    mattermost_post "${text}" "${root_post_id}" "true" >/dev/null || true
-  fi
+  mattermost_post "${text}" "${workflow_root_post_id}" "${attach_log}" >/dev/null || true
 }
 
 firewall_suffix="$(printf '%s' "${CLOUD_DEPLOY_ROLLOUT:-${CLOUD_DEPLOY_RELEASE:-manual}}" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9-' '-' | sed 's/^-//; s/-$//' | cut -c1-32)"

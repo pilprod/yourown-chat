@@ -40,6 +40,7 @@ steps:
         pipeline_project_id="${PIPELINE_PROJECT_ID:-${TARGET_PROJECT_ID}}"
         pipeline_cloudbuild_region="${PIPELINE_CLOUDBUILD_REGION:-southamerica-east1}"
         pipeline_name="${PIPELINE_NAME:-Cloud Build}"
+        workflow_name="yourown-chat deploy"
         if [[ -z "${pipeline_project}" || "${pipeline_project}" == "${pipeline_github_repo}" ]]; then
           pipeline_project="${pipeline_name}"
         fi
@@ -166,6 +167,36 @@ steps:
           fi
         }
 
+        start_workflow() {
+          local tag_text="\`${pipeline_tag}\`"
+          if [[ -n "${pipeline_github_repo}" && "${pipeline_tag}" != "manual-or-untagged" ]]; then
+            tag_text="[${pipeline_tag}](${pipeline_github_repo}/tree/${pipeline_tag})"
+          fi
+          local commit_text="\`${pipeline_short_sha}\`"
+          if [[ -n "${pipeline_github_repo}" && "${pipeline_short_sha}" != "unknown-sha" ]]; then
+            commit_text="[${pipeline_short_sha}](${pipeline_github_repo}/commit/${pipeline_short_sha})"
+          fi
+          local project_text="${pipeline_project}"
+          if [[ -n "${pipeline_github_repo}" ]]; then
+            project_text="[${pipeline_project}](${pipeline_github_repo})"
+          fi
+
+          local text
+          printf -v text '🚀 Workflow start for: **%s**\n\nProject: %s\nTag: %s\nCommit: %s\nBuild: [%s](%s)' \
+            "${workflow_name}" \
+            "${project_text}" \
+            "${tag_text}" \
+            "${commit_text}" \
+            "${pipeline_build_id}" \
+            "${pipeline_build_url}"
+
+          local post_id
+          post_id="$(mattermost_post "${text}" "" "false")"
+          if [[ -n "${post_id}" ]]; then
+            printf '%s' "${post_id}" >"${pipeline_root_post_id_file}"
+          fi
+        }
+
         notify_mattermost() {
           local state="$1"
           local exit_code="${2:-}"
@@ -221,15 +252,11 @@ steps:
             root_post_id="$(cat "${pipeline_root_post_id_file}")"
           fi
 
-          local post_id
-          if [[ "${state}" == "started" ]]; then
-            post_id="$(mattermost_post "${text}" "" "false")"
-            if [[ -n "${post_id}" ]]; then
-              printf '%s' "${post_id}" >"${pipeline_root_post_id_file}"
-            fi
-          else
-            mattermost_post "${text}" "${root_post_id}" "true" >/dev/null || true
+          local attach_log="false"
+          if [[ -n "${exit_code}" ]]; then
+            attach_log="true"
           fi
+          mattermost_post "${text}" "${root_post_id}" "${attach_log}" >/dev/null || true
         }
 
         notify_done() {
@@ -246,6 +273,7 @@ steps:
         }
 
         trap notify_done EXIT
+        start_workflow
         notify_mattermost "started"
         exec > >(tee -a "${pipeline_log}") 2>&1
 
@@ -299,6 +327,9 @@ steps:
           printf 'MATTERMOST_CICD_TOKEN_ID_SECRET_VERSION=%s\n' "${MATTERMOST_CICD_TOKEN_ID_SECRET_VERSION}"
           printf 'MATTERMOST_CICD_TOKEN_SECRET_VERSION=%s\n' "${MATTERMOST_CICD_TOKEN_SECRET_VERSION}"
           printf 'MATTERMOST_CICD_CHANNEL_ID_SECRET_VERSION=%s\n' "${MATTERMOST_CICD_CHANNEL_ID_SECRET_VERSION}"
+          if [[ -s "${pipeline_root_post_id_file}" ]]; then
+            printf 'MATTERMOST_WORKFLOW_ROOT_POST_ID=%s\n' "$(<"${pipeline_root_post_id_file}")"
+          fi
         } >"${clouddeploy_source_dir}/clouddeploy-release.env"
 
         gcloud deploy releases create "${clouddeploy_release_name}" \
