@@ -12,6 +12,7 @@ customActions:
         args:
           - -ceu
           - |
+            apk add --no-cache python3
             test -f clouddeploy-release.env
             . ./clouddeploy-release.env
 
