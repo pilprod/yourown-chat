@@ -63,7 +63,17 @@ deploy:
 	@kubectl -n mattermost wait externalsecret/s3-credentials --for=condition=Ready --timeout=180s
 	@kubectl -n mattermost wait externalsecret/postgres-connection --for=condition=Ready --timeout=180s
 	@kubectl -n mattermost rollout status statefulset/mattermost-dev-postgres --timeout=180s
-	@kubectl -n mattermost rollout status deployment/yourown-chat --timeout=300s
-	@kubectl -n mattermost rollout status deployment/yourown-chat-dev --timeout=300s
+	@set -euo pipefail; for mattermost_name in yourown-chat yourown-chat-dev; do \
+		echo "Waiting for Mattermost $${mattermost_name} to become ready"; \
+		for attempt in {1..60}; do \
+			state="$$(kubectl -n mattermost get mattermost "$${mattermost_name}" -o jsonpath='{.status.state}' 2>/dev/null || true)"; \
+			error="$$(kubectl -n mattermost get mattermost "$${mattermost_name}" -o jsonpath='{.status.error}' 2>/dev/null || true)"; \
+			if [[ "$${state}" == "ready" || "$${state}" == "stable" ]]; then echo "Mattermost $${mattermost_name} is $${state}"; break; fi; \
+			if [[ -n "$${error}" ]]; then echo "Mattermost $${mattermost_name} error: $${error}" >&2; fi; \
+			if [[ "$${attempt}" -eq 60 ]]; then echo "Timed out waiting for Mattermost $${mattermost_name}; current state: $${state:-unknown}" >&2; kubectl -n mattermost get mattermost "$${mattermost_name}" -o wide || true; kubectl -n mattermost describe mattermost "$${mattermost_name}" || true; exit 1; fi; \
+			echo "Waiting for Mattermost $${mattermost_name} ($${attempt}/60), current state: $${state:-unknown}"; \
+			sleep 5; \
+		done; \
+	done
 	@if kubectl -n mattermost get externalsecret/matterbridge >/dev/null 2>&1; then if ! kubectl -n mattermost wait externalsecret/matterbridge --for=condition=Ready --timeout=30s; then echo "matterbridge ExternalSecret is not ready yet; create the matterbridge-* GCP secrets to start the bridge."; fi; else echo "matterbridge is disabled; skipping matterbridge ExternalSecret wait."; fi
 	@kubectl -n mattermost get mattermost,pods,svc,endpoints || true
