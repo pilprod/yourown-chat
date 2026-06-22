@@ -62,6 +62,24 @@ deploy:
 	@set -euo pipefail; chart_version="$${CHART_VERSION:-$${TAG_NAME:-}}"; image_args=(); if [[ -n "$${IMAGE_TAG:-}" ]]; then image_args+=(--set-string "instances.prod.imageTag=$${IMAGE_TAG}"); fi; if [[ -n "$${DEV_IMAGE_TAG:-}" ]]; then image_args+=(--set-string "instances.dev.imageTag=$${DEV_IMAGE_TAG}"); fi; if [[ -n "$${PROD_IMAGE_DIGEST:-}" ]]; then image_args+=(--set-string "instances.prod.imageDigest=$${PROD_IMAGE_DIGEST}"); fi; if [[ -n "$${DEV_IMAGE_DIGEST:-}" ]]; then image_args+=(--set-string "instances.dev.imageDigest=$${DEV_IMAGE_DIGEST}"); fi; helm upgrade -i yourown-chat -n mattermost --create-namespace "$${CHART_REPOSITORY}/$(CHART_NAME)" --version "$${chart_version}" "$${image_args[@]}" --wait
 	@kubectl -n mattermost wait externalsecret/s3-credentials --for=condition=Ready --timeout=180s
 	@kubectl -n mattermost wait externalsecret/postgres-connection --for=condition=Ready --timeout=180s
+	@set -euo pipefail; for secret_check in \
+		"s3-credentials|accesskey secretkey|externalsecret/s3-credentials" \
+		"postgres-connection|DB_CONNECTION_STRING MM_SQLSETTINGS_DATASOURCE|externalsecret/postgres-connection"; do \
+		IFS='|' read -r secret_name required_keys source_ref <<<"$${secret_check}"; \
+		echo "Waiting for Secret $${secret_name}"; \
+		for attempt in {1..60}; do \
+			missing_keys=(); \
+			if kubectl -n mattermost get secret "$${secret_name}" >/dev/null 2>&1; then \
+				for key in $${required_keys}; do \
+					if [[ -z "$$(kubectl -n mattermost get secret "$${secret_name}" -o jsonpath="{.data.$${key}}" 2>/dev/null || true)" ]]; then missing_keys+=("$${key}"); fi; \
+				done; \
+				if [[ "$${#missing_keys[@]}" -eq 0 ]]; then echo "Secret $${secret_name} is ready"; break; fi; \
+			fi; \
+			if [[ "$${attempt}" -eq 60 ]]; then echo "Timed out waiting for Secret $${secret_name}; missing keys: $${missing_keys[*]:-all}" >&2; kubectl -n mattermost describe "$${source_ref}" >&2 || true; kubectl -n mattermost get secret "$${secret_name}" -o yaml >&2 || true; exit 1; fi; \
+			echo "Waiting for Secret $${secret_name} ($${attempt}/60)"; \
+			sleep 5; \
+		done; \
+	done
 	@kubectl -n mattermost rollout status statefulset/mattermost-dev-postgres --timeout=180s
 	@set -euo pipefail; for mattermost_name in yourown-chat yourown-chat-dev; do \
 		echo "Waiting for Mattermost $${mattermost_name} to become ready"; \
