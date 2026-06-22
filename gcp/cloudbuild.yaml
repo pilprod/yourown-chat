@@ -19,8 +19,8 @@ steps:
       - CLOUDDEPLOY_DELIVERY_PIPELINE=${_CLOUDDEPLOY_DELIVERY_PIPELINE}
       - CLOUDDEPLOY_REGION=${_CLOUDDEPLOY_REGION}
       - KUBECONFIG_SECRET=${_KUBECONFIG_SECRET}
-      - RKE2_API_FIREWALL_NETWORK=${_RKE2_API_FIREWALL_NETWORK}
-      - RKE2_API_TARGET_TAG=${_RKE2_API_TARGET_TAG}
+      - RKE2_API_TUNNEL_INSTANCE=${_RKE2_API_TUNNEL_INSTANCE}
+      - RKE2_API_TUNNEL_ZONE=${_RKE2_API_TUNNEL_ZONE}
     script: |
       #!/usr/bin/env bash
       set -euo pipefail
@@ -256,8 +256,8 @@ steps:
           printf 'PROD_IMAGE_WITH_DIGEST=%s@%s\n' "${IMAGE_REPO}" "${pipeline_image_digest}"
           printf 'DEV_IMAGE_WITH_DIGEST=%s@%s\n' "${IMAGE_REPO}" "${pipeline_dev_image_digest}"
           printf 'KUBECONFIG_SECRET=%s\n' "${KUBECONFIG_SECRET}"
-          printf 'RKE2_API_FIREWALL_NETWORK=%s\n' "${RKE2_API_FIREWALL_NETWORK}"
-          printf 'RKE2_API_TARGET_TAG=%s\n' "${RKE2_API_TARGET_TAG}"
+          printf 'RKE2_API_TUNNEL_INSTANCE=%s\n' "${RKE2_API_TUNNEL_INSTANCE}"
+          printf 'RKE2_API_TUNNEL_ZONE=%s\n' "${RKE2_API_TUNNEL_ZONE}"
           printf 'CICD_WORKFLOW_ID=%q\n' "${pipeline_workflow_id}"
           printf 'CICD_WORKFLOW_NAME=%q\n' "${workflow_name}"
           printf 'CICD_PROJECT_LABEL=%q\n' "${pipeline_project}"
@@ -303,8 +303,8 @@ substitutions:
   _CLOUDDEPLOY_DELIVERY_PIPELINE: yourown-chat
   _CLOUDDEPLOY_REGION: southamerica-east1
   _KUBECONFIG_SECRET: mattermost-rke2-kubeconfig
-  _RKE2_API_FIREWALL_NETWORK: mattermost-southamerica-east1
-  _RKE2_API_TARGET_TAG: yourown-chat-rke2
+  _RKE2_API_TUNNEL_INSTANCE: yourown-chat-rke2-southamerica-east1
+  _RKE2_API_TUNNEL_ZONE: southamerica-east1-a
   _IMAGE_TRIGGER_TAG: ''
   _IMAGE_TRIGGER_PROJECT: ''
   _IMAGE_TRIGGER_REPO: ''

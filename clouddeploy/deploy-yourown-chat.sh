@@ -94,17 +94,14 @@ emit_deploy_report() {
     python3 -c 'import json, os; payload = {"workflow_id": os.environ["CICD_REPORT_WORKFLOW_ID"], "workflow_name": os.environ["CICD_REPORT_WORKFLOW_NAME"], "stage": "deploy", "state": os.environ["CICD_REPORT_STATE"], "name": os.environ["CICD_REPORT_NAME"], "project": {"label": os.environ["CICD_REPORT_PROJECT_LABEL"], "url": os.environ.get("CICD_REPORT_PROJECT_URL", "")}, "tag": {"label": os.environ["CICD_REPORT_TAG_LABEL"], "url": os.environ.get("CICD_REPORT_TAG_URL", "")}, "commit": {"label": os.environ["CICD_REPORT_COMMIT_LABEL"], "url": os.environ.get("CICD_REPORT_COMMIT_URL", "")}, "release_id": os.environ["CICD_REPORT_RELEASE"], "rollout_id": os.environ["CICD_REPORT_ROLLOUT"], "release": {"label": os.environ["CICD_REPORT_RELEASE"], "url": os.environ["CICD_REPORT_RELEASE_URL"]}, "rollout": {"label": os.environ["CICD_REPORT_ROLLOUT"], "url": os.environ["CICD_REPORT_ROLLOUT_URL"]}, "target": os.environ["CICD_REPORT_TARGET"]}; payload.update({"build_id": os.environ["CICD_REPORT_BUILD_ID"], "build": {"label": os.environ["CICD_REPORT_BUILD_ID"], "url": os.environ.get("CICD_REPORT_BUILD_URL", "")}} if os.environ.get("CICD_REPORT_BUILD_ID") else {}); payload.update({"exit_code": int(os.environ["CICD_REPORT_EXIT_CODE"])} if os.environ.get("CICD_REPORT_EXIT_CODE") else {}); payload.update({"duration_seconds": int(os.environ["CICD_REPORT_DURATION_SECONDS"])} if os.environ.get("CICD_REPORT_DURATION_SECONDS") else {}); artifacts = json.loads(os.environ.get("CICD_REPORT_ARTIFACTS_JSON") or "{}"); payload.update({"artifacts": artifacts} if artifacts else {}); print("CICD_REPORT " + json.dumps(payload, separators=(",", ":")))'
 }
 
-firewall_suffix="$(printf '%s' "${CLOUD_DEPLOY_ROLLOUT:-${CLOUD_DEPLOY_RELEASE:-manual}}" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9-' '-' | sed 's/^-//; s/-$//' | cut -c1-32)"
-if [[ -z "${firewall_suffix}" ]]; then
-  firewall_suffix="manual"
-fi
-firewall_rule_name="yourown-chat-rke2-api-cd-${firewall_suffix}"
+RKE2_API_TUNNEL_LOCAL_PORT="${RKE2_API_TUNNEL_LOCAL_PORT:-16443}"
+RKE2_API_TUNNEL_LOG="${RKE2_API_TUNNEL_LOG:-/tmp/yourown-chat-rke2-api-iap-tunnel.log}"
+RKE2_API_TUNNEL_PID=""
 
-cleanup_firewall() {
-  if [[ -n "${firewall_rule_name}" ]]; then
-    gcloud compute firewall-rules delete "${firewall_rule_name}" \
-      --project="${TARGET_PROJECT_ID}" \
-      --quiet >/dev/null 2>&1 || true
+cleanup_tunnel() {
+  if [[ -n "${RKE2_API_TUNNEL_PID}" ]] && kill -0 "${RKE2_API_TUNNEL_PID}" 2>/dev/null; then
+    kill "${RKE2_API_TUNNEL_PID}" >/dev/null 2>&1 || true
+    wait "${RKE2_API_TUNNEL_PID}" >/dev/null 2>&1 || true
   fi
 }
 
@@ -155,7 +152,7 @@ finish_deploy() {
   else
     emit_deploy_report "failed" "${exit_code}" "${duration_seconds}" || true
   fi
-  cleanup_firewall
+  cleanup_tunnel
   exit "${exit_code}"
 }
 trap finish_deploy EXIT
@@ -167,24 +164,37 @@ registry_host="${CHART_REPOSITORY#oci://}"
 registry_host="${registry_host%%/*}"
 gcloud auth print-access-token | helm registry login -u oauth2accesstoken --password-stdin "https://${registry_host}"
 
-clouddeploy_ip="$(curl -fsSL https://api.ipify.org)"
-gcloud compute firewall-rules create "${firewall_rule_name}" \
-  --project="${TARGET_PROJECT_ID}" \
-  --network="${RKE2_API_FIREWALL_NETWORK}" \
-  --direction=INGRESS \
-  --priority=900 \
-  --action=ALLOW \
-  --rules=tcp:6443 \
-  --source-ranges="${clouddeploy_ip}/32" \
-  --target-tags="${RKE2_API_TARGET_TAG}" \
-  --description="Temporary Cloud Deploy access to yourown-chat RKE2 API for ${CLOUD_DEPLOY_RELEASE:-manual}"
-
 gcloud secrets versions access latest \
   --project="${TARGET_PROJECT_ID}" \
   --secret="${KUBECONFIG_SECRET}" \
   >/tmp/kubeconfig.yaml
 
 export KUBECONFIG=/tmp/kubeconfig.yaml
+if [[ -z "${RKE2_API_TUNNEL_INSTANCE:-}" || -z "${RKE2_API_TUNNEL_ZONE:-}" ]]; then
+  echo "RKE2_API_TUNNEL_INSTANCE and RKE2_API_TUNNEL_ZONE are required" >&2
+  exit 1
+fi
+
+: >"${RKE2_API_TUNNEL_LOG}"
+gcloud compute ssh "${RKE2_API_TUNNEL_INSTANCE}" \
+  --project="${TARGET_PROJECT_ID}" \
+  --zone="${RKE2_API_TUNNEL_ZONE}" \
+  --tunnel-through-iap \
+  --quiet \
+  --ssh-flag="-N" \
+  --ssh-flag="-o ExitOnForwardFailure=yes" \
+  --ssh-flag="-o ServerAliveInterval=15" \
+  --ssh-flag="-o ServerAliveCountMax=4" \
+  --ssh-flag="-L 127.0.0.1:${RKE2_API_TUNNEL_LOCAL_PORT}:127.0.0.1:6443" \
+  >"${RKE2_API_TUNNEL_LOG}" 2>&1 </dev/null &
+RKE2_API_TUNNEL_PID="$!"
+
+cluster_name="$(kubectl config view --raw -o jsonpath='{.contexts[0].context.cluster}')"
+kubectl config set-cluster "${cluster_name}" --server="https://127.0.0.1:${RKE2_API_TUNNEL_LOCAL_PORT}" >/dev/null
+kubectl config unset "clusters.${cluster_name}.certificate-authority" >/dev/null 2>&1 || true
+kubectl config unset "clusters.${cluster_name}.certificate-authority-data" >/dev/null 2>&1 || true
+kubectl config set-cluster "${cluster_name}" --insecure-skip-tls-verify=true >/dev/null
+
 export CHART_REPOSITORY
 export CHART_VERSION
 export IMAGE_REPO
