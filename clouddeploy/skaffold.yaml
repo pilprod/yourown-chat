@@ -172,7 +172,7 @@ customActions:
         args:
           - -ceu
           - |
-            apk add --no-cache bash ca-certificates curl helm kubectl make python3
+            apk add --no-cache bash ca-certificates curl helm kubectl make openssh-client python3
             gcloud storage cp "${CLOUD_DEPLOY_INPUT_GCS_PATH%/}/source.tgz" /tmp/source.tgz
             mkdir -p /workspace/source
             tar -xzf /tmp/source.tgz -C /workspace/source

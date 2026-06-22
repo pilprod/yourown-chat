@@ -3,7 +3,7 @@ set -euo pipefail
 
 source clouddeploy-release.env
 
-apk add --no-cache bash ca-certificates curl helm kubectl make python3
+apk add --no-cache bash ca-certificates curl helm kubectl make openssh-client python3
 
 deploy_started_at="$(date -u +%s)"
 deploy_name="yourown-chat deploy"
@@ -105,6 +105,63 @@ cleanup_tunnel() {
   fi
 }
 
+require_ssh_client() {
+  if ! command -v ssh >/dev/null 2>&1; then
+    echo "ssh client is required for the RKE2 IAP tunnel but was not found in PATH." >&2
+    return 1
+  fi
+}
+
+show_tunnel_log() {
+  if [[ -s "${RKE2_API_TUNNEL_LOG}" ]]; then
+    sed 's/^/[tunnel] /' "${RKE2_API_TUNNEL_LOG}" >&2 || true
+  else
+    echo "[tunnel] tunnel log is empty" >&2
+  fi
+}
+
+wait_for_rke2_api() {
+  local attempts="${RKE2_API_READY_ATTEMPTS:-60}"
+  local interval_seconds="${RKE2_API_READY_INTERVAL_SECONDS:-5}"
+  local request_timeout="${RKE2_API_READY_REQUEST_TIMEOUT:-10s}"
+  local server_url=""
+  local last_error
+  last_error="$(mktemp)"
+
+  server_url="$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}' 2>/dev/null || true)"
+  if [[ -n "${server_url}" ]]; then
+    echo "Waiting for RKE2 API at ${server_url}"
+  fi
+
+  for attempt in $(seq 1 "${attempts}"); do
+    if [[ -n "${RKE2_API_TUNNEL_PID}" ]] && ! kill -0 "${RKE2_API_TUNNEL_PID}" 2>/dev/null; then
+      echo "RKE2 API IAP tunnel exited before the API became ready." >&2
+      show_tunnel_log
+      rm -f "${last_error}"
+      return 1
+    fi
+
+    if kubectl --request-timeout="${request_timeout}" get --raw=/readyz >/dev/null 2>"${last_error}"; then
+      rm -f "${last_error}"
+      return 0
+    fi
+
+    echo "Waiting for RKE2 API (${attempt}/${attempts})..."
+    if [[ "${attempt}" == "1" || "${attempt}" == "${attempts}" || $((attempt % 12)) -eq 0 ]]; then
+      sed 's/^/[kubectl] /' "${last_error}" >&2 || true
+    fi
+    sleep "${interval_seconds}"
+  done
+
+  echo "Timed out waiting for RKE2 API." >&2
+  echo "Last kubectl error:" >&2
+  sed 's/^/[kubectl] /' "${last_error}" >&2 || true
+  echo "Tunnel log:" >&2
+  show_tunnel_log
+  rm -f "${last_error}"
+  return 1
+}
+
 deploy_result_uploaded=false
 upload_deploy_result() {
   local result_status="$1"
@@ -174,8 +231,10 @@ if [[ -z "${RKE2_API_TUNNEL_INSTANCE:-}" || -z "${RKE2_API_TUNNEL_ZONE:-}" ]]; t
   echo "RKE2_API_TUNNEL_INSTANCE and RKE2_API_TUNNEL_ZONE are required" >&2
   exit 1
 fi
+require_ssh_client
 
 : >"${RKE2_API_TUNNEL_LOG}"
+echo "Opening RKE2 API IAP tunnel: instance=${RKE2_API_TUNNEL_INSTANCE}, zone=${RKE2_API_TUNNEL_ZONE}, local=https://127.0.0.1:${RKE2_API_TUNNEL_LOCAL_PORT}"
 gcloud compute ssh "${RKE2_API_TUNNEL_INSTANCE}" \
   --project="${TARGET_PROJECT_ID}" \
   --zone="${RKE2_API_TUNNEL_ZONE}" \
@@ -194,6 +253,8 @@ kubectl config set-cluster "${cluster_name}" --server="https://127.0.0.1:${RKE2_
 kubectl config unset "clusters.${cluster_name}.certificate-authority" >/dev/null 2>&1 || true
 kubectl config unset "clusters.${cluster_name}.certificate-authority-data" >/dev/null 2>&1 || true
 kubectl config set-cluster "${cluster_name}" --insecure-skip-tls-verify=true >/dev/null
+export GODEBUG="${GODEBUG:+${GODEBUG},}http2client=0"
+wait_for_rke2_api
 
 export CHART_REPOSITORY
 export CHART_VERSION
