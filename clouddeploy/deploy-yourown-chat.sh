@@ -120,6 +120,32 @@ show_tunnel_log() {
   fi
 }
 
+open_rke2_api_tunnel() {
+  cleanup_tunnel
+  : >"${RKE2_API_TUNNEL_LOG}"
+  echo "Opening RKE2 API IAP tunnel: instance=${RKE2_API_TUNNEL_INSTANCE}, zone=${RKE2_API_TUNNEL_ZONE}, local=https://127.0.0.1:${RKE2_API_TUNNEL_LOCAL_PORT}"
+  gcloud compute ssh "${RKE2_API_TUNNEL_INSTANCE}" \
+    --project="${TARGET_PROJECT_ID}" \
+    --zone="${RKE2_API_TUNNEL_ZONE}" \
+    --tunnel-through-iap \
+    --quiet \
+    --ssh-flag="-N" \
+    --ssh-flag="-o ExitOnForwardFailure=yes" \
+    --ssh-flag="-o ServerAliveInterval=15" \
+    --ssh-flag="-o ServerAliveCountMax=4" \
+    --ssh-flag="-L 127.0.0.1:${RKE2_API_TUNNEL_LOCAL_PORT}:127.0.0.1:6443" \
+    >"${RKE2_API_TUNNEL_LOG}" 2>&1 </dev/null &
+  RKE2_API_TUNNEL_PID="$!"
+}
+
+reopen_rke2_api_tunnel_if_needed() {
+  if [[ -n "${RKE2_API_TUNNEL_PID}" ]] && kill -0 "${RKE2_API_TUNNEL_PID}" 2>/dev/null; then
+    return 0
+  fi
+  echo "RKE2 API IAP tunnel is not running; reopening it." >&2
+  open_rke2_api_tunnel
+}
+
 wait_for_rke2_api() {
   local attempts="${RKE2_API_READY_ATTEMPTS:-60}"
   local interval_seconds="${RKE2_API_READY_INTERVAL_SECONDS:-5}"
@@ -135,10 +161,9 @@ wait_for_rke2_api() {
 
   for attempt in $(seq 1 "${attempts}"); do
     if [[ -n "${RKE2_API_TUNNEL_PID}" ]] && ! kill -0 "${RKE2_API_TUNNEL_PID}" 2>/dev/null; then
-      echo "RKE2 API IAP tunnel exited before the API became ready." >&2
+      echo "RKE2 API IAP tunnel exited before the API became ready; reopening it." >&2
       show_tunnel_log
-      rm -f "${last_error}"
-      return 1
+      reopen_rke2_api_tunnel_if_needed || true
     fi
 
     if kubectl --request-timeout="${request_timeout}" get --raw=/readyz >/dev/null 2>"${last_error}"; then
@@ -168,9 +193,9 @@ run_make_deploy_with_retry() {
 
   for attempt in $(seq 1 "${attempts}"); do
     if [[ -n "${RKE2_API_TUNNEL_PID}" ]] && ! kill -0 "${RKE2_API_TUNNEL_PID}" 2>/dev/null; then
-      echo "RKE2 API IAP tunnel exited before deploy attempt ${attempt}." >&2
+      echo "RKE2 API IAP tunnel exited before deploy attempt ${attempt}; reopening it." >&2
       show_tunnel_log
-      return 1
+      reopen_rke2_api_tunnel_if_needed || true
     fi
 
     wait_for_rke2_api
@@ -261,20 +286,7 @@ if [[ -z "${RKE2_API_TUNNEL_INSTANCE:-}" || -z "${RKE2_API_TUNNEL_ZONE:-}" ]]; t
 fi
 require_ssh_client
 
-: >"${RKE2_API_TUNNEL_LOG}"
-echo "Opening RKE2 API IAP tunnel: instance=${RKE2_API_TUNNEL_INSTANCE}, zone=${RKE2_API_TUNNEL_ZONE}, local=https://127.0.0.1:${RKE2_API_TUNNEL_LOCAL_PORT}"
-gcloud compute ssh "${RKE2_API_TUNNEL_INSTANCE}" \
-  --project="${TARGET_PROJECT_ID}" \
-  --zone="${RKE2_API_TUNNEL_ZONE}" \
-  --tunnel-through-iap \
-  --quiet \
-  --ssh-flag="-N" \
-  --ssh-flag="-o ExitOnForwardFailure=yes" \
-  --ssh-flag="-o ServerAliveInterval=15" \
-  --ssh-flag="-o ServerAliveCountMax=4" \
-  --ssh-flag="-L 127.0.0.1:${RKE2_API_TUNNEL_LOCAL_PORT}:127.0.0.1:6443" \
-  >"${RKE2_API_TUNNEL_LOG}" 2>&1 </dev/null &
-RKE2_API_TUNNEL_PID="$!"
+open_rke2_api_tunnel
 
 cluster_name="$(kubectl config view --raw -o jsonpath='{.contexts[0].context.cluster}')"
 kubectl config set-cluster "${cluster_name}" --server="https://127.0.0.1:${RKE2_API_TUNNEL_LOCAL_PORT}" >/dev/null
