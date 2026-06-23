@@ -56,7 +56,7 @@ emit_deploy_report() {
   local exit_code="${2:-}"
   local duration_seconds="${3:-}"
   local release_url="https://console.cloud.google.com/deploy/delivery-pipelines/${deploy_region}/${deploy_pipeline}/releases/${deploy_release}?project=${TARGET_PROJECT_ID}"
-  local rollout_url="${release_url}/rollouts/${deploy_rollout}"
+  local rollout_url="https://console.cloud.google.com/deploy/delivery-pipelines/${deploy_region}/${deploy_pipeline}/releases/${deploy_release}/rollouts/${deploy_rollout}?project=${TARGET_PROJECT_ID}"
   local artifacts_json=""
   if [[ -n "${exit_code}" ]]; then
     local prod_image_link
