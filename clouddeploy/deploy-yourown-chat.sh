@@ -162,6 +162,34 @@ wait_for_rke2_api() {
   return 1
 }
 
+run_make_deploy_with_retry() {
+  local attempts="${RKE2_DEPLOY_ATTEMPTS:-3}"
+  local interval_seconds="${RKE2_DEPLOY_RETRY_INTERVAL_SECONDS:-10}"
+
+  for attempt in $(seq 1 "${attempts}"); do
+    if [[ -n "${RKE2_API_TUNNEL_PID}" ]] && ! kill -0 "${RKE2_API_TUNNEL_PID}" 2>/dev/null; then
+      echo "RKE2 API IAP tunnel exited before deploy attempt ${attempt}." >&2
+      show_tunnel_log
+      return 1
+    fi
+
+    wait_for_rke2_api
+    if make deploy; then
+      return 0
+    fi
+
+    if [[ "${attempt}" == "${attempts}" ]]; then
+      echo "make deploy failed after ${attempts} attempts." >&2
+      show_tunnel_log
+      return 1
+    fi
+
+    echo "make deploy failed (${attempt}/${attempts}); waiting for RKE2 API before retry..." >&2
+    wait_for_rke2_api || true
+    sleep "${interval_seconds}"
+  done
+}
+
 deploy_result_uploaded=false
 upload_deploy_result() {
   local result_status="$1"
@@ -270,5 +298,5 @@ export DEV_IMAGE_WITH_DIGEST
 echo "Deploying prod image ${PROD_IMAGE_TAG:-${IMAGE_TAG}} (${PROD_IMAGE_DIGEST:-unknown-digest})"
 echo "Deploying dev image ${DEV_IMAGE_TAG} (${DEV_IMAGE_DIGEST:-unknown-digest})"
 
-make deploy
+run_make_deploy_with_retry
 upload_deploy_result "SUCCEEDED"
