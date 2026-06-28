@@ -137,6 +137,38 @@ externalSecrets:
     enabled: true
   matterbridge:
     enabled: true
+    # Каждая запись -> один ключ в Secret "matterbridge".
+    # secretKey  - имя переменной окружения (используется в matterbridge.toml.template).
+    # remoteKey  - имя секрета в GCP Secret Manager.
+    secrets:
+      - secretKey: MATTERBRIDGE_LOCAL_MM_TOKEN
+        remoteKey: matterbridge-local-mattermost-token
+      - secretKey: MATTERBRIDGE_LOCAL_MM_TEAM
+        remoteKey: matterbridge-local-mattermost-team
+      - secretKey: MATTERBRIDGE_LOCAL_MM_CHANNEL
+        remoteKey: matterbridge-local-mattermost-channel
+      - secretKey: MATTERBRIDGE_ROCKETCHAT_SERVER
+        remoteKey: matterbridge-rocketchat-server
+      - secretKey: MATTERBRIDGE_ROCKETCHAT_USER_ID
+        remoteKey: matterbridge-rocketchat-user-id
+      - secretKey: MATTERBRIDGE_ROCKETCHAT_TOKEN
+        remoteKey: matterbridge-rocketchat-token
+      - secretKey: MATTERBRIDGE_ROCKETCHAT_CHANNEL
+        remoteKey: matterbridge-rocketchat-channel
+      # --- External Mattermost (включить при необходимости) ---
+      # - secretKey: MATTERBRIDGE_EXTERNAL_MM_SERVER
+      #   remoteKey: matterbridge-external-mattermost-server
+      # - secretKey: MATTERBRIDGE_EXTERNAL_MM_TEAM
+      #   remoteKey: matterbridge-external-mattermost-team
+      # - secretKey: MATTERBRIDGE_EXTERNAL_MM_TOKEN
+      #   remoteKey: matterbridge-external-mattermost-token
+      # - secretKey: MATTERBRIDGE_EXTERNAL_MM_CHANNEL
+      #   remoteKey: matterbridge-external-mattermost-channel
+      # --- Telegram (включить при необходимости) ---
+      # - secretKey: MATTERBRIDGE_TELEGRAM_TOKEN
+      #   remoteKey: matterbridge-telegram-token
+      # - secretKey: MATTERBRIDGE_TELEGRAM_CHAT_ID
+      #   remoteKey: matterbridge-telegram-chat-id
 
 devPostgres:
   enabled: true
