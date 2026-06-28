@@ -136,7 +136,7 @@ externalSecrets:
   database:
     enabled: true
   matterbridge:
-    enabled: false
+    enabled: true
 
 devPostgres:
   enabled: true

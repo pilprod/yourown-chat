@@ -19,7 +19,7 @@ data:
       Team = "${MATTERBRIDGE_LOCAL_MM_TEAM}"
       Token = "${MATTERBRIDGE_LOCAL_MM_TOKEN}"
       PrefixMessagesWithNick = true
-      RemoteNickFormat = "[yourown/{NICK}] "
+      RemoteNickFormat = "[{NICK}] "
 
     [rocketchat]
       [rocketchat.external]
