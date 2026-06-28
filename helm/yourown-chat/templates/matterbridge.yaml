@@ -21,23 +21,16 @@ data:
       PrefixMessagesWithNick = true
       RemoteNickFormat = "[yourown/{NICK}] "
 
-      [mattermost.external]
-      Server = "${MATTERBRIDGE_EXTERNAL_MM_SERVER}"
-      Team = "${MATTERBRIDGE_EXTERNAL_MM_TEAM}"
-      Token = "${MATTERBRIDGE_EXTERNAL_MM_TOKEN}"
-      PrefixMessagesWithNick = true
-      RemoteNickFormat = "[mm/{NICK}] "
-
     [rocketchat]
       [rocketchat.external]
       Server = "${MATTERBRIDGE_ROCKETCHAT_SERVER}"
       Login = "${MATTERBRIDGE_ROCKETCHAT_USER_ID}"
       Token = "${MATTERBRIDGE_ROCKETCHAT_TOKEN}"
       PrefixMessagesWithNick = true
-      RemoteNickFormat = "[rocket/{NICK}] "
+      RemoteNickFormat = "[{NICK}] "
 
     [[gateway]]
-    name = "yourown-chatops"
+    name = "general"
     enable = true
 
       [[gateway.inout]]
@@ -45,16 +38,8 @@ data:
       channel = "${MATTERBRIDGE_LOCAL_MM_CHANNEL}"
 
       [[gateway.inout]]
-      account = "mattermost.external"
-      channel = "${MATTERBRIDGE_EXTERNAL_MM_CHANNEL}"
-
-      [[gateway.inout]]
       account = "rocketchat.external"
       channel = "${MATTERBRIDGE_ROCKETCHAT_CHANNEL}"
-
-      [[gateway.inout]]
-      account = "telegram.yourown"
-      channel = "${MATTERBRIDGE_TELEGRAM_CHAT_ID}"
 ---
 apiVersion: apps/v1
 kind: Deployment

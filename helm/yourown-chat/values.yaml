@@ -30,7 +30,7 @@ instances:
       - name: MM_SERVICESETTINGS_ENFORCEMULTIFACTORAUTHENTICATION
         value: "true"
       - name: MM_SERVICESETTINGS_ENABLEUSERACCESSTOKENS
-        value: "false"
+        value: "true"
       - name: MM_TEAMSETTINGS_TEAMMATENAMEDISPLAY
         value: full_name
       - name: MM_TEAMSETTINGS_LOCKTEAMMATENAMEDISPLAY
@@ -155,6 +155,6 @@ devPostgres:
       memory: 512Mi
 
 matterbridge:
-  enabled: false
+  enabled: true
   localMattermostName: yourown-chat
   image: 42wim/matterbridge:1.26.0
