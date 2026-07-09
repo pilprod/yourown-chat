@@ -151,12 +151,13 @@ app/                      # sample workload + CI/CD manifests
    foundation stack requiring org + billing permissions).
 2. In `deployments.tfdeploy.hcl` (repo root), replace every `REPLACE-ME-*`
    value in the `platform` deployment (project ID, authorized networks).
-3. Configure GCP auth in HCP Terraform — either:
-   - **OIDC dynamic credentials (recommended, keyless):** set up Workload
-     Identity Federation and uncomment/complete the `identity_token` block, or
-   - **variable set / store:** provide `GOOGLE_CREDENTIALS` via an HCP variable
-     set and wire it through `google_credentials`.
-   No credentials are ever committed.
+3. Configure **keyless** GCP auth in HCP Terraform (no credentials are ever
+   committed). Follow [`docs/BOOTSTRAP.md`](docs/BOOTSTRAP.md) to create the
+   Workload Identity Federation pool/provider and the least-privilege
+   `terraform plan`/`apply` service accounts, then set the `audience` and
+   `service_account_email` inputs in the `platform` deployment. HCP mints the
+   OIDC token via the `identity_token` block; the google provider exchanges it
+   through WIF (`external_credentials`) and impersonates the apply SA.
 4. Create the Stack in HCP Terraform pointing at the repository **root**, then
    plan and apply the `platform` deployment.
 5. Deploy the chat workloads from [`platform/`](platform/README.md): install the
@@ -225,4 +226,5 @@ These were resolved without you (you were unavailable) and are easy to change:
    the Mattermost operator version, ingress host, and matterbridge bridges.
 6. **GitLab ↔ Cloud Build** connection details (host, PAT) still needed to
    create triggers in Terraform.
-7. **Auth model:** OIDC vs variable set — confirm which HCP mechanism to wire.
+7. **Auth model:** keyless OIDC -> WIF is now wired (`external_credentials`);
+   supply the real WIF `audience` + apply-SA email per `docs/BOOTSTRAP.md`.

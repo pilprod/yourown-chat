@@ -12,29 +12,27 @@
 # stage to their own clusters once the budget is raised) is the commented
 # example at the bottom.
 #
-# AUTH (pick one, configured in HCP Terraform — nothing secret lives in git):
-#   1. OIDC dynamic credentials (recommended, keyless): uncomment identity_token,
-#      set the audience to your Workload Identity Federation provider, wire the
-#      google provider to it, and leave google_credentials unset.
-#   2. Variable set / store: uncomment the store block, point it at an HCP
-#      variable set holding GOOGLE_CREDENTIALS, pass it via google_credentials.
+# AUTH: keyless HCP Terraform Dynamic Provider Credentials -> GCP Workload
+# Identity Federation. HCP mints the OIDC JWT below (aud = hcp.workload.identity,
+# which must match the WIF provider's allowed_audiences); the google provider
+# exchanges it and impersonates a least-privilege apply SA. Nothing secret lives
+# in git. See docs/BOOTSTRAP.md for creating the pool/provider + SAs.
 #
-# Replace every REPLACE-ME-* value with real project IDs / CIDRs before use.
+# Replace every REPLACE-ME-* value (project IDs, CIDRs, WIF audience, SA email)
+# with real values before use.
 # ---------------------------------------------------------------------------
 
-# identity_token "gcp" {
-#   audience = [
-#     "//iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/POOL_ID/providers/PROVIDER_ID"
-#   ]
-# }
-
-# store "varset" "auth" {
-#   id       = "varset-REPLACE-ME"
-#   category = "terraform"
-# }
+identity_token "gcp" {
+  audience = ["hcp.workload.identity"]
+}
 
 deployment "platform" {
   inputs = {
+    # Keyless auth: OIDC JWT exchanged via WIF to impersonate the apply SA.
+    identity_token        = identity_token.gcp.jwt
+    audience              = "REPLACE-ME-WIF-AUDIENCE"   # //iam.googleapis.com/projects/<NUMBER>/locations/global/workloadIdentityPools/<POOL>/providers/<PROVIDER>
+    service_account_email = "REPLACE-ME-APPLY-SA-EMAIL" # e.g. ycs-tf-apply@<project>.iam.gserviceaccount.com
+
     project_id  = "REPLACE-ME-platform-project"
     environment = "prod"
     region      = "europe-west3" # Frankfurt, Germany
@@ -83,8 +81,6 @@ deployment "platform" {
     storage_force_destroy = false
 
     extra_labels = { cost-center = "platform" }
-
-    # google_credentials = store.auth.GOOGLE_CREDENTIALS
   }
 }
 
@@ -95,6 +91,10 @@ deployment "platform" {
 # ---------------------------------------------------------------------------
 # deployment "stage" {
 #   inputs = {
+#     identity_token        = identity_token.gcp.jwt
+#     audience              = "REPLACE-ME-WIF-AUDIENCE"
+#     service_account_email = "REPLACE-ME-APPLY-SA-EMAIL"
+#
 #     project_id  = "REPLACE-ME-stage-project"
 #     environment = "stage"
 #     region      = "europe-west3"
