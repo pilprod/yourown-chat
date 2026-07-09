@@ -1,12 +1,15 @@
 # Stacks-level provider requirements and configuration.
 # Stacks declare providers at the stack root and pass configured instances into
-# components. Auth is intentionally NOT hardcoded here — see the deployments
-# file and the README for the HCP OIDC / store options.
+# components. Authentication is keyless: the google provider uses HCP Terraform
+# Dynamic Provider Credentials (OIDC) exchanged through GCP Workload Identity
+# Federation. No static credentials or SA keys exist in this repo.
 
 required_providers {
   google = {
-    source  = "hashicorp/google"
-    version = "~> 6.0"
+    source = "hashicorp/google"
+    # external_credentials (WIF for Stacks) landed in google 6.30; pinned to a
+    # recent 6.x in .terraform.lock.hcl. Kept on 6.x to avoid a 7.x migration.
+    version = ">= 6.45.0, < 7.0.0"
   }
   random = {
     source  = "hashicorp/random"
@@ -19,9 +22,14 @@ provider "google" "this" {
     project = var.project_id
     region  = var.region
 
-    # Sourced from an HCP variable set / store (see deployments.tfdeploy.hcl).
-    # Leave null to use OIDC dynamic provider credentials configured in HCP.
-    credentials = var.google_credentials
+    # Keyless: exchange the HCP OIDC token via Workload Identity Federation and
+    # impersonate a least-privilege SA. Takes precedence over credentials/
+    # access_token/GOOGLE_CREDENTIALS; nothing secret is stored in git or state.
+    external_credentials {
+      audience              = var.audience
+      service_account_email = var.service_account_email
+      identity_token        = var.identity_token
+    }
   }
 }
 

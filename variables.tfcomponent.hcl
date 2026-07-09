@@ -42,11 +42,25 @@ variable "zone" {
   default     = "europe-west3-b"
 }
 
-variable "google_credentials" {
+# --- Keyless auth: HCP Dynamic Provider Credentials -> GCP WIF ---------------
+# No static credentials, SA keys, or JSON exist anywhere in this repo. HCP mints
+# a short-lived OIDC JWT per run (identity_token block in deployments.tfdeploy.
+# hcl); the google provider exchanges it through Workload Identity Federation
+# and impersonates a least-privilege service account. See docs/BOOTSTRAP.md.
+variable "identity_token" {
   type        = string
-  description = "Optional SA/WIF credentials JSON, injected from an HCP store. Null when using OIDC dynamic credentials."
-  default     = null
-  sensitive   = true
+  ephemeral   = true
+  description = "HCP Terraform OIDC JWT, minted per run. Ephemeral: never persisted to stack state."
+}
+
+variable "audience" {
+  type        = string
+  description = "STS audience = full WIF provider resource name (//iam.googleapis.com/projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/<POOL_ID>/providers/<PROVIDER_ID>)."
+}
+
+variable "service_account_email" {
+  type        = string
+  description = "Least-privilege GCP service account impersonated by Terraform via WIF (never Owner/Editor)."
 }
 
 # --- GKE cost / topology knobs ---------------------------------------------
