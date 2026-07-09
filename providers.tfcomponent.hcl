@@ -1,7 +1,7 @@
 # Stacks-level provider requirements and configuration.
 # Stacks declare providers at the stack root and pass configured instances into
 # components. Auth is intentionally NOT hardcoded here — see the deployments
-# file and stacks/README.md for the HCP OIDC / store options.
+# file and the README for the HCP OIDC / store options.
 
 required_providers {
   google = {

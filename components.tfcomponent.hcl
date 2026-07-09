@@ -54,7 +54,7 @@ locals {
 }
 
 component "project_services" {
-  source = "../modules/project-services"
+  source = "./infra/modules/project-services"
 
   inputs = {
     project_id    = var.project_id
@@ -68,7 +68,7 @@ component "project_services" {
 
 # --- Workload Identity service accounts (per tenant) ------------------------
 component "workload_identity_mattermost" {
-  source = "../modules/workload-identity"
+  source = "./infra/modules/workload-identity"
 
   inputs = {
     project_id   = component.project_services.project_id
@@ -84,7 +84,7 @@ component "workload_identity_mattermost" {
 }
 
 component "workload_identity_matterbridge" {
-  source = "../modules/workload-identity"
+  source = "./infra/modules/workload-identity"
 
   inputs = {
     project_id   = component.project_services.project_id
@@ -100,7 +100,7 @@ component "workload_identity_matterbridge" {
 }
 
 component "workload_identity_dev" {
-  source = "../modules/workload-identity"
+  source = "./infra/modules/workload-identity"
 
   inputs = {
     project_id   = component.project_services.project_id
@@ -117,7 +117,7 @@ component "workload_identity_dev" {
 
 # --- Additional application secrets (all credentials live in Secret Manager) -
 component "secrets" {
-  source = "../modules/secrets"
+  source = "./infra/modules/secrets"
 
   inputs = {
     project_id        = component.project_services.project_id
@@ -147,7 +147,7 @@ component "secrets" {
 
 # --- Networking -------------------------------------------------------------
 component "network" {
-  source = "../modules/network"
+  source = "./infra/modules/network"
 
   inputs = {
     project_id  = component.project_services.project_id
@@ -163,7 +163,7 @@ component "network" {
 
 # --- Object storage + Mattermost S3-compatible filestore credentials --------
 component "storage" {
-  source = "../modules/storage"
+  source = "./infra/modules/storage"
 
   inputs = {
     project_id    = component.project_services.project_id
@@ -185,7 +185,7 @@ component "storage" {
 
 # --- Container image registry ----------------------------------------------
 component "artifact_registry" {
-  source = "../modules/artifact-registry"
+  source = "./infra/modules/artifact-registry"
 
   inputs = {
     project_id    = component.project_services.project_id
@@ -201,7 +201,7 @@ component "artifact_registry" {
 
 # --- GKE: one zonal cluster, two node pools (prod tainted + dev) ------------
 component "gke" {
-  source = "../modules/gke"
+  source = "./infra/modules/gke"
 
   inputs = {
     project_id                 = component.project_services.project_id
@@ -225,7 +225,7 @@ component "gke" {
 
 # --- Managed Postgres (prod) + connection secret ----------------------------
 component "cloudsql" {
-  source = "../modules/cloudsql"
+  source = "./infra/modules/cloudsql"
 
   inputs = {
     project_id                    = component.project_services.project_id
@@ -262,7 +262,7 @@ component "cloudsql" {
 
 # --- Continuous delivery ----------------------------------------------------
 component "clouddeploy" {
-  source = "../modules/clouddeploy"
+  source = "./infra/modules/clouddeploy"
 
   inputs = {
     project_id     = component.project_services.project_id
@@ -278,7 +278,7 @@ component "clouddeploy" {
 }
 
 component "cloudbuild" {
-  source = "../modules/cloudbuild"
+  source = "./infra/modules/cloudbuild"
 
   inputs = {
     project_id                      = component.project_services.project_id

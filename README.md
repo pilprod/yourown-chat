@@ -95,6 +95,12 @@ secret-owning components as least-privilege `secretAccessor` members.
 
 ```
 .terraform-version        # Terraform Core version pin (read by HCP Stacks + CI)
+.terraform.lock.hcl       # provider lock (committed at the stack root; HCP reads it)
+providers.tfcomponent.hcl # stack provider requirements + configuration
+variables.tfcomponent.hcl # typed stack input variables
+components.tfcomponent.hcl # component wiring (one block per platform building block)
+outputs.tfcomponent.hcl   # stack outputs
+deployments.tfdeploy.hcl  # one "platform" deployment (budget topology)
 infra/
   modules/                # small, single-purpose, reusable modules
     project-services/     # API enablement (dependency root)
@@ -107,12 +113,6 @@ infra/
     clouddeploy/          # delivery pipeline + GKE target + execution SA
     secrets/              # Secret Manager map (generate/provide + accessors)
     workload-identity/    # per-tenant GSA bound to a KSA (WI)
-  stacks/                 # Terraform Stacks composition
-    providers.tfstack.hcl
-    variables.tfstack.hcl
-    components.tfstack.hcl
-    outputs.tfstack.hcl
-    deployments.tfdeploy.hcl   # one "platform" deployment (budget topology)
   environments/           # per-env docs (env == Stacks deployment)
 platform/                 # GitOps manifests (separate from infra + app)
   namespaces.yaml
@@ -127,14 +127,18 @@ app/                      # sample workload + CI/CD manifests
 .gitlab-ci.yml            # module fmt/validate + manifest lint
 ```
 
-> Naming note: the brief sketched `components.tfcomponent.hcl`. The valid
-> Terraform Stacks extensions are `*.tfstack.hcl` and `*.tfdeploy.hcl`, which is
-> what this repo uses.
+> Stack layout: the Terraform Stacks configuration lives at the **repository
+> root**, using the `*.tfcomponent.hcl` (components, providers, variables,
+> outputs) and `*.tfdeploy.hcl` (deployments) file suffixes that current
+> Terraform Stacks requires. Root placement is deliberate: HCP Terraform reads
+> the stack from the root of the connected repository, and it is what pulls the
+> local `infra/modules/` into the stack source bundle (a nested stack dir would
+> exclude them). A committed `.terraform.lock.hcl` pins provider versions and
+> hashes for reproducible runs.
 
 > Version pin: HCP Terraform Stacks selects the Terraform Core version from the
-> **repo-root `.terraform-version`** file (currently `1.15.8`) — it must live at
-> the root of the stack source, not inside `infra/stacks/`. The GitLab CI images
-> are pinned to the same version so local, CI, and HCP runs agree.
+> repo-root **`.terraform-version`** file (currently `1.15.8`). The GitLab CI
+> images are pinned to the same version so local, CI, and HCP runs agree.
 
 > Separation of concerns: **infra** (Terraform) provisions cloud resources,
 > **platform/** (GitOps) runs the chat workloads, and **app/** is a sample
@@ -145,7 +149,7 @@ app/                      # sample workload + CI/CD manifests
 1. Create **one** GCP project with billing linked, or reuse an existing one.
    This slice does **not** create projects/org (that is a separate future
    foundation stack requiring org + billing permissions).
-2. In `infra/stacks/deployments.tfdeploy.hcl`, replace every `REPLACE-ME-*`
+2. In `deployments.tfdeploy.hcl` (repo root), replace every `REPLACE-ME-*`
    value in the `platform` deployment (project ID, authorized networks).
 3. Configure GCP auth in HCP Terraform — either:
    - **OIDC dynamic credentials (recommended, keyless):** set up Workload
@@ -153,8 +157,8 @@ app/                      # sample workload + CI/CD manifests
    - **variable set / store:** provide `GOOGLE_CREDENTIALS` via an HCP variable
      set and wire it through `google_credentials`.
    No credentials are ever committed.
-4. Create the Stack in HCP Terraform pointing at `infra/stacks/`, then plan and
-   apply the `platform` deployment.
+4. Create the Stack in HCP Terraform pointing at the repository **root**, then
+   plan and apply the `platform` deployment.
 5. Deploy the chat workloads from [`platform/`](platform/README.md): install the
    ingress-nginx controller + Mattermost operator, replace the `REPLACE-ME-*`
    markers (project ID, bucket, Workload Identity SA emails from
