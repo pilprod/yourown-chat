@@ -3,19 +3,20 @@
 Production-grade, cloud-agnostic-where-practical GCP platform, managed with
 **HCP Terraform + Terraform Stacks** and validated in **GitLab CI**.
 
-This repository currently implements the **first platform slice**, sized to a
-**~$100/mo budget** (single zonal cluster, two isolated node pools):
+This repository currently implements the **first platform slice**, split into
+two isolated Stacks **deployments** (`dev` + `prod`), each with its own zonal
+GKE cluster and data plane inside a single GCP project:
 
 | Capability | Implementation |
 |------------|----------------|
 | PostgreSQL database (Germany) | Cloud SQL for PostgreSQL, private IP, `europe-west3`, PITR + 7-day backups |
 | Object storage ("S3") | Cloud Storage bucket, `EUROPE-WEST3` (+ S3-compatible HMAC creds for Mattermost) |
-| Kubernetes | One **zonal** GKE Standard cluster, **two node pools** (prod `e2-standard-2` tainted + dev `e2-small`), private nodes |
+| Kubernetes | Per environment: a **zonal** GKE Standard cluster, private nodes (prod 1× `e2-standard-2` on-demand; dev 1× `e2-medium` Spot) |
 | Container registry | Artifact Registry (Docker) — the supported replacement for GCR |
 | CI build | Cloud Build (least-privilege SA) |
 | CD to GKE | Cloud Deploy delivery pipeline + GKE target |
 | Secrets | **Every** credential in **Secret Manager**, mounted via the GKE Secret Manager CSI add-on + Workload Identity |
-| Apps | Prod Mattermost (operator CR) + dev Mattermost + matterbridge, pinned to their node pools |
+| Apps | prod cluster: Mattermost (operator CR + managed Cloud SQL); dev cluster: dev Mattermost + matterbridge + in-cluster Postgres |
 
 > There is no "S3" on GCP — the equivalent is a **Cloud Storage (GCS) bucket**,
 > which is what this stack provisions in the same German region.
@@ -24,32 +25,43 @@ This repository currently implements the **first platform slice**, sized to a
 
 ## Architecture rationale & tradeoffs
 
-The brief asks for a **production-grade** platform *and* the **cheapest** GKE,
-under a **$100/mo ceiling**. Rather than three separate clusters (which multiply
-the spend), the budget default is **one zonal cluster with two node pools**, so
-prod is genuinely isolated from dev without paying for a second control plane.
+The brief asks for a **production-grade** platform *and* the **cheapest** GKE.
+Environments are modeled the idiomatic Stacks way — **one deployment per
+environment** (`dev` + `prod`), each fully isolated with its own GKE cluster,
+VPC and data plane. This gives physical prod/dev isolation and an independent
+lifecycle, at the cost of a second cluster.
+
+**Cost tradeoff (accepted):** GKE's free tier waives the management fee for only
+**one** zonal cluster per billing account, so the second cluster adds ~$74/mo.
+dev is minimized to claw that back — a single **Spot** node and **in-cluster
+Postgres** (no managed Cloud SQL).
 
 | Line item | Config | ~$/mo |
 |-----------|--------|-------|
-| GKE control plane | 1 zonal cluster | $0 (free tier) |
-| prod node pool | 1× `e2-standard-2` (tainted `dedicated=prod`) | ~$49 |
-| dev + matterbridge pool | 1× `e2-small` | ~$12 |
-| Cloud SQL (prod) | `db-f1-micro`, 20Gi SSD, PITR + 7-day backups | ~$12–15 |
-| GCS (prod filestore) | Standard, small | ~$2 |
-| dev PVCs (pg 5Gi + filestore 10Gi) | pd-standard | ~$0.6 |
-| Buffer (egress/growth) | | ~$10–15 |
-| **Total** | | **~$86–93** |
+| prod GKE control plane | 1 zonal cluster | $0 (free tier) |
+| prod node | 1× `e2-standard-2`, on-demand | ~$49 |
+| prod Cloud SQL | `db-f1-micro`, 20Gi SSD, PITR + 7-day backups | ~$12–15 |
+| prod GCS (filestore) | Standard, small | ~$2 |
+| **dev GKE control plane** | 2nd zonal cluster (no free tier) | **~$74** |
+| dev node | 1× `e2-medium` **Spot** | ~$8 |
+| dev storage (Spot PD + in-cluster pg PVC) | pd-standard | ~$1 |
+| Buffer (egress/growth) | | ~$10 |
+| **Total** | | **~$140–150** |
 
-Every cost/HA knob is a typed variable with a production-safe path — HA Cloud SQL
-or per-environment clusters are one deployment/variable away once the budget is
-raised:
+> This is above the earlier ~$90 single-cluster figure. If the $100 ceiling is
+> firm, collapse back to one cluster with two node pools (git history has the
+> single-`platform`-deployment topology) — that design already isolated dev from
+> prod via a tainted prod pool.
 
-| Concern | Budget default | Harden (flip a variable) |
-|---------|----------------|--------------------------|
-| GKE control plane | Zonal (free) | `gke_regional = true` |
-| Prod nodes | 1× `e2-standard-2`, on-demand | bump `max_count` / machine type |
-| Cloud SQL | `db-f1-micro`, `ZONAL`, PITR on | `db-custom-*`, `REGIONAL` (HA) |
-| Environments | prod + dev tiers on one cluster | add `stage`/`prod` deployments |
+Every cost/HA knob is a typed variable with a production-safe path:
+
+| Concern | Default | Harden (flip a variable) |
+|---------|---------|--------------------------|
+| GKE control plane | Zonal (free-tier eligible) | `gke_regional = true` |
+| prod nodes | 1× `e2-standard-2`, on-demand | bump `max_count` / machine type |
+| prod Cloud SQL | `db-f1-micro`, `ZONAL`, PITR on | `db-custom-*`, `REGIONAL` (HA) |
+| dev database | in-cluster Postgres (`cloudsql_enabled=false`) | `cloudsql_enabled = true` |
+| Environments | `dev` + `prod` deployments | add a `stage` deployment |
 | Control-plane access | `master_authorized_networks` (CI CIDR) | keep restricted |
 
 Non-negotiable production practices are kept **even at this budget**: private
@@ -58,10 +70,11 @@ over Private Service Access, uniform bucket access + public-access prevention,
 dedicated least-privilege service accounts, **all secrets in Secret Manager**,
 and encryption on by default (CMEK-ready).
 
-**Node-pool isolation:** the prod pool carries a `dedicated=prod:NoSchedule`
-taint + `tier=prod` label; prod workloads set a matching `nodeSelector` +
-toleration. Dev/bridge workloads select `tier=dev` and never tolerate the prod
-taint, so dev load can't contend with prod.
+**Environment isolation:** dev and prod are separate clusters, so dev load can
+never contend with prod. Each cluster runs a single untainted node pool labelled
+`tier=prod` / `tier=dev` respectively, matching the `nodeSelector` on the GitOps
+manifests. The pool is deliberately **not** tainted: a lone tainted pool would
+leave kube-system / CoreDNS unschedulable.
 
 **GKE Standard vs Autopilot:** Standard is chosen because the target
 architecture calls for explicit multiple node pools and node-level cost control
@@ -76,8 +89,8 @@ graph TD
   PS --> AR[artifact-registry]
   PS --> WI[workload-identity<br/>GSA per tenant]
   PS --> SEC[secrets<br/>Secret Manager]
-  NET --> SQL[cloudsql<br/>private PostgreSQL + conn secret]
-  NET --> GKE[gke<br/>1 cluster / 2 node pools]
+  NET --> SQL[cloudsql<br/>private PostgreSQL prod only]
+  NET --> GKE[gke<br/>1 cluster per deployment]
   WI -->|accessors| SQL
   WI -->|accessors| STO
   WI -->|accessors| SEC
@@ -100,7 +113,7 @@ providers.tfcomponent.hcl # stack provider requirements + configuration
 variables.tfcomponent.hcl # typed stack input variables
 components.tfcomponent.hcl # component wiring (one block per platform building block)
 outputs.tfcomponent.hcl   # stack outputs
-deployments.tfdeploy.hcl  # one "platform" deployment (budget topology)
+deployments.tfdeploy.hcl  # dev + prod deployments (one cluster each)
 infra/
   modules/                # small, single-purpose, reusable modules
     project-services/     # API enablement (dependency root)
@@ -117,7 +130,7 @@ infra/
 platform/                 # GitOps manifests (separate from infra + app)
   namespaces.yaml
   mattermost/             # prod: SA + SecretProviderClass + secret-sync + CR
-  matterbridge/           # SA + SecretProviderClass + Deployment (dev pool)
+  matterbridge/           # SA + SecretProviderClass + Deployment (dev cluster)
   dev/                    # SA/SPC + in-cluster Postgres + dev Mattermost
 app/                      # sample workload + CI/CD manifests
   Dockerfile, index.html
@@ -149,17 +162,21 @@ app/                      # sample workload + CI/CD manifests
 1. Create **one** GCP project with billing linked, or reuse an existing one.
    This slice does **not** create projects/org (that is a separate future
    foundation stack requiring org + billing permissions).
-2. In `deployments.tfdeploy.hcl` (repo root), replace every `REPLACE-ME-*`
-   value in the `platform` deployment (project ID, authorized networks).
+2. In `deployments.tfdeploy.hcl` (repo root) the project ID (`yourown-chat`),
+   WIF `audience` and apply-SA are already wired; set the real
+   `master_authorized_networks` CIDR (still `REPLACE-ME/32`) — both deployments
+   share it via a `local`.
 3. Configure **keyless** GCP auth in HCP Terraform (no credentials are ever
-   committed). Follow [`docs/BOOTSTRAP.md`](docs/BOOTSTRAP.md) to create the
-   Workload Identity Federation pool/provider and the least-privilege
-   `terraform plan`/`apply` service accounts, then set the `audience` and
-   `service_account_email` inputs in the `platform` deployment. HCP mints the
-   OIDC token via the `identity_token` block; the google provider exchanges it
-   through WIF (`external_credentials`) and impersonates the apply SA.
+   committed). The Workload Identity Federation pool/provider and least-privilege
+   `terraform plan`/`apply` service accounts are documented in
+   [`google_cloud_init.md`](google_cloud_init.md) and
+   [`docs/BOOTSTRAP.md`](docs/BOOTSTRAP.md); the `audience` and
+   `service_account_email` inputs are already wired to that setup. HCP mints the
+   OIDC token via the `identity_token` block (its `aud` matches the provider's
+   allowed-audiences); the google provider exchanges it through WIF
+   (`external_credentials`) and impersonates the apply SA.
 4. Create the Stack in HCP Terraform pointing at the repository **root**, then
-   plan and apply the `platform` deployment.
+   plan and apply the `prod` and `dev` deployments.
 5. Deploy the chat workloads from [`platform/`](platform/README.md): install the
    ingress-nginx controller + Mattermost operator, replace the `REPLACE-ME-*`
    markers (project ID, bucket, Workload Identity SA emails from
@@ -205,8 +222,9 @@ slots in as **new components** in the same Stack, and additional
 regions/environments as **new deployments** — no root-module rewrites. Mattermost
 and matterbridge already run as GitOps workloads in [`platform/`](platform/).
 The network module is already hub-and-spoke-ready and provisions PSA for future
-private managed services. Raising the budget promotes dev/stage to their own
-clusters (uncomment the scale-out deployment) or Cloud SQL to `REGIONAL` HA.
+private managed services. A `stage` environment is one more `deployment` block;
+hardening prod is flipping `gke_regional` / `cloudsql_availability_type`, and dev
+gains a managed database via `cloudsql_enabled = true`.
 
 ## Decisions made autonomously — please review
 
@@ -214,17 +232,21 @@ These were resolved without you (you were unavailable) and are easy to change:
 
 1. **Region:** `europe-west3` (Frankfurt) over `europe-west10` (Berlin) —
    cheaper and more mature. One-variable change.
-2. **Topology:** one zonal cluster + two node pools (prod/dev tiers) instead of
-   three clusters, to fit the ~$100/mo budget. Scale-out path is documented and
-   stubbed in `deployments.tfdeploy.hcl`.
+2. **Topology:** `dev` + `prod` as separate Stacks deployments, each its own
+   zonal cluster (per your request). This exceeds the earlier ~$100/mo ceiling by
+   ~$50 (second-cluster fee); dev is minimized (Spot node + in-cluster Postgres)
+   to limit it. Revert to one cluster if the ceiling is firm.
 3. **Scope:** provisions into an **existing** `project_id`; org/project
    bootstrap deferred to a foundation stack.
-4. **Cloud SQL:** `db-f1-micro` + PITR + 7-day backups, no HA (HA alone would
-   consume most of the budget — raise the ceiling first if HA is required).
+4. **Cloud SQL:** prod only — `db-f1-micro` + PITR + 7-day backups, no HA (HA
+   alone would consume most of the budget). dev uses in-cluster Postgres
+   (`cloudsql_enabled = false`).
 5. **Apps:** prod Mattermost via the operator CR (external Cloud SQL + GCS
    filestore); dev Mattermost + matterbridge as lightweight Deployments. Confirm
    the Mattermost operator version, ingress host, and matterbridge bridges.
 6. **GitLab ↔ Cloud Build** connection details (host, PAT) still needed to
    create triggers in Terraform.
-7. **Auth model:** keyless OIDC -> WIF is now wired (`external_credentials`);
-   supply the real WIF `audience` + apply-SA email per `docs/BOOTSTRAP.md`.
+7. **Auth model:** keyless OIDC -> WIF is wired (`external_credentials`) with the
+   real `audience` and apply-SA (`terraform-apply@yourown-chat`) from
+   `google_cloud_init.md`; the `identity_token` `aud` matches the provider's
+   allowed-audiences. Only the control-plane CIDR remains a placeholder.

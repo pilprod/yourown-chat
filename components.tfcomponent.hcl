@@ -190,7 +190,7 @@ component "artifact_registry" {
   inputs = {
     project_id    = component.project_services.project_id
     location      = var.region
-    repository_id = "containers"
+    repository_id = "${local.name_prefix}-containers"
     labels        = local.common_labels
   }
 
@@ -225,6 +225,11 @@ component "gke" {
 
 # --- Managed Postgres (prod) + connection secret ----------------------------
 component "cloudsql" {
+  # Skipped entirely when cloudsql_enabled = false (e.g. dev, which uses the
+  # in-cluster Postgres StatefulSet). Only the stack outputs consume this
+  # component, so gating it here has no cross-component ripple.
+  for_each = var.cloudsql_enabled ? toset(["default"]) : toset([])
+
   source = "./infra/modules/cloudsql"
 
   inputs = {
