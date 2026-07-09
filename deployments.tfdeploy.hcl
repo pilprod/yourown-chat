@@ -32,12 +32,14 @@ locals {
   gcp_region  = "europe-west3" # Frankfurt, Germany
   gcp_zone    = "europe-west3-b"
 
-  # CIDRs allowed to reach the GKE control-plane endpoint (CI runner / office).
-  # REPLACE-ME: set your real egress CIDR before applying, or apply will expose
-  # the endpoint only to this placeholder.
-  master_authorized_networks = [
-    { cidr_block = "REPLACE-ME/32", display_name = "ci-runner" },
-  ]
+  # CIDRs allowed to reach the GKE control-plane endpoint. The endpoint is public
+  # but node-private (enable_private_endpoint = false); an EMPTY list omits the
+  # network restriction, so the API stays reachable from anywhere yet still
+  # requires valid GCP/Kubernetes credentials -- and Cloud Deploy can reach it.
+  # Restricting to specific CIDRs would also block Cloud Deploy's Google-owned
+  # egress, so lock down only once a Connect Gateway / private CD path exists:
+  #   master_authorized_networks = [{ cidr_block = "203.0.113.10/32", display_name = "office" }]
+  master_authorized_networks = []
 }
 
 # HCP mints this OIDC JWT once per run. Its `aud` claim must match the WIF
