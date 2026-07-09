@@ -125,18 +125,37 @@ component "secrets" {
     replica_locations = [var.region]
     labels            = local.common_labels
 
-    secrets = {
-      # In-cluster dev Postgres password (generated, read by the dev tenant).
-      "dev-postgres-password" = {
-        generate  = true
-        accessors = [component.workload_identity_dev.iam_member]
-      }
-      # matterbridge bot tokens / bridge config — created empty, populated
-      # out-of-band (never in git), read by the matterbridge workload.
-      "matterbridge-tokens" = {
-        accessors = [component.workload_identity_matterbridge.iam_member]
-      }
-    }
+    secrets = merge(
+      {
+        # In-cluster dev Postgres password (generated, read by the dev tenant).
+        "dev-postgres-password" = {
+          generate  = true
+          accessors = [component.workload_identity_dev.iam_member]
+        }
+        # matterbridge bot tokens / bridge config — created empty, populated
+        # out-of-band (never in git), read by the matterbridge workload.
+        "matterbridge-tokens" = {
+          accessors = [component.workload_identity_matterbridge.iam_member]
+        }
+      },
+      # Cloudflare origin-protection material for the public ingress (prod only).
+      # Empty containers; the PEM values are added out-of-band (never in git) and
+      # read only by the Mattermost workload, which materialises them via the CSI
+      # driver so ingress-nginx can (a) serve the Cloudflare Origin CA cert for
+      # Full (Strict) TLS and (b) verify the client cert Cloudflare presents for
+      # Authenticated Origin Pulls (mTLS) -- closing the shared-Cloudflare-IP gap.
+      var.public_ingress_enabled ? {
+        "mattermost-origin-tls-cert" = {
+          accessors = [component.workload_identity_mattermost.iam_member]
+        }
+        "mattermost-origin-tls-key" = {
+          accessors = [component.workload_identity_mattermost.iam_member]
+        }
+        "cloudflare-origin-pull-ca" = {
+          accessors = [component.workload_identity_mattermost.iam_member]
+        }
+      } : {}
+    )
   }
 
   providers = {
@@ -154,6 +173,9 @@ component "network" {
     name_prefix = local.name_prefix
     region      = var.region
     labels      = local.common_labels
+
+    # Reserve the Cloudflare-facing static IP only where a public ingress exists.
+    ingress_static_ip = var.public_ingress_enabled
   }
 
   providers = {

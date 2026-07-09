@@ -25,6 +25,12 @@ output "gcs_bucket_name" {
   value       = component.storage.bucket_name
 }
 
+output "ingress_ip_address" {
+  type        = string
+  description = "Reserved static external IP for the public ingress (the Cloudflare 'white address'). Null when public_ingress_enabled = false. Point the proxied yourown.chat A record at this value."
+  value       = component.network.ingress_ip_address
+}
+
 output "cloudsql_connection_name" {
   type        = string
   description = "Cloud SQL connection name for the Auth Proxy (null when Cloud SQL is disabled)."

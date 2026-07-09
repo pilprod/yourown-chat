@@ -91,6 +91,10 @@ deployment "prod" {
     cloudsql_txlog_retention_days  = 7
     cloudsql_deletion_protection   = true
 
+    # Public ingress: reserve the Cloudflare-facing static IP + origin-protection
+    # secret containers (origin TLS keypair + Authenticated Origin Pulls CA).
+    public_ingress_enabled = true
+
     storage_force_destroy = false
     extra_labels          = { cost-center = "platform-prod" }
   }
@@ -131,6 +135,10 @@ deployment "dev" {
     # dev uses the in-cluster Postgres StatefulSet (platform/dev/), so the
     # managed Cloud SQL instance is skipped entirely to save ~$13/mo.
     cloudsql_enabled = false
+
+    # dev has no public ingress: no static IP, no Cloudflare origin secrets.
+    # Reach dev via kubectl port-forward / a private path only.
+    public_ingress_enabled = false
 
     storage_force_destroy = true # dev buckets are disposable
     extra_labels          = { cost-center = "platform-dev" }

@@ -30,12 +30,20 @@ needs a `secretKeyRef`.
 | `ycs-prod-app-filestore-access-key` / `-secret-key` | prod Mattermost | Secret `mattermost-filestore` → `accesskey`/`secretkey` |
 | `ycs-prod-dev-postgres-password` | dev Postgres / dev Mattermost | file `POSTGRES_PASSWORD_FILE` + Secret `dev-postgres` |
 | `ycs-prod-matterbridge-tokens` | matterbridge | file `/etc/matterbridge/matterbridge.toml` |
+| `ycs-prod-mattermost-origin-tls-cert` / `-key` | ingress-nginx (Mattermost Ingress) | Secret `mattermost-origin-tls` → `tls.crt`/`tls.key` |
+| `ycs-prod-cloudflare-origin-pull-ca` | ingress-nginx (Mattermost Ingress) | Secret `cloudflare-origin-pull-ca` → `ca.crt` |
 
 Secret **values** are created by Terraform (generated) or populated out-of-band:
 
 ```bash
 # matterbridge config (contains tokens) — created empty by Terraform:
 gcloud secrets versions add ycs-prod-matterbridge-tokens --data-file=matterbridge.toml
+
+# Cloudflare origin cert/key + Authenticated Origin Pulls CA — created empty by
+# Terraform; see platform/ingress-nginx/README.md for how to obtain each value:
+gcloud secrets versions add ycs-prod-mattermost-origin-tls-cert --data-file=origin.pem
+gcloud secrets versions add ycs-prod-mattermost-origin-tls-key  --data-file=origin.key
+gcloud secrets versions add ycs-prod-cloudflare-origin-pull-ca  --data-file=origin-pull-ca.pem
 ```
 
 ## Prerequisites
@@ -44,13 +52,23 @@ gcloud secrets versions add ycs-prod-matterbridge-tokens --data-file=matterbridg
 2. Workload Identity bindings exist (Terraform `workload-identity` components).
    Replace every `iam.gke.io/gcp-service-account` annotation with the exact email
    from `terraform output workload_identity_emails`.
-3. Install the ingress-nginx controller and the **Mattermost Operator** + CRDs:
+3. Install the **Mattermost Operator** + CRDs, and the **ingress-nginx**
+   controller (public edge; prod only):
    ```bash
    helm repo add mattermost https://helm.mattermost.com && helm repo update
    helm upgrade --install mattermost-operator mattermost/mattermost-operator -n mattermost-operator --create-namespace
+
+   # Public edge, locked to Cloudflare — see platform/ingress-nginx/README.md
+   helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx && helm repo update
+   helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+     -n ingress-nginx --create-namespace -f ingress-nginx/values.yaml
    ```
-4. Replace all `REPLACE-ME-*` markers (project ID, bucket, hostnames, image
-   versions). The bucket name is `terraform output gcs_bucket_name`.
+4. Public ingress for `yourown.chat`: reserve the static IP, wire Cloudflare DNS,
+   Full (Strict) TLS + Authenticated Origin Pulls, and populate the origin
+   secrets. Full runbook: [`ingress-nginx/README.md`](ingress-nginx/README.md).
+5. Replace all `REPLACE-ME-*` markers (project ID, bucket, image versions, and
+   `loadBalancerIP` = `terraform output ingress_ip_address`). The bucket name is
+   `terraform output gcs_bucket_name`.
 
 ## Apply order
 
