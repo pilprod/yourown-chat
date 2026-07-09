@@ -94,6 +94,7 @@ secret-owning components as least-privilege `secretAccessor` members.
 ## Repository layout
 
 ```
+.terraform-version        # Terraform Core version pin (read by HCP Stacks + CI)
 infra/
   modules/                # small, single-purpose, reusable modules
     project-services/     # API enablement (dependency root)
@@ -129,6 +130,11 @@ app/                      # sample workload + CI/CD manifests
 > Naming note: the brief sketched `components.tfcomponent.hcl`. The valid
 > Terraform Stacks extensions are `*.tfstack.hcl` and `*.tfdeploy.hcl`, which is
 > what this repo uses.
+
+> Version pin: HCP Terraform Stacks selects the Terraform Core version from the
+> **repo-root `.terraform-version`** file (currently `1.15.8`) — it must live at
+> the root of the stack source, not inside `infra/stacks/`. The GitLab CI images
+> are pinned to the same version so local, CI, and HCP runs agree.
 
 > Separation of concerns: **infra** (Terraform) provisions cloud resources,
 > **platform/** (GitOps) runs the chat workloads, and **app/** is a sample

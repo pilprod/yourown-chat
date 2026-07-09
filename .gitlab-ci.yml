@@ -13,7 +13,7 @@ variables:
 terraform:fmt:
   stage: validate
   image:
-    name: hashicorp/terraform:1.10.5
+    name: hashicorp/terraform:1.15.8
     entrypoint: [""]
   script:
     - terraform fmt -check -recursive -diff infra/modules
@@ -21,7 +21,7 @@ terraform:fmt:
 terraform:validate:
   stage: validate
   image:
-    name: hashicorp/terraform:1.10.5
+    name: hashicorp/terraform:1.15.8
     entrypoint: [""]
   script:
     - |
