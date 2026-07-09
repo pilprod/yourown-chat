@@ -107,50 +107,62 @@ secret-owning components as least-privilege `secretAccessor` members.
 ## Repository layout
 
 ```
-.terraform-version        # Terraform Core version pin (read by HCP Stacks + CI)
-.terraform.lock.hcl       # provider lock (committed at the stack root; HCP reads it)
-providers.tfcomponent.hcl # stack provider requirements + configuration
-variables.tfcomponent.hcl # typed stack input variables
-components.tfcomponent.hcl # component wiring (one block per platform building block)
-outputs.tfcomponent.hcl   # stack outputs
-deployments.tfdeploy.hcl  # dev + prod deployments (one cluster each)
-infra/
-  modules/                # small, single-purpose, reusable modules
-    project-services/     # API enablement (dependency root)
-    network/              # VPC, subnet(+secondary ranges), Router, NAT, PSA
-    gke/                  # zonal Standard cluster + node_pools map + WI + CSI
-    cloudsql/             # private PostgreSQL + DB + user + password/conn secrets
-    storage/              # GCS bucket (+ optional Mattermost S3 HMAC creds)
-    artifact-registry/    # Docker repo
-    cloudbuild/           # build identity + least-privilege IAM
-    clouddeploy/          # delivery pipeline + GKE target + execution SA
-    secrets/              # Secret Manager map (generate/provide + accessors)
-    workload-identity/    # per-tenant GSA bound to a KSA (WI)
-  environments/           # per-env docs (env == Stacks deployment)
-platform/                 # GitOps manifests (separate from infra + app)
+stacks/                     # each subdir is ONE Terraform Stacks configuration
+  platform/                 # the platform stack (network, GKE, data, secrets, ...)
+    .terraform-version      # Terraform Core version pin (read by HCP Stacks + CI)
+    .terraform.lock.hcl     # provider lock (committed at the stack root)
+    providers.tfcomponent.hcl  # stack provider requirements + configuration
+    variables.tfcomponent.hcl  # typed stack input variables
+    components.tfcomponent.hcl # component wiring (one block per building block)
+    outputs.tfcomponent.hcl    # stack outputs
+    deployments.tfdeploy.hcl   # dev + prod deployments (one cluster each)
+    modules/                # small, single-purpose, reusable modules (this stack)
+      project-services/     # API enablement (dependency root)
+      network/              # VPC, subnet(+secondary ranges), Router, NAT, PSA
+      gke/                  # zonal Standard cluster + node_pools map + WI + CSI
+      cloudsql/             # private PostgreSQL + DB + user + password/conn secrets
+      storage/              # GCS bucket (+ optional Mattermost S3 HMAC creds)
+      artifact-registry/    # Docker repo (per-env: ycs-<env>-containers)
+      cloudbuild/           # app build identity + least-privilege IAM
+      clouddeploy/          # delivery pipeline + GKE target + execution SA
+      secrets/              # Secret Manager map (generate/provide + accessors)
+      workload-identity/    # per-tenant GSA bound to a KSA (WI)
+  build/                    # the build stack (Mattermost image CI only)
+    providers.tfcomponent.hcl  # google + google-beta, same keyless auth
+    variables.tfcomponent.hcl
+    components.tfcomponent.hcl # one cloudbuild-image instance
+    outputs.tfcomponent.hcl    # image paths + trigger/connection IDs
+    deployments.tfdeploy.hcl   # single `build` deployment (routes by git tag)
+    modules/
+      cloudbuild-image/     # 2nd-gen GitHub connection + repo + tag-triggered builds
+platform/                   # GitOps manifests (separate from infra + app)
   namespaces.yaml
-  mattermost/             # prod: SA + SecretProviderClass + secret-sync + CR
-  matterbridge/           # SA + SecretProviderClass + Deployment (dev cluster)
-  dev/                    # SA/SPC + in-cluster Postgres + dev Mattermost
-app/                      # sample workload + CI/CD manifests
+  mattermost/               # prod: SA + SecretProviderClass + secret-sync + CR
+  matterbridge/             # SA + SecretProviderClass + Deployment (dev cluster)
+  dev/                      # SA/SPC + in-cluster Postgres + dev Mattermost
+app/                        # sample workload + CI/CD manifests
   Dockerfile, index.html
-  k8s/                    # deployment.yaml, service.yaml
-  skaffold.yaml           # consumed by Cloud Deploy
-  cloudbuild.yaml         # build -> push -> create release
-.gitlab-ci.yml            # module fmt/validate + manifest lint
+  k8s/                      # deployment.yaml, service.yaml
+  skaffold.yaml             # consumed by Cloud Deploy
+  cloudbuild.yaml           # build -> push -> create release
+.gitlab-ci.yml              # module fmt/validate + manifest lint
 ```
 
-> Stack layout: the Terraform Stacks configuration lives at the **repository
-> root**, using the `*.tfcomponent.hcl` (components, providers, variables,
-> outputs) and `*.tfdeploy.hcl` (deployments) file suffixes that current
-> Terraform Stacks requires. Root placement is deliberate: HCP Terraform reads
-> the stack from the root of the connected repository, and it is what pulls the
-> local `infra/modules/` into the stack source bundle (a nested stack dir would
-> exclude them). A committed `.terraform.lock.hcl` pins provider versions and
-> hashes for reproducible runs.
+> Stack layout: the repo hosts **two** Terraform Stacks configurations, one per
+> `stacks/<name>/` directory (`platform` and `build`), each using the
+> `*.tfcomponent.hcl` (components, providers, variables, outputs) and
+> `*.tfdeploy.hcl` (deployments) suffixes Terraform Stacks requires. HCP reads
+> **one stack per working directory**, so each stack is its own HCP Stack with
+> its working directory set to `stacks/platform` or `stacks/build`. Modules are
+> **co-located under each stack** (`stacks/<name>/modules/`) and referenced as
+> `./modules/X`: the Stacks source bundler roots the bundle at the stack config
+> directory and cannot follow `../` sources that escape it, so a shared
+> top-level `infra/modules/` is not reachable from a nested stack. The two
+> stacks use disjoint module sets, so co-location adds no duplication. Each stack
+> commits its own `.terraform.lock.hcl` for reproducible runs.
 
-> Version pin: HCP Terraform Stacks selects the Terraform Core version from the
-> repo-root **`.terraform-version`** file (currently `1.15.8`). The GitLab CI
+> Version pin: HCP Terraform Stacks selects the Terraform Core version from each
+> stack's **`.terraform-version`** file (currently `1.15.8`). The GitLab CI
 > images are pinned to the same version so local, CI, and HCP runs agree.
 
 > Separation of concerns: **infra** (Terraform) provisions cloud resources,
@@ -162,7 +174,7 @@ app/                      # sample workload + CI/CD manifests
 1. Create **one** GCP project with billing linked, or reuse an existing one.
    This slice does **not** create projects/org (that is a separate future
    foundation stack requiring org + billing permissions).
-2. In `deployments.tfdeploy.hcl` (repo root) the project ID (`yourown-chat`),
+2. In `stacks/platform/deployments.tfdeploy.hcl` the project ID (`yourown-chat`),
    WIF `audience` and apply-SA are already wired; set the real
    `master_authorized_networks` CIDR (still `REPLACE-ME/32`) — both deployments
    share it via a `local`.
@@ -175,14 +187,40 @@ app/                      # sample workload + CI/CD manifests
    OIDC token via the `identity_token` block (its `aud` matches the provider's
    allowed-audiences); the google provider exchanges it through WIF
    (`external_credentials`) and impersonates the apply SA.
-4. Create the Stack in HCP Terraform pointing at the repository **root**, then
-   plan and apply the `prod` and `dev` deployments.
+4. Create the Stack in HCP Terraform with its **working directory set to
+   `stacks/platform`**, then plan and apply the `prod` and `dev` deployments.
+   (An existing Stack that pointed at the repo root must be updated to this
+   working directory after the reorg.)
 5. Deploy the chat workloads from [`platform/`](platform/README.md): install the
    ingress-nginx controller + Mattermost operator, replace the `REPLACE-ME-*`
    markers (project ID, bucket, Workload Identity SA emails from
    `terraform output workload_identity_emails`), then apply the manifests.
+6. (Optional, for custom Mattermost images) Create a **second** HCP Stack with
+   working directory **`stacks/build`** and follow [`docs/BUILD.md`](docs/BUILD.md)
+   to wire the Cloud Build GitHub connection. Apply it **after** the platform
+   stack (it grants its build SA writer on the platform's Artifact Registry repos).
 
 ## CI/CD flow
+
+Two independent image pipelines, both pushing to Artifact Registry:
+
+**1. Mattermost image (build stack, `stacks/build`)** — the primary app image.
+
+```
+git tag on github.com/pilprod/mattermost ──► Cloud Build (2nd-gen trigger)
+   ^v.*-patched$      ─► build Dockerfile ─► push ycs-prod-containers/mattermost
+   ^v.*patched-dev$   ─► build Dockerfile ─► push ycs-dev-containers/mattermost
+```
+
+- One Cloud Build 2nd-gen GitHub connection + repository watches the external
+  Mattermost source repo; disjoint tag patterns route prod vs dev builds to the
+  per-environment Artifact Registry repos. Builds run as a dedicated,
+  least-privilege SA (repo-scoped AR writer + log writer only).
+- The resulting image is referenced in the Mattermost values: prod
+  `platform/mattermost/mattermost.yaml` (`spec.image` + `version`), dev
+  `platform/dev/mattermost-dev.yaml`. See [`docs/BUILD.md`](docs/BUILD.md).
+
+**2. Sample app (platform stack)** — the demo `app/` GitOps pipeline.
 
 ```
 GitLab push ──► Cloud Build (build image ─► push to Artifact Registry)

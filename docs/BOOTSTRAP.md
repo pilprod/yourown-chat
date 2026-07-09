@@ -19,10 +19,11 @@ HCP Terraform run
 
 The stack side is already wired:
 
-- `deployments.tfdeploy.hcl` -> `identity_token "gcp" { audience = ["hcp.workload.identity"] }`
-  and the `platform` deployment passes `identity_token`, `audience`,
-  `service_account_email`.
-- `providers.tfcomponent.hcl` -> `provider "google"` uses `external_credentials`.
+- `stacks/platform/deployments.tfdeploy.hcl` -> `identity_token "gcp"` (its
+  `audience` is the full `https://iam.googleapis.com/projects/.../providers/...`
+  provider URL) and the `prod` / `dev` deployments each pass `identity_token`,
+  `audience`, `service_account_email`.
+- `stacks/platform/providers.tfcomponent.hcl` -> `provider "google"` uses `external_credentials`.
 
 You only need to create the cloud-side resources below and fill three
 `REPLACE-ME-*` inputs.
@@ -138,8 +139,9 @@ gcloud iam service-accounts add-iam-policy-binding "$APPLY_SA" \
 
 ## 5. Fill the deployment inputs
 
-Compute the STS audience (the full provider resource name) and set the three
-`REPLACE-ME-*` values in the `platform` deployment of `deployments.tfdeploy.hcl`:
+Compute the STS audience (the full provider resource name) and set the
+`REPLACE-ME-*` values in the `prod` / `dev` deployments of
+`stacks/platform/deployments.tfdeploy.hcl` (they share auth via a `local`):
 
 ```bash
 echo "audience              = //iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL_ID}/providers/${PROVIDER_ID}"
@@ -154,12 +156,15 @@ echo "project_id            = ${PROJECT_ID}"
 
 ## 6. Create the Stack in HCP Terraform
 
-1. Connect the repo and create a Stack pointing at the **repository root**.
+1. Connect the repo and create a Stack with its **working directory set to
+   `stacks/platform`**.
 2. HCP reads `*.tfcomponent.hcl` + `deployments.tfdeploy.hcl` and the committed
    `.terraform.lock.hcl`.
-3. Plan and apply the `platform` deployment. The first plan proves federation:
-   if the token is rejected, re-check the `attribute-condition` (org/project
-   names) and that `allowed-audiences` is exactly `hcp.workload.identity`.
+3. Plan and apply the `prod` and `dev` deployments. The first plan proves
+   federation: if the token is rejected, re-check the `attribute-condition`
+   (org/project names) and that the WIF provider's `allowed-audiences` matches
+   the `identity_token` block's `audience` (the full
+   `https://iam.googleapis.com/projects/.../providers/...` URL).
 
 ## Notes
 

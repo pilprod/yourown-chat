@@ -55,7 +55,9 @@ spec:
         fsGroup: 2000
       containers:
         - name: mattermost
-          image: "mattermost/mattermost-team-edition:REPLACE-ME-9.11"
+          # Custom (patched) image built by the build stack on git tags matching
+          # ^v.*patched-dev$ and pushed to the dev Artifact Registry repo.
+          image: "europe-west3-docker.pkg.dev/yourown-chat/ycs-dev-containers/mattermost:v9.11.3-patched-dev"
           env:
             - name: POSTGRES_PASSWORD
               valueFrom:
