@@ -15,7 +15,7 @@ Initial setup guide for connecting a Google Cloud project to HCP Terraform:
 | `PROJECT_ID` | `yourown-chat` |
 | `TFC_ORG` | `papou-work` |
 | `TFC_PROJECT` | `yourown-chat` |
-| `TFC_STACK` | `yourown-chat-eu-prod` |
+| `TFC_STACK` | `yourown-chat-eu` |
 | `WIF_POOL_ID` | `hcp-terraform` |
 | `WIF_PROVIDER_ID` | `hcp-terraform` |
 | `PLAN_SA` | `terraform-plan` |
@@ -29,7 +29,7 @@ export PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(
 
 export TFC_ORG="papou-work"
 export TFC_PROJECT="yourown-chat"
-export TFC_STACK="yourown-chat-eu-prod"
+export TFC_STACK="yourown-chat-eu"
 
 export WIF_POOL_ID="hcp-terraform"
 export WIF_PROVIDER_ID="hcp-terraform"
@@ -89,7 +89,7 @@ gcloud iam workload-identity-pools providers create-oidc "$WIF_PROVIDER_ID" \
   --issuer-uri="https://app.terraform.io" \
   --allowed-audiences="https://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/$WIF_POOL_ID/providers/$WIF_PROVIDER_ID" \
   --attribute-mapping="google.subject=assertion.sub,attribute.terraform_organization_name=assertion.terraform_organization_name,attribute.terraform_project_name=assertion.terraform_project_name,attribute.terraform_stack_name=assertion.terraform_stack_name,attribute.terraform_run_phase=assertion.terraform_run_phase" \
-  --attribute-condition="assertion.terraform_organization_name=='papou-work'"
+  --attribute-condition="assertion.terraform_organization_name=='papou-work' && assertion.terraform_project_name=='yourown-chat'"
 ```
 
 Expected result:
