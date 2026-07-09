@@ -7,6 +7,7 @@ locals {
   nat_name               = "${var.name_prefix}-nat"
   psa_range_name         = "${var.name_prefix}-psa"
   internal_firewall_name = "${var.name_prefix}-allow-internal"
+  ingress_ip_name        = "${var.name_prefix}-ingress-ip"
 }
 
 # Custom-mode VPC: no auto subnets so ranges are explicit and predictable.
@@ -112,4 +113,23 @@ resource "google_service_networking_connection" "psa" {
   network                 = google_compute_network.this.id
   service                 = "servicenetworking.googleapis.com"
   reserved_peering_ranges = [google_compute_global_address.psa.name]
+}
+
+# ---------------------------------------------------------------------------
+# Reserved regional external IP ("white address") for the public ingress LB.
+# Only created when var.ingress_static_ip = true (prod). The ingress-nginx
+# Service pins its loadBalancerIP to this address, and admits ONLY Cloudflare
+# source ranges via loadBalancerSourceRanges (see platform/ingress-nginx). The
+# address stays stable across LB re-creations so the Cloudflare DNS record is
+# never orphaned. Reserved IPs attached to a forwarding rule are not billed.
+# ---------------------------------------------------------------------------
+resource "google_compute_address" "ingress" {
+  count = var.ingress_static_ip ? 1 : 0
+
+  project      = var.project_id
+  name         = local.ingress_ip_name
+  region       = var.region
+  address_type = "EXTERNAL"
+  network_tier = "PREMIUM"
+  labels       = var.labels
 }

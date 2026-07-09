@@ -68,6 +68,12 @@ variable "enable_flow_logs" {
   default     = false
 }
 
+variable "ingress_static_ip" {
+  type        = bool
+  description = "Reserve a regional external static IP for the public ingress load balancer (the Cloudflare-facing 'white address'). Enable only for environments with a public ingress (e.g. prod)."
+  default     = false
+}
+
 variable "nat_min_ports_per_vm" {
   type        = number
   description = "Minimum NAT source ports per VM."

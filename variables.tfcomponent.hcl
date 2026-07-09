@@ -180,6 +180,13 @@ variable "storage_force_destroy" {
   default     = false
 }
 
+# --- Public ingress (Cloudflare-fronted) ------------------------------------
+variable "public_ingress_enabled" {
+  type        = bool
+  description = "Provision the public ingress path for this environment: a reserved static IP (the Cloudflare-facing 'white address') plus the Secret Manager containers for the origin TLS keypair and the Authenticated Origin Pulls CA. Enable for prod only; dev stays private."
+  default     = false
+}
+
 # --- Labels -----------------------------------------------------------------
 variable "extra_labels" {
   type        = map(string)

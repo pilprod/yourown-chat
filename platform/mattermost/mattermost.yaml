@@ -9,8 +9,12 @@
 #             Manager by the CSI SecretProviderClass).
 # Filestore : external GCS via the S3-compatible interoperability endpoint
 #             (secret mattermost-filestore).
+# Ingress   : public host yourown.chat, fronted by Cloudflare. ingress-nginx
+#             admits only Cloudflare source ranges (platform/ingress-nginx) and
+#             enforces Authenticated Origin Pulls (mTLS) + Full (Strict) TLS via
+#             the mattermost-origin-tls / cloudflare-origin-pull-ca Secrets.
 #
-# Replace REPLACE-ME-* (host, bucket, version) before applying.
+# Replace REPLACE-ME-* (bucket, version) before applying.
 apiVersion: installation.mattermost.com/v1beta1
 kind: Mattermost
 metadata:
@@ -23,8 +27,23 @@ spec:
 
   ingress:
     enabled: true
-    host: "REPLACE-ME-chat.example.com"
+    host: "yourown.chat"
     ingressClass: nginx
+    # Full (Strict): serve the Cloudflare Origin CA keypair so the Cloudflare
+    # edge validates the origin over HTTPS. Materialised as a kubernetes.io/tls
+    # Secret from Secret Manager by the CSI SecretProviderClass.
+    tlsSecret: mattermost-origin-tls
+    annotations:
+      # Authenticated Origin Pulls (mTLS): the origin only completes the TLS
+      # handshake when the caller presents the client cert from OUR Cloudflare
+      # zone. Use per-hostname AOP (your own client cert) so the shared
+      # Cloudflare proxy IPs of other tenants cannot reach this origin. The CA
+      # that signs Cloudflare's client cert is mounted as ca.crt in the
+      # cloudflare-origin-pull-ca Secret.
+      nginx.ingress.kubernetes.io/auth-tls-verify-client: "on"
+      nginx.ingress.kubernetes.io/auth-tls-secret: "mattermost/cloudflare-origin-pull-ca"
+      nginx.ingress.kubernetes.io/auth-tls-verify-depth: "1"
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
 
   database:
     external:

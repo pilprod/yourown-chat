@@ -42,3 +42,8 @@ output "private_service_connection_id" {
   description = "PSA service networking connection ID; depend on this before creating private-IP managed services."
   value       = google_service_networking_connection.psa.id
 }
+
+output "ingress_ip_address" {
+  description = "Reserved regional external IP for the public ingress LB (null when ingress_static_ip = false). Point the Cloudflare A record at this address."
+  value       = one(google_compute_address.ingress[*].address)
+}
