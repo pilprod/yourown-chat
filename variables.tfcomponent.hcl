@@ -125,6 +125,12 @@ variable "master_authorized_networks" {
 }
 
 # --- Cloud SQL cost / HA / backup knobs ------------------------------------
+variable "cloudsql_enabled" {
+  type        = bool
+  description = "Provision a managed Cloud SQL instance. Set false for cost-minimized environments (e.g. dev) that use the in-cluster Postgres StatefulSet instead."
+  default     = true
+}
+
 variable "cloudsql_tier" {
   type        = string
   description = "Cloud SQL machine tier."

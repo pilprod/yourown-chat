@@ -27,20 +27,20 @@ output "gcs_bucket_name" {
 
 output "cloudsql_connection_name" {
   type        = string
-  description = "Cloud SQL connection name for the Auth Proxy."
-  value       = component.cloudsql.connection_name
+  description = "Cloud SQL connection name for the Auth Proxy (null when Cloud SQL is disabled)."
+  value       = one([for c in component.cloudsql : c.connection_name])
 }
 
 output "cloudsql_password_secret_id" {
   type        = string
-  description = "Secret Manager secret ID holding the DB password."
-  value       = component.cloudsql.password_secret_id
+  description = "Secret Manager secret ID holding the DB password (null when Cloud SQL is disabled)."
+  value       = one([for c in component.cloudsql : c.password_secret_id])
 }
 
 output "cloudsql_private_ip" {
   type        = string
-  description = "Private IP of the Cloud SQL instance."
-  value       = component.cloudsql.private_ip_address
+  description = "Private IP of the Cloud SQL instance (null when Cloud SQL is disabled)."
+  value       = one([for c in component.cloudsql : c.private_ip_address])
   sensitive   = true
 }
 
@@ -58,8 +58,8 @@ output "cloudbuild_service_account" {
 
 output "cloudsql_connection_secret_id" {
   type        = string
-  description = "Secret Manager secret ID holding the Mattermost DB connection URI."
-  value       = component.cloudsql.connection_secret_id
+  description = "Secret Manager secret ID holding the Mattermost DB connection URI (null when Cloud SQL is disabled)."
+  value       = one([for c in component.cloudsql : c.connection_secret_id])
 }
 
 output "filestore_access_key_secret_id" {

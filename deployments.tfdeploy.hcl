@@ -1,75 +1,86 @@
 # ---------------------------------------------------------------------------
-# Deployments = environments.
+# Deployments = environments. Two Terraform Stacks deployments, each a fully
+# isolated environment with its OWN GKE cluster, VPC and data plane, all living
+# in the single GCP project `yourown-chat`. Every resource is prefixed per
+# environment (ycs-dev-*, ycs-prod-*) so the two deployments never collide
+# inside the shared project.
 #
-# BUDGET TOPOLOGY (~$85–93/mo, ceiling $100): a single zonal GKE cluster (free
-# control plane) hosts BOTH the prod and dev tiers via two node pools:
-#   - prod pool: e2-standard-2, on-demand, tainted (dedicated=prod:NO_SCHEDULE)
-#   - dev pool : e2-small, on-demand, untainted (kube-system + dev + bridge)
-# Prod Postgres is managed Cloud SQL (db-f1-micro, PITR + 7d backups); dev runs
-# an in-cluster Postgres on the dev pool. This is why there is ONE deployment
-# here instead of three separate clusters — separate clusters per environment
-# multiply the spend and blow the ceiling. The scale-out path (promote dev /
-# stage to their own clusters once the budget is raised) is the commented
-# example at the bottom.
+# COST TRADEOFF (accepted): GKE's free tier waives the management fee for only
+# ONE zonal cluster per billing account. The second cluster adds ~$74/mo, so
+# running dev + prod is ~$140-150/mo (vs ~$90 for the earlier single-cluster,
+# two-node-pool topology). This buys physical dev/prod isolation and an
+# independent lifecycle per environment. dev is minimized to claw cost back:
+# a single Spot node and in-cluster Postgres (no managed Cloud SQL).
 #
 # AUTH: keyless HCP Terraform Dynamic Provider Credentials -> GCP Workload
-# Identity Federation. HCP mints the OIDC JWT below (aud = hcp.workload.identity,
-# which must match the WIF provider's allowed_audiences); the google provider
-# exchanges it and impersonates a least-privilege apply SA. Nothing secret lives
-# in git. See docs/BOOTSTRAP.md for creating the pool/provider + SAs.
-#
-# Replace every REPLACE-ME-* value (project IDs, CIDRs, WIF audience, SA email)
-# with real values before use.
+# Identity Federation (Stacks GA identity_token block; no TFC_GCP_* env vars,
+# no static keys). HCP mints the OIDC JWT below; its `aud` MUST be one of the
+# WIF provider's allowed-audiences. The google provider then exchanges it at
+# STS (external_credentials.audience = the //iam.googleapis.com/... provider
+# resource name) and impersonates the least-privilege apply SA. Nothing secret
+# is committed. Bootstrap: docs/BOOTSTRAP.md + google_cloud_init.md.
 # ---------------------------------------------------------------------------
 
-identity_token "gcp" {
-  audience = ["hcp.workload.identity"]
+locals {
+  # --- Keyless auth wiring (project `yourown-chat`, shared by all deployments)
+  # STS token-exchange audience = full WIF provider resource name (leading //).
+  gcp_wif_audience = "//iam.googleapis.com/projects/1086706391144/locations/global/workloadIdentityPools/hcp-terraform/providers/hcp-terraform"
+  # Least-privilege SA impersonated after the exchange (never Owner/Editor).
+  gcp_apply_sa = "terraform-apply@yourown-chat.iam.gserviceaccount.com"
+
+  gcp_project = "yourown-chat"
+  gcp_region  = "europe-west3" # Frankfurt, Germany
+  gcp_zone    = "europe-west3-b"
+
+  # CIDRs allowed to reach the GKE control-plane endpoint (CI runner / office).
+  # REPLACE-ME: set your real egress CIDR before applying, or apply will expose
+  # the endpoint only to this placeholder.
+  master_authorized_networks = [
+    { cidr_block = "REPLACE-ME/32", display_name = "ci-runner" },
+  ]
 }
 
-deployment "platform" {
+# HCP mints this OIDC JWT once per run. Its `aud` claim must match the WIF
+# provider's allowed-audiences, which is the full https://iam.googleapis.com/...
+# provider URL (see google_cloud_init.md, gcloud ... --allowed-audiences=...).
+identity_token "gcp" {
+  audience = ["https://iam.googleapis.com/projects/1086706391144/locations/global/workloadIdentityPools/hcp-terraform/providers/hcp-terraform"]
+}
+
+# --- prod: dedicated cluster + managed Cloud SQL (PITR + backups) -----------
+deployment "prod" {
   inputs = {
     # Keyless auth: OIDC JWT exchanged via WIF to impersonate the apply SA.
     identity_token        = identity_token.gcp.jwt
-    audience              = "REPLACE-ME-WIF-AUDIENCE"   # //iam.googleapis.com/projects/<NUMBER>/locations/global/workloadIdentityPools/<POOL>/providers/<PROVIDER>
-    service_account_email = "REPLACE-ME-APPLY-SA-EMAIL" # e.g. ycs-tf-apply@<project>.iam.gserviceaccount.com
+    audience              = local.gcp_wif_audience
+    service_account_email = local.gcp_apply_sa
 
-    project_id  = "REPLACE-ME-platform-project"
+    project_id  = local.gcp_project
     environment = "prod"
-    region      = "europe-west3" # Frankfurt, Germany
-    zone        = "europe-west3-b"
+    region      = local.gcp_region
+    zone        = local.gcp_zone
 
-    # One zonal cluster, two isolated node pools.
+    # Single on-demand pool. The whole cluster is prod, so it is NOT tainted:
+    # a lone tainted pool would leave kube-system / CoreDNS unschedulable.
     gke_regional            = false
     gke_deletion_protection = true
     gke_node_pools = {
-      prod = {
+      default = {
         machine_type = "e2-standard-2"
         spot         = false
         min_count    = 1
-        max_count    = 2 # headroom = surge during node upgrades only
+        max_count    = 2 # surge headroom during node upgrades
         disk_size_gb = 30
         disk_type    = "pd-standard"
         labels       = { tier = "prod" }
-        taints       = [{ key = "dedicated", value = "prod", effect = "NO_SCHEDULE" }]
-      }
-      dev = {
-        machine_type = "e2-small"
-        spot         = false
-        min_count    = 1
-        max_count    = 1
-        disk_size_gb = 30
-        disk_type    = "pd-standard"
-        labels       = { tier = "dev" }
         taints       = []
       }
     }
 
-    # SECURITY: restrict the control-plane endpoint to your CI runner / office.
-    master_authorized_networks = [
-      { cidr_block = "REPLACE-ME/32", display_name = "ci-runner" },
-    ]
+    master_authorized_networks = local.master_authorized_networks
 
-    # Prod Postgres — cheapest tier + PITR/backups (no HA at this budget).
+    # Managed Postgres for prod: cheapest tier + PITR/backups (no HA at budget).
+    cloudsql_enabled               = true
     cloudsql_tier                  = "db-f1-micro"
     cloudsql_availability_type     = "ZONAL"
     cloudsql_disk_size_gb          = 20
@@ -79,46 +90,47 @@ deployment "platform" {
     cloudsql_deletion_protection   = true
 
     storage_force_destroy = false
-
-    extra_labels = { cost-center = "platform" }
+    extra_labels          = { cost-center = "platform-prod" }
   }
 }
 
-# ---------------------------------------------------------------------------
-# SCALE-OUT EXAMPLE (disabled). Uncomment once the budget is raised to run a
-# fully isolated environment on its own cluster + managed Postgres. Each such
-# deployment roughly adds the single-cluster cost again.
-# ---------------------------------------------------------------------------
-# deployment "stage" {
-#   inputs = {
-#     identity_token        = identity_token.gcp.jwt
-#     audience              = "REPLACE-ME-WIF-AUDIENCE"
-#     service_account_email = "REPLACE-ME-APPLY-SA-EMAIL"
-#
-#     project_id  = "REPLACE-ME-stage-project"
-#     environment = "stage"
-#     region      = "europe-west3"
-#     zone        = "europe-west3-b"
-#
-#     gke_regional = false
-#     gke_node_pools = {
-#       prod = {
-#         machine_type = "e2-standard-2"
-#         labels       = { tier = "prod" }
-#         taints       = [{ key = "dedicated", value = "prod", effect = "NO_SCHEDULE" }]
-#       }
-#       dev = { machine_type = "e2-small", max_count = 1, labels = { tier = "dev" } }
-#     }
-#
-#     master_authorized_networks = [
-#       { cidr_block = "REPLACE-ME/32", display_name = "ci-runner" },
-#     ]
-#
-#     cloudsql_tier              = "db-custom-1-3840"
-#     cloudsql_availability_type = "ZONAL"
-#     cloudsql_disk_size_gb      = 20
-#
-#     storage_force_destroy = false
-#     extra_labels          = { cost-center = "platform-stage" }
-#   }
-# }
+# --- dev: minimized, single Spot node, in-cluster Postgres (no Cloud SQL) ----
+deployment "dev" {
+  inputs = {
+    identity_token        = identity_token.gcp.jwt
+    audience              = local.gcp_wif_audience
+    service_account_email = local.gcp_apply_sa
+
+    project_id  = local.gcp_project
+    environment = "dev"
+    region      = local.gcp_region
+    zone        = local.gcp_zone
+
+    # One cheap Spot pool runs everything on this cluster: kube-system, the dev
+    # Mattermost, the in-cluster Postgres StatefulSet and matterbridge. Spot
+    # pricing keeps the (unavoidable) second cluster's node cost minimal.
+    gke_regional            = false
+    gke_deletion_protection = false
+    gke_node_pools = {
+      default = {
+        machine_type = "e2-medium" # 4Gi: headroom for system pods + dev stack
+        spot         = true
+        min_count    = 1
+        max_count    = 2
+        disk_size_gb = 30
+        disk_type    = "pd-standard"
+        labels       = { tier = "dev" }
+        taints       = []
+      }
+    }
+
+    master_authorized_networks = local.master_authorized_networks
+
+    # dev uses the in-cluster Postgres StatefulSet (platform/dev/), so the
+    # managed Cloud SQL instance is skipped entirely to save ~$13/mo.
+    cloudsql_enabled = false
+
+    storage_force_destroy = true # dev buckets are disposable
+    extra_labels          = { cost-center = "platform-dev" }
+  }
+}
