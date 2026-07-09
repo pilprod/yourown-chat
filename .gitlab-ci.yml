@@ -1,0 +1,43 @@
+# GitLab CI: pre-merge validation for the reusable Terraform modules and app
+# manifests. The Stacks themselves are planned/applied by HCP Terraform via its
+# VCS-driven runs (Stacks are not applied from GitLab), so CI here focuses on
+# fast, cheap correctness checks.
+
+stages:
+  - validate
+
+variables:
+  TF_IN_AUTOMATION: "true"
+
+# ---------------------------------------------------------------------------
+terraform:fmt:
+  stage: validate
+  image:
+    name: hashicorp/terraform:1.10.5
+    entrypoint: [""]
+  script:
+    - terraform fmt -check -recursive -diff infra/modules
+
+terraform:validate:
+  stage: validate
+  image:
+    name: hashicorp/terraform:1.10.5
+    entrypoint: [""]
+  script:
+    - |
+      set -e
+      for m in infra/modules/*/; do
+        echo "== validating ${m} =="
+        terraform -chdir="${m}" init -backend=false -input=false
+        terraform -chdir="${m}" validate
+      done
+
+# ---------------------------------------------------------------------------
+manifests:lint:
+  stage: validate
+  image: alpine:3.20
+  before_script:
+    - apk add --no-cache yq
+  script:
+    - yq eval-all 'true' app/skaffold.yaml app/cloudbuild.yaml app/k8s/*.yaml > /dev/null
+    - yq eval-all 'true' platform/*.yaml platform/**/*.yaml > /dev/null

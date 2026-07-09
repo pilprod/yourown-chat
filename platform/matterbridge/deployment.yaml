@@ -1,0 +1,48 @@
+# matterbridge, pinned to the shared dev/bridge node pool (nodeSelector
+# tier=dev — the dev pool is untainted so no toleration is needed). Its config
+# (with tokens) is mounted read-only from Secret Manager via the CSI volume.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: matterbridge
+  namespace: matterbridge
+  labels:
+    app: matterbridge
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: matterbridge
+  template:
+    metadata:
+      labels:
+        app: matterbridge
+    spec:
+      serviceAccountName: matterbridge
+      nodeSelector:
+        tier: dev
+      containers:
+        - name: matterbridge
+          # Pin to a digest/tag you trust rather than a moving tag.
+          image: "42wim/matterbridge:REPLACE-ME-stable"
+          args:
+            - "-conf"
+            - "/etc/matterbridge/matterbridge.toml"
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/matterbridge
+              readOnly: true
+      volumes:
+        - name: config
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: matterbridge-gcp

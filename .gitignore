@@ -1,0 +1,27 @@
+# Terraform / OpenTofu
+**/.terraform/*
+**/.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# Secrets / local vars (commit *.example templates instead)
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+!*.tfvars.json.example
+*-credentials.json
+*.key.json
+service-account*.json
+
+# OS / editor
+.DS_Store
+*.swp

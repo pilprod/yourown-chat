@@ -1,0 +1,53 @@
+# Prod Mattermost, managed by the Mattermost Operator (installation.mattermost.com/v1beta1).
+# Requires the operator + CRDs to be installed first (see platform/README.md).
+#
+# Scheduling: pinned to the dedicated prod node pool (nodeSelector tier=prod +
+# toleration for the dedicated=prod taint) so dev/bridge workloads can never
+# contend with prod for CPU/memory.
+#
+# Database  : external Cloud SQL (secret mattermost-db, materialised from Secret
+#             Manager by the CSI SecretProviderClass).
+# Filestore : external GCS via the S3-compatible interoperability endpoint
+#             (secret mattermost-filestore).
+#
+# Replace REPLACE-ME-* (host, bucket, version) before applying.
+apiVersion: installation.mattermost.com/v1beta1
+kind: Mattermost
+metadata:
+  name: mattermost
+  namespace: mattermost
+spec:
+  # Pin to a known-good release rather than tracking latest.
+  version: "REPLACE-ME-9.11.3"
+  replicas: 1
+
+  ingress:
+    enabled: true
+    host: "REPLACE-ME-chat.example.com"
+    ingressClass: nginx
+
+  database:
+    external:
+      secret: mattermost-db
+
+  fileStore:
+    external:
+      url: storage.googleapis.com
+      bucket: "REPLACE-ME-ycs-prod-app-BUCKET"
+      secret: mattermost-filestore
+
+  scheduling:
+    nodeSelector:
+      tier: prod
+    tolerations:
+      - key: dedicated
+        operator: Equal
+        value: prod
+        effect: NoSchedule
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
