@@ -1,7 +1,7 @@
 # YourOwn.Chat
 
 Production-grade, cloud-agnostic-where-practical GCP platform, managed with
-**HCP Terraform + Terraform Stacks** and validated in **GitLab CI**.
+**HCP Terraform + Terraform Stacks**.
 
 This repository implements the **first platform slice** as **two Terraform
 Stacks** in a single GCP project:
