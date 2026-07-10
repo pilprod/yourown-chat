@@ -3,7 +3,7 @@
 Production-grade, cloud-agnostic-where-practical GCP platform, managed with
 **HCP Terraform + Terraform Stacks**.
 
-This repository implements the **first platform slice** as **two Terraform
+This repository implements the **first platform slice** as **three Terraform
 Stacks** in a single GCP project:
 
 - **`terraform/platform`** — one Stacks **deployment** (`platform`) provisioning a
@@ -15,6 +15,11 @@ Stacks** in a single GCP project:
 - **`terraform/build`** — the container CI: one **unified** Artifact Registry
   repository (`docker`) plus the Mattermost image build (Cloud Build),
   promoting a single image across environments by git tag.
+- **`terraform/cloudflare`** — the public edge for `yourown.chat`: the proxied
+  apex A record pointing at the platform ingress IP, plus zone TLS/security
+  settings, DNSSEC, WAF rules and optional origin TLS. It carries the only
+  non-GCP secret (a zone-scoped Cloudflare API token) and stays isolated from
+  the keyless GCP stacks.
 
 | Capability | Implementation |
 |------------|----------------|
@@ -126,13 +131,23 @@ graph TD
   AR --> IMG
 ```
 
+**cloudflare stack**
+
+```mermaid
+graph TD
+  IP["platform output<br/>ingress_ip_address"] -->|copied as input| ZONE
+  ZONE[zone<br/>proxied apex A + www + CAA<br/>TLS/security settings + DNSSEC<br/>WAF rules + optional origin TLS]
+```
+
 Ordering is expressed by components referencing each other's outputs — explicit
 dependencies, no implicit ordering. Workload Identity SA emails flow into the
 secret-owning components as least-privilege `secretAccessor` members. Each stack
 enables the APIs it owns via its own `project_services` component (no overlap);
 only a minimal bootstrap set (auth + Service Usage + Secret Manager) and the
 `github-pat` secret are done once in [`docs/INIT.md`](docs/INIT.md). So the
-platform and build stacks are independent and can be applied in any order.
+platform and build stacks are independent and can be applied in any order. The
+cloudflare stack has no GCP dependency at all — it only needs the platform's
+reserved `ingress_ip_address` (stable by design), copied in as a plain input.
 
 ## Repository layout
 
@@ -166,6 +181,15 @@ terraform/                  # each subdir is ONE Terraform Stacks configuration
       project-services/    # enable the build-owned Google APIs (cloudbuild, artifactregistry)
       artifact-registry/    # the unified Docker repo (moved here from platform)
       cloudbuild-image/     # 2nd-gen GitHub connection + repo + tag-triggered builds
+  cloudflare/               # the cloudflare stack (public edge for yourown.chat)
+    providers.tfcomponent.hcl  # cloudflare + tls providers (zone-scoped API token)
+    variables.tfcomponent.hcl
+    components.tfcomponent.hcl # single `zone` component
+    outputs.tfcomponent.hcl    # zone id + record hostname + optional origin cert/DNSSEC
+    deployments.tfdeploy.hcl   # single `cloudflare` deployment (token from HCP varset)
+    modules/
+      zone/                 # DNS records + edge TLS/security settings + DNSSEC +
+                            #   WAF rulesets + optional Origin CA cert / AOP
 helm/                       # Kubernetes workloads, delivered by Cloud Deploy dev→prod
   skaffold.yaml             # dev/prod profiles Cloud Deploy renders (+ dev verify)
   cloudbuild.yaml           # illustrative: cut a Cloud Deploy release from helm/
@@ -179,12 +203,13 @@ helm/                       # Kubernetes workloads, delivered by Cloud Deploy de
 .gitlab-ci.yml              # module fmt/validate + manifest lint
 ```
 
-> Stack layout: the repo hosts **two** Terraform Stacks configurations, one per
-> `terraform/<name>/` directory (`platform` and `build`), each using the
+> Stack layout: the repo hosts **three** Terraform Stacks configurations, one per
+> `terraform/<name>/` directory (`platform`, `build` and `cloudflare`), each using the
 > `*.tfcomponent.hcl` (components, providers, variables, outputs) and
 > `*.tfdeploy.hcl` (deployments) suffixes Terraform Stacks requires. HCP reads
 > **one stack per working directory**, so each stack is its own HCP Stack with
-> its working directory set to `terraform/platform` or `terraform/build`. Modules are
+> its working directory set to `terraform/platform`, `terraform/build` or
+> `terraform/cloudflare`. Modules are
 > **co-located under each stack** (`terraform/<name>/modules/`) and referenced as
 > `./modules/X`: the Stacks source bundler roots the bundle at the stack config
 > directory and cannot follow `../` sources that escape it, so a shared
@@ -239,6 +264,13 @@ helm/                       # Kubernetes workloads, delivered by Cloud Deploy de
    bootstrap APIs and the `github-pat` secret all come from `docs/INIT.md`, and
    this stack enables its own `cloudbuild`/`artifactregistry` APIs, so it is
    independent of the platform stack and can be applied in any order.
+7. (Public edge) Create a **third** HCP Stack with working directory
+   **`terraform/cloudflare`**. Follow [`docs/INIT.md`](docs/INIT.md) to create a
+   zone-scoped Cloudflare API token and store it in an HCP variable set, then
+   paste the platform stack's `ingress_ip_address` output into
+   `ingress_ip_address` in its `deployments.tfdeploy.hcl`. Applying it publishes
+   the proxied `yourown.chat` A record and the zone TLS/security settings. It has
+   no GCP dependency, so it can be applied any time after the ingress IP exists.
 
 ## CI/CD flow
 

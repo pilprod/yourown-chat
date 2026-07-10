@@ -1,8 +1,9 @@
 # Google Cloud Initial Setup
 
-One-time, out-of-band bootstrap that both Terraform stacks (`platform` and
-`build`) depend on. Run this **once** before applying either stack; afterwards
-the two stacks are fully independent and can be applied in **any order**.
+One-time, out-of-band bootstrap that the Terraform stacks depend on. Run this
+**once** before applying the stacks; afterwards `platform` and `build` are fully
+independent and can be applied in **any order**, and `cloudflare` only needs its
+API token plus the platform's ingress IP.
 
 This guide:
 
@@ -12,7 +13,9 @@ This guide:
 - creates service accounts for `plan` and `apply` runs;
 - grants impersonation permissions and all project IAM roles both stacks need;
 - creates the GitHub personal access token (PAT) secret the build stack reads;
-- configures HCP Terraform dynamic provider credentials.
+- configures HCP Terraform dynamic provider credentials;
+- creates the Cloudflare API token the cloudflare stack reads (the only static
+  secret, since Cloudflare has no Workload Identity path).
 
 Everything a stack can provision itself (all other APIs, every cloud resource)
 is left to Terraform -- this doc is the single place for the manual, pre-Terraform
@@ -362,6 +365,53 @@ Cloud Build GitHub App on your org/repo:
    SA). Each stack enables the APIs it owns and this bootstrap already created the
    shared roles + the `github-pat` secret, so the two stacks are independent and
    can be applied in **any order**. See [`BUILD.md`](BUILD.md).
+5. For the public edge, create a **third** Stack with working directory
+   `terraform/cloudflare`. It does not use GCP auth at all; it needs the
+   Cloudflare API token from step 10 and the platform's `ingress_ip_address`.
+
+## 10. Create the Cloudflare API token (for the cloudflare stack)
+
+The `terraform/cloudflare` stack manages the `yourown.chat` zone (DNS, edge
+TLS/security settings, DNSSEC, WAF rules). Cloudflare has no Workload Identity
+path, so this is the **only** static secret in the whole setup. It never touches
+git or state — it is injected from an HCP variable set as an ephemeral input.
+
+### 10.1 Create a zone-scoped API token
+
+In the Cloudflare dashboard: **My Profile -> API Tokens -> Create Token ->
+Create Custom Token**. Scope it to the `yourown.chat` zone only, with:
+
+| Permission | Access | Why |
+|------------|--------|-----|
+| Zone -> Zone | Read | resolve the zone ID |
+| Zone -> DNS | Edit | manage the apex A / www / extra / CAA records |
+| Zone -> Zone Settings | Edit | SSL mode, HSTS, min TLS, etc. |
+| Zone -> SSL and Certificates | Edit | *(only if you enable `manage_origin_cert` / `aop_enabled`)* |
+
+Restrict **Zone Resources** to `Specific zone -> yourown.chat`. Copy the token
+value once (it is not shown again).
+
+### 10.2 Store it in an HCP variable set
+
+1. In HCP Terraform, create a **variable set** applied to the cloudflare stack.
+2. Add a **Terraform variable** `cloudflare_api_token` = the token; mark it
+   **sensitive**.
+3. In `terraform/cloudflare/deployments.tfdeploy.hcl`, set the `store "varset"`
+   block's `id` to that variable set's ID. The token flows in as the ephemeral
+   `cloudflare_api_token` input.
+
+### 10.3 Point the A record at the ingress IP
+
+After the platform stack is applied, read its reserved IP and paste it into the
+cloudflare deployment:
+
+```bash
+terraform -chdir=terraform/platform output -raw ingress_ip_address
+# -> set ingress_ip_address = "<that IP>" in terraform/cloudflare/deployments.tfdeploy.hcl
+```
+
+The reserved IP is stable by design, so this hand-off is one-time. An empty
+sentinel there fails the `ingress_ip_address` validation until you set it.
 
 ## Notes
 
