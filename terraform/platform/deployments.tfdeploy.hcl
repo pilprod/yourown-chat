@@ -4,9 +4,10 @@
 # with TWO node pools, managed Cloud SQL, object storage and the public ingress.
 # dev is NOT a second cluster -- it is an isolated tenant NAMESPACE on this same
 # cluster (RBAC + NetworkPolicy, see platform/dev/), scheduled onto its own node
-# pool. All resources are prefixed `yourown-chat-prod-*` (environment = "prod"); the dev
-# tenant's GCP objects (its Workload Identity SA, its in-cluster Postgres
-# password secret) are created by this one deployment under that same prefix.
+# pool. All resources use the tier-neutral prefix `yourown-chat-*` (environment
+# drives labels, not names); the dev tenant's GCP objects (its Workload Identity
+# SA `yourown-chat-dev`, its in-cluster Postgres password secret) are created by
+# this one deployment under that same prefix.
 #
 # TOPOLOGY / COST: GKE's free tier waives the management fee for ONE zonal
 # cluster per billing account, so this single-cluster shape stays ~$86-93/mo

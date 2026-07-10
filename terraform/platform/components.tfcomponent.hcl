@@ -24,7 +24,14 @@
 # ---------------------------------------------------------------------------
 
 locals {
-  name_prefix  = "${var.project_prefix}-${var.environment}"
+  # Tier-neutral prefix for every platform resource (yourown-chat-*), matching the
+  # KMS key and Cloud Deploy pipeline. environment drives labels, not names: this is
+  # a single-deployment platform and "dev" is a tenant namespace, so an environment
+  # segment in names would only collide with the dev tenant (it would produce the
+  # contradictory yourown-chat-prod-dev). Reintroduce
+  # "${var.project_prefix}-${var.environment}" here if you ever run two deployments
+  # in one project.
+  name_prefix  = var.project_prefix
   gke_location = var.gke_regional ? var.region : var.zone
 
   # Kubernetes tenants (namespace / service account) that consume GCP secrets.
@@ -330,8 +337,8 @@ component "cloudsql" {
 # comes entirely from its Skaffold profile, not a separate cluster. The Mattermost
 # image is built once by the build stack (terraform/build) and promoted by tag
 # (build-once/promote-the-same-tag); Cloud Deploy promotes the SAME manifests
-# dev -> prod. The pipeline spans both tiers, so it is named with the tier-neutral
-# project prefix (yourown-chat-*), not the environment-scoped platform prefix (yourown-chat-prod-*).
+# dev -> prod. The pipeline spans both tiers; like every platform resource it is
+# named with the tier-neutral project prefix (yourown-chat-*).
 component "clouddeploy" {
   source = "./modules/clouddeploy"
 
