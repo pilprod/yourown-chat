@@ -77,14 +77,14 @@ gcloud secrets versions add cloudflare-origin-pull-ca  --data-file=origin-pull-c
 
 ## Apply order
 
-Cloud Deploy applies these for you (dev profile: `namespaces` + `dev/` +
+Cloud Deploy applies these for you (dev profile: `namespaces` + `developing/` +
 `matterbridge/`; prod profile: `namespaces` + `mattermost/`). To apply manually as
-a fallback, in this order — `kubectl apply -f dev/` is non-recursive, so it skips
-the `dev/verify/` Job template:
+a fallback, in this order — `kubectl apply -f developing/` is non-recursive, so it skips
+the `developing/verify/` Job template:
 
 ```bash
 kubectl apply -f namespaces.yaml
-kubectl apply -f dev/            # in-cluster Postgres materialises dev-postgres Secret first
+kubectl apply -f developing/            # in-cluster Postgres materialises dev-postgres Secret first
 kubectl apply -f matterbridge/
 kubectl apply -f mattermost/     # operator CRDs must already be installed
 ```

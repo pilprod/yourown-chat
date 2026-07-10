@@ -13,9 +13,15 @@
 #
 # The container registry and image CI are NOT in this stack: they live in the
 # separate build stack (terraform/build), which owns the unified docker
-# repository. This stack only enables the artifactregistry/cloudbuild APIs (see
-# activate_apis) so the build stack can create the registry and the GKE nodes
-# can pull from it (the node SA gets project-level artifactregistry.reader).
+# repository and enables the artifactregistry/cloudbuild APIs itself. The GKE
+# nodes can still pull from that registry (the node SA gets project-level
+# artifactregistry.reader).
+#
+# API enablement is split by owner so the two stacks stay independent: a small
+# BOOTSTRAP set (auth + serviceusage + secretmanager) is enabled once by hand in
+# docs/INIT.md (Terraform needs those before it can authenticate and enable
+# anything else); this stack's project_services then enables everything the
+# PLATFORM uniquely needs. The build stack enables its own APIs the same way.
 #
 # Workload Identity SAs are created first (they only need the APIs enabled) and
 # their IAM member strings are passed as least-privilege secretAccessors to the
@@ -44,19 +50,17 @@ locals {
     stack       = "yourown-chat-platform"
   }, var.extra_labels)
 
+  # APIs the PLATFORM stack owns. The bootstrap set (cloudresourcemanager, iam,
+  # iamcredentials, serviceusage, sts, secretmanager) is enabled by hand in
+  # docs/INIT.md before Terraform runs, and artifactregistry/cloudbuild are owned
+  # by the build stack -- so none of those appear here (no cross-stack overlap).
   activate_apis = [
-    "cloudresourcemanager.googleapis.com",
-    "iam.googleapis.com",
-    "iamcredentials.googleapis.com",
     "compute.googleapis.com",
     "container.googleapis.com",
     "servicenetworking.googleapis.com",
     "sqladmin.googleapis.com",
-    "secretmanager.googleapis.com",
     "cloudkms.googleapis.com",
     "storage.googleapis.com",
-    "artifactregistry.googleapis.com",
-    "cloudbuild.googleapis.com",
     "clouddeploy.googleapis.com",
     "logging.googleapis.com",
     "monitoring.googleapis.com",

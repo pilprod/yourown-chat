@@ -11,20 +11,22 @@
 # (identity_token block), the google/google-beta providers exchange it via
 # Workload Identity Federation and impersonate the SHARED least-privilege apply
 # SA (terraform-apply@, the same single plan/apply account the platform stack
-# uses -- see google_cloud_init.md). No dedicated build SA; no static
+# uses -- see INIT.md). No dedicated build SA; no static
 # credentials or SA keys exist anywhere.
 #
-# ORDERING: apply the platform stack FIRST (it enables the Cloud Build /
-# Artifact Registry APIs). This stack then creates the registry + attaches the
-# CI. See docs/BUILD.md for bootstrap (PAT secret, OAuth install id, and the
-# few EXTRA roles the shared apply SA needs for the build resources).
+# INDEPENDENCE: this stack does NOT depend on the platform stack. It enables its
+# own APIs (cloudbuild, artifactregistry) via its project_services component and
+# only READS the out-of-band github-pat secret. The minimal bootstrap (auth APIs +
+# secretmanager), the shared apply-SA roles, the github-pat secret and the OAuth
+# install id are all provisioned once in docs/INIT.md, so the build and platform
+# stacks can be applied in ANY order. See docs/BUILD.md.
 # ---------------------------------------------------------------------------
 
 locals {
   # --- Keyless auth wiring (shared project `yourown-chat`) -------------------
   gcp_wif_audience = "//iam.googleapis.com/projects/1086706391144/locations/global/workloadIdentityPools/hcp-terraform/providers/hcp-terraform"
   # Shared apply SA -- the SAME single account the platform stack impersonates
-  # (see google_cloud_init.md). It just needs a few extra build roles; see
+  # (see INIT.md). It just needs a few extra build roles; see
   # docs/BUILD.md. Its WIF binding already exists (org-scoped principalSet).
   gcp_apply_sa       = "terraform-apply@yourown-chat.iam.gserviceaccount.com"
   gcp_project        = "yourown-chat"
@@ -52,17 +54,15 @@ deployment "build" {
     # plan until you set the real installation ID before the first apply.
     github_app_installation_id = 0
 
-    # Secret Manager secret holding the GitHub PAT. This stack creates the
-    # secret CONTAINER (CMEK-encrypted by the build-owned kms key); only the PAT
-    # VALUE/version is added out-of-band (see docs/BUILD.md), then the connection
-    # reads versions/latest.
+    # Secret Manager secret holding the GitHub PAT. Created and populated
+    # out-of-band during bootstrap (see docs/INIT.md); this stack only reads
+    # versions/latest of it.
     github_pat_secret_id = "github-pat"
     github_remote_uri    = "https://github.com/pilprod/mattermost.git"
     image_name           = "mattermost"
 
-    # The container registry is PUBLIC -> no CMEK (null). The build stack's own
-    # kms component supplies the CMEK key for the github-pat secret instead, so
-    # there is no CMEK dependency on the platform stack.
+    # The container registry is PUBLIC -> no CMEK (null). The build stack has no
+    # CMEK dependency on any other stack.
     artifact_registry_kms_key_name = null
 
     # One source repo, ONE unified registry, ONE image built on a single tag

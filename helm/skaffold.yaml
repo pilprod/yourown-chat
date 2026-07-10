@@ -33,11 +33,11 @@ profiles:
     manifests:
       rawYaml:
         - namespaces.yaml
-        - dev/serviceaccount.yaml
-        - dev/rbac.yaml
-        - dev/networkpolicy.yaml
-        - dev/postgres.yaml
-        - dev/mattermost-dev.yaml
+        - developing/serviceaccount.yaml
+        - developing/rbac.yaml
+        - developing/networkpolicy.yaml
+        - developing/postgres.yaml
+        - developing/mattermost-dev.yaml
         - matterbridge/serviceaccount.yaml
         - matterbridge/secretproviderclass.yaml
         - matterbridge/networkpolicy.yaml
@@ -61,7 +61,7 @@ profiles:
         # cannot resolve in-cluster DNS at all.
         executionMode:
           kubernetesCluster:
-            jobManifestPath: dev/verify/job.yaml
+            jobManifestPath: developing/verify/job.yaml
   # --- prod stage: operator-managed Mattermost ------------------------------
   - name: prod
     manifests:

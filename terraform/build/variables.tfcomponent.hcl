@@ -53,7 +53,7 @@ variable "github_app_installation_id" {
 
 variable "github_pat_secret_id" {
   type        = string
-  description = "Short ID of the Secret Manager secret holding the GitHub PAT used by the connection. This stack CREATES the secret container (CMEK-encrypted by the build-owned kms key); only its VALUE/version is added out-of-band before the connection is created."
+  description = "Short ID of the Secret Manager secret holding the GitHub PAT used by the connection. The secret is created and populated out-of-band during bootstrap (see docs/INIT.md); this stack only references it."
   default     = "github-pat"
 }
 
@@ -78,7 +78,7 @@ variable "image_name" {
 
 variable "artifact_registry_kms_key_name" {
   type        = string
-  description = "Optional CMEK key (full resource ID) for the registry. The container registry is PUBLIC, so this is null by default (Google-managed keys) and no CMEK dependency on the platform stack exists. The build stack's own kms component supplies the CMEK key for the github-pat secret instead."
+  description = "Optional CMEK key (full resource ID) for the registry. The container registry is PUBLIC, so this is null by default (Google-managed keys) and the build stack has no CMEK dependency on any other stack."
   default     = null
 }
 

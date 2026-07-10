@@ -2,7 +2,9 @@ locals {
   # Cloud Build service agent that the 2nd-gen connection uses to read the PAT.
   cloudbuild_agent = "serviceAccount:service-${var.project_number}@gcp-sa-cloudbuild.iam.gserviceaccount.com"
 
-  pat_secret_version = "${google_secret_manager_secret.github_pat.id}/versions/latest"
+  # The github-pat secret is created out-of-band (see docs/INIT.md); the stack
+  # only references its latest version.
+  pat_secret_version = "projects/${var.project_id}/secrets/${var.github_pat_secret_id}/versions/latest"
 
   # Single unified image path (no tag) shared by every build, e.g.
   # europe-west3-docker.pkg.dev/yourown-chat/docker/mattermost
@@ -14,34 +16,6 @@ locals {
   image_ref = "${local.image_repo_path}:$TAG_NAME"
 }
 
-# --- GitHub PAT secret (container) -----------------------------------------
-# The build stack owns the secret CONTAINER, encrypted at rest with the
-# build-owned CMEK key (var.github_pat_kms_key_name; null = Google-managed).
-# The secret VALUE (a fine-grained GitHub PAT) is never in git -- add the first
-# version out-of-band after this secret is created, then apply again so the
-# connection below can read versions/latest. User-managed replication pins the
-# single replica to var.region, matching the CMEK key's location.
-resource "google_secret_manager_secret" "github_pat" {
-  project   = var.project_id
-  secret_id = var.github_pat_secret_id
-  labels    = var.labels
-
-  replication {
-    user_managed {
-      replicas {
-        location = var.region
-
-        dynamic "customer_managed_encryption" {
-          for_each = var.github_pat_kms_key_name == null ? [] : [1]
-          content {
-            kms_key_name = var.github_pat_kms_key_name
-          }
-        }
-      }
-    }
-  }
-}
-
 # Ensure the Cloud Build service agent exists so we can grant it access to the
 # PAT before the connection validates it (beta-only resource).
 resource "google_project_service_identity" "cloudbuild" {
@@ -50,10 +24,10 @@ resource "google_project_service_identity" "cloudbuild" {
   service  = "cloudbuild.googleapis.com"
 }
 
-# The connection's service agent must read the GitHub PAT secret.
+# The connection's service agent must read the out-of-band GitHub PAT secret.
 resource "google_secret_manager_secret_iam_member" "agent_reads_pat" {
   project   = var.project_id
-  secret_id = google_secret_manager_secret.github_pat.secret_id
+  secret_id = var.github_pat_secret_id
   role      = "roles/secretmanager.secretAccessor"
   member    = local.cloudbuild_agent
 

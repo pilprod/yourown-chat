@@ -49,7 +49,7 @@ cluster would add ~$74/mo and break the budget. dev/prod isolation is achieved
   **on-demand, not Spot**, because preempting this pool would take CoreDNS down
   for prod too;
 - **namespace RBAC** (dev team scoped to the `dev` namespace only) and
-  **default-deny NetworkPolicies** in `dev` (see `helm/dev/`), so the dev
+  **default-deny NetworkPolicies** in `dev` (see `helm/developing/`), so the dev
   tenant cannot reach prod (or any other namespace) on the pod network.
 
 | Line item | Config | ~$/mo |
@@ -105,12 +105,12 @@ node SA holds project-level `artifactregistry.reader`.
 
 ```mermaid
 graph TD
-  PS[project-services<br/>enable APIs] --> NET[network<br/>VPC/NAT/PSA]
+  PS[project_services<br/>enable platform APIs] --> NET[network<br/>VPC/NAT/PSA]
   PS --> STO[storage<br/>GCS + HMAC creds]
-  PS --> WI[workload-identity<br/>GSA per tenant]
   PS --> SEC[secrets<br/>Secret Manager]
   NET --> SQL[cloudsql<br/>private PostgreSQL, prod]
   NET --> GKE[gke<br/>1 cluster, 2 node pools]
+  WI[workload-identity<br/>GSA per tenant]
   WI -->|accessors| SQL
   WI -->|accessors| STO
   WI -->|accessors| SEC
@@ -121,13 +121,18 @@ graph TD
 
 ```mermaid
 graph TD
-  AR[artifact-registry<br/>unified docker] --> IMG[cloudbuild-image<br/>2nd-gen connection + tag triggers]
+  PS[project_services<br/>enable cloudbuild + artifactregistry] --> AR[artifact-registry<br/>unified docker]
+  PS --> IMG[cloudbuild-image<br/>2nd-gen connection + tag triggers]
+  AR --> IMG
 ```
 
 Ordering is expressed by components referencing each other's outputs — explicit
 dependencies, no implicit ordering. Workload Identity SA emails flow into the
-secret-owning components as least-privilege `secretAccessor` members. The build
-stack enables no APIs itself; apply the platform stack first.
+secret-owning components as least-privilege `secretAccessor` members. Each stack
+enables the APIs it owns via its own `project_services` component (no overlap);
+only a minimal bootstrap set (auth + Service Usage + Secret Manager) and the
+`github-pat` secret are done once in [`docs/INIT.md`](docs/INIT.md). So the
+platform and build stacks are independent and can be applied in any order.
 
 ## Repository layout
 
@@ -142,7 +147,7 @@ terraform/                  # each subdir is ONE Terraform Stacks configuration
     outputs.tfcomponent.hcl    # stack outputs
     deployments.tfdeploy.hcl   # ONE `platform` deployment (1 cluster, 2 node pools)
     modules/                # small, single-purpose, reusable modules (this stack)
-      project-services/     # API enablement (dependency root)
+      project-services/     # enable the platform-owned Google APIs
       network/              # VPC, subnet(+secondary ranges), Router, NAT, PSA
       gke/                  # zonal Standard cluster + node_pools map + WI + CSI
       cloudsql/             # private PostgreSQL + DB + user + password/conn secrets
@@ -154,10 +159,11 @@ terraform/                  # each subdir is ONE Terraform Stacks configuration
   build/                    # the build stack (unified registry + Mattermost image CI)
     providers.tfcomponent.hcl  # google + google-beta, same keyless auth
     variables.tfcomponent.hcl
-    components.tfcomponent.hcl # artifact_registry (docker) + mattermost_image
+    components.tfcomponent.hcl # project_services + artifact_registry (docker) + mattermost_image
     outputs.tfcomponent.hcl    # unified image path + registry/trigger/connection IDs
     deployments.tfdeploy.hcl   # single `build` deployment (routes by git tag)
     modules/
+      project-services/    # enable the build-owned Google APIs (cloudbuild, artifactregistry)
       artifact-registry/    # the unified Docker repo (moved here from platform)
       cloudbuild-image/     # 2nd-gen GitHub connection + repo + tag-triggered builds
 helm/                       # Kubernetes workloads, delivered by Cloud Deploy dev→prod
@@ -166,7 +172,7 @@ helm/                       # Kubernetes workloads, delivered by Cloud Deploy de
   namespaces.yaml           # mattermost (prod) + matterbridge + dev tenants
   mattermost/               # prod: SA + SecretProviderClass + secret-sync + operator CR
   matterbridge/             # SA + SecretProviderClass + Deployment + NetworkPolicy (dev pool)
-  dev/                      # SA/SPC + in-cluster Postgres + dev Mattermost +
+  developing/               # SA/SPC + in-cluster Postgres + dev Mattermost +
                             #   networkpolicy.yaml + rbac.yaml (tenant isolation)
     verify/                 #   on-cluster smoke-test Job template (dev-stage verify)
   ingress-nginx/            # Cloudflare-only ingress values + bootstrap runbook
@@ -199,6 +205,12 @@ helm/                       # Kubernetes workloads, delivered by Cloud Deploy de
 1. Create **one** GCP project with billing linked, or reuse an existing one.
    This slice does **not** create projects/org (that is a separate future
    foundation stack requiring org + billing permissions).
+1. Run the one-time bootstrap in [`docs/INIT.md`](docs/INIT.md): enable the
+   bootstrap APIs (auth + Service Usage + Secret Manager), create the Workload
+   Identity Federation pool/provider and `terraform plan`/`apply` service accounts
+   (with all IAM roles both stacks need), and create the `github-pat` secret. The
+   stacks enable every other API themselves; this is the only manual prerequisite,
+   after which the two stacks are independent.
 2. In `terraform/platform/deployments.tfdeploy.hcl` the project ID (`yourown-chat`),
    WIF `audience` and apply-SA are already wired; set the real
    `master_authorized_networks` CIDR if you want to restrict the control plane
@@ -206,7 +218,7 @@ helm/                       # Kubernetes workloads, delivered by Cloud Deploy de
 3. Configure **keyless** GCP auth in HCP Terraform (no credentials are ever
    committed). The Workload Identity Federation pool/provider and least-privilege
    `terraform plan`/`apply` service accounts are documented in
-   [`docs/google_cloud_init.md`](docs/google_cloud_init.md); the `audience` and
+   [`docs/INIT.md`](docs/INIT.md); the `audience` and
    `service_account_email` inputs are already wired to that setup. HCP mints the
    OIDC token via the `identity_token` block (its `aud` matches the provider's
    allowed-audiences); the google provider exchanges it through WIF
@@ -220,13 +232,13 @@ helm/                       # Kubernetes workloads, delivered by Cloud Deploy de
    markers (project ID, bucket, Workload Identity SA emails from
    `terraform output workload_identity_emails`, the dev-team RBAC principal),
    then apply the manifests (namespaces, then per-tenant resources including
-   `helm/dev/networkpolicy.yaml` and `helm/dev/rbac.yaml`).
+   `helm/developing/networkpolicy.yaml` and `helm/developing/rbac.yaml`).
 6. (For custom Mattermost images) Create a **second** HCP Stack with working
    directory **`terraform/build`** and follow [`docs/BUILD.md`](docs/BUILD.md) to
-   wire the Cloud Build GitHub connection and grant the shared apply SA its few
-   extra build roles. Apply
-   it **after** the platform stack (it creates the unified registry and needs the
-   platform-enabled APIs).
+   set the Cloud Build App installation ID. The shared apply-SA roles, the
+   bootstrap APIs and the `github-pat` secret all come from `docs/INIT.md`, and
+   this stack enables its own `cloudbuild`/`artifactregistry` APIs, so it is
+   independent of the platform stack and can be applied in any order.
 
 ## CI/CD flow
 
@@ -247,7 +259,7 @@ git tag on github.com/pilprod/mattermost ──► Cloud Build (2nd-gen trigger)
   (the same single account the platform uses). See [`docs/BUILD.md`](docs/BUILD.md).
 - The resulting image is referenced in both Mattermost manifests: prod
   `helm/mattermost/mattermost.yaml` (`spec.image` + `version`), dev
-  `helm/dev/mattermost-dev.yaml`.
+  `helm/developing/mattermost-dev.yaml`.
 
 **Delivery to GKE (platform stack)** — the `clouddeploy` component provisions a
 Cloud Deploy **dev → prod** pipeline that delivers the `helm/` Kubernetes
@@ -276,11 +288,12 @@ create a `platform -> build` dependency cycle.
   workload SA (the dev workloads never call the Kubernetes API).
 - Cloud SQL private IP only (`ipv4_enabled = false`), `ENCRYPTED_ONLY` TLS.
 - **Encryption (CMEK):** one shared Cloud KMS **HSM** key (FIPS 140-2 Level 3,
-  90-day rotation) encrypts Cloud SQL, the GCS bucket, Secret Manager, and the
-  Artifact Registry repo. At-rest data is AES-256 regardless; CMEK moves key custody + lifecycle
+  90-day rotation) encrypts Cloud SQL, the GCS bucket, and Secret Manager.
+  At-rest data is AES-256 regardless; CMEK moves key custody + lifecycle
   (rotation, disable, destroy = crypto-shred) to us. The platform stack owns the
-  key and grants each service agent `encrypterDecrypter`; the build stack points
-  the registry at the same key (so apply the platform stack first). Toggle via
+  key and grants each service agent `encrypterDecrypter`. The build stack's
+  container registry is **public** and deliberately not CMEK-encrypted, so the
+  build stack has no CMEK dependency on the platform stack. Toggle via
   `cmek_enabled` / `kms_protection_level` (`HSM` → `SOFTWARE` for ~$0.06/mo).
 - **All secrets in Secret Manager** — DB password + connection URI (cloudsql),
   GCS S3-compatible HMAC keys (storage), dev Postgres password + matterbridge
@@ -332,7 +345,7 @@ These reflect the decisions we converged on; each is easy to change:
    filestore); dev Mattermost + matterbridge as lightweight Deployments. Confirm
    the Mattermost operator version, ingress host, and matterbridge bridges.
 8. **Auth model:** keyless OIDC -> WIF is wired (`external_credentials`) with the
-   real `audience` and apply SA from `google_cloud_init.md`; both the platform
+   real `audience` and apply SA from `INIT.md`; both the platform
    and build stacks impersonate the shared `terraform-apply@`.
 9. **Encryption (CMEK):** one shared Cloud KMS **HSM** key (FIPS 140-2 Level 3,
    ~$1/mo, 90-day rotation) encrypts Cloud SQL + GCS + Secret Manager + Artifact
