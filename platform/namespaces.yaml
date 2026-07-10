@@ -6,7 +6,7 @@ metadata:
   name: mattermost
   labels:
     tier: prod
-    part-of: yourown-chat-stack
+    part-of: yourown-chat
 ---
 apiVersion: v1
 kind: Namespace
@@ -14,7 +14,7 @@ metadata:
   name: matterbridge
   labels:
     tier: dev
-    part-of: yourown-chat-stack
+    part-of: yourown-chat
 ---
 apiVersion: v1
 kind: Namespace
@@ -22,4 +22,4 @@ metadata:
   name: dev
   labels:
     tier: dev
-    part-of: yourown-chat-stack
+    part-of: yourown-chat

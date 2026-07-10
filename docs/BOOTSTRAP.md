@@ -19,10 +19,11 @@ HCP Terraform run
 
 The stack side is already wired:
 
-- `deployments.tfdeploy.hcl` -> `identity_token "gcp" { audience = ["hcp.workload.identity"] }`
-  and the `platform` deployment passes `identity_token`, `audience`,
-  `service_account_email`.
-- `providers.tfcomponent.hcl` -> `provider "google"` uses `external_credentials`.
+- `stacks/platform/deployments.tfdeploy.hcl` -> `identity_token "gcp"` (its
+  `audience` is the full `https://iam.googleapis.com/projects/.../providers/...`
+  provider URL) and the single `platform` deployment passes `identity_token`,
+  `audience`, `service_account_email`.
+- `stacks/platform/providers.tfcomponent.hcl` -> `provider "google"` uses `external_credentials`.
 
 You only need to create the cloud-side resources below and fill three
 `REPLACE-ME-*` inputs.
@@ -59,8 +60,10 @@ gcloud services enable \
 Two SAs so a `plan` cannot mutate infrastructure. **Owner/Editor are never
 used.** The apply roles below are the union of what the stack's modules manage
 (project services, IAM/WIF for tenants, network + PSA, GKE, Cloud SQL, Secret
-Manager, GCS, Artifact Registry, Cloud Build, Cloud Deploy), scoped to the one
-project.
+Manager, GCS, Artifact Registry, Cloud Deploy), scoped to the one project. The
+**build stack reuses this same apply SA** and adds a few Cloud Build roles on top
+(see `docs/BUILD.md` step 3); there is a single plan/apply account for both
+stacks.
 
 ```bash
 # Plan: read-only. securityReviewer lets refresh read IAM policies.
@@ -138,8 +141,9 @@ gcloud iam service-accounts add-iam-policy-binding "$APPLY_SA" \
 
 ## 5. Fill the deployment inputs
 
-Compute the STS audience (the full provider resource name) and set the three
-`REPLACE-ME-*` values in the `platform` deployment of `deployments.tfdeploy.hcl`:
+Compute the STS audience (the full provider resource name) and set the
+`REPLACE-ME-*` values in the `platform` deployment of
+`stacks/platform/deployments.tfdeploy.hcl` (auth values live in a `local`):
 
 ```bash
 echo "audience              = //iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL_ID}/providers/${PROVIDER_ID}"
@@ -154,12 +158,15 @@ echo "project_id            = ${PROJECT_ID}"
 
 ## 6. Create the Stack in HCP Terraform
 
-1. Connect the repo and create a Stack pointing at the **repository root**.
+1. Connect the repo and create a Stack with its **working directory set to
+   `stacks/platform`**.
 2. HCP reads `*.tfcomponent.hcl` + `deployments.tfdeploy.hcl` and the committed
    `.terraform.lock.hcl`.
-3. Plan and apply the `platform` deployment. The first plan proves federation:
-   if the token is rejected, re-check the `attribute-condition` (org/project
-   names) and that `allowed-audiences` is exactly `hcp.workload.identity`.
+3. Plan and apply the `platform` deployment. The first plan proves
+   federation: if the token is rejected, re-check the `attribute-condition`
+   (org/project names) and that the WIF provider's `allowed-audiences` matches
+   the `identity_token` block's `audience` (the full
+   `https://iam.googleapis.com/projects/.../providers/...` URL).
 
 ## Notes
 
