@@ -83,3 +83,9 @@ output "workload_identity_emails" {
     dev          = component.workload_identity_dev.email
   }
 }
+
+output "cmek_key_id" {
+  type        = string
+  description = "Shared CMEK key resource ID (null when cmek_enabled = false). The build stack sets its Artifact Registry artifact_registry_kms_key_name to this SAME value; keep them in sync."
+  value       = one([for k in component.kms : k.crypto_key_id])
+}

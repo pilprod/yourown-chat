@@ -49,6 +49,7 @@ locals {
     "servicenetworking.googleapis.com",
     "sqladmin.googleapis.com",
     "secretmanager.googleapis.com",
+    "cloudkms.googleapis.com",
     "storage.googleapis.com",
     "artifactregistry.googleapis.com",
     "cloudbuild.googleapis.com",
@@ -188,6 +189,36 @@ component "network" {
   }
 }
 
+# --- Shared CMEK key (Cloud SQL + GCS + Artifact Registry) -------------------
+# One customer-managed Cloud KMS key wraps the data-encryption keys of every
+# at-rest store that supports CMEK. Gated by cmek_enabled; when false the
+# component is skipped and each store falls back to Google-managed keys. The
+# build stack's Artifact Registry references THIS key by its deterministic
+# resource path and relies on the encrypterDecrypter grant created here, so the
+# platform stack must be applied first (already the documented ordering).
+component "kms" {
+  for_each = var.cmek_enabled ? toset(["default"]) : toset([])
+
+  source = "./modules/kms"
+
+  inputs = {
+    project_id = component.project_services.project_id
+    # Tier-neutral name (yourown-chat-*), like the Cloud Deploy pipeline below:
+    # the key is shared by prod Cloud SQL/GCS and the cross-environment registry,
+    # so it is not scoped to the per-environment platform prefix.
+    name_prefix      = var.project_prefix
+    location         = var.region
+    protection_level = var.kms_protection_level
+    rotation_period  = var.kms_rotation_period
+    labels           = local.common_labels
+  }
+
+  providers = {
+    google      = provider.google.this
+    google-beta = provider.google-beta.this
+  }
+}
+
 # --- Object storage + Mattermost S3-compatible filestore credentials --------
 component "storage" {
   source = "./modules/storage"
@@ -198,6 +229,9 @@ component "storage" {
     location      = upper(var.region)
     force_destroy = var.storage_force_destroy
     labels        = local.common_labels
+
+    # CMEK: shared platform key (null when cmek_enabled = false).
+    kms_key_name = one([for k in component.kms : k.crypto_key_id])
 
     create_filestore_hmac      = true
     filestore_secret_accessors = [component.workload_identity_mattermost.iam_member]
@@ -253,6 +287,11 @@ component "cloudsql" {
     availability_type             = var.cloudsql_availability_type
     disk_size_gb                  = var.cloudsql_disk_size_gb
     deletion_protection           = var.cloudsql_deletion_protection
+
+    # CMEK: shared platform key (null when cmek_enabled = false). The key's
+    # encrypterDecrypter grant for the Cloud SQL service agent is created by the
+    # kms component; referencing it here orders that grant before this instance.
+    encryption_key_name = one([for k in component.kms : k.crypto_key_id])
 
     database_name = "mattermost"
     db_user_name  = "mattermost"

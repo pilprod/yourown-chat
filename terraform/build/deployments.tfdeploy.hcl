@@ -30,6 +30,13 @@ locals {
   gcp_project        = "yourown-chat"
   gcp_project_number = "1086706391144"
   gcp_region         = "europe-west3" # Frankfurt, Germany (matches Artifact Registry)
+
+  # Shared CMEK key created + owned by the PLATFORM stack (its kms component).
+  # Deterministic path -- name_prefix there is the project prefix "yourown-chat",
+  # so ring/key are yourown-chat-keyring / yourown-chat-cmek. The platform stack
+  # also grants this registry's service agent encrypterDecrypter on it, so it
+  # MUST be applied first. Set to null if the platform sets cmek_enabled = false.
+  cmek_key_id = "projects/${local.gcp_project}/locations/${local.gcp_region}/keyRings/yourown-chat-keyring/cryptoKeys/yourown-chat-cmek"
 }
 
 identity_token "gcp" {
@@ -58,6 +65,11 @@ deployment "build" {
     github_pat_secret_id = "github-pat"
     github_remote_uri    = "https://github.com/pilprod/mattermost.git"
     image_name           = "mattermost"
+
+    # CMEK for the registry, using the shared key the platform stack owns (see
+    # local above). Keep in sync with the platform stack's cmek_enabled: set to
+    # null here if CMEK is disabled there.
+    artifact_registry_kms_key_name = local.cmek_key_id
 
     # One source repo, ONE unified registry, ONE image built on a single tag
     # pattern. The same artifact is promoted dev -> prod (Cloud Deploy), never
