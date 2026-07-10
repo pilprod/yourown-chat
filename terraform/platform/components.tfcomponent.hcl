@@ -136,7 +136,6 @@ component "secrets" {
 
   inputs = {
     project_id        = component.project_services.project_id
-    name_prefix       = local.name_prefix
     replica_locations = [var.region]
     labels            = local.common_labels
 
@@ -339,14 +338,14 @@ component "cloudsql" {
 # comes entirely from its Skaffold profile, not a separate cluster. The Mattermost
 # image is built once by the build stack (terraform/build) and promoted by tag
 # (build-once/promote-the-same-tag); Cloud Deploy promotes the SAME manifests
-# dev -> prod. The pipeline spans both tiers; like every platform resource it is
-# named with the tier-neutral project prefix (yourown-chat-*).
+# dev -> prod. The pipeline spans both tiers; its resources (pipeline, targets,
+# execution SA) use bare project-scoped names (pipeline, dev, prod, clouddeploy)
+# rather than repeating the project prefix.
 component "clouddeploy" {
   source = "./modules/clouddeploy"
 
   inputs = {
     project_id     = component.project_services.project_id
-    name_prefix    = var.project_prefix
     region         = var.region
     gke_cluster_id = component.gke.cluster_id
 

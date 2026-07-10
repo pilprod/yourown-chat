@@ -31,24 +31,24 @@ needs a `secretKeyRef`.
 
 | Secret Manager secret | Consumed by | As |
 |-----------------------|-------------|----|
-| `yourown-chat-cloudsql-mattermost-connection` | prod Mattermost | Secret `mattermost-db` → `DB_CONNECTION_STRING` |
-| `yourown-chat-filestore-access-key` / `-secret-key` | prod Mattermost | Secret `mattermost-filestore` → `accesskey`/`secretkey` |
-| `yourown-chat-dev-postgres-password` | dev Postgres / dev Mattermost | file `POSTGRES_PASSWORD_FILE` + Secret `dev-postgres` |
-| `yourown-chat-matterbridge-tokens` | matterbridge | file `/etc/matterbridge/matterbridge.toml` |
-| `yourown-chat-mattermost-origin-tls-cert` / `-key` | ingress-nginx (Mattermost Ingress) | Secret `mattermost-origin-tls` → `tls.crt`/`tls.key` |
-| `yourown-chat-cloudflare-origin-pull-ca` | ingress-nginx (Mattermost Ingress) | Secret `cloudflare-origin-pull-ca` → `ca.crt` |
+| `cloudsql-mattermost-connection` | prod Mattermost | Secret `mattermost-db` → `DB_CONNECTION_STRING` |
+| `filestore-access-key` / `-secret-key` | prod Mattermost | Secret `mattermost-filestore` → `accesskey`/`secretkey` |
+| `dev-postgres-password` | dev Postgres / dev Mattermost | file `POSTGRES_PASSWORD_FILE` + Secret `dev-postgres` |
+| `matterbridge-tokens` | matterbridge | file `/etc/matterbridge/matterbridge.toml` |
+| `mattermost-origin-tls-cert` / `-key` | ingress-nginx (Mattermost Ingress) | Secret `mattermost-origin-tls` → `tls.crt`/`tls.key` |
+| `cloudflare-origin-pull-ca` | ingress-nginx (Mattermost Ingress) | Secret `cloudflare-origin-pull-ca` → `ca.crt` |
 
 Secret **values** are created by Terraform (generated) or populated out-of-band:
 
 ```bash
 # matterbridge config (contains tokens) — created empty by Terraform:
-gcloud secrets versions add yourown-chat-matterbridge-tokens --data-file=matterbridge.toml
+gcloud secrets versions add matterbridge-tokens --data-file=matterbridge.toml
 
 # Cloudflare origin cert/key + Authenticated Origin Pulls CA — created empty by
 # Terraform; see helm/ingress-nginx/README.md for how to obtain each value:
-gcloud secrets versions add yourown-chat-mattermost-origin-tls-cert --data-file=origin.pem
-gcloud secrets versions add yourown-chat-mattermost-origin-tls-key  --data-file=origin.key
-gcloud secrets versions add yourown-chat-cloudflare-origin-pull-ca  --data-file=origin-pull-ca.pem
+gcloud secrets versions add mattermost-origin-tls-cert --data-file=origin.pem
+gcloud secrets versions add mattermost-origin-tls-key  --data-file=origin.key
+gcloud secrets versions add cloudflare-origin-pull-ca  --data-file=origin-pull-ca.pem
 ```
 
 ## Prerequisites

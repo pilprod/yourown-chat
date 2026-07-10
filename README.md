@@ -251,7 +251,7 @@ git tag on github.com/pilprod/mattermost ──► Cloud Build (2nd-gen trigger)
 
 **Delivery to GKE (platform stack)** — the `clouddeploy` component provisions a
 Cloud Deploy **dev → prod** pipeline that delivers the `helm/` Kubernetes
-workloads: two GKE targets (`yourown-chat-dev`, `yourown-chat-prod`) on the one cluster, each
+workloads: two GKE targets (`dev`, `prod`) on the one cluster, each
 rendering a Skaffold profile from [`helm/skaffold.yaml`](helm/skaffold.yaml). The
 **dev** target deploys the dev tenant (in-cluster Postgres + dev Mattermost) and
 matterbridge, then runs a post-deploy **`verify`** smoke test on the cluster; the
