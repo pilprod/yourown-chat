@@ -11,6 +11,13 @@
 # Cost: a KMS key ring is free; you pay per active key version (~$1.00/mo for an
 # HSM version, ~$0.06 for SOFTWARE) plus negligible wrap/unwrap operations. One
 # shared key = one active version, so the whole platform's CMEK is ~$1/mo.
+#
+# Teardown note: Cloud KMS key rings and keys CANNOT be deleted from GCP -- only
+# key VERSIONS can be scheduled for destruction. On `terraform destroy` the
+# provider drops them from state (they persist in the project), so a later
+# re-apply with the SAME names is a no-op import-or-conflict rather than a fresh
+# create. Names are deliberately stable (no random suffix) because the build
+# stack references the key by its deterministic path.
 # ---------------------------------------------------------------------------
 
 locals {
