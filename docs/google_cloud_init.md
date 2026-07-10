@@ -208,6 +208,13 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member="serviceAccount:$APPLY_SA@$PROJECT_ID.iam.gserviceaccount.com" \
   --role="roles/secretmanager.admin"
+
+# CMEK: create the shared Cloud KMS key ring + HSM key and set encrypterDecrypter
+# on it for the Cloud SQL / GCS / Artifact Registry service agents (platform stack
+# kms component). Scope down to the key ring later if you prefer.
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:$APPLY_SA@$PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/cloudkms.admin"
 ```
 
 ## Resulting Roles
@@ -215,7 +222,7 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
 | Service account | Roles |
 | --- | --- |
 | `terraform-plan@yourown-chat.iam.gserviceaccount.com` | `roles/viewer`, `roles/browser` |
-| `terraform-apply@yourown-chat.iam.gserviceaccount.com` | `roles/container.admin`, `roles/compute.networkAdmin`, `roles/iam.serviceAccountAdmin`, `roles/iam.serviceAccountUser`, `roles/secretmanager.admin` |
+| `terraform-apply@yourown-chat.iam.gserviceaccount.com` | `roles/container.admin`, `roles/compute.networkAdmin`, `roles/iam.serviceAccountAdmin`, `roles/iam.serviceAccountUser`, `roles/secretmanager.admin`, `roles/cloudkms.admin` |
 
 ## Verification
 

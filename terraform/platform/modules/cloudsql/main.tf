@@ -26,6 +26,11 @@ resource "google_sql_database_instance" "this" {
 
   deletion_protection = var.deletion_protection
 
+  # CMEK: null keeps Google-managed encryption. When set, the Cloud SQL service
+  # agent must already hold encrypterDecrypter on the key (wired via the kms
+  # component's dependency edge). ForceNew -- the key cannot be changed in place.
+  encryption_key_name = var.encryption_key_name
+
   settings {
     tier              = var.tier
     edition           = var.edition

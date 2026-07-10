@@ -37,6 +37,7 @@ component "artifact_registry" {
     location      = var.region
     repository_id = var.artifact_registry_repository_id
     description   = "Unified container images (Mattermost + future services), promoted by tag across environments."
+    kms_key_name  = var.artifact_registry_kms_key_name
     labels        = local.common_labels
   }
 

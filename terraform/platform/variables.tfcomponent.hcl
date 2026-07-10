@@ -180,6 +180,34 @@ variable "storage_force_destroy" {
   default     = false
 }
 
+# --- Encryption (CMEK) ------------------------------------------------------
+# One shared Cloud KMS key encrypts every at-rest store that supports CMEK
+# (Cloud SQL, GCS, and -- from the build stack -- Artifact Registry). At-rest
+# data is AES-256 either way; CMEK puts the key lifecycle (rotation, disable,
+# destroy = crypto-shred) under our control instead of Google's.
+variable "cmek_enabled" {
+  type        = bool
+  description = "Provision the shared Cloud KMS key and encrypt Cloud SQL + GCS with it (and grant the Artifact Registry agent so the build stack can too). Cost is ~$1/mo for an HSM key version (or ~$0.06 for SOFTWARE). Note: Cloud SQL and Artifact Registry bind their key at creation, so toggling this on an existing deployment replaces those resources."
+  default     = true
+}
+
+variable "kms_protection_level" {
+  type        = string
+  description = "CMEK key protection level. HSM = FIPS 140-2 Level 3 hardware custody (~$1.00/version/mo); SOFTWARE = Level 1 (~$0.06). Immutable once the key exists -- moving between them later means a new key (and, for Cloud SQL, an instance migration)."
+  default     = "HSM"
+
+  validation {
+    condition     = contains(["HSM", "SOFTWARE"], var.kms_protection_level)
+    error_message = "kms_protection_level must be HSM or SOFTWARE."
+  }
+}
+
+variable "kms_rotation_period" {
+  type        = string
+  description = "Automatic rotation period for the shared key, in seconds with an 's' suffix. Default 90 days."
+  default     = "7776000s"
+}
+
 # --- Public ingress (Cloudflare-fronted) ------------------------------------
 variable "public_ingress_enabled" {
   type        = bool

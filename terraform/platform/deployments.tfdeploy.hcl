@@ -122,6 +122,13 @@ deployment "platform" {
     # Only prod Mattermost is exposed; the dev tenant stays private.
     public_ingress_enabled = true
 
+    # Encryption: one shared Cloud KMS HSM key (FIPS 140-2 Level 3) encrypts
+    # Cloud SQL + GCS here and Artifact Registry in the build stack. ~$1/mo for
+    # the single HSM key version. Set cmek_enabled = false (or protection_level
+    # = "SOFTWARE", ~$0.06/mo) to trade custody assurance for cost.
+    cmek_enabled         = true
+    kms_protection_level = "HSM"
+
     storage_force_destroy = false
     extra_labels          = { cost-center = "platform" }
   }

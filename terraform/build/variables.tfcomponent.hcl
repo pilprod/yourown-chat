@@ -82,6 +82,12 @@ variable "image_name" {
   default     = "mattermost"
 }
 
+variable "artifact_registry_kms_key_name" {
+  type        = string
+  description = "Optional CMEK key (full resource ID) for the registry. The key is created and owned by the PLATFORM stack (terraform/platform), whose kms component also grants THIS registry's service agent encrypterDecrypter on it -- so apply the platform stack first. Null = Google-managed keys. Keep in sync with the platform stack's cmek_enabled."
+  default     = null
+}
+
 variable "builds" {
   type = map(object({
     tag_regex = string

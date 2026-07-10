@@ -42,6 +42,13 @@ SA keys.
 - The **platform stack is applied first**. It enables the Cloud Build and
   Artifact Registry APIs (its `project-services` component) that this stack uses.
   This stack does not enable APIs; it creates the registry and CI on top.
+- **CMEK (if enabled).** The platform stack also owns the shared Cloud KMS key
+  and grants **this registry's** service agent (`service-<num>@gcp-sa-artifactregistry`)
+  `encrypterDecrypter` on it. This stack only *references* the key by its
+  deterministic path (`artifact_registry_kms_key_name`, wired in
+  `deployments.tfdeploy.hcl`), so applying the platform stack first is required
+  for the registry's CMEK. Set that input to `null` if the platform sets
+  `cmek_enabled = false`.
 - The WIF pool/provider from [`google_cloud_init.md`](google_cloud_init.md)
   already exist (`hcp-terraform` / `hcp-terraform`) and trust the `papou-work`
   HCP org + `yourown-chat` HCP project. The build HCP Stack must live in that
@@ -199,5 +206,9 @@ Already wired in the manifests (change the tag to the one you pushed):
   `v9.11.3-patched`. There is no separate dev image or dev tag.
 - **APIs come from the platform stack.** Apply it first; the build stack creates
   the registry + CI but enables no APIs itself.
+- **CMEK key comes from the platform stack.** It creates the shared Cloud KMS key
+  and grants this registry's service agent access; the build stack only references
+  the key. Keep `artifact_registry_kms_key_name` in sync with the platform's
+  `cmek_enabled`.
 - **Rotating the PAT** is a `gcloud secrets versions add github-pat` away; the
   connection reads `versions/latest`.
