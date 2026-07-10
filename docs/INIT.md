@@ -420,8 +420,11 @@ Copy the token value once (it is not shown again).
 ### 10.2 Store it in an HCP variable set
 
 1. In HCP Terraform, create a **variable set** and apply it to the Stack.
-2. Add a **Terraform variable** `cloudflare_api_token` = the token; mark it
-   **sensitive**.
+2. Add a **Terraform variable** (category *Terraform*, matching
+   `category = "terraform"` in the `store "varset"` block) named
+   `cloudflare_api_token` = the token. Tick **Sensitive**; leave **HCL
+   unchecked** — the token is a plain string, not an HCL expression (HCL is only
+   for list/map/object values).
 3. In `terraform/deployments.tfdeploy.hcl`, set the `store "varset"` block's `id`
    to that variable set's ID. The token flows in as the ephemeral
    `cloudflare_api_token` input.
