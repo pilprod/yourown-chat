@@ -131,6 +131,10 @@ component "secrets" {
     replica_locations = [var.region]
     labels            = local.common_labels
 
+    # CMEK: shared platform key encrypts every secret replica (null when
+    # cmek_enabled = false, i.e. the kms component is absent).
+    kms_key_name = one([for k in component.kms : k.crypto_key_id])
+
     secrets = merge(
       {
         # In-cluster dev Postgres password (generated, read by the dev tenant).

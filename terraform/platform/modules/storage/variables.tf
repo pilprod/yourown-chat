@@ -50,7 +50,7 @@ variable "force_destroy" {
 
 variable "kms_key_name" {
   type        = string
-  description = "Optional CMEK key for default encryption. Null = Google-managed keys."
+  description = "Optional CMEK key applied to both the bucket's default encryption and this module's Secret Manager filestore secrets (which must be replicated to the key's region). Null = Google-managed keys."
   default     = null
 }
 

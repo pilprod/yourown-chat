@@ -25,7 +25,7 @@ Stacks** in a single GCP project:
 | CI build | Cloud Build (2nd-gen GitHub trigger, dedicated least-privilege SA) builds the Mattermost image |
 | CD to GKE | Cloud Deploy **dev→prod** pipeline delivers the `helm/` workloads across two GKE targets on the one cluster — dev renders the dev tenant + matterbridge with a post-deploy `verify`, prod renders the operator-managed Mattermost gated by approval |
 | Secrets | **Every** credential in **Secret Manager**, mounted via the GKE Secret Manager CSI add-on + Workload Identity |
-| Encryption at rest | One shared **Cloud KMS HSM** key (CMEK, FIPS 140-2 Level 3, 90-day rotation) encrypts Cloud SQL, GCS, and Artifact Registry — customer-controlled key lifecycle over Google's default AES-256 |
+| Encryption at rest | One shared **Cloud KMS HSM** key (CMEK, FIPS 140-2 Level 3, 90-day rotation) encrypts Cloud SQL, GCS, Secret Manager, and Artifact Registry — customer-controlled key lifecycle over Google's default AES-256 |
 | Apps | prod Mattermost (operator CR + managed Cloud SQL) and dev Mattermost + matterbridge + in-cluster Postgres, all on the one cluster |
 
 > There is no "S3" on GCP — the equivalent is a **Cloud Storage (GCS) bucket**,
@@ -79,7 +79,7 @@ nodes + Cloud NAT egress, Workload Identity, Shielded Nodes, private-IP Cloud SQ
 over Private Service Access, uniform bucket access + public-access prevention,
 dedicated least-privilege service accounts, **all secrets in Secret Manager**,
 and **customer-managed encryption (CMEK)** on by default — one shared Cloud KMS
-HSM key across Cloud SQL, GCS, and Artifact Registry.
+HSM key across Cloud SQL, GCS, Secret Manager, and Artifact Registry.
 
 **Dev/prod isolation on one cluster:** the tainted prod pool guarantees resource
 isolation; `nodeSelector tier=prod|dev` on the Kubernetes manifests pins each tier to
@@ -276,15 +276,16 @@ create a `platform -> build` dependency cycle.
   workload SA (the dev workloads never call the Kubernetes API).
 - Cloud SQL private IP only (`ipv4_enabled = false`), `ENCRYPTED_ONLY` TLS.
 - **Encryption (CMEK):** one shared Cloud KMS **HSM** key (FIPS 140-2 Level 3,
-  90-day rotation) encrypts Cloud SQL, the GCS bucket, and the Artifact Registry
-  repo. At-rest data is AES-256 regardless; CMEK moves key custody + lifecycle
+  90-day rotation) encrypts Cloud SQL, the GCS bucket, Secret Manager, and the
+  Artifact Registry repo. At-rest data is AES-256 regardless; CMEK moves key custody + lifecycle
   (rotation, disable, destroy = crypto-shred) to us. The platform stack owns the
   key and grants each service agent `encrypterDecrypter`; the build stack points
   the registry at the same key (so apply the platform stack first). Toggle via
   `cmek_enabled` / `kms_protection_level` (`HSM` → `SOFTWARE` for ~$0.06/mo).
 - **All secrets in Secret Manager** — DB password + connection URI (cloudsql),
   GCS S3-compatible HMAC keys (storage), dev Postgres password + matterbridge
-  config + Cloudflare origin material (secrets module). None are surfaced as
+  config + Cloudflare origin material (secrets module), each secret replica
+  encrypted with the shared CMEK key. None are surfaced as
   plaintext outputs; pods read them via the GKE Secret Manager CSI add-on, gated
   by per-tenant `secretAccessor` IAM (a workload can read only its own secrets).
 - Public ingress: prod Mattermost is exposed at `yourown.chat` only through
@@ -334,8 +335,8 @@ These reflect the decisions we converged on; each is easy to change:
    real `audience` and apply SA from `google_cloud_init.md`; both the platform
    and build stacks impersonate the shared `terraform-apply@`.
 9. **Encryption (CMEK):** one shared Cloud KMS **HSM** key (FIPS 140-2 Level 3,
-   ~$1/mo, 90-day rotation) encrypts Cloud SQL + GCS + Artifact Registry, on by
-   default. HSM (not SOFTWARE) is chosen so the expensive-to-change Cloud SQL key
+   ~$1/mo, 90-day rotation) encrypts Cloud SQL + GCS + Secret Manager + Artifact
+   Registry, on by default. HSM (not SOFTWARE) is chosen so the expensive-to-change Cloud SQL key
    is right the first time — the instance binds its key at creation, so switching
    later means an instance migration. Flip `cmek_enabled = false` or
    `kms_protection_level = "SOFTWARE"` (~$0.06/mo) if you don't need FIPS L3.

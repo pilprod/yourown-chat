@@ -170,6 +170,6 @@ variable "user_labels" {
 
 variable "encryption_key_name" {
   type        = string
-  description = "Optional CMEK key (full resource ID) for disk encryption. Null = Google-managed keys. The key must be in the same region as the instance, and the Cloud SQL service agent must hold cryptoKeyEncrypterDecrypter on it BEFORE the instance is created. Immutable for the life of the instance (changing it forces a replacement)."
+  description = "Optional CMEK key (full resource ID) used for both the instance disk encryption and this module's Secret Manager secrets (db password + connection URI). Null = Google-managed keys. The key must be in the same region as the instance and secret replicas, and the Cloud SQL and Secret Manager service agents must hold cryptoKeyEncrypterDecrypter on it BEFORE those resources are created. Immutable for the life of the instance (changing it forces a replacement)."
   default     = null
 }
