@@ -3,7 +3,7 @@
 
 output "image_path" {
   type        = string
-  description = "Unified image path without tag, e.g. europe-west3-docker.pkg.dev/yourown-chat/ycs-containers/mattermost. Reference this in BOTH Mattermost manifests with the pushed tag (prod :v9.11.3-patched, dev :v9.11.3-patched-dev)."
+  description = "Unified image path without tag, e.g. europe-west3-docker.pkg.dev/yourown-chat/ycs-containers/mattermost. Reference this in BOTH Mattermost manifests with the single pushed tag (e.g. :v9.11.3-patched), promoted dev -> prod."
   value       = component.mattermost_image.image_path
 }
 

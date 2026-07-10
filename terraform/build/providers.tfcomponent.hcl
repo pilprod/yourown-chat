@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # Build stack: provider requirements + keyless configuration.
 #
-# This stack is deliberately separate from the platform stack (stacks/platform):
+# This stack is deliberately separate from the platform stack (terraform/platform):
 # it manages ONLY the Mattermost image-build CI (a Cloud Build 2nd-gen GitHub
 # connection + repository + tag-triggered image builds pushing to Artifact
 # Registry). It reuses the SAME keyless auth path (HCP OIDC -> GCP Workload

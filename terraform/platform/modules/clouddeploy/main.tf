@@ -6,6 +6,10 @@ locals {
   exec_sa_id         = "${var.name_prefix}-clouddeploy"
   pipeline_name      = "${var.name_prefix}-pipeline"
   deploy_agent_email = "service-${data.google_project.this.number}@gcp-sa-clouddeploy.iam.gserviceaccount.com"
+
+  # Targets keyed by stage name (order-independent); the pipeline below drives
+  # the promotion order from the ordered var.stages list.
+  targets = { for s in var.stages : s.name => s }
 }
 
 # Execution identity Cloud Deploy uses to render and deploy.
@@ -30,19 +34,25 @@ resource "google_service_account_iam_member" "agent_act_as_exec" {
   member             = "serviceAccount:${local.deploy_agent_email}"
 }
 
-resource "google_clouddeploy_target" "gke" {
+# One target per stage. Every target points at the SAME cluster; the deploy
+# namespace and per-env config diverge via the Skaffold profile bound to the
+# stage in the pipeline below. `require_approval` and the post-deploy VERIFY
+# execution usage are per stage.
+resource "google_clouddeploy_target" "stage" {
+  for_each = local.targets
+
   project  = var.project_id
   location = var.region
-  name     = var.target_name
+  name     = "${var.name_prefix}-${each.value.name}"
 
-  require_approval = var.require_approval
+  require_approval = each.value.require_approval
 
   gke {
     cluster = var.gke_cluster_id
   }
 
   execution_configs {
-    usages          = ["RENDER", "DEPLOY"]
+    usages          = each.value.verify ? ["RENDER", "DEPLOY", "VERIFY"] : ["RENDER", "DEPLOY"]
     service_account = google_service_account.exec.email
   }
 
@@ -51,6 +61,9 @@ resource "google_clouddeploy_target" "gke" {
   depends_on = [google_project_iam_member.exec]
 }
 
+# Serial promotion pipeline. var.stages is ORDER-SENSITIVE -- the first stage is
+# the release entrypoint and each subsequent stage is a promotion target; the
+# dynamic block iterates the list in order to preserve the dev -> prod flow.
 resource "google_clouddeploy_delivery_pipeline" "this" {
   project  = var.project_id
   location = var.region
@@ -59,8 +72,22 @@ resource "google_clouddeploy_delivery_pipeline" "this" {
   labels = var.labels
 
   serial_pipeline {
-    stages {
-      target_id = google_clouddeploy_target.gke.name
+    dynamic "stages" {
+      for_each = var.stages
+      iterator = stage
+
+      content {
+        target_id = google_clouddeploy_target.stage[stage.value.name].name
+        profiles  = stage.value.profiles
+
+        strategy {
+          standard {
+            # Run the Skaffold `verify` tests after deploy on stages that opt in
+            # (the target also carries the VERIFY execution usage).
+            verify = stage.value.verify
+          }
+        }
+      }
     }
   }
 }

@@ -8,9 +8,9 @@ output "delivery_pipeline_id" {
   value       = google_clouddeploy_delivery_pipeline.this.id
 }
 
-output "target_name" {
-  description = "Cloud Deploy target name."
-  value       = google_clouddeploy_target.gke.name
+output "target_names" {
+  description = "Map of stage name => Cloud Deploy target name."
+  value       = { for k, t in google_clouddeploy_target.stage : k => t.name }
 }
 
 output "execution_service_account_email" {

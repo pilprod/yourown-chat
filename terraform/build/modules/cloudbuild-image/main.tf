@@ -93,8 +93,8 @@ resource "google_cloudbuild_trigger" "this" {
 
   project         = var.project_id
   location        = var.region
-  name            = "${var.name_prefix}-${each.key}-mattermost-image"
-  description     = "Build + push the Mattermost image on ${each.key} tags matching ${each.value.tag_regex}."
+  name            = "${var.name_prefix}-${each.key}-image"
+  description     = "Build + push the ${each.key} image on git tags matching ${each.value.tag_regex}."
   service_account = google_service_account.build.id
 
   repository_event_config {

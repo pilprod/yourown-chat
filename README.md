@@ -6,13 +6,13 @@ Production-grade, cloud-agnostic-where-practical GCP platform, managed with
 This repository implements the **first platform slice** as **two Terraform
 Stacks** in a single GCP project:
 
-- **`stacks/platform`** — one Stacks **deployment** (`platform`) provisioning a
+- **`terraform/platform`** — one Stacks **deployment** (`platform`) provisioning a
   **single zonal GKE cluster with two node pools**, managed Cloud SQL, object
   storage and the Cloudflare-fronted public ingress. **prod and dev share this
   one cluster**: prod runs on a dedicated, tainted node pool; **dev is an
   isolated tenant namespace** (RBAC + default-deny NetworkPolicies) scheduled
   onto its own node pool.
-- **`stacks/build`** — the container CI: one **unified** Artifact Registry
+- **`terraform/build`** — the container CI: one **unified** Artifact Registry
   repository (`ycs-containers`) plus the Mattermost image build (Cloud Build),
   promoting a single image across environments by git tag.
 
@@ -23,7 +23,7 @@ Stacks** in a single GCP project:
 | Kubernetes | **One** zonal GKE Standard cluster, private nodes, **two node pools**: prod `e2-standard-2` (on-demand, tainted) + dev `e2-small` (on-demand, untainted) |
 | Container registry | **One unified** Artifact Registry (Docker) repo `ycs-containers`, owned by the build stack |
 | CI build | Cloud Build (2nd-gen GitHub trigger, dedicated least-privilege SA) builds the Mattermost image |
-| CD to GKE | Cloud Deploy delivery pipeline + GKE target (dev->prod promotion is a follow-up) |
+| CD to GKE | Cloud Deploy **dev→prod** pipeline: one artifact promoted across two GKE targets (dev + prod namespaces) on the one cluster — dev post-deploy `verify`, prod gated by approval |
 | Secrets | **Every** credential in **Secret Manager**, mounted via the GKE Secret Manager CSI add-on + Workload Identity |
 | Apps | prod Mattermost (operator CR + managed Cloud SQL) and dev Mattermost + matterbridge + in-cluster Postgres, all on the one cluster |
 
@@ -112,7 +112,7 @@ graph TD
   WI -->|accessors| SQL
   WI -->|accessors| STO
   WI -->|accessors| SEC
-  GKE --> CD[clouddeploy<br/>pipeline + target]
+  GKE --> CD[clouddeploy<br/>dev→prod pipeline + 2 targets]
 ```
 
 **build stack**
@@ -130,7 +130,7 @@ stack enables no APIs itself; apply the platform stack first.
 ## Repository layout
 
 ```
-stacks/                     # each subdir is ONE Terraform Stacks configuration
+terraform/                  # each subdir is ONE Terraform Stacks configuration
   platform/                 # the platform stack (network, GKE, data, secrets, ...)
     .terraform-version      # Terraform Core version pin (read by HCP Stacks + CI)
     .terraform.lock.hcl     # provider lock (committed at the stack root)
@@ -145,7 +145,7 @@ stacks/                     # each subdir is ONE Terraform Stacks configuration
       gke/                  # zonal Standard cluster + node_pools map + WI + CSI
       cloudsql/             # private PostgreSQL + DB + user + password/conn secrets
       storage/              # GCS bucket (+ optional Mattermost S3 HMAC creds)
-      clouddeploy/          # delivery pipeline + GKE target + execution SA
+      clouddeploy/          # dev→prod delivery pipeline + 2 GKE targets + exec SA
       secrets/              # Secret Manager map (generate/provide + accessors)
       workload-identity/    # per-tenant GSA bound to a KSA (WI)
   build/                    # the build stack (unified registry + Mattermost image CI)
@@ -164,21 +164,24 @@ helm/                       # GitOps manifests (separate from infra + app)
   dev/                      # SA/SPC + in-cluster Postgres + dev Mattermost +
                             #   networkpolicy.yaml + rbac.yaml (tenant isolation)
   ingress-nginx/            # Cloudflare-only ingress values + bootstrap runbook
-app/                        # sample workload + CI/CD manifests
+app/                        # sample workload shipped by Cloud Deploy (dev→prod)
   Dockerfile, index.html
-  k8s/                      # deployment.yaml, service.yaml
-  skaffold.yaml             # consumed by Cloud Deploy
+  k8s/                      # kustomize base + per-env overlays:
+    base/                   #   deployment.yaml + service.yaml (env-neutral)
+    dev/                    #   namespace sample-dev (+ single replica)
+    prod/                   #   namespace sample-prod
+  skaffold.yaml             # dev/prod profiles + post-deploy verify (dev)
   cloudbuild.yaml           # illustrative build -> push -> create release
 .gitlab-ci.yml              # module fmt/validate + manifest lint
 ```
 
 > Stack layout: the repo hosts **two** Terraform Stacks configurations, one per
-> `stacks/<name>/` directory (`platform` and `build`), each using the
+> `terraform/<name>/` directory (`platform` and `build`), each using the
 > `*.tfcomponent.hcl` (components, providers, variables, outputs) and
 > `*.tfdeploy.hcl` (deployments) suffixes Terraform Stacks requires. HCP reads
 > **one stack per working directory**, so each stack is its own HCP Stack with
-> its working directory set to `stacks/platform` or `stacks/build`. Modules are
-> **co-located under each stack** (`stacks/<name>/modules/`) and referenced as
+> its working directory set to `terraform/platform` or `terraform/build`. Modules are
+> **co-located under each stack** (`terraform/<name>/modules/`) and referenced as
 > `./modules/X`: the Stacks source bundler roots the bundle at the stack config
 > directory and cannot follow `../` sources that escape it, so a shared
 > top-level `infra/modules/` is not reachable from a nested stack. The two
@@ -198,7 +201,7 @@ app/                        # sample workload + CI/CD manifests
 1. Create **one** GCP project with billing linked, or reuse an existing one.
    This slice does **not** create projects/org (that is a separate future
    foundation stack requiring org + billing permissions).
-2. In `stacks/platform/deployments.tfdeploy.hcl` the project ID (`yourown-chat`),
+2. In `terraform/platform/deployments.tfdeploy.hcl` the project ID (`yourown-chat`),
    WIF `audience` and apply-SA are already wired; set the real
    `master_authorized_networks` CIDR if you want to restrict the control plane
    (empty = reachable but credential-gated, so Cloud Deploy can reach it).
@@ -211,7 +214,7 @@ app/                        # sample workload + CI/CD manifests
    allowed-audiences); the google provider exchanges it through WIF
    (`external_credentials`) and impersonates the apply SA.
 4. Create the Stack in HCP Terraform with its **working directory set to
-   `stacks/platform`**, then plan and apply the single `platform` deployment.
+   `terraform/platform`**, then plan and apply the single `platform` deployment.
    (An existing Stack that pointed at the repo root must be updated to this
    working directory after the reorg.)
 5. Deploy the chat workloads from [`helm/`](helm/README.md): install the
@@ -221,7 +224,7 @@ app/                        # sample workload + CI/CD manifests
    then apply the manifests (namespaces, then per-tenant resources including
    `helm/dev/networkpolicy.yaml` and `helm/dev/rbac.yaml`).
 6. (For custom Mattermost images) Create a **second** HCP Stack with working
-   directory **`stacks/build`** and follow [`docs/BUILD.md`](docs/BUILD.md) to
+   directory **`terraform/build`** and follow [`docs/BUILD.md`](docs/BUILD.md) to
    wire the Cloud Build GitHub connection and grant the shared apply SA its few
    extra build roles. Apply
    it **after** the platform stack (it creates the unified registry and needs the
@@ -229,34 +232,37 @@ app/                        # sample workload + CI/CD manifests
 
 ## CI/CD flow
 
-**Mattermost image (build stack, `stacks/build`)** — build once per tag, push to
+**Mattermost image (build stack, `terraform/build`)** — build once, push to
 the one unified registry, promote by tag:
 
 ```
 git tag on github.com/pilprod/mattermost ──► Cloud Build (2nd-gen trigger)
-   ^v.*-patched$      ─► build Dockerfile ─► push ycs-containers/mattermost:<tag>   (prod)
-   ^v.*patched-dev$   ─► build Dockerfile ─► push ycs-containers/mattermost:<tag>   (dev)
+   ^v.*-patched$   ─► build Dockerfile ─► push ycs-containers/mattermost:<tag>
 ```
 
 - One Cloud Build 2nd-gen GitHub connection + repository watches the external
-  Mattermost source repo; disjoint tag patterns route prod vs dev builds to the
-  **same** image path (they differ only by tag). Builds run as a dedicated,
-  least-privilege runtime SA (`ycs-img-build`: repo-scoped AR writer + log writer
-  only). The Terraform that provisions the build stack impersonates the
-  **shared** `terraform-apply@` SA (the same single account the platform uses).
-  See [`docs/BUILD.md`](docs/BUILD.md).
+  Mattermost source repo; a single tag pattern (`^v.*-patched$`) builds **one**
+  image, and that same artifact is deployed to dev and prod (promoted, not
+  rebuilt per environment). Builds run as a dedicated, least-privilege runtime SA
+  (`ycs-img-build`: repo-scoped AR writer + log writer only). The Terraform that
+  provisions the build stack impersonates the **shared** `terraform-apply@` SA
+  (the same single account the platform uses). See [`docs/BUILD.md`](docs/BUILD.md).
 - The resulting image is referenced in both Mattermost manifests: prod
   `helm/mattermost/mattermost.yaml` (`spec.image` + `version`), dev
   `helm/dev/mattermost-dev.yaml`.
 
 **Delivery to GKE (platform stack)** — the `clouddeploy` component provisions a
-Cloud Deploy delivery pipeline + GKE target. The target practice is
-**build-once/promote-the-same-artifact dev -> prod** (two namespace targets on
-the one cluster, with `requireApproval` on prod); wiring that full two-stage
-pipeline is a deliberate **follow-up PR**. The demo Cloud Build identity that
-previously lived in the platform stack was removed: with the registry now owned
-by the build stack, a platform-side writer binding would create a
-`platform -> build` dependency cycle.
+Cloud Deploy **dev → prod** pipeline that ships the `app/` sample as a
+**build-once/promote-the-same-artifact** demonstrator: two GKE targets
+(`ycs-dev`, `ycs-prod`) on the one cluster (namespaces `sample-dev` /
+`sample-prod`), with a post-deploy **`verify`** smoke test on dev and
+**`requireApproval`** gating promotion to prod. Per-env divergence (namespace,
+replica count) is a Skaffold profile bound to each stage — see
+[`app/skaffold.yaml`](app/skaffold.yaml). **Mattermost itself stays GitOps**
+(`helm/`), referencing the same promoted image tag in both tiers. The demo Cloud
+Build identity that previously lived in the platform stack was removed: with the
+registry now owned by the build stack, a platform-side writer binding would
+create a `platform -> build` dependency cycle.
 
 ## Security considerations
 
@@ -306,8 +312,9 @@ These reflect the decisions we converged on; each is easy to change:
    (`ycs-containers`) owned by the **build stack**; one Mattermost image promoted
    dev->prod by tag. The demo platform-side Cloud Build identity was removed to
    avoid a dependency cycle.
-4. **Delivery:** Cloud Deploy is provisioned; the full **dev->prod promotion
-   pipeline** (two namespace targets, prod approval) is a follow-up PR.
+4. **Delivery:** a Cloud Deploy **dev→prod** pipeline ships the `app/` sample
+   (two GKE targets on the one cluster, dev `verify` + prod approval),
+   build-once/promote-the-same-artifact. Mattermost stays GitOps (`helm/`).
 5. **Scope:** provisions into an **existing** `project_id`; org/project bootstrap
    deferred to a foundation stack.
 6. **Cloud SQL:** prod only — `db-f1-micro` + PITR + 7-day backups, no HA (HA

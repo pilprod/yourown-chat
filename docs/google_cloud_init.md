@@ -23,10 +23,10 @@ HCP Terraform run
 The Terraform side is already wired, so this guide only creates the cloud-side
 resources below:
 
-- `stacks/platform/deployments.tfdeploy.hcl` -> `identity_token "gcp"` and the
+- `terraform/platform/deployments.tfdeploy.hcl` -> `identity_token "gcp"` and the
   single `platform` deployment already pass the real `audience` and
   `service_account_email` (`terraform-apply@`) -- no placeholders to fill.
-- `stacks/platform/providers.tfcomponent.hcl` -> `provider "google"` uses
+- `terraform/platform/providers.tfcomponent.hcl` -> `provider "google"` uses
   `external_credentials`.
 - The `build` stack authenticates the same way with the same apply SA (see
   [`BUILD.md`](BUILD.md)).
@@ -243,7 +243,7 @@ gcloud projects get-iam-policy "$PROJECT_ID" \
 ## 8. Create the Stack in HCP Terraform
 
 1. Connect the repo and create a Stack with its **working directory set to
-   `stacks/platform`**.
+   `terraform/platform`**.
 2. HCP reads the `*.tfcomponent.hcl` files + `deployments.tfdeploy.hcl` and the
    committed `.terraform.lock.hcl`.
 3. Plan and apply the single `platform` deployment. The first plan proves
@@ -252,7 +252,7 @@ gcloud projects get-iam-policy "$PROJECT_ID" \
    matches the `identity_token` block's `audience` (the full
    `https://iam.googleapis.com/.../providers/...` URL).
 4. For the container-image CI, create a **second** Stack with working directory
-   `stacks/build` (same org + project, so it reuses this WIF provider and apply
+   `terraform/build` (same org + project, so it reuses this WIF provider and apply
    SA). See [`BUILD.md`](BUILD.md).
 
 ## Notes

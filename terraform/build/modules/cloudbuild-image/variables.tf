@@ -91,7 +91,7 @@ variable "builds" {
   type = map(object({
     tag_regex = string
   }))
-  description = "Map of build name (e.g. prod/dev) => spec. Each entry creates one tag-triggered Cloud Build trigger that builds var.dockerfile and pushes the SAME unified image <ar_location>-docker.pkg.dev/<project>/<ar_repo>/<image_name>:$TAG_NAME. Builds differ only by the git tag regex that fires them (e.g. ^v.*-patched$ vs ^v.*patched-dev$); the image path is identical, so the artifact is promoted by tag, not duplicated per environment."
+  description = "Map of image name => spec. Each entry creates one tag-triggered Cloud Build trigger that builds var.dockerfile and pushes <ar_location>-docker.pkg.dev/<project>/<ar_repo>/<image_name>:$TAG_NAME. Build once on the tag regex (e.g. ^v.*-patched$) and promote that same artifact across environments, rather than rebuilding per environment."
 
   validation {
     condition     = length(var.builds) > 0

@@ -1,10 +1,10 @@
 # ---------------------------------------------------------------------------
 # Build deployment. ONE deployment owns the unified container registry
 # (ycs-containers) and watches the single source repository
-# (github.com/pilprod/mattermost). It routes by git tag to the SAME image path
-# -- images are promoted across environments by tag, not duplicated per env:
-#   - tags matching ^v.*-patched$      -> ycs-containers/mattermost:<tag>   (prod)
-#   - tags matching ^v.*patched-dev$   -> ycs-containers/mattermost:<tag>   (dev)
+# (github.com/pilprod/mattermost). It builds ONE image on a SINGLE tag pattern;
+# that one artifact is promoted dev -> prod by Cloud Deploy (platform stack), not
+# rebuilt per environment:
+#   - tags matching ^v.*-patched$   -> ycs-containers/mattermost:<tag>
 # The registry lives in the one project `yourown-chat`, europe-west3.
 #
 # AUTH: keyless path identical to the platform stack -- HCP mints an OIDC JWT
@@ -59,13 +59,12 @@ deployment "build" {
     github_remote_uri    = "https://github.com/pilprod/mattermost.git"
     image_name           = "mattermost"
 
-    # One source repo, ONE unified registry, routed by disjoint tag patterns to
-    # the same image path. dev/prod images differ only by tag:
-    #   v9.11.3-patched      -> prod
-    #   v9.11.3-patched-dev  -> dev
+    # One source repo, ONE unified registry, ONE image built on a single tag
+    # pattern. The same artifact is promoted dev -> prod (Cloud Deploy), never
+    # rebuilt per environment:
+    #   v9.11.3-patched  -> ycs-containers/mattermost:v9.11.3-patched
     builds = {
-      prod = { tag_regex = "^v.*-patched$" }
-      dev  = { tag_regex = "^v.*patched-dev$" }
+      mattermost = { tag_regex = "^v.*-patched$" }
     }
 
     extra_labels = { cost-center = "platform-build" }

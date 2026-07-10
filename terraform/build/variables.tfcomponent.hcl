@@ -86,7 +86,7 @@ variable "builds" {
   type = map(object({
     tag_regex = string
   }))
-  description = "Map of build name (prod/dev) => git tag regex. Each entry creates one tag-triggered Cloud Build trigger; all builds push the SAME unified image path and differ only by the tag that fires them (^v.*-patched$ = prod, ^v.*patched-dev$ = dev)."
+  description = "Map of image name => git tag regex. Each entry creates one tag-triggered Cloud Build trigger pushing the unified image path. Build once on the tag pattern (^v.*-patched$) and promote that artifact dev -> prod, rather than rebuilding per environment."
 }
 
 variable "extra_labels" {

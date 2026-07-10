@@ -10,9 +10,9 @@
 #   - mattermost_image  : one Cloud Build 2nd-gen GitHub connection + repository
 #                         (source: pilprod/mattermost), one least-privilege build
 #                         service account (repo-scoped writer on the registry
-#                         above) and N tag-triggered builds that all push the
-#                         SAME image path, routed only by git tag
-#                         (^v.*-patched$ = prod, ^v.*patched-dev$ = dev).
+#                         above) and a tag-triggered build that pushes ONE image
+#                         on a single tag pattern (^v.*-patched$), promoted
+#                         dev -> prod by Cloud Deploy rather than rebuilt per env.
 #
 # Loose coupling: mattermost_image consumes artifact_registry's outputs, so the
 # registry is created before the writer binding and triggers reference it. The
