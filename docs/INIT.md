@@ -431,42 +431,16 @@ Cloudflare API tokens can be rolled without downtime:
 If you set a TTL, roll before expiry. If you added IP filtering, re-check the
 HCP egress ranges when Cloudflare/HCP announce changes (rare).
 
-### 10.4 Origin TLS certificate (Full Strict) — automatic
+### 10.4 Origin TLS secrets (handled during ingress setup)
 
-`cloudflare_ssl_mode = strict` (Full (Strict)) means Cloudflare validates the
-certificate the origin serves, so the GKE ingress must present a **Cloudflare
-Origin CA certificate**. The stack handles this end to end: with
-`cloudflare_manage_origin_cert = true` (default) the `cloudflare` component issues
-the Origin CA cert and the `secrets` component writes it straight into Secret
-Manager (prod only, `public_ingress_enabled = true`):
-
-| Secret | Holds | Populated by | Consumed by |
-|--------|-------|--------------|-------------|
-| `mattermost-origin-tls-cert` | Origin CA certificate PEM | the stack (automatic) | ingress-nginx TLS (`tls.crt`) |
-| `mattermost-origin-tls-key`  | Origin CA private key PEM | the stack (automatic) | ingress-nginx TLS (`tls.key`) |
-| `cloudflare-origin-pull-ca`  | CA that signs Cloudflare's AOP client cert | **manual** (see below) | ingress-nginx mTLS verify (`ca.crt`) |
-
-So for the default Full (Strict) path there is **nothing to do** — applying the
-stack fills the cert/key secrets. If you would rather keep the key entirely out of
-Terraform, set `cloudflare_manage_origin_cert = false`, create the Origin CA cert
-in the dashboard (Cloudflare -> SSL/TLS -> Origin Server -> Create Certificate),
-and add the two versions by hand:
-
-```bash
-gcloud secrets versions add mattermost-origin-tls-cert --data-file=origin.pem
-gcloud secrets versions add mattermost-origin-tls-key  --data-file=origin.key
-```
-
-For **Authenticated Origin Pulls** (mTLS, `cloudflare_aop_enabled`), also load the
-CA that signs Cloudflare's presented client cert so nginx can verify it (this one
-stays manual — Cloudflare supplies it, the stack does not issue it):
-
-```bash
-gcloud secrets versions add cloudflare-origin-pull-ca --data-file=origin-pull-ca.pem
-```
-
-The GKE ingress materialises all three via the Secret Manager CSI driver — see
-[`helm/ingress-nginx/README.md`](../helm/ingress-nginx/README.md).
+With `cloudflare_manage_origin_cert = true` (default) the stack issues the Origin
+CA cert and fills the `mattermost-origin-tls-cert` / `-key` secrets
+automatically — **nothing to do here.** Authenticated Origin Pulls are **off by
+default**; when you enable them the stack uploads the per-hostname client cert and
+turns AOP on for you, so the only manual secret is the verification CA
+(`cloudflare-origin-pull-ca`, the CA that signed that client cert). All of this is
+covered where the ingress is set up — see
+[`helm/ingress-nginx/README.md`](../helm/ingress-nginx/README.md) §3–4.
 
 ## Notes
 
