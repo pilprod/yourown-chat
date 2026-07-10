@@ -52,8 +52,8 @@ IPv6 clients from its edge regardless.)
 3. Load both into Secret Manager (containers already created by Terraform):
 
 ```bash
-gcloud secrets versions add yourown-chat-prod-mattermost-origin-tls-cert --data-file=origin.pem
-gcloud secrets versions add yourown-chat-prod-mattermost-origin-tls-key  --data-file=origin.key
+gcloud secrets versions add yourown-chat-mattermost-origin-tls-cert --data-file=origin.pem
+gcloud secrets versions add yourown-chat-mattermost-origin-tls-key  --data-file=origin.key
 ```
 
 ### 4. Authenticated Origin Pulls (per-hostname mTLS)
@@ -65,7 +65,7 @@ gcloud secrets versions add yourown-chat-prod-mattermost-origin-tls-key  --data-
    Manager so nginx can verify it:
 
 ```bash
-gcloud secrets versions add yourown-chat-prod-cloudflare-origin-pull-ca --data-file=origin-pull-ca.pem
+gcloud secrets versions add yourown-chat-cloudflare-origin-pull-ca --data-file=origin-pull-ca.pem
 ```
 
 `nginx.ingress.kubernetes.io/auth-tls-secret` on the Mattermost Ingress points at

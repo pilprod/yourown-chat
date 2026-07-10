@@ -16,7 +16,7 @@ variable "project_id" {
 
 variable "environment" {
   type        = string
-  description = "Environment name (drives naming and labels). The single-cluster budget default uses 'prod' as the platform cluster; dev workloads run as a tenant namespace on the dev node pool."
+  description = "Environment name (drives labels only; resource names use the tier-neutral project_prefix). The single-cluster budget default uses 'prod' as the platform cluster; dev workloads run as a tenant namespace on the dev node pool."
 
   validation {
     condition     = contains(["dev", "stage", "prod"], var.environment)
