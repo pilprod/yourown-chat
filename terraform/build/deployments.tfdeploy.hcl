@@ -1,10 +1,10 @@
 # ---------------------------------------------------------------------------
 # Build deployment. ONE deployment owns the unified container registry
-# (ycs-containers) and watches the single source repository
+# (yourown-chat-containers) and watches the single source repository
 # (github.com/pilprod/mattermost). It builds ONE image on a SINGLE tag pattern;
 # that one artifact is promoted dev -> prod by Cloud Deploy (platform stack), not
 # rebuilt per environment:
-#   - tags matching ^v.*-patched$   -> ycs-containers/mattermost:<tag>
+#   - tags matching ^v.*-patched$   -> yourown-chat-containers/mattermost:<tag>
 # The registry lives in the one project `yourown-chat`, europe-west3.
 #
 # AUTH: keyless path identical to the platform stack -- HCP mints an OIDC JWT
@@ -46,7 +46,7 @@ deployment "build" {
     project_id     = local.gcp_project
     project_number = local.gcp_project_number
     region         = local.gcp_region
-    name_prefix    = "ycs"
+    name_prefix    = "yourown-chat"
 
     # Cloud Build GitHub App installation ID from the one-time OAuth authorize.
     # NUMERIC. See docs/BUILD.md. 0 is a sentinel; a `> 0` validation blocks the
@@ -62,7 +62,7 @@ deployment "build" {
     # One source repo, ONE unified registry, ONE image built on a single tag
     # pattern. The same artifact is promoted dev -> prod (Cloud Deploy), never
     # rebuilt per environment:
-    #   v9.11.3-patched  -> ycs-containers/mattermost:v9.11.3-patched
+    #   v9.11.3-patched  -> yourown-chat-containers/mattermost:v9.11.3-patched
     builds = {
       mattermost = { tag_regex = "^v.*-patched$" }
     }

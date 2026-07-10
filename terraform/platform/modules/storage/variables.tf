@@ -5,7 +5,7 @@ variable "project_id" {
 
 variable "name_prefix" {
   type        = string
-  description = "Prefix for the bucket name, e.g. 'ycs-dev-app'."
+  description = "Prefix for the bucket name, e.g. 'yourown-chat-dev-app'."
 }
 
 variable "location" {

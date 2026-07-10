@@ -9,7 +9,7 @@ platform deployment has nowhere to put a shared singleton).
 
 ```
 git tag on github.com/pilprod/mattermost
-  ^v.*-patched$   ─► Cloud Build ─► europe-west3-docker.pkg.dev/yourown-chat/ycs-containers/mattermost:<tag>
+  ^v.*-patched$   ─► Cloud Build ─► europe-west3-docker.pkg.dev/yourown-chat/yourown-chat-containers/mattermost:<tag>
 ```
 
 One tag pattern builds **one image**; that single artifact is promoted dev->prod
@@ -17,14 +17,14 @@ One tag pattern builds **one image**; that single artifact is promoted dev->prod
 
 What the stack creates:
 
-- **one unified Artifact Registry repository** `ycs-containers` (Docker,
+- **one unified Artifact Registry repository** `yourown-chat-containers` (Docker,
   `europe-west3`), via the `artifact-registry` module;
 - one Cloud Build **2nd-gen GitHub connection** + repository link to
   `pilprod/mattermost`, via the `cloudbuild-image` module;
 - a dedicated least-privilege **build service account**
-  (`ycs-img-build@yourown-chat.iam.gserviceaccount.com`) with only
+  (`yourown-chat-img-build@yourown-chat.iam.gserviceaccount.com`) with only
   `logging.logWriter` (project) and `artifactregistry.writer` (scoped to the one
-  `ycs-containers` repo);
+  `yourown-chat-containers` repo);
 - one **tag-triggered** build that runs `docker build -f Dockerfile .` and
   pushes the tagged image.
 
@@ -116,7 +116,7 @@ done
 
 Why each role:
 
-- `artifactregistry.admin` — create the `ycs-containers` repo and grant the
+- `artifactregistry.admin` — create the `yourown-chat-containers` repo and grant the
   build SA `writer` on it.
 - `cloudbuild.connectionAdmin` — create the 2nd-gen connection + repository.
 - `cloudbuild.builds.editor` — create the triggers.
@@ -149,7 +149,7 @@ the one real value from step 2:
   differently).
 
 The `builds` map has a **single entry** — it pushes to the unified
-`ycs-containers` repo (`artifact_registry_repository_id`, default `ycs-containers`)
+`yourown-chat-containers` repo (`artifact_registry_repository_id`, default `yourown-chat-containers`)
 on the one git tag regex (`^v.*-patched$`).
 
 ## 5. Create the Stack in HCP Terraform
@@ -173,7 +173,7 @@ Cloud Build fires the matching trigger and pushes the image. Verify:
 
 ```bash
 gcloud artifacts docker images list \
-  europe-west3-docker.pkg.dev/yourown-chat/ycs-containers/mattermost \
+  europe-west3-docker.pkg.dev/yourown-chat/yourown-chat-containers/mattermost \
   --project=yourown-chat
 ```
 
@@ -182,17 +182,17 @@ gcloud artifacts docker images list \
 Already wired in the manifests (change the tag to the one you pushed):
 
 - **prod** `helm/mattermost/mattermost.yaml`:
-  `spec.image: europe-west3-docker.pkg.dev/yourown-chat/ycs-containers/mattermost`,
+  `spec.image: europe-west3-docker.pkg.dev/yourown-chat/yourown-chat-containers/mattermost`,
   `spec.version: v9.11.3-patched` (the operator builds `image:version`).
 - **dev** `helm/dev/mattermost-dev.yaml`:
-  `image: europe-west3-docker.pkg.dev/yourown-chat/ycs-containers/mattermost:v9.11.3-patched`
+  `image: europe-west3-docker.pkg.dev/yourown-chat/yourown-chat-containers/mattermost:v9.11.3-patched`
   (the **same** tag as prod — build once, promote the same image).
 
 ## Notes
 
 - **Build once, promote the same artifact.** One tag pattern builds one image;
   both Mattermost manifests (dev + prod) reference the SAME
-  `ycs-containers/mattermost:<tag>` — the image is never rebuilt per environment.
+  `yourown-chat-containers/mattermost:<tag>` — the image is never rebuilt per environment.
   The platform stack's Cloud Deploy pipeline delivers these `helm/` manifests as a
   managed dev->prod promotion (dev verify -> prod approval).
 - **Single tag pattern.** `^v.*-patched$` matches release tags like

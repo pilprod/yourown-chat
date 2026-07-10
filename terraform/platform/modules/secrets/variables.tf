@@ -5,7 +5,7 @@ variable "project_id" {
 
 variable "name_prefix" {
   type        = string
-  description = "Prefix for secret IDs, e.g. 'ycs'."
+  description = "Prefix for secret IDs, e.g. 'yourown-chat'."
 }
 
 variable "replica_locations" {

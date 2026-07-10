@@ -12,7 +12,7 @@
 #     └── secrets
 #
 # The container registry and image CI are NOT in this stack: they live in the
-# separate build stack (terraform/build), which owns the unified ycs-containers
+# separate build stack (terraform/build), which owns the unified yourown-chat-containers
 # repository. This stack only enables the artifactregistry/cloudbuild APIs (see
 # activate_apis) so the build stack can create the registry and the GKE nodes
 # can pull from it (the node SA gets project-level artifactregistry.reader).
@@ -288,7 +288,7 @@ component "cloudsql" {
 # image is built once by the build stack (terraform/build) and promoted by tag
 # (build-once/promote-the-same-tag); Cloud Deploy promotes the SAME manifests
 # dev -> prod. The pipeline spans both tiers, so it is named with the tier-neutral
-# project prefix (ycs-*), not the environment-scoped platform prefix (ycs-prod-*).
+# project prefix (yourown-chat-*), not the environment-scoped platform prefix (yourown-chat-prod-*).
 component "clouddeploy" {
   source = "./modules/clouddeploy"
 

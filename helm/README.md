@@ -31,24 +31,24 @@ needs a `secretKeyRef`.
 
 | Secret Manager secret | Consumed by | As |
 |-----------------------|-------------|----|
-| `ycs-prod-cloudsql-mattermost-connection` | prod Mattermost | Secret `mattermost-db` → `DB_CONNECTION_STRING` |
-| `ycs-prod-app-filestore-access-key` / `-secret-key` | prod Mattermost | Secret `mattermost-filestore` → `accesskey`/`secretkey` |
-| `ycs-prod-dev-postgres-password` | dev Postgres / dev Mattermost | file `POSTGRES_PASSWORD_FILE` + Secret `dev-postgres` |
-| `ycs-prod-matterbridge-tokens` | matterbridge | file `/etc/matterbridge/matterbridge.toml` |
-| `ycs-prod-mattermost-origin-tls-cert` / `-key` | ingress-nginx (Mattermost Ingress) | Secret `mattermost-origin-tls` → `tls.crt`/`tls.key` |
-| `ycs-prod-cloudflare-origin-pull-ca` | ingress-nginx (Mattermost Ingress) | Secret `cloudflare-origin-pull-ca` → `ca.crt` |
+| `yourown-chat-prod-cloudsql-mattermost-connection` | prod Mattermost | Secret `mattermost-db` → `DB_CONNECTION_STRING` |
+| `yourown-chat-prod-app-filestore-access-key` / `-secret-key` | prod Mattermost | Secret `mattermost-filestore` → `accesskey`/`secretkey` |
+| `yourown-chat-prod-dev-postgres-password` | dev Postgres / dev Mattermost | file `POSTGRES_PASSWORD_FILE` + Secret `dev-postgres` |
+| `yourown-chat-prod-matterbridge-tokens` | matterbridge | file `/etc/matterbridge/matterbridge.toml` |
+| `yourown-chat-prod-mattermost-origin-tls-cert` / `-key` | ingress-nginx (Mattermost Ingress) | Secret `mattermost-origin-tls` → `tls.crt`/`tls.key` |
+| `yourown-chat-prod-cloudflare-origin-pull-ca` | ingress-nginx (Mattermost Ingress) | Secret `cloudflare-origin-pull-ca` → `ca.crt` |
 
 Secret **values** are created by Terraform (generated) or populated out-of-band:
 
 ```bash
 # matterbridge config (contains tokens) — created empty by Terraform:
-gcloud secrets versions add ycs-prod-matterbridge-tokens --data-file=matterbridge.toml
+gcloud secrets versions add yourown-chat-prod-matterbridge-tokens --data-file=matterbridge.toml
 
 # Cloudflare origin cert/key + Authenticated Origin Pulls CA — created empty by
 # Terraform; see helm/ingress-nginx/README.md for how to obtain each value:
-gcloud secrets versions add ycs-prod-mattermost-origin-tls-cert --data-file=origin.pem
-gcloud secrets versions add ycs-prod-mattermost-origin-tls-key  --data-file=origin.key
-gcloud secrets versions add ycs-prod-cloudflare-origin-pull-ca  --data-file=origin-pull-ca.pem
+gcloud secrets versions add yourown-chat-prod-mattermost-origin-tls-cert --data-file=origin.pem
+gcloud secrets versions add yourown-chat-prod-mattermost-origin-tls-key  --data-file=origin.key
+gcloud secrets versions add yourown-chat-prod-cloudflare-origin-pull-ca  --data-file=origin-pull-ca.pem
 ```
 
 ## Prerequisites
