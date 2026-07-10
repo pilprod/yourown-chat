@@ -1,0 +1,95 @@
+# ---------------------------------------------------------------------------
+# Network isolation for the matterbridge namespace.
+#
+# matterbridge is a bridge: it connects the IN-CLUSTER Mattermost to EXTERNAL
+# chat networks (Telegram, Discord, IRC, ...). So its posture cannot be
+# identical to the dev tenant's (helm/dev/networkpolicy.yaml). The dev policy
+# blocks ALL cross-namespace egress (internet-except-RFC1918 only), which fully
+# isolates dev from prod. matterbridge, by definition, MUST reach the prod
+# Mattermost namespace, so it is default-deny with a tailored allow-list:
+#
+#   1. default-deny-all        - drop every ingress and egress not allowed below.
+#   2. allow-dns               - egress to CoreDNS (kube-system) for resolution.
+#   3. allow-egress-mattermost - egress to the `mattermost` namespace on 8065
+#                                (the operator Service mattermost.mattermost.svc;
+#                                the public yourown.chat path is closed to it by
+#                                Cloudflare + Authenticated Origin Pulls, so it
+#                                must bridge in-cluster). Adjust the port if your
+#                                operator Service exposes a different one.
+#   4. allow-egress-internet   - egress to public IPs only. The `except` blocks
+#                                cover RFC1918 (this cluster's pod/service/node
+#                                ranges), so matterbridge can reach external chat
+#                                networks BUT NOT any other in-cluster namespace
+#                                except `mattermost` (rule 3) and DNS (rule 2).
+#
+# Ingress is denied entirely: nothing in the cluster initiates connections TO
+# matterbridge (it is a client of Mattermost and the external networks).
+# NetworkPolicies are additive (a packet is allowed if ANY policy allows it),
+# enforced by GKE Dataplane V2 (no Calico add-on, no extra cost).
+# ---------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: matterbridge
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: matterbridge
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-mattermost
+  namespace: matterbridge
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: mattermost
+      ports:
+        - protocol: TCP
+          port: 8065
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-internet
+  namespace: matterbridge
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16

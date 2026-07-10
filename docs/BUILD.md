@@ -1,6 +1,6 @@
 # Build stack bootstrap (unified registry + Mattermost image CI)
 
-The **build stack** (`stacks/build`) is a second, independent Terraform Stacks
+The **build stack** (`terraform/build`) is a second, independent Terraform Stacks
 configuration that owns the **unified container registry** and builds the
 Mattermost image with Cloud Build. It is separate from the platform stack so the
 registry + image CI have their own lifecycle, permissions and blast radius, and
@@ -9,12 +9,11 @@ platform deployment has nowhere to put a shared singleton).
 
 ```
 git tag on github.com/pilprod/mattermost
-  ^v.*-patched$      ─► Cloud Build ─► europe-west3-docker.pkg.dev/yourown-chat/ycs-containers/mattermost:<tag>   (prod)
-  ^v.*patched-dev$   ─► Cloud Build ─► europe-west3-docker.pkg.dev/yourown-chat/ycs-containers/mattermost:<tag>   (dev)
+  ^v.*-patched$   ─► Cloud Build ─► europe-west3-docker.pkg.dev/yourown-chat/ycs-containers/mattermost:<tag>
 ```
 
-Both tag patterns push the **same image path**; they differ only by tag, so the
-artifact is promoted dev->prod, not duplicated per environment.
+One tag pattern builds **one image**; that single artifact is promoted dev->prod
+(by the platform stack's Cloud Deploy pipeline), not rebuilt per environment.
 
 What the stack creates:
 
@@ -26,8 +25,8 @@ What the stack creates:
   (`ycs-img-build@yourown-chat.iam.gserviceaccount.com`) with only
   `logging.logWriter` (project) and `artifactregistry.writer` (scoped to the one
   `ycs-containers` repo);
-- two **tag-triggered** builds (prod + dev) that run `docker build -f Dockerfile .`
-  and push the tagged image.
+- one **tag-triggered** build that runs `docker build -f Dockerfile .` and
+  pushes the tagged image.
 
 Authentication is the same keyless path as the platform stack (HCP OIDC -> WIF
 -> apply-SA impersonation) and reuses the **same shared `terraform-apply@` SA**
@@ -139,7 +138,7 @@ no-op.
 
 ## 4. Fill the deployment inputs
 
-In `stacks/build/deployments.tfdeploy.hcl`, the `build` deployment is already
+In `terraform/build/deployments.tfdeploy.hcl`, the `build` deployment is already
 wired for `yourown-chat` and impersonates the shared `terraform-apply@` SA. Set
 the one real value from step 2:
 
@@ -149,15 +148,15 @@ the one real value from step 2:
 - `github_pat_secret_id` -> `github-pat` (default; change only if you named it
   differently).
 
-The `builds` map is **tag-routing only** — both entries push to the unified
+The `builds` map has a **single entry** — it pushes to the unified
 `ycs-containers` repo (`artifact_registry_repository_id`, default `ycs-containers`)
-and differ only by the git tag regex.
+on the one git tag regex (`^v.*-patched$`).
 
 ## 5. Create the Stack in HCP Terraform
 
 1. Create a **second** HCP Stack (e.g. `yourown-chat-eu-build`) in the **same**
    HCP org/project (`papou-work` / `yourown-chat`) with its **working directory
-   set to `stacks/build`**, connected to this repo.
+   set to `terraform/build`**, connected to this repo.
 2. It reuses the same WIF pool/provider; the build deployment selects the shared
    `terraform-apply@` SA via its `service_account_email` input.
 3. Plan and apply **after** the platform stack.
@@ -167,10 +166,7 @@ and differ only by the git tag regex.
 Tag a release in `github.com/pilprod/mattermost`:
 
 ```bash
-# prod image
 git tag v9.11.3-patched && git push origin v9.11.3-patched
-# dev image
-git tag v9.11.3-patched-dev && git push origin v9.11.3-patched-dev
 ```
 
 Cloud Build fires the matching trigger and pushes the image. Verify:
@@ -185,20 +181,22 @@ gcloud artifacts docker images list \
 
 Already wired in the manifests (change the tag to the one you pushed):
 
-- **prod** `platform/mattermost/mattermost.yaml`:
+- **prod** `helm/mattermost/mattermost.yaml`:
   `spec.image: europe-west3-docker.pkg.dev/yourown-chat/ycs-containers/mattermost`,
   `spec.version: v9.11.3-patched` (the operator builds `image:version`).
-- **dev** `platform/dev/mattermost-dev.yaml`:
-  `image: europe-west3-docker.pkg.dev/yourown-chat/ycs-containers/mattermost:v9.11.3-patched-dev`.
+- **dev** `helm/dev/mattermost-dev.yaml`:
+  `image: europe-west3-docker.pkg.dev/yourown-chat/ycs-containers/mattermost:v9.11.3-patched`
+  (the **same** tag as prod — build once, promote the same image).
 
 ## Notes
 
-- **One repo, promote by tag.** prod and dev share `ycs-containers/mattermost`;
-  the tag is the only difference. This is the foundation for the follow-up Cloud
-  Deploy dev->prod promotion pipeline (build once, promote the same artifact).
-- **Tag patterns are disjoint.** `^v.*-patched$` matches `v9.11.3-patched` only
-  (ends with `-patched`); `^v.*patched-dev$` matches `v9.11.3-patched-dev` only
-  (ends with `patched-dev`). A dev tag never fires the prod build and vice versa.
+- **Build once, promote the same artifact.** One tag pattern builds one image;
+  both Mattermost manifests (dev + prod) reference the SAME
+  `ycs-containers/mattermost:<tag>` — the image is never rebuilt per environment.
+  The platform stack's Cloud Deploy pipeline delivers these `helm/` manifests as a
+  managed dev->prod promotion (dev verify -> prod approval).
+- **Single tag pattern.** `^v.*-patched$` matches release tags like
+  `v9.11.3-patched`. There is no separate dev image or dev tag.
 - **APIs come from the platform stack.** Apply it first; the build stack creates
   the registry + CI but enables no APIs itself.
 - **Rotating the PAT** is a `gcloud secrets versions add github-pat` away; the

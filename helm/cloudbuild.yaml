@@ -1,0 +1,47 @@
+# Illustrative Cloud Build config that cuts a Cloud Deploy release delivering the
+# helm/ Kubernetes workloads through the dev -> prod pipeline (ycs-pipeline): the
+# release enters at the first stage (dev), runs the post-deploy verify smoke
+# test, then is promoted to prod after the manual-approval gate.
+#
+# This is a REFERENCE config (not created by Terraform). Unlike a typical app
+# pipeline it does NOT build an image: the Mattermost image is built by the
+# SEPARATE build stack (terraform/build) on git tags matching ^v.*-patched$, and
+# matterbridge runs the upstream 42wim/matterbridge image. The image tag is the
+# source of truth INSIDE the manifests (helm/mattermost/mattermost.yaml
+# spec.image + spec.version, and helm/dev/mattermost-dev.yaml), so there is
+# nothing to substitute here -- the release just promotes the manifests.
+#
+# To wire it up, add a Cloud Build 2nd-gen trigger (e.g. on release tags or on
+# helm/ changes). The runner SA needs roles/clouddeploy.releaser on the pipeline
+# and roles/iam.serviceAccountUser (actAs) on the Cloud Deploy execution SA
+# (ycs-clouddeploy@) so `releases create` can hand off to the pipeline.
+
+substitutions:
+  _REGION: europe-west3
+  _PIPELINE: ycs-pipeline
+  # Example runner SA. In practice use a dedicated releaser SA, or grant the
+  # roles above to this one; it needs more than the image-build permissions.
+  _RELEASE_SA_EMAIL: ycs-img-build@${PROJECT_ID}.iam.gserviceaccount.com
+
+serviceAccount: projects/${PROJECT_ID}/serviceAccounts/${_RELEASE_SA_EMAIL}
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  dynamicSubstitutions: true
+
+steps:
+  - id: release
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    dir: helm
+    entrypoint: gcloud
+    args:
+      - deploy
+      - releases
+      - create
+      - "rel-${SHORT_SHA}-${BUILD_ID}"
+      - --project=${PROJECT_ID}
+      - --region=${_REGION}
+      - --delivery-pipeline=${_PIPELINE}
+      # Uploads helm/ (skaffold.yaml + manifests); the pipeline's per-stage
+      # Skaffold profile renders each target. No --images: the tag is in-manifest.
+      - --source=.
