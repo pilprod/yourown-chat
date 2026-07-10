@@ -39,3 +39,9 @@ variable "labels" {
   description = "Labels applied to every secret."
   default     = {}
 }
+
+variable "kms_key_name" {
+  type        = string
+  description = "Optional CMEK key for Secret Manager. When set, every secret replica is encrypted with this customer-managed key (which must live in the same region as each replica). Null = Google-managed encryption."
+  default     = null
+}

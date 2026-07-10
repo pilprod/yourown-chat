@@ -100,6 +100,13 @@ resource "google_secret_manager_secret" "db_password" {
     user_managed {
       replicas {
         location = var.region
+
+        dynamic "customer_managed_encryption" {
+          for_each = var.encryption_key_name == null ? [] : [var.encryption_key_name]
+          content {
+            kms_key_name = customer_managed_encryption.value
+          }
+        }
       }
     }
   }
@@ -131,6 +138,13 @@ resource "google_secret_manager_secret" "connection" {
     user_managed {
       replicas {
         location = var.region
+
+        dynamic "customer_managed_encryption" {
+          for_each = var.encryption_key_name == null ? [] : [var.encryption_key_name]
+          content {
+            kms_key_name = customer_managed_encryption.value
+          }
+        }
       }
     }
   }

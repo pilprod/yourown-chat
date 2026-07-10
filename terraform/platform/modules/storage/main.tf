@@ -89,6 +89,13 @@ resource "google_secret_manager_secret" "filestore_access_key" {
         for_each = var.secret_replica_locations
         content {
           location = replicas.value
+
+          dynamic "customer_managed_encryption" {
+            for_each = var.kms_key_name == null ? [] : [var.kms_key_name]
+            content {
+              kms_key_name = customer_managed_encryption.value
+            }
+          }
         }
       }
     }
@@ -115,6 +122,13 @@ resource "google_secret_manager_secret" "filestore_secret_key" {
         for_each = var.secret_replica_locations
         content {
           location = replicas.value
+
+          dynamic "customer_managed_encryption" {
+            for_each = var.kms_key_name == null ? [] : [var.kms_key_name]
+            content {
+              kms_key_name = customer_managed_encryption.value
+            }
+          }
         }
       }
     }

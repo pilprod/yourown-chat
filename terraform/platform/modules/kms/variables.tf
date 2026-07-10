@@ -56,6 +56,12 @@ variable "grant_artifact_registry" {
   default     = true
 }
 
+variable "grant_secretmanager" {
+  type        = bool
+  description = "Grant the Secret Manager service agent (service-<num>@gcp-sa-secretmanager) encrypterDecrypter on the key. Secret Manager applies CMEK per user-managed replica, so the key must be in the same region as every secret replica."
+  default     = true
+}
+
 variable "labels" {
   type        = map(string)
   description = "Labels applied to the crypto key."

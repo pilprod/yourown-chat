@@ -3,6 +3,7 @@
 # data-encryption keys (DEKs) of every at-rest store that supports CMEK:
 #   - Cloud SQL (Postgres)     -- platform stack (this stack)
 #   - Cloud Storage (filestore)-- platform stack (this stack)
+#   - Secret Manager (secrets) -- platform stack (this stack)
 #   - Artifact Registry (Docker) -- build stack, which references THIS key by its
 #                                   deterministic resource path (see outputs).
 # The key is regional (must match every consumer's region) and lives in the
@@ -53,7 +54,8 @@ resource "google_kms_crypto_key" "this" {
 # Force-create each consuming service's per-project agent (equivalent to
 # `gcloud beta services identity create --service=<api>`) so the IAM grants below
 # never race a not-yet-existent principal. Cloud Storage exposes its agent via a
-# GA data source; Cloud SQL and Artifact Registry need the beta identity resource.
+# GA data source; Cloud SQL, Artifact Registry and Secret Manager need the beta
+# identity resource.
 resource "google_project_service_identity" "cloudsql" {
   count    = var.grant_cloudsql ? 1 : 0
   provider = google-beta
@@ -68,6 +70,14 @@ resource "google_project_service_identity" "artifact_registry" {
 
   project = var.project_id
   service = "artifactregistry.googleapis.com"
+}
+
+resource "google_project_service_identity" "secretmanager" {
+  count    = var.grant_secretmanager ? 1 : 0
+  provider = google-beta
+
+  project = var.project_id
+  service = "secretmanager.googleapis.com"
 }
 
 data "google_storage_project_service_account" "gcs" {
@@ -99,4 +109,12 @@ resource "google_kms_crypto_key_iam_member" "storage" {
   crypto_key_id = google_kms_crypto_key.this.id
   role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
   member        = "serviceAccount:${data.google_storage_project_service_account.gcs[0].email_address}"
+}
+
+resource "google_kms_crypto_key_iam_member" "secretmanager" {
+  count = var.grant_secretmanager ? 1 : 0
+
+  crypto_key_id = google_kms_crypto_key.this.id
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+  member        = "serviceAccount:${google_project_service_identity.secretmanager[0].email}"
 }

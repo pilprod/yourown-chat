@@ -210,8 +210,8 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --role="roles/secretmanager.admin"
 
 # CMEK: create the shared Cloud KMS key ring + HSM key and set encrypterDecrypter
-# on it for the Cloud SQL / GCS / Artifact Registry service agents (platform stack
-# kms component). Scope down to the key ring later if you prefer.
+# on it for the Cloud SQL / GCS / Secret Manager / Artifact Registry service agents
+# (platform stack kms component). Scope down to the key ring later if you prefer.
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member="serviceAccount:$APPLY_SA@$PROJECT_ID.iam.gserviceaccount.com" \
   --role="roles/cloudkms.admin"
