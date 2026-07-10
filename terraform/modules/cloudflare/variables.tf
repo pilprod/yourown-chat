@@ -19,11 +19,11 @@ variable "record_name" {
 
 variable "origin_ip" {
   type        = string
-  description = "IPv4 the proxied apex A record points at: the platform stack's reserved ingress IP (ingress_ip_address output)."
+  description = "IPv4 the proxied apex A record points at: the network component's reserved ingress IP (ingress_ip_address output)."
 
   validation {
     condition     = can(regex("^(\\d{1,3}\\.){3}\\d{1,3}$", var.origin_ip))
-    error_message = "origin_ip must be a bare IPv4 address (the platform ingress_ip_address output). Do not pass a URL or an empty string."
+    error_message = "origin_ip must be a bare IPv4 address (the network ingress_ip_address output). Do not pass a URL or an empty string."
   }
 }
 
@@ -42,7 +42,7 @@ variable "dns_ttl" {
 variable "record_comment" {
   type        = string
   description = "Comment attached to the apex record for auditability."
-  default     = "Managed by Terraform (cloudflare stack). Points at the platform ingress_ip_address."
+  default     = "Managed by Terraform (cloudflare component). Points at the network ingress_ip_address."
 }
 
 variable "manage_www" {
@@ -59,7 +59,7 @@ variable "extra_records" {
     proxied  = optional(bool, false)
     ttl      = optional(number, 300)
     priority = optional(number)
-    comment  = optional(string, "Managed by Terraform (cloudflare stack).")
+    comment  = optional(string, "Managed by Terraform (cloudflare component).")
   }))
   description = "Arbitrary extra DNS records keyed by a stable logical name (e.g. MX/TXT/SPF/DKIM/DMARC/verification). Only proxiable types should set proxied = true."
   default     = {}

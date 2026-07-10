@@ -25,7 +25,7 @@ resource "cloudflare_record" "www" {
   content = var.domain
   proxied = true
   ttl     = 1
-  comment = "Managed by Terraform (cloudflare stack). www -> apex."
+  comment = "Managed by Terraform (cloudflare component). www -> apex."
 }
 
 # Arbitrary extra records keyed by a stable logical name so plans stay stable.

@@ -1,14 +1,13 @@
 # ---------------------------------------------------------------------------
 # One shared CMEK key for the platform. A single symmetric key wraps the
-# data-encryption keys (DEKs) of every platform at-rest store that supports CMEK:
-#   - Cloud SQL (Postgres)     -- platform stack (this stack)
-#   - Cloud Storage (filestore)-- platform stack (this stack)
-#   - Secret Manager (secrets) -- platform stack (this stack)
-# The build stack's container registry is PUBLIC and is NOT CMEK-encrypted, and
-# the build stack owns a separate key for its github-pat secret, so this key has
-# no build-stack consumer (grant_artifact_registry defaults on but is disabled by
-# the platform component). The key is regional (must match every consumer's
-# region) and lives in the platform stack because that stack enables the KMS API.
+# data-encryption keys (DEKs) of every at-rest store that supports CMEK:
+#   - Cloud SQL (Postgres)     -- database component
+#   - Cloud Storage (filestore)-- storage component
+#   - Secret Manager (secrets) -- secrets component
+# The container registry is PUBLIC and is NOT CMEK-encrypted, and the github-pat
+# secret uses Google-managed encryption (no separate key), so this key has no
+# image-CI consumer (grant_artifact_registry defaults on but is disabled by the
+# kms component). The key is regional (must match every consumer's region).
 #
 # Cost: a KMS key ring is free; you pay per active key version (~$1.00/mo for an
 # HSM version, ~$0.06 for SOFTWARE) plus negligible wrap/unwrap operations. One
@@ -18,14 +17,14 @@
 # key VERSIONS can be scheduled for destruction. On `terraform destroy` the
 # provider drops them from state (they persist in the project), so a later
 # re-apply with the SAME names is a no-op import-or-conflict rather than a fresh
-# create. Names are deliberately stable (no random suffix) because the build
-# stack references the key by its deterministic path.
+# create. Names are deliberately stable (no random suffix) because the
+# artifact_registry component references the key by its deterministic path.
 # ---------------------------------------------------------------------------
 
 locals {
   # Regional names, project prefix dropped (the project is already yourown-chat):
   # the keyring is location-scoped, so the region tag disambiguates a second-region
-  # deployment. The build stack references the key by this deterministic path.
+  # deployment. Consumers reference the key by this deterministic path.
   key_ring_name   = "${var.location}-keyring"
   crypto_key_name = "cmek"
 }

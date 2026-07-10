@@ -5,7 +5,8 @@
 #
 # This is a REFERENCE config (not created by Terraform). Unlike a typical app
 # pipeline it does NOT build an image: the Mattermost image is built by the
-# SEPARATE build stack (terraform/build) on git tags matching ^v.*-patched$, and
+# stack's image-CI components (terraform/ -> artifact_registry + mattermost_image)
+# on git tags matching ^v.*-patched$, and
 # matterbridge runs the upstream 42wim/matterbridge image. The image tag is the
 # source of truth INSIDE the manifests (helm/mattermost/mattermost.yaml
 # spec.image + spec.version, and helm/developing/mattermost-dev.yaml), so there is

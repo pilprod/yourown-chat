@@ -1,9 +1,8 @@
 # Google Cloud Initial Setup
 
-One-time, out-of-band bootstrap that the Terraform stacks depend on. Run this
-**once** before applying the stacks; afterwards `platform` and `build` are fully
-independent and can be applied in **any order**, and `cloudflare` only needs its
-API token plus the platform's ingress IP.
+One-time, out-of-band bootstrap that the Terraform **stack** depends on. Run this
+**once** before applying; afterwards the single stack provisions the platform,
+the image CI **and** the Cloudflare edge in one apply.
 
 This guide:
 
@@ -11,13 +10,13 @@ This guide:
   Manager) so Terraform can then enable the rest itself;
 - creates the Workload Identity Pool and OIDC Provider;
 - creates service accounts for `plan` and `apply` runs;
-- grants impersonation permissions and all project IAM roles both stacks need;
-- creates the GitHub personal access token (PAT) secret the build stack reads;
+- grants impersonation permissions and all project IAM roles the stack needs;
+- creates the GitHub personal access token (PAT) secret the image CI reads;
 - configures HCP Terraform dynamic provider credentials;
-- creates the Cloudflare API token the cloudflare stack reads (the only static
+- creates the Cloudflare API token the Cloudflare component reads (the only static
   secret, since Cloudflare has no Workload Identity path).
 
-Everything a stack can provision itself (all other APIs, every cloud resource)
+Everything the stack can provision itself (all other APIs, every cloud resource)
 is left to Terraform -- this doc is the single place for the manual, pre-Terraform
 prerequisites.
 
@@ -36,13 +35,11 @@ HCP Terraform run
 The Terraform side is already wired, so this guide only creates the cloud-side
 resources below:
 
-- `terraform/platform/deployments.tfdeploy.hcl` -> `identity_token "gcp"` and the
-  single `platform` deployment already pass the real `audience` and
+- `terraform/deployments.tfdeploy.hcl` -> `identity_token "gcp"` and the single
+  `prod-eu` deployment already pass the real `audience` and
   `service_account_email` (`terraform-apply@`) -- no placeholders to fill.
-- `terraform/platform/providers.tfcomponent.hcl` -> `provider "google"` uses
+- `terraform/providers.tfcomponent.hcl` -> `provider "google"` uses
   `external_credentials`.
-- The `build` stack authenticates the same way with the same apply SA (see
-  [`BUILD.md`](BUILD.md)).
 
 ## Input Values
 
@@ -76,11 +73,11 @@ export APPLY_SA="terraform-apply"
 
 Enable only the **bootstrap** APIs here -- the ones Terraform needs *before* it
 can authenticate and enable anything else, plus Secret Manager so the GitHub PAT
-secret (step 8) can be created by hand. Every other API is enabled **by the
-stacks themselves**: the `platform` stack's `project_services` component enables
-what the platform needs, and the `build` stack enables `cloudbuild` +
-`artifactregistry`. There is no overlap, so this list is the single source of
-truth for manual API enablement.
+secret (step 8) can be created by hand. Every other API is enabled **by the stack
+itself**: the `project_services` component enables everything the platform, the
+image CI and the rest need (compute, container, sqladmin, cloudkms, storage,
+clouddeploy, logging, monitoring, cloudbuild, artifactregistry). This list is the
+single source of truth for manual API enablement.
 
 ```sh
 gcloud services enable \
@@ -203,10 +200,9 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
 
 ### Roles for the apply service account
 
-One shared `terraform-apply@` SA backs **both** stacks, so grant it every role
-either stack needs here (single source of truth -- BUILD.md does not repeat
-these). `serviceUsageAdmin` is what lets each stack enable its own APIs via
-Terraform.
+The `terraform-apply@` SA backs the whole stack, so grant it every role the stack
+needs here (single source of truth). `serviceUsageAdmin` is what lets the stack
+enable its own APIs via Terraform.
 
 ```sh
 export APPLY="serviceAccount:$APPLY_SA@$PROJECT_ID.iam.gserviceaccount.com"
@@ -228,23 +224,23 @@ for ROLE in \
 done
 ```
 
-Why each role (P = platform stack, B = build stack, shared = both):
+Why each role:
 
-- `serviceusage.serviceUsageAdmin` — shared: each stack enables its own APIs
+- `serviceusage.serviceUsageAdmin` — the stack enables its own APIs
   (`project_services`).
-- `resourcemanager.projectIamAdmin` — shared: project-level IAM bindings (e.g.
-  the GKE node SA's `artifactregistry.reader`, the build SA's `logging.logWriter`).
-- `iam.serviceAccountAdmin` + `iam.serviceAccountUser` — shared: create the
-  per-tenant / build service accounts and `actAs` them.
-- `secretmanager.admin` — shared: manage secrets (P) and grant the Cloud Build
-  agent `secretAccessor` on the `github-pat` secret (B).
-- `container.admin`, `compute.networkAdmin` — P: GKE + VPC/NAT/PSA.
-- `cloudkms.admin` — P: create the shared CMEK key ring + HSM key and grant the
+- `resourcemanager.projectIamAdmin` — project-level IAM bindings (e.g. the GKE
+  node SA's `artifactregistry.reader`, the build SA's `logging.logWriter`).
+- `iam.serviceAccountAdmin` + `iam.serviceAccountUser` — create the per-tenant /
+  build service accounts and `actAs` them.
+- `secretmanager.admin` — manage secrets and grant the Cloud Build agent
+  `secretAccessor` on the `github-pat` secret.
+- `container.admin`, `compute.networkAdmin` — GKE + VPC/NAT/PSA + reserved IP.
+- `cloudkms.admin` — create the shared CMEK key ring + HSM key and grant the
   Cloud SQL / GCS / Secret Manager service agents `encrypterDecrypter`.
-- `artifactregistry.admin` — B: create the `docker` repo and grant the build SA
+- `artifactregistry.admin` — create the `docker` repo and grant the build SA
   `writer` on it.
-- `cloudbuild.connectionAdmin`, `cloudbuild.builds.editor` — B: create the
-  2nd-gen connection + repository and the tag triggers.
+- `cloudbuild.connectionAdmin`, `cloudbuild.builds.editor` — create the 2nd-gen
+  connection + repository and the tag triggers.
 
 > Start broad to keep the first apply unblocked without granting Owner/Editor;
 > tighten later by swapping project roles for resource-scoped IAM conditions once
@@ -280,9 +276,9 @@ gcloud projects get-iam-policy "$PROJECT_ID" \
   --format="table(bindings.role, bindings.members)"
 ```
 
-## 8. Create the GitHub PAT secret (for the build stack)
+## 8. Create the GitHub PAT secret (for the image CI)
 
-The `build` stack wires a Cloud Build 2nd-gen GitHub connection to
+The `mattermost_image` component wires a Cloud Build 2nd-gen GitHub connection to
 `pilprod/mattermost`. That connection needs a GitHub **personal access token**,
 which is the only credential created by hand -- the stack never stores the token
 in git; it just reads `versions/latest` of the secret created here.
@@ -332,8 +328,8 @@ gcloud secrets versions add "$GITHUB_PAT_SECRET_ID" \
   --data-file=-
 ```
 
-The build stack's connection reads `versions/latest`, so a new version takes
-effect on the next connection reconcile -- no Terraform change needed.
+The connection reads `versions/latest`, so a new version takes effect on the next
+connection reconcile -- no Terraform change needed.
 
 ### 8.4 Authorize the Cloud Build GitHub App (installation ID)
 
@@ -345,36 +341,36 @@ Cloud Build GitHub App on your org/repo:
    GitHub App on `pilprod` and grant it access to `pilprod/mattermost`.
 2. Copy the numeric installation ID from the App installation URL
    (`https://github.com/settings/installations/<INSTALLATION_ID>`).
-3. Set it in `terraform/build/deployments.tfdeploy.hcl` as
+3. Set it in `terraform/deployments.tfdeploy.hcl` as
    `github_app_installation_id` (a `> 0` validation blocks the plan until you
    replace the `0` sentinel).
 
 ## 9. Create the Stack in HCP Terraform
 
-1. Connect the repo and create a Stack with its **working directory set to
-   `terraform/platform`**.
+1. Connect the repo and create **one** Stack with its **working directory set to
+   `terraform/`**.
 2. HCP reads the `*.tfcomponent.hcl` files + `deployments.tfdeploy.hcl` and the
-   committed `.terraform.lock.hcl`.
-3. Plan and apply the single `platform` deployment. The first plan proves
+   committed `.terraform.lock.hcl` (all five providers).
+3. Attach the Cloudflare variable set (step 10) to this Stack.
+4. Plan and apply the single `prod-eu` deployment. The first plan proves
    federation end to end: if the token is rejected, re-check the provider's
    `--attribute-condition` (org + project) and that its `--allowed-audiences`
    matches the `identity_token` block's `audience` (the full
-   `https://iam.googleapis.com/.../providers/...` URL).
-4. For the container-image CI, create a **second** Stack with working directory
-   `terraform/build` (same org + project, so it reuses this WIF provider and apply
-   SA). Each stack enables the APIs it owns and this bootstrap already created the
-   shared roles + the `github-pat` secret, so the two stacks are independent and
-   can be applied in **any order**. See [`BUILD.md`](BUILD.md).
-5. For the public edge, create a **third** Stack with working directory
-   `terraform/cloudflare`. It does not use GCP auth at all; it needs the
-   Cloudflare API token from step 10 and the platform's `ingress_ip_address`.
+   `https://iam.googleapis.com/.../providers/...` URL). The one apply provisions
+   the platform, the image CI **and** the Cloudflare edge together.
 
-## 10. Create the Cloudflare API token (for the cloudflare stack)
+> Migrating from the old three-stack layout: delete (or repoint) the separate
+> `platform` / `build` / `cloudflare` HCP Stacks and use this single Stack with
+> working directory `terraform/`. State from a prior split layout is not carried
+> over automatically.
 
-The `terraform/cloudflare` stack manages the `yourown.chat` zone (DNS, edge
-TLS/security settings, DNSSEC, WAF rules). Cloudflare has no Workload Identity
-path, so this is the **only** static secret in the whole setup. It never touches
-git or state — it is injected from an HCP variable set as an ephemeral input.
+## 10. Create the Cloudflare API token (for the Cloudflare component)
+
+The `cloudflare` component manages the `yourown.chat` zone (DNS, edge
+TLS/security settings, DNSSEC, WAF rules, Origin CA cert). Cloudflare has no
+Workload Identity path, so this is the **only** static secret in the whole setup.
+It never touches git or state — it is injected from an HCP variable set as an
+ephemeral input.
 
 ### 10.1 Create a zone-scoped API token
 
@@ -386,13 +382,13 @@ Create Custom Token**. Scope it to the `yourown.chat` zone only, with:
 | Zone -> Zone | Read | resolve the zone ID (always) |
 | Zone -> DNS | Edit | apex A / www / extra / CAA records **and DNSSEC** (always) |
 | Zone -> Zone Settings | Edit | SSL mode, HSTS, min TLS, HTTP/3, etc. (always) |
-| Zone -> SSL and Certificates | Edit | issue the Origin CA cert for Full (Strict) — **on by default** (`manage_origin_cert`); also `aop_enabled` |
-| Zone -> Zone WAF | Edit | *only if you set `custom_firewall_rules`, `managed_waf_enabled` or `rate_limit_rules`* |
+| Zone -> SSL and Certificates | Edit | issue the Origin CA cert for Full (Strict) — **on by default** (`cloudflare_manage_origin_cert`); also `cloudflare_aop_enabled` |
+| Zone -> Zone WAF | Edit | *only if you set `cloudflare_custom_firewall_rules`, `cloudflare_managed_waf_enabled` or `cloudflare_rate_limit_rules`* |
 
 The first four rows are the default configuration (DNS + settings + DNSSEC +
 origin cert for Full Strict). Add the last row only when you enable WAF rules.
-If you turn `manage_origin_cert` off (using a dashboard-created cert instead),
-the SSL and Certificates row is not required.
+If you turn `cloudflare_manage_origin_cert` off (using a dashboard-created cert
+instead), the SSL and Certificates row is not required.
 
 **Zone Resources:** restrict to `Include -> Specific zone -> yourown.chat`.
 
@@ -406,33 +402,24 @@ ranges and add each CIDR under *Client IP Address Filtering -> Is in*:
 curl -s https://app.terraform.io/api/meta/ip-ranges | jq -r '.api[]'
 ```
 
-**TTL (recommended):** set a **TTL / expiry** (e.g. 90 days) and rotate — see 10.4.
+**TTL (recommended):** set a **TTL / expiry** (e.g. 90 days) and rotate — see 10.3.
 
 Copy the token value once (it is not shown again).
 
 ### 10.2 Store it in an HCP variable set
 
-1. In HCP Terraform, create a **variable set** applied to the cloudflare stack.
+1. In HCP Terraform, create a **variable set** and apply it to the Stack.
 2. Add a **Terraform variable** `cloudflare_api_token` = the token; mark it
    **sensitive**.
-3. In `terraform/cloudflare/deployments.tfdeploy.hcl`, set the `store "varset"`
-   block's `id` to that variable set's ID. The token flows in as the ephemeral
+3. In `terraform/deployments.tfdeploy.hcl`, set the `store "varset"` block's `id`
+   to that variable set's ID. The token flows in as the ephemeral
    `cloudflare_api_token` input.
 
-### 10.3 Point the A record at the ingress IP
+> No manual IP hand-off: the proxied apex A record is wired **live** to the
+> reserved ingress IP inside the stack (`component.network.ingress_ip_address`),
+> so there is nothing to copy between runs.
 
-After the platform stack is applied, read its reserved IP and paste it into the
-cloudflare deployment:
-
-```bash
-terraform -chdir=terraform/platform output -raw ingress_ip_address
-# -> set ingress_ip_address = "<that IP>" in terraform/cloudflare/deployments.tfdeploy.hcl
-```
-
-The reserved IP is stable by design, so this hand-off is one-time. An empty
-sentinel there fails the `ingress_ip_address` validation until you set it.
-
-### 10.4 Rotating / re-scoping the token
+### 10.3 Rotating / re-scoping the token
 
 Cloudflare API tokens can be rolled without downtime:
 
@@ -444,40 +431,35 @@ Cloudflare API tokens can be rolled without downtime:
 If you set a TTL, roll before expiry. If you added IP filtering, re-check the
 HCP egress ranges when Cloudflare/HCP announce changes (rare).
 
-### 10.5 Load the origin certificate into the platform secrets (Full Strict)
+### 10.4 Origin TLS certificate (Full Strict) — automatic
 
-`ssl_mode = strict` (Full (Strict)) means Cloudflare validates the certificate
-the origin serves, so the GKE ingress must present a **Cloudflare Origin CA
-certificate**. The platform stack creates three *empty* Secret Manager
-containers for this (prod only, `public_ingress_enabled = true`):
+`cloudflare_ssl_mode = strict` (Full (Strict)) means Cloudflare validates the
+certificate the origin serves, so the GKE ingress must present a **Cloudflare
+Origin CA certificate**. The stack handles this end to end: with
+`cloudflare_manage_origin_cert = true` (default) the `cloudflare` component issues
+the Origin CA cert and the `secrets` component writes it straight into Secret
+Manager (prod only, `public_ingress_enabled = true`):
 
-| Secret | Holds | Consumed by |
-|--------|-------|-------------|
-| `mattermost-origin-tls-cert` | Origin CA certificate PEM | ingress-nginx TLS (`tls.crt`) |
-| `mattermost-origin-tls-key`  | Origin CA private key PEM | ingress-nginx TLS (`tls.key`) |
-| `cloudflare-origin-pull-ca`  | CA that signs Cloudflare's AOP client cert | ingress-nginx mTLS verify (`ca.crt`) |
+| Secret | Holds | Populated by | Consumed by |
+|--------|-------|--------------|-------------|
+| `mattermost-origin-tls-cert` | Origin CA certificate PEM | the stack (automatic) | ingress-nginx TLS (`tls.crt`) |
+| `mattermost-origin-tls-key`  | Origin CA private key PEM | the stack (automatic) | ingress-nginx TLS (`tls.key`) |
+| `cloudflare-origin-pull-ca`  | CA that signs Cloudflare's AOP client cert | **manual** (see below) | ingress-nginx mTLS verify (`ca.crt`) |
 
-The cloudflare stack **isolates the Cloudflare token from GCP** and so does not
-write to Secret Manager itself. Instead, with `manage_origin_cert = true`
-(default) it *issues* the cert and exposes it as outputs; you push those into the
-platform containers out-of-band (never in git):
+So for the default Full (Strict) path there is **nothing to do** — applying the
+stack fills the cert/key secrets. If you would rather keep the key entirely out of
+Terraform, set `cloudflare_manage_origin_cert = false`, create the Origin CA cert
+in the dashboard (Cloudflare -> SSL/TLS -> Origin Server -> Create Certificate),
+and add the two versions by hand:
 
 ```bash
-# Cert + key issued by the cloudflare stack -> platform secret containers.
-terraform -chdir=terraform/cloudflare output -raw origin_certificate_pem \
-  | gcloud secrets versions add mattermost-origin-tls-cert --data-file=-
-terraform -chdir=terraform/cloudflare output -raw origin_private_key_pem \
-  | gcloud secrets versions add mattermost-origin-tls-key --data-file=-
+gcloud secrets versions add mattermost-origin-tls-cert --data-file=origin.pem
+gcloud secrets versions add mattermost-origin-tls-key  --data-file=origin.key
 ```
 
-> The private key also lives in the cloudflare stack state (HCP-encrypted). If
-> you would rather keep it entirely out of Terraform, set
-> `manage_origin_cert = false` and create the Origin CA cert in the dashboard
-> instead (Cloudflare -> SSL/TLS -> Origin Server -> Create Certificate), then run
-> the same two `gcloud secrets versions add` commands with the downloaded files.
-
-For **Authenticated Origin Pulls** (mTLS, `aop_enabled`), also load the CA that
-signs Cloudflare's presented client cert so nginx can verify it:
+For **Authenticated Origin Pulls** (mTLS, `cloudflare_aop_enabled`), also load the
+CA that signs Cloudflare's presented client cert so nginx can verify it (this one
+stays manual — Cloudflare supplies it, the stack does not issue it):
 
 ```bash
 gcloud secrets versions add cloudflare-origin-pull-ca --data-file=origin-pull-ca.pem
@@ -490,8 +472,7 @@ The GKE ingress materialises all three via the Secret Manager CSI driver — see
 
 - The **MCP runtime** service account is created **by the stack** via a Workload
   Identity component, not here, so it stays declarative and least-privilege.
-- One shared `terraform-apply@` account backs both the `plan` and `apply` phases
-  of **both** stacks (the `terraform-plan` SA above is created and impersonable
-  too, reserved for a stricter plan/apply split later). All of its roles — for
-  both stacks — are granted in step 7 above, so BUILD.md does not repeat them.
+- One `terraform-apply@` account backs both the `plan` and `apply` phases of the
+  stack (the `terraform-plan` SA above is created and impersonable too, reserved
+  for a stricter plan/apply split later). All of its roles are granted in step 7.
 - Rotating trust = delete/recreate the provider; there are no keys to rotate.
