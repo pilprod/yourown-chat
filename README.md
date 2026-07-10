@@ -223,7 +223,8 @@ app/                        # sample workload + CI/CD manifests
    `platform/dev/networkpolicy.yaml` and `platform/dev/rbac.yaml`).
 6. (For custom Mattermost images) Create a **second** HCP Stack with working
    directory **`stacks/build`** and follow [`docs/BUILD.md`](docs/BUILD.md) to
-   wire the Cloud Build GitHub connection and the dedicated build apply SA. Apply
+   wire the Cloud Build GitHub connection and grant the shared apply SA its few
+   extra build roles. Apply
    it **after** the platform stack (it creates the unified registry and needs the
    platform-enabled APIs).
 
@@ -241,9 +242,10 @@ git tag on github.com/pilprod/mattermost ──► Cloud Build (2nd-gen trigger)
 - One Cloud Build 2nd-gen GitHub connection + repository watches the external
   Mattermost source repo; disjoint tag patterns route prod vs dev builds to the
   **same** image path (they differ only by tag). Builds run as a dedicated,
-  least-privilege SA (repo-scoped AR writer + log writer only), impersonated via
-  the **dedicated build apply SA** (`terraform-build-apply@`, separate from the
-  platform apply SA). See [`docs/BUILD.md`](docs/BUILD.md).
+  least-privilege runtime SA (`ycs-img-build`: repo-scoped AR writer + log writer
+  only). The Terraform that provisions the build stack impersonates the
+  **shared** `terraform-apply@` SA (the same single account the platform uses).
+  See [`docs/BUILD.md`](docs/BUILD.md).
 - The resulting image is referenced in both Mattermost manifests: prod
   `platform/mattermost/mattermost.yaml` (`spec.image` + `version`), dev
   `platform/dev/mattermost-dev.yaml`.
@@ -260,8 +262,8 @@ by the build stack, a platform-side writer binding would create a
 ## Security considerations
 
 - Least-privilege, per-purpose service accounts (node, image-build, deploy,
-  per-tenant Workload Identity; **separate** platform vs build apply SAs); the
-  default compute SA is never used.
+  per-tenant Workload Identity; a single shared Terraform plan/apply SA for both
+  stacks); the default compute SA is never used.
 - Private GKE nodes; egress only via Cloud NAT; Workload Identity for every pod
   that touches GCP.
 - **Dev tenant isolation:** namespace-scoped RBAC (dev team limited to `dev`, no
@@ -316,5 +318,5 @@ These reflect the decisions we converged on; each is easy to change:
    filestore); dev Mattermost + matterbridge as lightweight Deployments. Confirm
    the Mattermost operator version, ingress host, and matterbridge bridges.
 8. **Auth model:** keyless OIDC -> WIF is wired (`external_credentials`) with the
-   real `audience` and apply SAs from `google_cloud_init.md`; the platform stack
-   impersonates `terraform-apply@`, the build stack `terraform-build-apply@`.
+   real `audience` and apply SA from `google_cloud_init.md`; both the platform
+   and build stacks impersonate the shared `terraform-apply@`.

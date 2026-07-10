@@ -60,9 +60,10 @@ gcloud services enable \
 Two SAs so a `plan` cannot mutate infrastructure. **Owner/Editor are never
 used.** The apply roles below are the union of what the stack's modules manage
 (project services, IAM/WIF for tenants, network + PSA, GKE, Cloud SQL, Secret
-Manager, GCS, Cloud Deploy), scoped to the one project. Artifact Registry and
-Cloud Build live in the **build stack** with their own apply SA (see
-`docs/BUILD.md`); this SA only needs to enable their APIs, not manage them.
+Manager, GCS, Artifact Registry, Cloud Deploy), scoped to the one project. The
+**build stack reuses this same apply SA** and adds a few Cloud Build roles on top
+(see `docs/BUILD.md` step 3); there is a single plan/apply account for both
+stacks.
 
 ```bash
 # Plan: read-only. securityReviewer lets refresh read IAM policies.
@@ -90,6 +91,7 @@ for R in \
   roles/cloudsql.admin \
   roles/secretmanager.admin \
   roles/storage.admin \
+  roles/artifactregistry.admin \
   roles/clouddeploy.admin ; do
   gcloud projects add-iam-policy-binding "$PROJECT_ID" \
     --member="serviceAccount:${APPLY_SA}" --role="$R" --condition=None

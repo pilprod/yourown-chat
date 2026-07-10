@@ -9,23 +9,24 @@
 #
 # AUTH: keyless path identical to the platform stack -- HCP mints an OIDC JWT
 # (identity_token block), the google/google-beta providers exchange it via
-# Workload Identity Federation and impersonate a DEDICATED least-privilege
-# build apply SA (terraform-build-apply@, separate from the platform apply SA
-# so the CI pipeline's blast radius is scoped to build resources). No static
+# Workload Identity Federation and impersonate the SHARED least-privilege apply
+# SA (terraform-apply@, the same single plan/apply account the platform stack
+# uses -- see google_cloud_init.md). No dedicated build SA; no static
 # credentials or SA keys exist anywhere.
 #
 # ORDERING: apply the platform stack FIRST (it enables the Cloud Build /
 # Artifact Registry APIs). This stack then creates the registry + attaches the
-# CI. See docs/BUILD.md for bootstrap (PAT secret, OAuth install id, the
-# build apply SA's WIF binding + roles).
+# CI. See docs/BUILD.md for bootstrap (PAT secret, OAuth install id, and the
+# few EXTRA roles the shared apply SA needs for the build resources).
 # ---------------------------------------------------------------------------
 
 locals {
   # --- Keyless auth wiring (shared project `yourown-chat`) -------------------
   gcp_wif_audience = "//iam.googleapis.com/projects/1086706391144/locations/global/workloadIdentityPools/hcp-terraform/providers/hcp-terraform"
-  # Dedicated build apply SA (least privilege, distinct from the platform apply
-  # SA). Impersonated via WIF; see docs/BUILD.md for its roles + binding.
-  gcp_apply_sa       = "terraform-build-apply@yourown-chat.iam.gserviceaccount.com"
+  # Shared apply SA -- the SAME single account the platform stack impersonates
+  # (see google_cloud_init.md). It just needs a few extra build roles; see
+  # docs/BUILD.md. Its WIF binding already exists (org-scoped principalSet).
+  gcp_apply_sa       = "terraform-apply@yourown-chat.iam.gserviceaccount.com"
   gcp_project        = "yourown-chat"
   gcp_project_number = "1086706391144"
   gcp_region         = "europe-west3" # Frankfurt, Germany (matches Artifact Registry)
@@ -37,7 +38,7 @@ identity_token "gcp" {
 
 deployment "build" {
   inputs = {
-    # Keyless auth: OIDC JWT exchanged via WIF to impersonate the build apply SA.
+    # Keyless auth: OIDC JWT exchanged via WIF to impersonate the shared apply SA.
     identity_token        = identity_token.gcp.jwt
     audience              = local.gcp_wif_audience
     service_account_email = local.gcp_apply_sa

@@ -30,9 +30,11 @@ What the stack creates:
   and push the tagged image.
 
 Authentication is the same keyless path as the platform stack (HCP OIDC -> WIF
--> apply-SA impersonation), but through a **dedicated build apply SA**
-(`terraform-build-apply@`) so the CI pipeline's Terraform blast radius is scoped
-to build resources. No static credentials or SA keys are used.
+-> apply-SA impersonation) and reuses the **same shared `terraform-apply@` SA**
+(a single plan/apply account for both stacks, per
+[`google_cloud_init.md`](google_cloud_init.md)); it just needs a few extra
+build-specific roles (step 3). No dedicated build SA, no static credentials, no
+SA keys.
 
 ---
 
@@ -89,47 +91,27 @@ done in Terraform. Do it once, then read the installation ID:
    (`https://github.com/settings/installations/<INSTALLATION_ID>`), or via the
    API. Set it as `github_app_installation_id`.
 
-## 3. Create the dedicated build apply SA (+ WIF binding + roles)
+## 3. Grant the shared apply SA the extra build roles
 
-Mirror the plan/apply setup from `google_cloud_init.md`, but with a separate
-apply SA scoped to the build stack. This keeps the image CI's Terraform identity
-distinct from the platform apply SA.
+The build stack reuses the **same** `terraform-apply@` SA the platform stack
+impersonates (single plan/apply account, per `google_cloud_init.md`). Its WIF
+binding already exists (the org-scoped `principalSet` created in
+`google_cloud_init.md` step 6), so **no new SA and no new WIF binding are
+needed** — only a few extra project roles for the build resources.
 
 ```bash
 export PROJECT_ID="yourown-chat"
-export PROJECT_NUMBER="1086706391144"
-export TFC_ORG="papou-work"
-export WIF_POOL_ID="hcp-terraform"
-export BUILD_APPLY_SA="terraform-build-apply"
+export APPLY_SA="terraform-apply@${PROJECT_ID}.iam.gserviceaccount.com"
 
-# Create the SA.
-gcloud iam service-accounts create "$BUILD_APPLY_SA" \
-  --project="$PROJECT_ID" --display-name="HCP Terraform Apply (build)"
-
-BUILD_SA_EMAIL="${BUILD_APPLY_SA}@${PROJECT_ID}.iam.gserviceaccount.com"
-
-# Let HCP runs in the papou-work org impersonate it (same org principal set as
-# the platform SAs; the provider's attribute-condition already restricts to the
-# papou-work org + yourown-chat project).
-export WIF_PRINCIPAL_SET="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${WIF_POOL_ID}/attribute.terraform_organization_name/${TFC_ORG}"
-
-gcloud iam service-accounts add-iam-policy-binding "$BUILD_SA_EMAIL" \
-  --project="$PROJECT_ID" \
-  --role="roles/iam.workloadIdentityUser" \
-  --member="$WIF_PRINCIPAL_SET"
-
-# Least-privilege project roles the build stack needs.
+# Extra roles the build stack needs on the shared apply SA (idempotent).
 for ROLE in \
   roles/artifactregistry.admin \
   roles/cloudbuild.connectionAdmin \
   roles/cloudbuild.builds.editor \
-  roles/iam.serviceAccountAdmin \
-  roles/iam.serviceAccountUser \
   roles/resourcemanager.projectIamAdmin \
-  roles/secretmanager.admin \
   roles/serviceusage.serviceUsageAdmin ; do
   gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-    --member="serviceAccount:${BUILD_SA_EMAIL}" --role="$ROLE" --condition=None
+    --member="serviceAccount:${APPLY_SA}" --role="$ROLE" --condition=None
 done
 ```
 
@@ -139,14 +121,17 @@ Why each role:
   build SA `writer` on it.
 - `cloudbuild.connectionAdmin` — create the 2nd-gen connection + repository.
 - `cloudbuild.builds.editor` — create the triggers.
-- `iam.serviceAccountAdmin` + `iam.serviceAccountUser` — create the build SA and
-  `actAs` it (the apply SA needs `serviceAccountUser` on the build SA to create
-  triggers that run as it; the module adds the specific binding).
 - `resourcemanager.projectIamAdmin` — grant the build SA project-level
   `logging.logWriter`.
-- `secretmanager.admin` — grant the Cloud Build agent accessor on the PAT secret.
 - `serviceusage.serviceUsageAdmin` — create the Cloud Build service identity
   (`google_project_service_identity`, beta).
+
+`secretmanager.admin` (PAT accessor binding) and `iam.serviceAccountAdmin` +
+`iam.serviceAccountUser` (create the build SA and `actAs` it) are already granted
+to `terraform-apply@` in `google_cloud_init.md`. `projectIamAdmin` and
+`serviceUsageAdmin` are also required by the platform stack (its own project IAM
+bindings + API enablement), so they may already be present — re-granting is a
+no-op.
 
 > Start here to keep the first apply unblocked without granting Owner/Editor;
 > tighten later by swapping project roles for resource-scoped IAM conditions once
@@ -155,8 +140,8 @@ Why each role:
 ## 4. Fill the deployment inputs
 
 In `stacks/build/deployments.tfdeploy.hcl`, the `build` deployment is already
-wired for `yourown-chat` and impersonates `terraform-build-apply@`. Set the one
-real value from step 2:
+wired for `yourown-chat` and impersonates the shared `terraform-apply@` SA. Set
+the one real value from step 2:
 
 - `github_app_installation_id` -> the installation ID (**numeric**; replace the
   `0` sentinel in the `build` deployment). A `> 0` validation blocks the plan
@@ -173,8 +158,8 @@ and differ only by the git tag regex.
 1. Create a **second** HCP Stack (e.g. `yourown-chat-eu-build`) in the **same**
    HCP org/project (`papou-work` / `yourown-chat`) with its **working directory
    set to `stacks/build`**, connected to this repo.
-2. It reuses the same WIF pool/provider; the build deployment selects the
-   dedicated build apply SA via its `service_account_email` input.
+2. It reuses the same WIF pool/provider; the build deployment selects the shared
+   `terraform-apply@` SA via its `service_account_email` input.
 3. Plan and apply **after** the platform stack.
 
 ## 6. Build an image
