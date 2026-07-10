@@ -63,10 +63,21 @@ variable "repository_name" {
   default     = "mattermost"
 }
 
+# --- Target registry (ONE unified repository, owned by this build stack) -----
+variable "artifact_registry_location" {
+  type        = string
+  description = "Location of the unified Artifact Registry repository all images are pushed to (e.g. europe-west3)."
+}
+
+variable "artifact_registry_repository_id" {
+  type        = string
+  description = "ID of the unified Artifact Registry repository all images are pushed to (e.g. ycs-containers). The build SA gets a single repo-scoped writer binding on it."
+}
+
 # --- Image build ------------------------------------------------------------
 variable "image_name" {
   type        = string
-  description = "Image name (last path segment) pushed under each Artifact Registry repository."
+  description = "Image name (last path segment) pushed under the unified Artifact Registry repository."
   default     = "mattermost"
 }
 
@@ -78,11 +89,9 @@ variable "dockerfile" {
 
 variable "builds" {
   type = map(object({
-    tag_regex                       = string
-    artifact_registry_location      = string
-    artifact_registry_repository_id = string
+    tag_regex = string
   }))
-  description = "Map of build name (e.g. prod/dev) => spec. Each entry creates one tag-triggered Cloud Build trigger that builds var.dockerfile and pushes <ar_location>-docker.pkg.dev/<project>/<ar_repo>/<image_name>:$TAG_NAME."
+  description = "Map of build name (e.g. prod/dev) => spec. Each entry creates one tag-triggered Cloud Build trigger that builds var.dockerfile and pushes the SAME unified image <ar_location>-docker.pkg.dev/<project>/<ar_repo>/<image_name>:$TAG_NAME. Builds differ only by the git tag regex that fires them (e.g. ^v.*-patched$ vs ^v.*patched-dev$); the image path is identical, so the artifact is promoted by tag, not duplicated per environment."
 
   validation {
     condition     = length(var.builds) > 0

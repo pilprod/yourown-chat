@@ -22,10 +22,10 @@ metadata:
   name: mattermost
   namespace: mattermost
 spec:
-  # Custom (patched) image built by the build stack and pushed to the prod
-  # Artifact Registry repo. The operator assembles the full ref as
+  # Custom (patched) image built by the build stack and pushed to the unified
+  # registry (ycs-containers). The operator assembles the full ref as
   # "<image>:<version>", so `version` is the git tag Cloud Build produced.
-  image: "europe-west3-docker.pkg.dev/yourown-chat/ycs-prod-containers/mattermost"
+  image: "europe-west3-docker.pkg.dev/yourown-chat/ycs-containers/mattermost"
   # Must match a pushed git tag matching ^v.*-patched$ (see stacks/build).
   version: "v9.11.3-patched"
   replicas: 1

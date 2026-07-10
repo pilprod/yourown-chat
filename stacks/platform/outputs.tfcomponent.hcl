@@ -13,12 +13,6 @@ output "gke_location" {
   value       = component.gke.location
 }
 
-output "artifact_registry_path" {
-  type        = string
-  description = "Image path prefix: HOST/PROJECT/REPO."
-  value       = component.artifact_registry.repository_path
-}
-
 output "gcs_bucket_name" {
   type        = string
   description = "Application object-storage bucket."
@@ -54,12 +48,6 @@ output "clouddeploy_pipeline_name" {
   type        = string
   description = "Cloud Deploy delivery pipeline name."
   value       = component.clouddeploy.delivery_pipeline_name
-}
-
-output "cloudbuild_service_account" {
-  type        = string
-  description = "Cloud Build service account email."
-  value       = component.cloudbuild.service_account_email
 }
 
 output "cloudsql_connection_secret_id" {

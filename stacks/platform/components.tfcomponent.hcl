@@ -6,11 +6,16 @@
 # Graph:
 #   project_services
 #     ├── network ── cloudsql ─┐
-#     │           └── gke      │ (accessors)
-#     ├── storage ─────────────┤
-#     ├── artifact_registry ── (clouddeploy, cloudbuild)
+#     │           └── gke ── clouddeploy
+#     ├── storage ─────────────┤ (accessors)
 #     ├── workload_identity_{mattermost,matterbridge,dev} ┘
 #     └── secrets
+#
+# The container registry and image CI are NOT in this stack: they live in the
+# separate build stack (stacks/build), which owns the unified ycs-containers
+# repository. This stack only enables the artifactregistry/cloudbuild APIs (see
+# activate_apis) so the build stack can create the registry and the GKE nodes
+# can pull from it (the node SA gets project-level artifactregistry.reader).
 #
 # Workload Identity SAs are created first (they only need the APIs enabled) and
 # their IAM member strings are passed as least-privilege secretAccessors to the
@@ -32,7 +37,7 @@ locals {
   common_labels = merge({
     environment = var.environment
     managed-by  = "terraform"
-    stack       = "yourown-chat-stack"
+    stack       = "yourown-chat-platform"
   }, var.extra_labels)
 
   activate_apis = [
@@ -205,22 +210,6 @@ component "storage" {
   }
 }
 
-# --- Container image registry ----------------------------------------------
-component "artifact_registry" {
-  source = "./modules/artifact-registry"
-
-  inputs = {
-    project_id    = component.project_services.project_id
-    location      = var.region
-    repository_id = "${local.name_prefix}-containers"
-    labels        = local.common_labels
-  }
-
-  providers = {
-    google = provider.google.this
-  }
-}
-
 # --- GKE: one zonal cluster, two node pools (prod tainted + dev) ------------
 component "gke" {
   source = "./modules/gke"
@@ -297,22 +286,6 @@ component "clouddeploy" {
     region         = var.region
     gke_cluster_id = component.gke.cluster_id
     labels         = local.common_labels
-  }
-
-  providers = {
-    google = provider.google.this
-  }
-}
-
-component "cloudbuild" {
-  source = "./modules/cloudbuild"
-
-  inputs = {
-    project_id                      = component.project_services.project_id
-    name_prefix                     = local.name_prefix
-    artifact_registry_location      = component.artifact_registry.location
-    artifact_registry_repository_id = component.artifact_registry.repository_id
-    clouddeploy_execution_sa_email  = component.clouddeploy.execution_service_account_email
   }
 
   providers = {

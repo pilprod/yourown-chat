@@ -56,8 +56,9 @@ spec:
       containers:
         - name: mattermost
           # Custom (patched) image built by the build stack on git tags matching
-          # ^v.*patched-dev$ and pushed to the dev Artifact Registry repo.
-          image: "europe-west3-docker.pkg.dev/yourown-chat/ycs-dev-containers/mattermost:v9.11.3-patched-dev"
+          # ^v.*patched-dev$ and pushed to the unified registry (ycs-containers).
+          # Same image path as prod; only the tag differs (dev = -patched-dev).
+          image: "europe-west3-docker.pkg.dev/yourown-chat/ycs-containers/mattermost:v9.11.3-patched-dev"
           env:
             - name: POSTGRES_PASSWORD
               valueFrom:

@@ -4,27 +4,14 @@ locals {
 
   pat_secret_version = "projects/${var.project_id}/secrets/${var.github_pat_secret_id}/versions/latest"
 
-  # Full image path (no tag) per build, e.g.
-  # europe-west3-docker.pkg.dev/yourown-chat/ycs-prod-containers/mattermost
-  image_repo_path = {
-    for k, b in var.builds :
-    k => "${b.artifact_registry_location}-docker.pkg.dev/${var.project_id}/${b.artifact_registry_repository_id}/${var.image_name}"
-  }
+  # Single unified image path (no tag) shared by every build, e.g.
+  # europe-west3-docker.pkg.dev/yourown-chat/ycs-containers/mattermost
+  image_repo_path = "${var.artifact_registry_location}-docker.pkg.dev/${var.project_id}/${var.artifact_registry_repository_id}/${var.image_name}"
 
   # Tagged reference built/pushed by each trigger. $TAG_NAME is a Cloud Build
-  # built-in substitution set from the git tag that fired the trigger.
-  image_ref = { for k, p in local.image_repo_path : k => "${p}:$TAG_NAME" }
-
-  # Distinct (location, repository) pairs so the build SA gets one writer
-  # binding per target repo even if several builds share a repo.
-  writer_targets = {
-    for pair in distinct([
-      for b in var.builds : "${b.artifact_registry_location}|${b.artifact_registry_repository_id}"
-      ]) : pair => {
-      location   = split("|", pair)[0]
-      repository = split("|", pair)[1]
-    }
-  }
+  # built-in substitution set from the git tag that fired the trigger, so the
+  # prod and dev triggers push the SAME path with different tags.
+  image_ref = "${local.image_repo_path}:$TAG_NAME"
 }
 
 # Ensure the Cloud Build service agent exists so we can grant it access to the
@@ -83,13 +70,11 @@ resource "google_project_iam_member" "build_logs" {
   member  = "serviceAccount:${google_service_account.build.email}"
 }
 
-# Repo-scoped push (never project-wide artifactregistry.writer).
+# Repo-scoped push on the ONE unified repository (never project-wide writer).
 resource "google_artifact_registry_repository_iam_member" "writer" {
-  for_each = local.writer_targets
-
   project    = var.project_id
-  location   = each.value.location
-  repository = each.value.repository
+  location   = var.artifact_registry_location
+  repository = var.artifact_registry_repository_id
   role       = "roles/artifactregistry.writer"
   member     = "serviceAccount:${google_service_account.build.email}"
 }
@@ -120,12 +105,12 @@ resource "google_cloudbuild_trigger" "this" {
   }
 
   build {
-    images = [local.image_ref[each.key]]
+    images = [local.image_ref]
 
     step {
       id   = "docker-build"
       name = "gcr.io/cloud-builders/docker"
-      args = ["build", "-t", local.image_ref[each.key], "-f", var.dockerfile, "."]
+      args = ["build", "-t", local.image_ref, "-f", var.dockerfile, "."]
     }
 
     options {

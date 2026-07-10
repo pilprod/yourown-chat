@@ -21,7 +21,7 @@ The stack side is already wired:
 
 - `stacks/platform/deployments.tfdeploy.hcl` -> `identity_token "gcp"` (its
   `audience` is the full `https://iam.googleapis.com/projects/.../providers/...`
-  provider URL) and the `prod` / `dev` deployments each pass `identity_token`,
+  provider URL) and the single `platform` deployment passes `identity_token`,
   `audience`, `service_account_email`.
 - `stacks/platform/providers.tfcomponent.hcl` -> `provider "google"` uses `external_credentials`.
 
@@ -60,8 +60,9 @@ gcloud services enable \
 Two SAs so a `plan` cannot mutate infrastructure. **Owner/Editor are never
 used.** The apply roles below are the union of what the stack's modules manage
 (project services, IAM/WIF for tenants, network + PSA, GKE, Cloud SQL, Secret
-Manager, GCS, Artifact Registry, Cloud Build, Cloud Deploy), scoped to the one
-project.
+Manager, GCS, Cloud Deploy), scoped to the one project. Artifact Registry and
+Cloud Build live in the **build stack** with their own apply SA (see
+`docs/BUILD.md`); this SA only needs to enable their APIs, not manage them.
 
 ```bash
 # Plan: read-only. securityReviewer lets refresh read IAM policies.
@@ -89,7 +90,6 @@ for R in \
   roles/cloudsql.admin \
   roles/secretmanager.admin \
   roles/storage.admin \
-  roles/artifactregistry.admin \
   roles/clouddeploy.admin ; do
   gcloud projects add-iam-policy-binding "$PROJECT_ID" \
     --member="serviceAccount:${APPLY_SA}" --role="$R" --condition=None
@@ -140,8 +140,8 @@ gcloud iam service-accounts add-iam-policy-binding "$APPLY_SA" \
 ## 5. Fill the deployment inputs
 
 Compute the STS audience (the full provider resource name) and set the
-`REPLACE-ME-*` values in the `prod` / `dev` deployments of
-`stacks/platform/deployments.tfdeploy.hcl` (they share auth via a `local`):
+`REPLACE-ME-*` values in the `platform` deployment of
+`stacks/platform/deployments.tfdeploy.hcl` (auth values live in a `local`):
 
 ```bash
 echo "audience              = //iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL_ID}/providers/${PROVIDER_ID}"
@@ -160,7 +160,7 @@ echo "project_id            = ${PROJECT_ID}"
    `stacks/platform`**.
 2. HCP reads `*.tfcomponent.hcl` + `deployments.tfdeploy.hcl` and the committed
    `.terraform.lock.hcl`.
-3. Plan and apply the `prod` and `dev` deployments. The first plan proves
+3. Plan and apply the `platform` deployment. The first plan proves
    federation: if the token is rejected, re-check the `attribute-condition`
    (org/project names) and that the WIF provider's `allowed-audiences` matches
    the `identity_token` block's `audience` (the full

@@ -18,7 +18,7 @@ output "trigger_ids" {
   value       = { for k, t in google_cloudbuild_trigger.this : k => t.id }
 }
 
-output "image_paths" {
-  description = "Map of build name => full image path (no tag), e.g. europe-west3-docker.pkg.dev/PROJECT/REPO/mattermost. Reference these in the Mattermost manifests with the pushed tag."
+output "image_path" {
+  description = "Full unified image path (no tag), e.g. europe-west3-docker.pkg.dev/PROJECT/ycs-containers/mattermost. Reference this in the Mattermost manifests with the pushed tag (prod :v*-patched, dev :v*-patched-dev)."
   value       = local.image_repo_path
 }

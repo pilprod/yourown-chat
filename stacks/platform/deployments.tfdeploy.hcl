@@ -1,16 +1,24 @@
 # ---------------------------------------------------------------------------
-# Deployments = environments. Two Terraform Stacks deployments, each a fully
-# isolated environment with its OWN GKE cluster, VPC and data plane, all living
-# in the single GCP project `yourown-chat`. Every resource is prefixed per
-# environment (ycs-dev-*, ycs-prod-*) so the two deployments never collide
-# inside the shared project.
+# Deployments = environments. ONE Terraform Stacks deployment provisions the
+# whole platform in the single GCP project `yourown-chat`: one zonal GKE cluster
+# with TWO node pools, managed Cloud SQL, object storage and the public ingress.
+# dev is NOT a second cluster -- it is an isolated tenant NAMESPACE on this same
+# cluster (RBAC + NetworkPolicy, see platform/dev/), scheduled onto its own node
+# pool. All resources are prefixed `ycs-prod-*` (environment = "prod"); the dev
+# tenant's GCP objects (its Workload Identity SA, its in-cluster Postgres
+# password secret) are created by this one deployment under that same prefix.
 #
-# COST TRADEOFF (accepted): GKE's free tier waives the management fee for only
-# ONE zonal cluster per billing account. The second cluster adds ~$74/mo, so
-# running dev + prod is ~$140-150/mo (vs ~$90 for the earlier single-cluster,
-# two-node-pool topology). This buys physical dev/prod isolation and an
-# independent lifecycle per environment. dev is minimized to claw cost back:
-# a single Spot node and in-cluster Postgres (no managed Cloud SQL).
+# TOPOLOGY / COST: GKE's free tier waives the management fee for ONE zonal
+# cluster per billing account, so this single-cluster shape stays ~$86-93/mo
+# (vs ~$140-150/mo for a physically separate dev cluster). Isolation between dev
+# and prod is achieved in-cluster:
+#   - a dedicated, tainted prod node pool (e2-standard-2, dedicated=prod) so dev
+#     workloads can never contend with prod for CPU/memory, and
+#   - an untainted dev node pool (e2-small) that also hosts kube-system so the
+#     dev tenant + system pods share the cheap pool, and
+#   - namespace RBAC + default-deny NetworkPolicies scoping the dev tenant.
+# The dev pool is on-demand (NOT Spot) on purpose: it also runs CoreDNS and the
+# rest of kube-system, which must not be preempted out from under prod.
 #
 # AUTH: keyless HCP Terraform Dynamic Provider Credentials -> GCP Workload
 # Identity Federation (Stacks GA identity_token block; no TFC_GCP_* env vars,
@@ -22,7 +30,7 @@
 # ---------------------------------------------------------------------------
 
 locals {
-  # --- Keyless auth wiring (project `yourown-chat`, shared by all deployments)
+  # --- Keyless auth wiring (project `yourown-chat`) --------------------------
   # STS token-exchange audience = full WIF provider resource name (leading //).
   gcp_wif_audience = "//iam.googleapis.com/projects/1086706391144/locations/global/workloadIdentityPools/hcp-terraform/providers/hcp-terraform"
   # Least-privilege SA impersonated after the exchange (never Owner/Editor).
@@ -49,8 +57,10 @@ identity_token "gcp" {
   audience = ["https://iam.googleapis.com/projects/1086706391144/locations/global/workloadIdentityPools/hcp-terraform/providers/hcp-terraform"]
 }
 
-# --- prod: dedicated cluster + managed Cloud SQL (PITR + backups) -----------
-deployment "prod" {
+# --- platform: one cluster (prod + dev pools), managed Cloud SQL, ingress ----
+# environment = "prod" makes this the prod-grade platform cluster; the dev
+# tenant lives on it as an isolated namespace on the dev node pool.
+deployment "platform" {
   inputs = {
     # Keyless auth: OIDC JWT exchanged via WIF to impersonate the apply SA.
     identity_token        = identity_token.gcp.jwt
@@ -62,12 +72,16 @@ deployment "prod" {
     region      = local.gcp_region
     zone        = local.gcp_zone
 
-    # Single on-demand pool. The whole cluster is prod, so it is NOT tainted:
-    # a lone tainted pool would leave kube-system / CoreDNS unschedulable.
+    # ONE zonal cluster, TWO node pools sharing it:
+    #   prod - e2-standard-2, on-demand, TAINTED dedicated=prod so ONLY prod
+    #          workloads (which tolerate it + nodeSelector tier=prod) land here.
+    #   dev  - e2-small, on-demand, UNTAINTED so kube-system/CoreDNS + the dev
+    #          tenant (nodeSelector tier=dev) share this cheap pool. On-demand,
+    #          not Spot: preempting this pool would take CoreDNS down for prod.
     gke_regional            = false
     gke_deletion_protection = true
     gke_node_pools = {
-      default = {
+      prod = {
         machine_type = "e2-standard-2"
         spot         = false
         min_count    = 1
@@ -75,52 +89,11 @@ deployment "prod" {
         disk_size_gb = 30
         disk_type    = "pd-standard"
         labels       = { tier = "prod" }
-        taints       = []
+        taints       = [{ key = "dedicated", value = "prod", effect = "NO_SCHEDULE" }]
       }
-    }
-
-    master_authorized_networks = local.master_authorized_networks
-
-    # Managed Postgres for prod: cheapest tier + PITR/backups (no HA at budget).
-    cloudsql_enabled               = true
-    cloudsql_tier                  = "db-f1-micro"
-    cloudsql_availability_type     = "ZONAL"
-    cloudsql_disk_size_gb          = 20
-    cloudsql_pitr_enabled          = true
-    cloudsql_backup_retained_count = 7
-    cloudsql_txlog_retention_days  = 7
-    cloudsql_deletion_protection   = true
-
-    # Public ingress: reserve the Cloudflare-facing static IP + origin-protection
-    # secret containers (origin TLS keypair + Authenticated Origin Pulls CA).
-    public_ingress_enabled = true
-
-    storage_force_destroy = false
-    extra_labels          = { cost-center = "platform-prod" }
-  }
-}
-
-# --- dev: minimized, single Spot node, in-cluster Postgres (no Cloud SQL) ----
-deployment "dev" {
-  inputs = {
-    identity_token        = identity_token.gcp.jwt
-    audience              = local.gcp_wif_audience
-    service_account_email = local.gcp_apply_sa
-
-    project_id  = local.gcp_project
-    environment = "dev"
-    region      = local.gcp_region
-    zone        = local.gcp_zone
-
-    # One cheap Spot pool runs everything on this cluster: kube-system, the dev
-    # Mattermost, the in-cluster Postgres StatefulSet and matterbridge. Spot
-    # pricing keeps the (unavoidable) second cluster's node cost minimal.
-    gke_regional            = false
-    gke_deletion_protection = false
-    gke_node_pools = {
-      default = {
-        machine_type = "e2-medium" # 4Gi: headroom for system pods + dev stack
-        spot         = true
+      dev = {
+        machine_type = "e2-small"
+        spot         = false
         min_count    = 1
         max_count    = 2
         disk_size_gb = 30
@@ -132,15 +105,24 @@ deployment "dev" {
 
     master_authorized_networks = local.master_authorized_networks
 
-    # dev uses the in-cluster Postgres StatefulSet (platform/dev/), so the
-    # managed Cloud SQL instance is skipped entirely to save ~$13/mo.
-    cloudsql_enabled = false
+    # Managed Postgres for prod: cheapest tier + PITR/backups (no HA at budget).
+    # The dev tenant uses its own in-cluster Postgres StatefulSet (platform/dev/),
+    # so only prod consumes this instance.
+    cloudsql_enabled               = true
+    cloudsql_tier                  = "db-f1-micro"
+    cloudsql_availability_type     = "ZONAL"
+    cloudsql_disk_size_gb          = 20
+    cloudsql_pitr_enabled          = true
+    cloudsql_backup_retained_count = 7
+    cloudsql_txlog_retention_days  = 7
+    cloudsql_deletion_protection   = true
 
-    # dev has no public ingress: no static IP, no Cloudflare origin secrets.
-    # Reach dev via kubectl port-forward / a private path only.
-    public_ingress_enabled = false
+    # Public ingress: reserve the Cloudflare-facing static IP + origin-protection
+    # secret containers (origin TLS keypair + Authenticated Origin Pulls CA).
+    # Only prod Mattermost is exposed; the dev tenant stays private.
+    public_ingress_enabled = true
 
-    storage_force_destroy = true # dev buckets are disposable
-    extra_labels          = { cost-center = "platform-dev" }
+    storage_force_destroy = false
+    extra_labels          = { cost-center = "platform" }
   }
 }

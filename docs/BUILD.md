@@ -1,38 +1,50 @@
-# Build stack bootstrap (Mattermost image CI)
+# Build stack bootstrap (unified registry + Mattermost image CI)
 
 The **build stack** (`stacks/build`) is a second, independent Terraform Stacks
-configuration that builds the Mattermost container image with Cloud Build and
-pushes it to Artifact Registry. It is separate from the platform stack so image
-CI has its own lifecycle, permissions and blast radius.
+configuration that owns the **unified container registry** and builds the
+Mattermost image with Cloud Build. It is separate from the platform stack so the
+registry + image CI have their own lifecycle, permissions and blast radius, and
+so a single cross-environment registry has a natural home (a per-environment
+platform deployment has nowhere to put a shared singleton).
 
 ```
 git tag on github.com/pilprod/mattermost
-  ^v.*-patched$      ─► Cloud Build ─► europe-west3-docker.pkg.dev/yourown-chat/ycs-prod-containers/mattermost:<tag>
-  ^v.*patched-dev$   ─► Cloud Build ─► europe-west3-docker.pkg.dev/yourown-chat/ycs-dev-containers/mattermost:<tag>
+  ^v.*-patched$      ─► Cloud Build ─► europe-west3-docker.pkg.dev/yourown-chat/ycs-containers/mattermost:<tag>   (prod)
+  ^v.*patched-dev$   ─► Cloud Build ─► europe-west3-docker.pkg.dev/yourown-chat/ycs-containers/mattermost:<tag>   (dev)
 ```
 
-What the stack creates (all via the `cloudbuild-image` module):
+Both tag patterns push the **same image path**; they differ only by tag, so the
+artifact is promoted dev->prod, not duplicated per environment.
 
+What the stack creates:
+
+- **one unified Artifact Registry repository** `ycs-containers` (Docker,
+  `europe-west3`), via the `artifact-registry` module;
 - one Cloud Build **2nd-gen GitHub connection** + repository link to
-  `pilprod/mattermost`,
+  `pilprod/mattermost`, via the `cloudbuild-image` module;
 - a dedicated least-privilege **build service account**
   (`ycs-img-build@yourown-chat.iam.gserviceaccount.com`) with only
-  `logging.logWriter` (project) and `artifactregistry.writer` (scoped to the two
-  target repos),
+  `logging.logWriter` (project) and `artifactregistry.writer` (scoped to the one
+  `ycs-containers` repo);
 - two **tag-triggered** builds (prod + dev) that run `docker build -f Dockerfile .`
   and push the tagged image.
 
 Authentication is the same keyless path as the platform stack (HCP OIDC -> WIF
--> apply-SA impersonation). No static credentials or SA keys are used.
+-> apply-SA impersonation), but through a **dedicated build apply SA**
+(`terraform-build-apply@`) so the CI pipeline's Terraform blast radius is scoped
+to build resources. No static credentials or SA keys are used.
 
 ---
 
 ## 0. Prerequisites
 
 - The **platform stack is applied first**. It enables the Cloud Build and
-  Artifact Registry APIs and creates the per-environment repositories
-  `ycs-prod-containers` and `ycs-dev-containers`. The build stack references
-  those repos by name and never creates them (loose coupling, single owner).
+  Artifact Registry APIs (its `project-services` component) that this stack uses.
+  This stack does not enable APIs; it creates the registry and CI on top.
+- The WIF pool/provider from [`google_cloud_init.md`](google_cloud_init.md)
+  already exist (`hcp-terraform` / `hcp-terraform`) and trust the `papou-work`
+  HCP org + `yourown-chat` HCP project. The build HCP Stack must live in that
+  same HCP org/project so the existing provider trusts its tokens.
 - `PROJECT_ID=yourown-chat`, `PROJECT_NUMBER=1086706391144`.
 - The Mattermost source lives at `https://github.com/pilprod/mattermost` with a
   `Dockerfile` at the repository root.
@@ -77,40 +89,74 @@ done in Terraform. Do it once, then read the installation ID:
    (`https://github.com/settings/installations/<INSTALLATION_ID>`), or via the
    API. Set it as `github_app_installation_id`.
 
-## 3. Grant the apply SA the extra roles this stack needs
+## 3. Create the dedicated build apply SA (+ WIF binding + roles)
 
-The platform stack's apply SA (`terraform-apply@yourown-chat.iam.gserviceaccount.com`)
-manages the build resources. Grant the additional least-privilege roles:
+Mirror the plan/apply setup from `google_cloud_init.md`, but with a separate
+apply SA scoped to the build stack. This keeps the image CI's Terraform identity
+distinct from the platform apply SA.
 
 ```bash
 export PROJECT_ID="yourown-chat"
-export APPLY_SA="terraform-apply@yourown-chat.iam.gserviceaccount.com"
+export PROJECT_NUMBER="1086706391144"
+export TFC_ORG="papou-work"
+export WIF_POOL_ID="hcp-terraform"
+export BUILD_APPLY_SA="terraform-build-apply"
 
+# Create the SA.
+gcloud iam service-accounts create "$BUILD_APPLY_SA" \
+  --project="$PROJECT_ID" --display-name="HCP Terraform Apply (build)"
+
+BUILD_SA_EMAIL="${BUILD_APPLY_SA}@${PROJECT_ID}.iam.gserviceaccount.com"
+
+# Let HCP runs in the papou-work org impersonate it (same org principal set as
+# the platform SAs; the provider's attribute-condition already restricts to the
+# papou-work org + yourown-chat project).
+export WIF_PRINCIPAL_SET="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${WIF_POOL_ID}/attribute.terraform_organization_name/${TFC_ORG}"
+
+gcloud iam service-accounts add-iam-policy-binding "$BUILD_SA_EMAIL" \
+  --project="$PROJECT_ID" \
+  --role="roles/iam.workloadIdentityUser" \
+  --member="$WIF_PRINCIPAL_SET"
+
+# Least-privilege project roles the build stack needs.
 for ROLE in \
+  roles/artifactregistry.admin \
   roles/cloudbuild.connectionAdmin \
   roles/cloudbuild.builds.editor \
   roles/iam.serviceAccountAdmin \
+  roles/iam.serviceAccountUser \
+  roles/resourcemanager.projectIamAdmin \
   roles/secretmanager.admin \
-  roles/artifactregistry.admin ; do
+  roles/serviceusage.serviceUsageAdmin ; do
   gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-    --member="serviceAccount:${APPLY_SA}" --role="$ROLE" --condition=None
+    --member="serviceAccount:${BUILD_SA_EMAIL}" --role="$ROLE" --condition=None
 done
 ```
 
 Why each role:
 
+- `artifactregistry.admin` — create the `ycs-containers` repo and grant the
+  build SA `writer` on it.
 - `cloudbuild.connectionAdmin` — create the 2nd-gen connection + repository.
 - `cloudbuild.builds.editor` — create the triggers.
-- `iam.serviceAccountAdmin` — create the build SA and grant `actAs` on it (the
-  apply SA needs `serviceAccountUser` on the build SA to create triggers that
-  run as it; the module adds that binding).
+- `iam.serviceAccountAdmin` + `iam.serviceAccountUser` — create the build SA and
+  `actAs` it (the apply SA needs `serviceAccountUser` on the build SA to create
+  triggers that run as it; the module adds the specific binding).
+- `resourcemanager.projectIamAdmin` — grant the build SA project-level
+  `logging.logWriter`.
 - `secretmanager.admin` — grant the Cloud Build agent accessor on the PAT secret.
-- `artifactregistry.admin` — grant the build SA `writer` on the target repos.
+- `serviceusage.serviceUsageAdmin` — create the Cloud Build service identity
+  (`google_project_service_identity`, beta).
+
+> Start here to keep the first apply unblocked without granting Owner/Editor;
+> tighten later by swapping project roles for resource-scoped IAM conditions once
+> names stabilise.
 
 ## 4. Fill the deployment inputs
 
 In `stacks/build/deployments.tfdeploy.hcl`, the `build` deployment is already
-wired for `yourown-chat`. Set the one real value from step 2:
+wired for `yourown-chat` and impersonates `terraform-build-apply@`. Set the one
+real value from step 2:
 
 - `github_app_installation_id` -> the installation ID (**numeric**; replace the
   `0` sentinel in the `build` deployment). A `> 0` validation blocks the plan
@@ -118,14 +164,17 @@ wired for `yourown-chat`. Set the one real value from step 2:
 - `github_pat_secret_id` -> `github-pat` (default; change only if you named it
   differently).
 
-The `builds` map already routes the two tag patterns to `ycs-prod-containers`
-and `ycs-dev-containers` in `europe-west3`.
+The `builds` map is **tag-routing only** — both entries push to the unified
+`ycs-containers` repo (`artifact_registry_repository_id`, default `ycs-containers`)
+and differ only by the git tag regex.
 
 ## 5. Create the Stack in HCP Terraform
 
-1. Create a **second** HCP Stack (e.g. `yourown-chat-eu-build`) with its
-   **working directory set to `stacks/build`**, connected to this repo.
-2. Reuse the same WIF pool/provider and apply SA (keyless auth is identical).
+1. Create a **second** HCP Stack (e.g. `yourown-chat-eu-build`) in the **same**
+   HCP org/project (`papou-work` / `yourown-chat`) with its **working directory
+   set to `stacks/build`**, connected to this repo.
+2. It reuses the same WIF pool/provider; the build deployment selects the
+   dedicated build apply SA via its `service_account_email` input.
 3. Plan and apply **after** the platform stack.
 
 ## 6. Build an image
@@ -143,7 +192,7 @@ Cloud Build fires the matching trigger and pushes the image. Verify:
 
 ```bash
 gcloud artifacts docker images list \
-  europe-west3-docker.pkg.dev/yourown-chat/ycs-prod-containers/mattermost \
+  europe-west3-docker.pkg.dev/yourown-chat/ycs-containers/mattermost \
   --project=yourown-chat
 ```
 
@@ -152,17 +201,20 @@ gcloud artifacts docker images list \
 Already wired in the manifests (change the tag to the one you pushed):
 
 - **prod** `platform/mattermost/mattermost.yaml`:
-  `spec.image: europe-west3-docker.pkg.dev/yourown-chat/ycs-prod-containers/mattermost`,
+  `spec.image: europe-west3-docker.pkg.dev/yourown-chat/ycs-containers/mattermost`,
   `spec.version: v9.11.3-patched` (the operator builds `image:version`).
 - **dev** `platform/dev/mattermost-dev.yaml`:
-  `image: europe-west3-docker.pkg.dev/yourown-chat/ycs-dev-containers/mattermost:v9.11.3-patched-dev`.
+  `image: europe-west3-docker.pkg.dev/yourown-chat/ycs-containers/mattermost:v9.11.3-patched-dev`.
 
 ## Notes
 
+- **One repo, promote by tag.** prod and dev share `ycs-containers/mattermost`;
+  the tag is the only difference. This is the foundation for the follow-up Cloud
+  Deploy dev->prod promotion pipeline (build once, promote the same artifact).
 - **Tag patterns are disjoint.** `^v.*-patched$` matches `v9.11.3-patched` only
   (ends with `-patched`); `^v.*patched-dev$` matches `v9.11.3-patched-dev` only
   (ends with `patched-dev`). A dev tag never fires the prod build and vice versa.
-- **No AR repo creation here.** Apply the platform stack first; the build stack
-  only grants its SA writer on the existing repos.
+- **APIs come from the platform stack.** Apply it first; the build stack creates
+  the registry + CI but enables no APIs itself.
 - **Rotating the PAT** is a `gcloud secrets versions add github-pat` away; the
   connection reads `versions/latest`.

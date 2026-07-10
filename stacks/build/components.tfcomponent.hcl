@@ -1,14 +1,23 @@
 # ---------------------------------------------------------------------------
-# Build-stack component wiring. A single reusable module instance provisions the
-# whole Mattermost image CI:
-#   - one Cloud Build 2nd-gen GitHub connection + repository (source: pilprod/mattermost)
-#   - one least-privilege build service account (repo-scoped AR writer only)
-#   - N tag-triggered image builds (prod on ^v.*-patched$, dev on ^v.*patched-dev$)
+# Build-stack component wiring. This stack owns the unified container registry
+# and the Mattermost image CI:
+#   - artifact_registry : ONE Docker repository (ycs-containers) shared by every
+#                         environment. It lives here (not in the platform stack)
+#                         because a single cross-environment registry has no
+#                         natural home in the per-environment platform stack, and
+#                         keeping it with the CI that writes to it avoids a
+#                         platform<->build dependency cycle.
+#   - mattermost_image  : one Cloud Build 2nd-gen GitHub connection + repository
+#                         (source: pilprod/mattermost), one least-privilege build
+#                         service account (repo-scoped writer on the registry
+#                         above) and N tag-triggered builds that all push the
+#                         SAME image path, routed only by git tag
+#                         (^v.*-patched$ = prod, ^v.*patched-dev$ = dev).
 #
-# Loose coupling: this stack references the platform stack's per-environment
-# Artifact Registry repositories by name convention (ycs-<env>-containers). It
-# never creates them, so the platform stack stays the single owner of the
-# registry and APIs and must be applied first.
+# Loose coupling: mattermost_image consumes artifact_registry's outputs, so the
+# registry is created before the writer binding and triggers reference it. The
+# platform stack still owns the APIs (artifactregistry/cloudbuild) and must be
+# applied first. See docs/BUILD.md.
 # ---------------------------------------------------------------------------
 
 locals {
@@ -18,6 +27,24 @@ locals {
   }, var.extra_labels)
 }
 
+# --- Unified container registry (one repo for all environments) -------------
+component "artifact_registry" {
+  source = "./modules/artifact-registry"
+
+  inputs = {
+    project_id    = var.project_id
+    location      = var.region
+    repository_id = var.artifact_registry_repository_id
+    description   = "Unified container images (Mattermost + future services), promoted by tag across environments."
+    labels        = local.common_labels
+  }
+
+  providers = {
+    google = provider.google.this
+  }
+}
+
+# --- Mattermost image CI ----------------------------------------------------
 component "mattermost_image" {
   source = "./modules/cloudbuild-image"
 
@@ -32,6 +59,10 @@ component "mattermost_image" {
     github_app_installation_id = var.github_app_installation_id
     github_pat_secret_id       = var.github_pat_secret_id
     github_remote_uri          = var.github_remote_uri
+
+    # Push every build to the ONE unified repository created above.
+    artifact_registry_location      = component.artifact_registry.location
+    artifact_registry_repository_id = component.artifact_registry.repository_id
 
     image_name = var.image_name
     builds     = var.builds

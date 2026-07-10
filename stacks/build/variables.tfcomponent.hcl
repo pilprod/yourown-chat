@@ -1,9 +1,10 @@
 # ---------------------------------------------------------------------------
 # Build-stack inputs. Supplied by the single `build` deployment in
-# deployments.tfdeploy.hcl. This stack owns the Mattermost image CI only; it
-# does NOT create Artifact Registry repositories or enable APIs (the platform
-# stack owns those and must be applied first). It references the per-environment
-# AR repositories by name (loose coupling) and grants its build SA writer on them.
+# deployments.tfdeploy.hcl. This stack owns the unified container registry
+# (one ycs-containers repository) and the Mattermost image CI. It does NOT
+# enable APIs (the platform stack owns artifactregistry/cloudbuild activation
+# and must be applied first). Its build SA gets a single repo-scoped writer
+# binding on the registry it creates.
 # ---------------------------------------------------------------------------
 
 variable "project_id" {
@@ -68,20 +69,24 @@ variable "github_remote_uri" {
   default     = "https://github.com/pilprod/mattermost.git"
 }
 
-# --- Image ------------------------------------------------------------------
+# --- Registry + image -------------------------------------------------------
+variable "artifact_registry_repository_id" {
+  type        = string
+  description = "ID of the unified Artifact Registry repository this stack creates and pushes every image to (shared across environments; images are promoted by tag, not duplicated per env)."
+  default     = "ycs-containers"
+}
+
 variable "image_name" {
   type        = string
-  description = "Image name (last path segment) pushed under each Artifact Registry repository."
+  description = "Image name (last path segment) pushed under the unified Artifact Registry repository."
   default     = "mattermost"
 }
 
 variable "builds" {
   type = map(object({
-    tag_regex                       = string
-    artifact_registry_location      = string
-    artifact_registry_repository_id = string
+    tag_regex = string
   }))
-  description = "Map of build name (prod/dev) => spec: git tag regex + target Artifact Registry repo. Each entry creates one tag-triggered Cloud Build trigger."
+  description = "Map of build name (prod/dev) => git tag regex. Each entry creates one tag-triggered Cloud Build trigger; all builds push the SAME unified image path and differ only by the tag that fires them (^v.*-patched$ = prod, ^v.*patched-dev$ = dev)."
 }
 
 variable "extra_labels" {
