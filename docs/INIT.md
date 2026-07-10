@@ -303,6 +303,17 @@ Scope the token to the fewest repos/permissions Cloud Build needs. To grant it
 more later (e.g. add a repo or a permission), edit the same token on GitHub and
 add a new secret version (8.3) -- the connection always reads `versions/latest`.
 
+> **Why only `pilprod/mattermost` (and not the Helm repo)?** This PAT backs a
+> single thing: the Cloud Build connection that builds the Mattermost **image**
+> from its source repo. The **Helm charts live in *this* repo**
+> (`pilprod/yourown-chat/helm/`) and are delivered by Cloud Deploy from a
+> **release** you cut out-of-band — `gcloud deploy releases create --source=.`
+> uploads `helm/` (Skaffold + manifests) to Cloud Deploy's GCS bucket, so that
+> path runs with **your** checkout's git access and never touches this PAT (see
+> [`helm/cloudbuild.yaml`](../helm/cloudbuild.yaml)). Only if you later **automate**
+> release creation with a Cloud Build 2nd-gen trigger *on `pilprod/yourown-chat`*
+> would you add that repo to the token's scope (or use a second connection/token).
+
 ### 8.2 Store it in Secret Manager
 
 ```sh
