@@ -277,12 +277,18 @@ component "cloudsql" {
 }
 
 # --- Continuous delivery ----------------------------------------------------
-# Cloud Deploy governs build-once/promote-the-same-artifact delivery of the
-# sample app (app/) as a managed dev -> prod pipeline: two targets (dev + prod
-# namespaces) on the ONE cluster, prod gated by manual approval and dev running
-# post-deploy `verify` tests. Mattermost itself stays GitOps (helm/). The
-# pipeline spans both tiers, so it is named with the tier-neutral project prefix
-# (ycs-*), not the environment-scoped platform prefix (ycs-prod-*).
+# Cloud Deploy governs promotion of the platform's Kubernetes workloads (helm/)
+# as a managed dev -> prod pipeline: two targets on the ONE cluster, each
+# rendering a Skaffold profile from helm/skaffold.yaml.
+#   dev  - the dev tenant (in-cluster Postgres + dev Mattermost) and matterbridge,
+#          followed by an on-cluster post-deploy `verify` smoke test.
+#   prod - the operator-managed prod Mattermost, gated by manual approval.
+# Both targets share the ONE cluster; which namespaces/workloads each applies
+# comes entirely from its Skaffold profile, not a separate cluster. The Mattermost
+# image is built once by the build stack (terraform/build) and promoted by tag
+# (build-once/promote-the-same-tag); Cloud Deploy promotes the SAME manifests
+# dev -> prod. The pipeline spans both tiers, so it is named with the tier-neutral
+# project prefix (ycs-*), not the environment-scoped platform prefix (ycs-prod-*).
 component "clouddeploy" {
   source = "./modules/clouddeploy"
 
@@ -292,7 +298,7 @@ component "clouddeploy" {
     region         = var.region
     gke_cluster_id = component.gke.cluster_id
 
-    # Ordered promotion flow; profiles map to app/skaffold.yaml. dev verifies
+    # Ordered promotion flow; profiles bind to helm/skaffold.yaml. dev verifies
     # after deploy; prod requires manual approval before it is promoted.
     stages = [
       { name = "dev", profiles = ["dev"], require_approval = false, verify = true },

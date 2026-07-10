@@ -1,8 +1,13 @@
-# Platform workloads (GitOps)
+# Platform workloads
 
 Kubernetes manifests for the chat platform, kept **separate from infrastructure**
-(Terraform) and from the sample CI/CD app in [`../app`](../app). Apply these with
-your GitOps controller (Argo CD / Flux) or `kubectl apply -f` per directory.
+(Terraform). They are delivered to the cluster by the **Cloud Deploy dev → prod
+pipeline** (`terraform/platform/modules/clouddeploy`), which renders them through
+[`skaffold.yaml`](skaffold.yaml): the `dev` profile ships the dev tenant +
+matterbridge and runs an on-cluster post-deploy smoke test, and the `prod` profile
+ships the operator-managed Mattermost behind a manual-approval gate. Applying with
+`kubectl apply -f` per directory (see [Apply order](#apply-order)) remains a manual
+fallback.
 
 ## Topology & scheduling
 
@@ -71,6 +76,11 @@ gcloud secrets versions add ycs-prod-cloudflare-origin-pull-ca  --data-file=orig
    `terraform output gcs_bucket_name`.
 
 ## Apply order
+
+Cloud Deploy applies these for you (dev profile: `namespaces` + `dev/` +
+`matterbridge/`; prod profile: `namespaces` + `mattermost/`). To apply manually as
+a fallback, in this order — `kubectl apply -f dev/` is non-recursive, so it skips
+the `dev/verify/` Job template:
 
 ```bash
 kubectl apply -f namespaces.yaml

@@ -192,9 +192,9 @@ Already wired in the manifests (change the tag to the one you pushed):
 
 - **Build once, promote the same artifact.** One tag pattern builds one image;
   both Mattermost manifests (dev + prod) reference the SAME
-  `ycs-containers/mattermost:<tag>` via GitOps — the image is never rebuilt per
-  environment. The platform stack's Cloud Deploy pipeline applies the same
-  build-once/promote model as managed dev->prod delivery for the sample `app/`.
+  `ycs-containers/mattermost:<tag>` — the image is never rebuilt per environment.
+  The platform stack's Cloud Deploy pipeline delivers these `helm/` manifests as a
+  managed dev->prod promotion (dev verify -> prod approval).
 - **Single tag pattern.** `^v.*-patched$` matches release tags like
   `v9.11.3-patched`. There is no separate dev image or dev tag.
 - **APIs come from the platform stack.** Apply it first; the build stack creates

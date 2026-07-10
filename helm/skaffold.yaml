@@ -1,0 +1,73 @@
+# Skaffold config consumed by Cloud Deploy to render and apply the platform's
+# Kubernetes workloads. Delivered as a dev -> prod pipeline by the `clouddeploy`
+# component (terraform/platform/modules/clouddeploy); each pipeline stage binds
+# one profile below via its `profiles` field:
+#
+#   dev  -> the dev tenant (in-cluster Postgres + dev Mattermost) plus
+#           matterbridge, followed by an on-cluster `verify` smoke test.
+#   prod -> the operator-managed prod Mattermost (promotion gated by manual
+#           approval in Cloud Deploy).
+#
+# NO build artifacts are declared on purpose. The container image tag is the
+# source of truth INSIDE the manifests (build-once, promote-the-same-tag): the
+# prod Mattermost is an Operator CR that splits the ref into `spec.image` +
+# `spec.version`, which defeats Skaffold's image substitution. Cloud Deploy
+# therefore provides the promotion workflow (verify -> approval -> rollback),
+# not tag templating. The Mattermost image is built once by the build stack
+# (terraform/build) on tags matching ^v.*-patched$; matterbridge uses the
+# upstream 42wim/matterbridge image.
+#
+# Each profile REPLACES the (empty) base manifest list -- a non-empty profile
+# slice overlays by replacement in Skaffold -- so a profile renders exactly its
+# own workload set and nothing else. namespaces.yaml is idempotent and shared by
+# both stages so each target self-heals its namespace prerequisites.
+apiVersion: skaffold/v4beta11
+kind: Config
+metadata:
+  name: yourown-chat
+deploy:
+  kubectl: {}
+profiles:
+  # --- dev stage: dev tenant + matterbridge ---------------------------------
+  - name: dev
+    manifests:
+      rawYaml:
+        - namespaces.yaml
+        - dev/serviceaccount.yaml
+        - dev/rbac.yaml
+        - dev/networkpolicy.yaml
+        - dev/postgres.yaml
+        - dev/mattermost-dev.yaml
+        - matterbridge/serviceaccount.yaml
+        - matterbridge/secretproviderclass.yaml
+        - matterbridge/networkpolicy.yaml
+        - matterbridge/deployment.yaml
+    verify:
+      - name: smoke-test
+        container:
+          name: smoke-test
+          image: curlimages/curl:8.10.1
+          command: ["/bin/sh", "-c"]
+          args:
+            - >-
+              curl -sSf --retry 30 --retry-connrefused --retry-delay 5
+              http://dev-mattermost.dev.svc.cluster.local:8065/api/v4/system/ping
+        # Run the probe ON the target cluster (GKE only) as a Job pinned to the
+        # `dev` namespace via jobManifestPath. It MUST run in `dev`: that
+        # namespace's NetworkPolicy is default-deny and only admits
+        # intra-namespace traffic, so a verify pod anywhere else could neither
+        # resolve nor reach dev-mattermost. Without kubernetesCluster mode Cloud
+        # Deploy would run verify in its Cloud Build execution environment, which
+        # cannot resolve in-cluster DNS at all.
+        executionMode:
+          kubernetesCluster:
+            jobManifestPath: dev/verify/job.yaml
+  # --- prod stage: operator-managed Mattermost ------------------------------
+  - name: prod
+    manifests:
+      rawYaml:
+        - namespaces.yaml
+        - mattermost/serviceaccount.yaml
+        - mattermost/secretproviderclass.yaml
+        - mattermost/secret-sync.yaml
+        - mattermost/mattermost.yaml

@@ -23,7 +23,7 @@ Stacks** in a single GCP project:
 | Kubernetes | **One** zonal GKE Standard cluster, private nodes, **two node pools**: prod `e2-standard-2` (on-demand, tainted) + dev `e2-small` (on-demand, untainted) |
 | Container registry | **One unified** Artifact Registry (Docker) repo `ycs-containers`, owned by the build stack |
 | CI build | Cloud Build (2nd-gen GitHub trigger, dedicated least-privilege SA) builds the Mattermost image |
-| CD to GKE | Cloud Deploy **dev→prod** pipeline: one artifact promoted across two GKE targets (dev + prod namespaces) on the one cluster — dev post-deploy `verify`, prod gated by approval |
+| CD to GKE | Cloud Deploy **dev→prod** pipeline delivers the `helm/` workloads across two GKE targets on the one cluster — dev renders the dev tenant + matterbridge with a post-deploy `verify`, prod renders the operator-managed Mattermost gated by approval |
 | Secrets | **Every** credential in **Secret Manager**, mounted via the GKE Secret Manager CSI add-on + Workload Identity |
 | Apps | prod Mattermost (operator CR + managed Cloud SQL) and dev Mattermost + matterbridge + in-cluster Postgres, all on the one cluster |
 
@@ -80,7 +80,7 @@ dedicated least-privilege service accounts, **all secrets in Secret Manager**,
 and encryption on by default (CMEK-ready).
 
 **Dev/prod isolation on one cluster:** the tainted prod pool guarantees resource
-isolation; `nodeSelector tier=prod|dev` on the GitOps manifests pins each tier to
+isolation; `nodeSelector tier=prod|dev` on the Kubernetes manifests pins each tier to
 its pool. On top of scheduling, the `dev` namespace gets default-deny ingress and
 egress NetworkPolicies (allow only intra-namespace + DNS + egress to public IPs,
 never to other in-cluster namespaces) and a namespace-scoped RBAC Role/RoleBinding
@@ -112,7 +112,7 @@ graph TD
   WI -->|accessors| SQL
   WI -->|accessors| STO
   WI -->|accessors| SEC
-  GKE --> CD[clouddeploy<br/>dev→prod pipeline + 2 targets]
+  GKE --> CD[clouddeploy<br/>dev→prod delivery of helm/ workloads]
 ```
 
 **build stack**
@@ -157,21 +157,16 @@ terraform/                  # each subdir is ONE Terraform Stacks configuration
     modules/
       artifact-registry/    # the unified Docker repo (moved here from platform)
       cloudbuild-image/     # 2nd-gen GitHub connection + repo + tag-triggered builds
-helm/                       # GitOps manifests (separate from infra + app)
-  namespaces.yaml
-  mattermost/               # prod: SA + SecretProviderClass + secret-sync + CR
-  matterbridge/             # SA + SecretProviderClass + Deployment (dev pool)
+helm/                       # Kubernetes workloads, delivered by Cloud Deploy dev→prod
+  skaffold.yaml             # dev/prod profiles Cloud Deploy renders (+ dev verify)
+  cloudbuild.yaml           # illustrative: cut a Cloud Deploy release from helm/
+  namespaces.yaml           # mattermost (prod) + matterbridge + dev tenants
+  mattermost/               # prod: SA + SecretProviderClass + secret-sync + operator CR
+  matterbridge/             # SA + SecretProviderClass + Deployment + NetworkPolicy (dev pool)
   dev/                      # SA/SPC + in-cluster Postgres + dev Mattermost +
                             #   networkpolicy.yaml + rbac.yaml (tenant isolation)
+    verify/                 #   on-cluster smoke-test Job template (dev-stage verify)
   ingress-nginx/            # Cloudflare-only ingress values + bootstrap runbook
-app/                        # sample workload shipped by Cloud Deploy (dev→prod)
-  Dockerfile, index.html
-  k8s/                      # kustomize base + per-env overlays:
-    base/                   #   deployment.yaml + service.yaml (env-neutral)
-    dev/                    #   namespace sample-dev (+ single replica)
-    prod/                   #   namespace sample-prod
-  skaffold.yaml             # dev/prod profiles + post-deploy verify (dev)
-  cloudbuild.yaml           # illustrative build -> push -> create release
 .gitlab-ci.yml              # module fmt/validate + manifest lint
 ```
 
@@ -192,9 +187,9 @@ app/                        # sample workload shipped by Cloud Deploy (dev→pro
 > stack's **`.terraform-version`** file (currently `1.15.8`). The GitLab CI
 > images are pinned to the same version so local, CI, and HCP runs agree.
 
-> Separation of concerns: **infra** (Terraform) provisions cloud resources,
-> **helm/** (GitOps) runs the chat workloads, and **app/** is a sample
-> deployed by Cloud Deploy — stateful, platform, and stateless are kept apart.
+> Separation of concerns: **infra** (Terraform) provisions cloud resources and
+> **helm/** holds the chat workloads, delivered to the cluster by the Cloud
+> Deploy dev→prod pipeline — infrastructure and workloads are kept apart.
 
 ## Deploying (HCP Terraform Stacks)
 
@@ -252,15 +247,16 @@ git tag on github.com/pilprod/mattermost ──► Cloud Build (2nd-gen trigger)
   `helm/dev/mattermost-dev.yaml`.
 
 **Delivery to GKE (platform stack)** — the `clouddeploy` component provisions a
-Cloud Deploy **dev → prod** pipeline that ships the `app/` sample as a
-**build-once/promote-the-same-artifact** demonstrator: two GKE targets
-(`ycs-dev`, `ycs-prod`) on the one cluster (namespaces `sample-dev` /
-`sample-prod`), with a post-deploy **`verify`** smoke test on dev and
-**`requireApproval`** gating promotion to prod. Per-env divergence (namespace,
-replica count) is a Skaffold profile bound to each stage — see
-[`app/skaffold.yaml`](app/skaffold.yaml). **Mattermost itself stays GitOps**
-(`helm/`), referencing the same promoted image tag in both tiers. The demo Cloud
-Build identity that previously lived in the platform stack was removed: with the
+Cloud Deploy **dev → prod** pipeline that delivers the `helm/` Kubernetes
+workloads: two GKE targets (`ycs-dev`, `ycs-prod`) on the one cluster, each
+rendering a Skaffold profile from [`helm/skaffold.yaml`](helm/skaffold.yaml). The
+**dev** target deploys the dev tenant (in-cluster Postgres + dev Mattermost) and
+matterbridge, then runs a post-deploy **`verify`** smoke test on the cluster; the
+**prod** target deploys the operator-managed Mattermost, with **`requireApproval`**
+gating promotion. The Mattermost image is **built once** by the build stack and
+promoted by tag — dev and prod reference the same tag in-manifest, so Cloud Deploy
+promotes the identical manifests rather than rebuilding. The demo Cloud Build
+identity that previously lived in the platform stack was removed: with the
 registry now owned by the build stack, a platform-side writer binding would
 create a `platform -> build` dependency cycle.
 
@@ -291,9 +287,9 @@ create a `platform -> build` dependency cycle.
 
 Modules are intentionally small so the rest of the platform vision (Vault,
 Authentik, cert-manager, ExternalDNS, Prometheus/Grafana/Loki) slots in as **new
-components** in the same Stack, and additional MCP servers as GitOps workloads +
+components** in the same Stack, and additional MCP servers as Kubernetes workloads +
 Workload Identity tenants — no root-module rewrites. Mattermost and matterbridge
-already run as GitOps workloads in [`helm/`](helm/). The network module is
+already run as Kubernetes workloads in [`helm/`](helm/). The network module is
 hub-and-spoke-ready and provisions PSA for future private managed services. If the
 budget later rises, a hard dev/prod split is one more `deployment` (or a second
 cluster); hardening prod is flipping `gke_regional` / `cloudsql_availability_type`.
@@ -312,9 +308,10 @@ These reflect the decisions we converged on; each is easy to change:
    (`ycs-containers`) owned by the **build stack**; one Mattermost image promoted
    dev->prod by tag. The demo platform-side Cloud Build identity was removed to
    avoid a dependency cycle.
-4. **Delivery:** a Cloud Deploy **dev→prod** pipeline ships the `app/` sample
-   (two GKE targets on the one cluster, dev `verify` + prod approval),
-   build-once/promote-the-same-artifact. Mattermost stays GitOps (`helm/`).
+4. **Delivery:** a Cloud Deploy **dev→prod** pipeline delivers the `helm/`
+   workloads (two GKE targets on the one cluster, dev `verify` + prod approval);
+   the Mattermost image is built once and promoted by tag, so both tiers deploy
+   the same manifests.
 5. **Scope:** provisions into an **existing** `project_id`; org/project bootstrap
    deferred to a foundation stack.
 6. **Cloud SQL:** prod only — `db-f1-micro` + PITR + 7-day backups, no HA (HA
