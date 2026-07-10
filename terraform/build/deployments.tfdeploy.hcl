@@ -46,7 +46,6 @@ deployment "build" {
     project_id     = local.gcp_project
     project_number = local.gcp_project_number
     region         = local.gcp_region
-    name_prefix    = "yourown-chat"
 
     # Cloud Build GitHub App installation ID from the one-time OAuth authorize.
     # NUMERIC. See docs/BUILD.md. 0 is a sentinel; a `> 0` validation blocks the

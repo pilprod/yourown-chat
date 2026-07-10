@@ -13,18 +13,6 @@ variable "region" {
   description = "Region for the 2nd-gen connection, repository and triggers (must match Artifact Registry region)."
 }
 
-variable "name_prefix" {
-  type        = string
-  description = "Prefix for Cloud Build resource names, e.g. 'yourown-chat'."
-
-  validation {
-    # account_id = "${name_prefix}-img-build" must be <= 30 chars; "-img-build"
-    # adds 10, so cap the prefix at 20 chars.
-    condition     = can(regex("^[a-z][a-z0-9-]{1,19}$", var.name_prefix))
-    error_message = "name_prefix must be lowercase alphanumeric/hyphen, starting with a letter, <= 20 chars."
-  }
-}
-
 variable "apply_service_account_email" {
   type        = string
   description = "Terraform apply SA (the impersonated identity). Granted actAs on the build SA so it can create triggers that run as a custom, least-privilege identity."

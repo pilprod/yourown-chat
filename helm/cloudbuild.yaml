@@ -21,7 +21,7 @@ substitutions:
   _PIPELINE: europe-west3-pipeline
   # Example runner SA. In practice use a dedicated releaser SA, or grant the
   # roles above to this one; it needs more than the image-build permissions.
-  _RELEASE_SA_EMAIL: yourown-chat-img-build@${PROJECT_ID}.iam.gserviceaccount.com
+  _RELEASE_SA_EMAIL: img-build@${PROJECT_ID}.iam.gserviceaccount.com
 
 serviceAccount: projects/${PROJECT_ID}/serviceAccounts/${_RELEASE_SA_EMAIL}
 
