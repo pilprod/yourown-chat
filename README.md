@@ -36,7 +36,7 @@ stack, provisioned by a single **deployment** (`prod-eu`):
 | Kubernetes | **One** zonal GKE Standard cluster, private nodes, **two node pools**: prod `e2-standard-2` (on-demand, tainted) + dev `e2-small` (on-demand, untainted) |
 | Container registry | **One unified** Artifact Registry (Docker) repo `docker`, an `artifact_registry` component |
 | CI build | Cloud Build (2nd-gen GitHub trigger, dedicated least-privilege SA) builds the Mattermost image |
-| CD to GKE | Cloud Deploy **dev→prod** pipeline delivers the `helm/` workloads across two GKE targets on the one cluster — dev renders the dev tenant + matterbridge with a post-deploy `verify`, prod renders the operator-managed Mattermost gated by approval |
+| CD to GKE | Cloud Deploy **dev→prod** pipeline delivers the `helm/` workloads across two GKE targets on the one cluster — dev renders the dev tenant + matterbridge with a post-deploy `verify`, prod renders the operator-managed Mattermost gated by approval. Release cutting is **automated**: a semver tag (`*.*.*`) on this repo triggers `gcloud deploy releases create` via the `deploy_release` component |
 | Secrets | **Every** credential in **Secret Manager**, mounted via the GKE Secret Manager CSI add-on + Workload Identity |
 | Encryption at rest | One shared **Cloud KMS HSM** key (CMEK, FIPS 140-2 Level 3, 90-day rotation) encrypts Cloud SQL, GCS and Secret Manager — customer-controlled key lifecycle over Google's default AES-256 (the public Artifact Registry is deliberately not CMEK-encrypted) |
 | Apps | prod Mattermost (operator CR + managed Cloud SQL) and dev Mattermost + matterbridge + in-cluster Postgres, all on the one cluster |
@@ -138,6 +138,9 @@ graph TD
   KMS -->|encrypt| SEC
   GKE --> CD[clouddeploy<br/>dev→prod delivery of helm/ workloads]
   CF -->|Origin CA cert/key| SEC
+  CD --> DR[deploy_release<br/>2nd-gen connection to this repo<br/>semver-tag trigger cuts a release]
+  IMG -->|shared PAT read grant| DR
+  KMS -->|encrypt source bucket| DR
 ```
 
 Ordering is expressed by components referencing each other's outputs — explicit
@@ -159,7 +162,7 @@ terraform/                  # ONE Terraform Stacks configuration (the whole prod
   providers.tfcomponent.hcl # stack provider requirements: google, google-beta, random, cloudflare, tls
   variables.tfcomponent.hcl # typed stack input variables (GCP + build + cloudflare)
   components.tfcomponent.hcl # component wiring (one block per building block)
-  outputs.tfcomponent.hcl    # stack outputs (platform + image CI + cloudflare)
+  outputs.tfcomponent.hcl    # stack outputs (platform + image CI + release + cloudflare)
   deployments.tfdeploy.hcl   # ONE `prod-eu` deployment (identity_token + cloudflare varset)
   modules/                  # small, single-purpose, reusable modules
     project-services/       # enable ALL Google APIs the product needs (one place)
@@ -173,10 +176,11 @@ terraform/                  # ONE Terraform Stacks configuration (the whole prod
     workload-identity/      # per-tenant GSA bound to a KSA (WI)
     artifact-registry/      # the unified Docker repo
     cloudbuild-image/       # 2nd-gen GitHub connection + repo + tag-triggered builds
+    deploy-release/         # 2nd-gen connection to this repo + releaser SA + semver-tag trigger (cuts Cloud Deploy releases)
     cloudflare/             # DNS records + edge TLS/security + DNSSEC + WAF + Origin CA cert / AOP
 helm/                       # Kubernetes workloads, delivered by Cloud Deploy dev→prod
   skaffold.yaml             # dev/prod profiles Cloud Deploy renders (+ dev verify)
-  cloudbuild.yaml           # illustrative: cut a Cloud Deploy release from helm/
+  cloudbuild.yaml           # the release-cut command the deploy_release trigger runs (also usable by hand)
   namespaces.yaml           # mattermost (prod) + matterbridge + dev tenants
   mattermost/               # prod: SA + SecretProviderClass + secret-sync + operator CR
   matterbridge/             # SA + SecretProviderClass + Deployment + NetworkPolicy (dev pool)
@@ -282,6 +286,28 @@ so Cloud Deploy promotes the identical manifests rather than rebuilding. Because
 the registry and CI are components of the same stack (not a separate one), the
 registry writer binding is a plain component reference with no dependency cycle.
 
+**Automated release cutting (the `deploy_release` component)** — a git tag, not a
+human, cuts the Cloud Deploy release:
+
+```
+git tag on github.com/pilprod/yourown-chat ──► Cloud Build (2nd-gen trigger)
+   MAJOR.MINOR.PATCH  ─► gcloud deploy releases create ─► clouddeploy pipeline
+```
+
+- A **second** Cloud Build 2nd-gen connection watches **this** repo (which holds
+  `helm/`). On a semver tag (`^[0-9]+\.[0-9]+\.[0-9]+$`, the `*.*.*` pattern) it
+  runs `gcloud deploy releases create --source=helm` as a dedicated, least-privilege
+  **releaser** SA (`europe-west3-releaser`): `roles/clouddeploy.releaser` on **that
+  pipeline only**, `actAs` the Cloud Deploy execution SA, log writer, and object
+  admin on its own private source-staging bucket (CMEK-encrypted, 30-day expiry).
+- It reuses — rather than re-creates — the Cloud Build service agent's read grant
+  on the `github-pat` secret (a project singleton owned by `mattermost_image`), so
+  the two connections share one PAT and one GitHub App installation. This means the
+  PAT/App must also cover this repo (see [`docs/INIT.md`](docs/INIT.md) §8).
+- The command it runs is the one documented in
+  [`helm/cloudbuild.yaml`](helm/cloudbuild.yaml); you can still cut a release by
+  hand from any checkout, but you no longer have to.
+
 ## Security considerations
 
 - Least-privilege, per-purpose service accounts (node, image-build, deploy,
@@ -340,7 +366,10 @@ These reflect the decisions we converged on; each is easy to change:
 4. **Delivery:** a Cloud Deploy **dev→prod** pipeline delivers the `helm/`
    workloads (two GKE targets on the one cluster, dev `verify` + prod approval);
    the Mattermost image is built once and promoted by tag, so both tiers deploy
-   the same manifests.
+   the same manifests. Release cutting is **automated** by the `deploy_release`
+   component: a semver tag (`*.*.*`) on this repo fires a Cloud Build trigger that
+   runs `gcloud deploy releases create` as a least-privilege releaser SA — no
+   manual step. Change the trigger pattern via `release_tag_regex`.
 5. **Scope:** provisions into an **existing** `project_id`; org/project bootstrap
    deferred to a foundation stack.
 6. **Cloud SQL:** prod only — `db-f1-micro` + PITR + 7-day backups, no HA (HA

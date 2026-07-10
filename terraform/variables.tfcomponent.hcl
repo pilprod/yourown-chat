@@ -118,6 +118,19 @@ variable "builds" {
   }
 }
 
+# --- Automated release cutting (Cloud Deploy on a git tag) ------------------
+variable "github_deploy_remote_uri" {
+  type        = string
+  description = "HTTPS clone URL of the DEPLOY repository (the one holding helm/, i.e. this repo). A second Cloud Build 2nd-gen connection points here so a semver tag cuts a Cloud Deploy release automatically. The Cloud Build GitHub App + PAT must cover this repo too (see docs/INIT.md)."
+  default     = "https://github.com/pilprod/yourown-chat.git"
+}
+
+variable "release_tag_regex" {
+  type        = string
+  description = "Git tag regex (on the deploy repo) that triggers an automatic Cloud Deploy release cut. Defaults to semantic MAJOR.MINOR.PATCH — the *.*.* pattern (e.g. 1.2.3)."
+  default     = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+}
+
 # --- GKE cost / topology knobs ---------------------------------------------
 variable "gke_regional" {
   type        = bool

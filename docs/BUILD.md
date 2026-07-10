@@ -103,6 +103,24 @@ Already wired in the manifests (change the tag to the one you pushed):
   `image: europe-west3-docker.pkg.dev/yourown-chat/docker/mattermost:v9.11.3-patched`
   (the **same** tag as prod — build once, promote the same image).
 
+## 5. Ship it: cut a release (automated)
+
+Building the image doesn't deploy it — a **release** does. That step is automated
+by the `deploy_release` component: push a **semver tag** (`MAJOR.MINOR.PATCH`) to
+**this** repo and a Cloud Build trigger runs `gcloud deploy releases create
+--source=helm` for you, entering the dev->prod pipeline (dev verify -> prod
+approval). No manual `releases create`.
+
+```
+git tag 1.4.0 && git push origin 1.4.0
+   ─► Cloud Build (2nd-gen) ─► gcloud deploy releases create ─► europe-west3-pipeline
+```
+
+Bump the in-manifest image tag first (step 4), commit, then tag the release. The
+release promotes those manifests; it does not rebuild the image. The exact command
+lives in [`helm/cloudbuild.yaml`](../helm/cloudbuild.yaml) if you ever need to cut
+one by hand.
+
 ## Notes
 
 - **Build once, promote the same artifact.** One tag pattern builds one image;
@@ -115,5 +133,8 @@ Already wired in the manifests (change the tag to the one you pushed):
 - **No CMEK here.** The public registry is not CMEK-encrypted, and the
   `github-pat` secret's encryption is its own concern (Google-managed by default,
   set in INIT.md). The image-CI components own no Cloud KMS key.
-- **Rotating the PAT** is a `gcloud secrets versions add github-pat` away; the
-  connection reads `versions/latest`.
+- **One PAT, two connections.** The same `github-pat` backs both the image
+  connection (`pilprod/mattermost`) and the release connection
+  (`pilprod/yourown-chat`); scope it to both repos (INIT.md §8). Rotating it is a
+  `gcloud secrets versions add github-pat` away; both connections read
+  `versions/latest`.

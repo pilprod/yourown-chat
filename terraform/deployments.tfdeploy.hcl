@@ -168,6 +168,13 @@ deployment "prod-eu" {
       mattermost = { tag_regex = "^v.*-patched$" }
     }
 
+    # --- Automated release cutting ------------------------------------------
+    # A second Cloud Build connection to THIS repo (holds helm/): a semver tag
+    # (MAJOR.MINOR.PATCH) cuts a Cloud Deploy release automatically — no manual
+    # `gcloud deploy releases create`. The GitHub App + PAT must cover this repo.
+    github_deploy_remote_uri = "https://github.com/pilprod/yourown-chat.git"
+    release_tag_regex        = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+
     # --- Cloudflare edge (token from the varset; IP wired live in the stack) --
     cloudflare_api_token          = store.varset.cloudflare.cloudflare_api_token
     domain                        = "yourown.chat"

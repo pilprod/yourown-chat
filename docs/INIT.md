@@ -276,12 +276,14 @@ gcloud projects get-iam-policy "$PROJECT_ID" \
   --format="table(bindings.role, bindings.members)"
 ```
 
-## 8. Create the GitHub PAT secret (for the image CI)
+## 8. Create the GitHub PAT secret (for the CI/CD connections)
 
-The `mattermost_image` component wires a Cloud Build 2nd-gen GitHub connection to
-`pilprod/mattermost`. That connection needs a GitHub **personal access token**,
-which is the only credential created by hand -- the stack never stores the token
-in git; it just reads `versions/latest` of the secret created here.
+Two Cloud Build 2nd-gen GitHub connections read this token: `mattermost_image`
+(builds the image from `pilprod/mattermost`) and `deploy_release` (cuts a Cloud
+Deploy release from `pilprod/yourown-chat` on a semver tag). Both need a GitHub
+**personal access token**, which is the only credential created by hand -- the
+stack never stores the token in git; it just reads `versions/latest` of the
+secret created here. One token, scoped to both repos, backs both connections.
 
 ### 8.1 Create the fine-grained PAT on GitHub
 
@@ -290,7 +292,8 @@ Fine-grained tokens):
 
 - **Resource owner**: `pilprod`
 - **Repository access**: *Only select repositories* -> `pilprod/mattermost`
-- **Repository permissions**:
+  **and** `pilprod/yourown-chat`
+- **Repository permissions** (same on both repos):
   | Permission | Access |
   | --- | --- |
   | Contents | Read-only |
@@ -301,18 +304,16 @@ Fine-grained tokens):
 
 Scope the token to the fewest repos/permissions Cloud Build needs. To grant it
 more later (e.g. add a repo or a permission), edit the same token on GitHub and
-add a new secret version (8.3) -- the connection always reads `versions/latest`.
+add a new secret version (8.3) -- the connections always read `versions/latest`.
 
-> **Why only `pilprod/mattermost` (and not the Helm repo)?** This PAT backs a
-> single thing: the Cloud Build connection that builds the Mattermost **image**
-> from its source repo. The **Helm charts live in *this* repo**
-> (`pilprod/yourown-chat/helm/`) and are delivered by Cloud Deploy from a
-> **release** you cut out-of-band — `gcloud deploy releases create --source=.`
-> uploads `helm/` (Skaffold + manifests) to Cloud Deploy's GCS bucket, so that
-> path runs with **your** checkout's git access and never touches this PAT (see
-> [`helm/cloudbuild.yaml`](../helm/cloudbuild.yaml)). Only if you later **automate**
-> release creation with a Cloud Build 2nd-gen trigger *on `pilprod/yourown-chat`*
-> would you add that repo to the token's scope (or use a second connection/token).
+> **Why both repos?** The token backs two connections: the image build reads
+> `pilprod/mattermost` (Mattermost **source**), and the automated release cut
+> reads `pilprod/yourown-chat` (this repo, which holds the **Helm charts** under
+> `helm/`). The `deploy_release` component makes deployment hands-off: on a semver
+> tag (`MAJOR.MINOR.PATCH`) in this repo it runs `gcloud deploy releases create
+> --source=helm` for you (see [`helm/cloudbuild.yaml`](../helm/cloudbuild.yaml)
+> for the equivalent manual command). Because that connection lives in the stack,
+> the PAT — and the Cloud Build GitHub App (8.4) — must cover this repo too.
 
 ### 8.2 Store it in Secret Manager
 
@@ -339,17 +340,18 @@ gcloud secrets versions add "$GITHUB_PAT_SECRET_ID" \
   --data-file=-
 ```
 
-The connection reads `versions/latest`, so a new version takes effect on the next
+The connections read `versions/latest`, so a new version takes effect on the next
 connection reconcile -- no Terraform change needed.
 
 ### 8.4 Authorize the Cloud Build GitHub App (installation ID)
 
-The 2nd-gen connection also needs the numeric **installation ID** of the Google
-Cloud Build GitHub App on your org/repo:
+The 2nd-gen connections also need the numeric **installation ID** of the Google
+Cloud Build GitHub App on your org/repos:
 
 1. In the Google Cloud console, open **Cloud Build -> Repositories (2nd gen) ->
    Create host connection** for GitHub, or install the *Google Cloud Build*
-   GitHub App on `pilprod` and grant it access to `pilprod/mattermost`.
+   GitHub App on `pilprod` and grant it access to **both** `pilprod/mattermost`
+   and `pilprod/yourown-chat` (one installation backs both connections).
 2. Copy the numeric installation ID from the App installation URL
    (`https://github.com/settings/installations/<INSTALLATION_ID>`).
 3. Set it in `terraform/deployments.tfdeploy.hcl` as

@@ -411,6 +411,50 @@ component "mattermost_image" {
   }
 }
 
+# --- Automated release cutting (Cloud Build 2nd-gen on git tags) -------------
+# Makes deployment hands-off: its OWN GitHub connection to the DEPLOY repo (this
+# one, which holds helm/) plus a least-privilege releaser SA and a tag trigger.
+# On a semver tag (release_tag_regex, i.e. *.*.*) it runs `gcloud deploy releases
+# create` against the clouddeploy pipeline, so a tag — not a human — cuts the
+# release. The releaser can create releases on that pipeline only and actAs the
+# execution SA; it never touches the image build. Ordered AFTER mattermost_image
+# via pat_secret_grant_dependency so it reuses (not re-creates) the shared Cloud
+# Build agent -> PAT read grant, and AFTER kms so the source bucket is CMEK-ready.
+component "deploy_release" {
+  source = "./modules/deploy-release"
+
+  inputs = {
+    project_id = component.project_services.project_id
+    region     = var.region
+
+    apply_service_account_email = var.service_account_email
+
+    github_app_installation_id = var.github_app_installation_id
+    github_pat_secret_id       = var.github_pat_secret_id
+    github_remote_uri          = var.github_deploy_remote_uri
+
+    # Cut releases against the pipeline the clouddeploy component owns.
+    delivery_pipeline_name          = component.clouddeploy.delivery_pipeline_name
+    execution_service_account_email = component.clouddeploy.execution_service_account_email
+
+    release_tag_regex = var.release_tag_regex
+
+    # CMEK the private source-staging bucket with the shared stack key (null when
+    # cmek_enabled = false), mirroring the other data buckets.
+    source_bucket_kms_key_name = one([for k in component.kms : k.crypto_key_id])
+
+    # Sequencing handle: reuse the image component's Cloud Build agent -> PAT read
+    # grant (a project singleton) instead of re-creating it.
+    pat_secret_grant_dependency = component.mattermost_image.pat_secret_grant_id
+
+    labels = local.common_labels
+  }
+
+  providers = {
+    google = provider.google.this
+  }
+}
+
 # --- Cloudflare edge (public ingress only) ----------------------------------
 # Drives the whole zone: DNS (proxied apex A wired LIVE to the platform ingress
 # IP, www, extra records, CAA), edge TLS/security settings, DNSSEC, WAF rules and
