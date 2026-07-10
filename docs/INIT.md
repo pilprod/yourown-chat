@@ -1,12 +1,17 @@
 # Google Cloud Initial Setup
 
-Initial setup guide for connecting a Google Cloud project to HCP Terraform:
+One-time, out-of-band bootstrap that both Terraform stacks (`platform` and
+`build`) depend on. Run this **once** before applying either stack; afterwards
+the two stacks are fully independent and can be applied in **any order**.
 
-- enable the required Google Cloud APIs;
-- create the Workload Identity Pool and OIDC Provider;
-- create service accounts for `plan` and `apply` runs;
-- grant impersonation permissions and project IAM roles;
-- configure HCP Terraform dynamic provider credentials.
+This guide:
+
+- enables **all** Google Cloud APIs both stacks need (neither stack manages APIs);
+- creates the Workload Identity Pool and OIDC Provider;
+- creates service accounts for `plan` and `apply` runs;
+- grants impersonation permissions and project IAM roles;
+- creates the GitHub personal access token (PAT) secret the build stack reads;
+- configures HCP Terraform dynamic provider credentials.
 
 ## Auth flow
 
@@ -61,17 +66,27 @@ export APPLY_SA="terraform-apply"
 
 ## 2. Enable APIs
 
+Both stacks assume every API they use is already enabled here -- neither the
+`platform` nor the `build` stack manages `google_project_service` resources (two
+stacks cannot both own the same API resource without conflict). Enabling them
+once here is what lets the stacks be applied independently.
+
 ```sh
 gcloud services enable \
+  cloudresourcemanager.googleapis.com \
   iam.googleapis.com \
   iamcredentials.googleapis.com \
-  cloudresourcemanager.googleapis.com \
   sts.googleapis.com \
   compute.googleapis.com \
   container.googleapis.com \
+  servicenetworking.googleapis.com \
+  sqladmin.googleapis.com \
   secretmanager.googleapis.com \
   cloudkms.googleapis.com \
+  storage.googleapis.com \
   artifactregistry.googleapis.com \
+  cloudbuild.googleapis.com \
+  clouddeploy.googleapis.com \
   dns.googleapis.com \
   logging.googleapis.com \
   monitoring.googleapis.com \
@@ -210,8 +225,8 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --role="roles/secretmanager.admin"
 
 # CMEK: create the shared Cloud KMS key ring + HSM key and set encrypterDecrypter
-# on it for the Cloud SQL / GCS / Secret Manager / Artifact Registry service agents
-# (platform stack kms component). Scope down to the key ring later if you prefer.
+# on it for the Cloud SQL / GCS / Secret Manager service agents (platform stack
+# kms component). Scope down to the key ring later if you prefer.
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member="serviceAccount:$APPLY_SA@$PROJECT_ID.iam.gserviceaccount.com" \
   --role="roles/cloudkms.admin"
@@ -247,7 +262,76 @@ gcloud projects get-iam-policy "$PROJECT_ID" \
   --format="table(bindings.role, bindings.members)"
 ```
 
-## 8. Create the Stack in HCP Terraform
+## 8. Create the GitHub PAT secret (for the build stack)
+
+The `build` stack wires a Cloud Build 2nd-gen GitHub connection to
+`pilprod/mattermost`. That connection needs a GitHub **personal access token**,
+which is the only credential created by hand -- the stack never stores the token
+in git; it just reads `versions/latest` of the secret created here.
+
+### 8.1 Create the fine-grained PAT on GitHub
+
+Create a **fine-grained** token (GitHub -> Settings -> Developer settings ->
+Fine-grained tokens):
+
+- **Resource owner**: `pilprod`
+- **Repository access**: *Only select repositories* -> `pilprod/mattermost`
+- **Repository permissions**:
+  | Permission | Access |
+  | --- | --- |
+  | Contents | Read-only |
+  | Metadata | Read-only |
+  | Webhooks | Read and write |
+  | Commit statuses | Read and write |
+  | Pull requests | Read and write |
+
+Scope the token to the fewest repos/permissions Cloud Build needs. To grant it
+more later (e.g. add a repo or a permission), edit the same token on GitHub and
+add a new secret version (8.3) -- the connection always reads `versions/latest`.
+
+### 8.2 Store it in Secret Manager
+
+```sh
+export GITHUB_PAT_SECRET_ID="github-pat"
+
+# Create the container (Google-managed encryption; automatic replication).
+gcloud secrets create "$GITHUB_PAT_SECRET_ID" \
+  --project="$PROJECT_ID" \
+  --replication-policy="automatic"
+
+# Add the token value as the first version (paste the PAT, then Ctrl-D).
+gcloud secrets versions add "$GITHUB_PAT_SECRET_ID" \
+  --project="$PROJECT_ID" \
+  --data-file=-
+```
+
+### 8.3 Rotating / re-scoping the token
+
+```sh
+# After regenerating or re-scoping the PAT on GitHub, add a new version:
+gcloud secrets versions add "$GITHUB_PAT_SECRET_ID" \
+  --project="$PROJECT_ID" \
+  --data-file=-
+```
+
+The build stack's connection reads `versions/latest`, so a new version takes
+effect on the next connection reconcile -- no Terraform change needed.
+
+### 8.4 Authorize the Cloud Build GitHub App (installation ID)
+
+The 2nd-gen connection also needs the numeric **installation ID** of the Google
+Cloud Build GitHub App on your org/repo:
+
+1. In the Google Cloud console, open **Cloud Build -> Repositories (2nd gen) ->
+   Create host connection** for GitHub, or install the *Google Cloud Build*
+   GitHub App on `pilprod` and grant it access to `pilprod/mattermost`.
+2. Copy the numeric installation ID from the App installation URL
+   (`https://github.com/settings/installations/<INSTALLATION_ID>`).
+3. Set it in `terraform/build/deployments.tfdeploy.hcl` as
+   `github_app_installation_id` (a `> 0` validation blocks the plan until you
+   replace the `0` sentinel).
+
+## 9. Create the Stack in HCP Terraform
 
 1. Connect the repo and create a Stack with its **working directory set to
    `terraform/platform`**.
@@ -260,7 +344,8 @@ gcloud projects get-iam-policy "$PROJECT_ID" \
    `https://iam.googleapis.com/.../providers/...` URL).
 4. For the container-image CI, create a **second** Stack with working directory
    `terraform/build` (same org + project, so it reuses this WIF provider and apply
-   SA). See [`BUILD.md`](BUILD.md).
+   SA). Because APIs and the PAT secret are provisioned above, the two stacks are
+   independent and can be applied in **any order**. See [`BUILD.md`](BUILD.md).
 
 ## Notes
 

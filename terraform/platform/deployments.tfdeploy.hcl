@@ -28,7 +28,7 @@
 # WIF provider's allowed-audiences. The google provider then exchanges it at
 # STS (external_credentials.audience = the //iam.googleapis.com/... provider
 # resource name) and impersonates the least-privilege apply SA. Nothing secret
-# is committed. Bootstrap: docs/google_cloud_init.md.
+# is committed. Bootstrap: docs/INIT.md.
 # ---------------------------------------------------------------------------
 
 locals {
@@ -54,7 +54,7 @@ locals {
 
 # HCP mints this OIDC JWT once per run. Its `aud` claim must match the WIF
 # provider's allowed-audiences, which is the full https://iam.googleapis.com/...
-# provider URL (see google_cloud_init.md, gcloud ... --allowed-audiences=...).
+# provider URL (see INIT.md, gcloud ... --allowed-audiences=...).
 identity_token "gcp" {
   audience = ["https://iam.googleapis.com/projects/1086706391144/locations/global/workloadIdentityPools/hcp-terraform/providers/hcp-terraform"]
 }

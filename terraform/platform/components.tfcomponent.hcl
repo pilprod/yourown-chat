@@ -4,23 +4,26 @@
 # component's outputs, which keeps ordering explicit and coupling loose.
 #
 # Graph:
-#   project_services
-#     ├── network ── cloudsql ─┐
-#     │           └── gke ── clouddeploy
-#     ├── storage ─────────────┤ (accessors)
-#     ├── workload_identity_{mattermost,matterbridge,dev} ┘
-#     └── secrets
+#   network ── cloudsql ─┐
+#           └── gke ── clouddeploy
+#   storage ─────────────┤ (accessors)
+#   workload_identity_{mattermost,matterbridge,dev} ┘
+#   secrets
+#
+# Google APIs are NOT managed by any stack: they are enabled once, out-of-band,
+# in docs/INIT.md (`gcloud services enable`). This makes the platform and build
+# stacks fully independent -- neither owns the shared API-enablement resources,
+# so they can be applied in any order right after INIT.md.
 #
 # The container registry and image CI are NOT in this stack: they live in the
 # separate build stack (terraform/build), which owns the unified docker
-# repository. This stack only enables the artifactregistry/cloudbuild APIs (see
-# activate_apis) so the build stack can create the registry and the GKE nodes
-# can pull from it (the node SA gets project-level artifactregistry.reader).
+# repository. The GKE nodes can pull from it (the node SA gets project-level
+# artifactregistry.reader).
 #
-# Workload Identity SAs are created first (they only need the APIs enabled) and
-# their IAM member strings are passed as least-privilege secretAccessors to the
-# secret-owning components (cloudsql, storage, secrets). This keeps every
-# credential in Secret Manager and readable only by the exact workload.
+# Workload Identity SAs are created first and their IAM member strings are passed
+# as least-privilege secretAccessors to the secret-owning components (cloudsql,
+# storage, secrets). This keeps every credential in Secret Manager and readable
+# only by the exact workload.
 # ---------------------------------------------------------------------------
 
 locals {
@@ -43,37 +46,6 @@ locals {
     managed-by  = "terraform"
     stack       = "yourown-chat-platform"
   }, var.extra_labels)
-
-  activate_apis = [
-    "cloudresourcemanager.googleapis.com",
-    "iam.googleapis.com",
-    "iamcredentials.googleapis.com",
-    "compute.googleapis.com",
-    "container.googleapis.com",
-    "servicenetworking.googleapis.com",
-    "sqladmin.googleapis.com",
-    "secretmanager.googleapis.com",
-    "cloudkms.googleapis.com",
-    "storage.googleapis.com",
-    "artifactregistry.googleapis.com",
-    "cloudbuild.googleapis.com",
-    "clouddeploy.googleapis.com",
-    "logging.googleapis.com",
-    "monitoring.googleapis.com",
-  ]
-}
-
-component "project_services" {
-  source = "./modules/project-services"
-
-  inputs = {
-    project_id    = var.project_id
-    activate_apis = local.activate_apis
-  }
-
-  providers = {
-    google = provider.google.this
-  }
 }
 
 # --- Workload Identity service accounts (per tenant) ------------------------
@@ -81,7 +53,7 @@ component "workload_identity_mattermost" {
   source = "./modules/workload-identity"
 
   inputs = {
-    project_id = component.project_services.project_id
+    project_id = var.project_id
     # Named by role: the prod Mattermost is the product, so its identity is
     # `mattermost`; the dev copy is `mattermost-dev`, the bridge `matterbridge`.
     account_id   = "mattermost"
@@ -99,7 +71,7 @@ component "workload_identity_matterbridge" {
   source = "./modules/workload-identity"
 
   inputs = {
-    project_id   = component.project_services.project_id
+    project_id   = var.project_id
     account_id   = "matterbridge"
     display_name = "matterbridge workload identity"
     namespace    = local.ns.matterbridge.namespace
@@ -115,7 +87,7 @@ component "workload_identity_dev" {
   source = "./modules/workload-identity"
 
   inputs = {
-    project_id   = component.project_services.project_id
+    project_id   = var.project_id
     account_id   = "mattermost-dev"
     display_name = "Dev tenant workload identity"
     namespace    = local.ns.dev.namespace
@@ -132,7 +104,7 @@ component "secrets" {
   source = "./modules/secrets"
 
   inputs = {
-    project_id        = component.project_services.project_id
+    project_id        = var.project_id
     replica_locations = [var.region]
     labels            = local.common_labels
 
@@ -184,7 +156,7 @@ component "network" {
   source = "./modules/network"
 
   inputs = {
-    project_id  = component.project_services.project_id
+    project_id  = var.project_id
     region      = var.region
     labels      = local.common_labels
 
@@ -210,7 +182,7 @@ component "kms" {
   source = "./modules/kms"
 
   inputs = {
-    project_id = component.project_services.project_id
+    project_id = var.project_id
     # Regional name (europe-west3-keyring); the project prefix is dropped since the
     # project is already yourown-chat. The key is shared by prod Cloud SQL, GCS and
     # Secret Manager, all in the one region.
@@ -235,7 +207,7 @@ component "storage" {
   source = "./modules/storage"
 
   inputs = {
-    project_id    = component.project_services.project_id
+    project_id    = var.project_id
     location      = upper(var.region)
     force_destroy = var.storage_force_destroy
     labels        = local.common_labels
@@ -259,7 +231,7 @@ component "gke" {
   source = "./modules/gke"
 
   inputs = {
-    project_id                 = component.project_services.project_id
+    project_id                 = var.project_id
     region                     = var.region
     location                   = local.gke_location
     network_id                 = component.network.network_id
@@ -288,7 +260,7 @@ component "cloudsql" {
   source = "./modules/cloudsql"
 
   inputs = {
-    project_id                    = component.project_services.project_id
+    project_id                    = var.project_id
     region                        = var.region
     network_id                    = component.network.network_id
     private_service_connection_id = component.network.private_service_connection_id
@@ -342,7 +314,7 @@ component "clouddeploy" {
   source = "./modules/clouddeploy"
 
   inputs = {
-    project_id     = component.project_services.project_id
+    project_id     = var.project_id
     region         = var.region
     gke_cluster_id = component.gke.cluster_id
 

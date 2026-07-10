@@ -8,7 +8,7 @@
 # SEPARATE build stack (terraform/build) on git tags matching ^v.*-patched$, and
 # matterbridge runs the upstream 42wim/matterbridge image. The image tag is the
 # source of truth INSIDE the manifests (helm/mattermost/mattermost.yaml
-# spec.image + spec.version, and helm/dev/mattermost-dev.yaml), so there is
+# spec.image + spec.version, and helm/developing/mattermost-dev.yaml), so there is
 # nothing to substitute here -- the release just promotes the manifests.
 #
 # To wire it up, add a Cloud Build 2nd-gen trigger (e.g. on release tags or on
