@@ -49,10 +49,10 @@ stack, provisioned by a single **deployment** (`prod-eu`):
 ## Architecture rationale & tradeoffs
 
 The brief asks for a **production-grade** platform *and* the **cheapest** GKE,
-under a ~**$100/mo** ceiling. The topology is therefore **one zonal cluster with
+under a ≈**$100/mo** ceiling. The topology is therefore **one zonal cluster with
 two node pools**, not a cluster per environment: GKE's free tier waives the
 management fee for only **one** zonal cluster per billing account, so a second
-cluster would add ~$74/mo and break the budget. dev/prod isolation is achieved
+cluster would add ≈$74/mo and break the budget. dev/prod isolation is achieved
 **in-cluster** instead of physically:
 
 - a dedicated, **tainted** prod node pool (`e2-standard-2`, `dedicated=prod`) so
@@ -65,16 +65,16 @@ cluster would add ~$74/mo and break the budget. dev/prod isolation is achieved
   **default-deny NetworkPolicies** in `dev` (see `helm/developing/`), so the dev
   tenant cannot reach prod (or any other namespace) on the pod network.
 
-| Line item | Config | ~$/mo |
+| Line item | Config | ≈$/mo |
 |-----------|--------|-------|
 | GKE control plane | 1 zonal cluster | $0 (free tier) |
-| prod node pool | 1× `e2-standard-2`, on-demand | ~$49 |
-| dev node pool | 1× `e2-small`, on-demand | ~$12 |
-| prod Cloud SQL | `db-f1-micro`, 20Gi SSD, PITR + 7-day backups | ~$12–15 |
-| prod GCS (filestore) | Standard, small | ~$2 |
-| dev PVCs (in-cluster pg 5Gi + local filestore 10Gi) | pd-standard | ~$1 |
-| Buffer (egress/growth) | | ~$10–15 |
-| **Total** | | **~$86–93** |
+| prod node pool | 1× `e2-standard-2`, on-demand | ≈$49 |
+| dev node pool | 1× `e2-small`, on-demand | ≈$12 |
+| prod Cloud SQL | `db-f1-micro`, 20Gi SSD, PITR + 7-day backups | ≈$12–15 |
+| prod GCS (filestore) | Standard, small | ≈$2 |
+| dev PVCs (in-cluster pg 5Gi + local filestore 10Gi) | pd-standard | ≈$1 |
+| Buffer (egress/growth) | | ≈$10–15 |
+| **Total** | | **≈$86–93** |
 
 Every cost/HA knob is a typed variable with a production-safe path:
 
@@ -300,7 +300,7 @@ registry writer binding is a plain component reference with no dependency cycle.
   (rotation, disable, destroy = crypto-shred) to us. The `kms` component owns the
   key and grants each service agent `encrypterDecrypter`. The container registry
   is **public** and deliberately not CMEK-encrypted. Toggle via
-  `cmek_enabled` / `kms_protection_level` (`HSM` → `SOFTWARE` for ~$0.06/mo).
+  `cmek_enabled` / `kms_protection_level` (`HSM` → `SOFTWARE` for ≈$0.06/mo).
 - **All secrets in Secret Manager** — DB password + connection URI (cloudsql),
   GCS S3-compatible HMAC keys (storage), dev Postgres password + matterbridge
   config + Cloudflare origin material (secrets module), each secret replica
@@ -333,7 +333,7 @@ These reflect the decisions we converged on; each is easy to change:
    cheaper and more mature. One-variable change.
 2. **Topology:** **one** zonal cluster with two node pools; dev is an isolated
    **namespace tenant** (RBAC + NetworkPolicy), not a second cluster. Keeps the
-   ~$86–93/mo budget under the $100 ceiling while isolating dev from prod.
+   ≈$86–93/mo budget under the $100 ceiling while isolating dev from prod.
 3. **Registry + CI:** a **single unified** Artifact Registry repo (`docker`) as an
    `artifact_registry` component; one Mattermost image promoted dev->prod by tag.
    Kept in the one stack next to the CI that writes to it — no dependency cycle.
@@ -353,10 +353,9 @@ These reflect the decisions we converged on; each is easy to change:
    real `audience` and apply SA from `INIT.md`; the stack impersonates the
    least-privilege `terraform-apply@`. Cloudflare (no WIF path) uses a single
    zone-scoped API token from an HCP variable set, kept isolated from GCP.
-9. **Encryption (CMEK):** one shared Cloud KMS **HSM** key (FIPS 140-2 Level 3,
-   ~$1/mo, 90-day rotation) encrypts Cloud SQL + GCS + Secret Manager, on by
-   default (the public Artifact Registry is deliberately not CMEK-encrypted). HSM
-   (not SOFTWARE) is chosen so the expensive-to-change Cloud SQL key is right the
-   first time — the instance binds its key at creation, so switching later means
-   an instance migration. Flip `cmek_enabled = false` or
-   `kms_protection_level = "SOFTWARE"` (~$0.06/mo) if you don't need FIPS L3.
+9. **Encryption (CMEK) — HSM, on by default:** we picked an **HSM** key
+   (FIPS 140-2 Level 3, ≈$1/mo) over SOFTWARE (≈$0.06/mo) because Cloud SQL binds
+   its key at creation — choosing HSM up front avoids a later instance migration.
+   Flip `cmek_enabled = false` or `kms_protection_level = "SOFTWARE"` if you don't
+   need FIPS L3. What the shared key protects and how it is wired is in
+   [Security considerations](#security-considerations).
