@@ -381,15 +381,32 @@ git or state — it is injected from an HCP variable set as an ephemeral input.
 In the Cloudflare dashboard: **My Profile -> API Tokens -> Create Token ->
 Create Custom Token**. Scope it to the `yourown.chat` zone only, with:
 
-| Permission | Access | Why |
+| Permission | Access | Needed for |
 |------------|--------|-----|
-| Zone -> Zone | Read | resolve the zone ID |
-| Zone -> DNS | Edit | manage the apex A / www / extra / CAA records |
-| Zone -> Zone Settings | Edit | SSL mode, HSTS, min TLS, etc. |
-| Zone -> SSL and Certificates | Edit | *(only if you enable `manage_origin_cert` / `aop_enabled`)* |
+| Zone -> Zone | Read | resolve the zone ID (always) |
+| Zone -> DNS | Edit | apex A / www / extra / CAA records **and DNSSEC** (always) |
+| Zone -> Zone Settings | Edit | SSL mode, HSTS, min TLS, HTTP/3, etc. (always) |
+| Zone -> Zone WAF | Edit | *only if you set `custom_firewall_rules`, `managed_waf_enabled` or `rate_limit_rules`* |
+| Zone -> SSL and Certificates | Edit | *only if you set `manage_origin_cert` or `aop_enabled`* |
 
-Restrict **Zone Resources** to `Specific zone -> yourown.chat`. Copy the token
-value once (it is not shown again).
+The first three rows are enough for the default configuration (DNS + settings +
+DNSSEC). Add the last two only when you enable those optional features.
+
+**Zone Resources:** restrict to `Include -> Specific zone -> yourown.chat`.
+
+**Client IP Address Filtering (recommended):** lock the token to HCP Terraform's
+egress ranges so a leaked token is unusable from anywhere else. Fetch the current
+ranges and add each CIDR under *Client IP Address Filtering -> Is in*:
+
+```bash
+# HCP Terraform publishes its egress ranges; the outbound API/run traffic uses
+# the "api" list. Re-check on changes (rare).
+curl -s https://app.terraform.io/api/meta/ip-ranges | jq -r '.api[]'
+```
+
+**TTL (recommended):** set a **TTL / expiry** (e.g. 90 days) and rotate — see 10.4.
+
+Copy the token value once (it is not shown again).
 
 ### 10.2 Store it in an HCP variable set
 
@@ -412,6 +429,18 @@ terraform -chdir=terraform/platform output -raw ingress_ip_address
 
 The reserved IP is stable by design, so this hand-off is one-time. An empty
 sentinel there fails the `ingress_ip_address` validation until you set it.
+
+### 10.4 Rotating / re-scoping the token
+
+Cloudflare API tokens can be rolled without downtime:
+
+1. **My Profile -> API Tokens ->** the token **-> Roll** (new value, same scope),
+   or create a new custom token if you need to widen/narrow permissions.
+2. Update the `cloudflare_api_token` value in the HCP variable set (10.2).
+3. The next plan/apply picks it up — nothing in git or state changes.
+
+If you set a TTL, roll before expiry. If you added IP filtering, re-check the
+HCP egress ranges when Cloudflare/HCP announce changes (rare).
 
 ## Notes
 
