@@ -44,7 +44,13 @@ variable "github_app_installation_id" {
 
 variable "github_pat_secret_id" {
   type        = string
-  description = "Short ID of the Secret Manager secret holding the GitHub personal access token used by the connection. Created and populated out-of-band during bootstrap (never in git)."
+  description = "Short ID of the Secret Manager secret holding the GitHub personal access token used by the connection. This stack creates the secret CONTAINER (CMEK-encrypted); only its VALUE/version is added out-of-band during bootstrap (never in git)."
+}
+
+variable "github_pat_kms_key_name" {
+  type        = string
+  description = "Full resource ID of the CMEK key used to encrypt the github-pat secret at rest (build-owned key). Null = Google-managed encryption. The key's location must match var.region (the secret replica's location)."
+  default     = null
 }
 
 variable "github_remote_uri" {

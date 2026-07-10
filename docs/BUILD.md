@@ -17,8 +17,15 @@ One tag pattern builds **one image**; that single artifact is promoted dev->prod
 
 What the stack creates:
 
+- a **build-owned CMEK key** (own key ring `europe-west3-build-keyring`, key
+  `github-pat`, `SOFTWARE`), via the `kms` module, that encrypts the github-pat
+  secret at rest. It lives here so the build stack has **no CMEK dependency on the
+  platform stack run**;
 - **one unified Artifact Registry repository** `docker` (Docker,
-  `europe-west3`), via the `artifact-registry` module;
+  `europe-west3`), via the `artifact-registry` module. The registry is **public**,
+  so it is deliberately **not** CMEK-encrypted;
+- the **github-pat secret container** (CMEK-encrypted by the key above), via the
+  `cloudbuild-image` module; only its value (a version) is added out-of-band;
 - one Cloud Build **2nd-gen GitHub connection** + repository link to
   `pilprod/mattermost`, via the `cloudbuild-image` module;
 - a dedicated least-privilege **build service account**
@@ -42,13 +49,11 @@ SA keys.
 - The **platform stack is applied first**. It enables the Cloud Build and
   Artifact Registry APIs (its `project-services` component) that this stack uses.
   This stack does not enable APIs; it creates the registry and CI on top.
-- **CMEK (if enabled).** The platform stack also owns the shared Cloud KMS key
-  and grants **this registry's** service agent (`service-<num>@gcp-sa-artifactregistry`)
-  `encrypterDecrypter` on it. This stack only *references* the key by its
-  deterministic path (`artifact_registry_kms_key_name`, wired in
-  `deployments.tfdeploy.hcl`), so applying the platform stack first is required
-  for the registry's CMEK. Set that input to `null` if the platform sets
-  `cmek_enabled = false`.
+- **CMEK.** This stack owns its **own** Cloud KMS key (`kms` module, key ring
+  `europe-west3-build-keyring`, key `github-pat`) and grants the Secret Manager
+  service agent `encrypterDecrypter` on it, so it does **not** depend on the
+  platform stack's key. The key encrypts only the github-pat secret; the **public**
+  container registry is not CMEK-encrypted.
 - The WIF pool/provider from [`google_cloud_init.md`](google_cloud_init.md)
   already exist (`hcp-terraform` / `hcp-terraform`) and trust the `papou-work`
   HCP org + `yourown-chat` HCP project. The build HCP Stack must live in that
@@ -59,23 +64,32 @@ SA keys.
 
 ## 1. Store the GitHub PAT in Secret Manager
 
-The 2nd-gen connection authenticates to GitHub with a fine-grained PAT. Create
-it out-of-band and store it in Secret Manager (never in git). The secret's short
-ID is passed to the stack as `github_pat_secret_id` (default `github-pat`).
+The 2nd-gen connection authenticates to GitHub with a fine-grained PAT.
+**Terraform creates the secret _container_** (`github_pat_secret_id`, default
+`github-pat`), CMEK-encrypted by the build-owned key from step 0 with a
+user-managed replica in `europe-west3`. You only add the **value** (a version)
+out-of-band -- never in git.
 
 Required PAT scopes (fine-grained, on the `pilprod/mattermost` repo):
 `Contents: Read-only`, `Metadata: Read-only`, `Webhooks: Read and write`,
 `Commit statuses: Read and write`, `Pull requests: Read and write`.
 
-```bash
-export PROJECT_ID="yourown-chat"
+Because the connection reads `versions/latest` when it is created, the version
+must exist before the connection resource is applied. So the bootstrap is a
+two-step apply:
 
-printf '%s' "<PASTE_GITHUB_PAT>" | gcloud secrets create github-pat \
-  --project="$PROJECT_ID" \
-  --replication-policy="user-managed" --locations="europe-west3" \
-  --data-file=-
-# Rotate later with: gcloud secrets versions add github-pat --data-file=-
-```
+1. **First apply** creates the KMS key and the (empty) `github-pat` secret
+   container. The connection creation waits on a PAT version, so add one now:
+
+   ```bash
+   export PROJECT_ID="yourown-chat"
+
+   printf '%s' "<PASTE_GITHUB_PAT>" | gcloud secrets versions add github-pat \
+     --project="$PROJECT_ID" --data-file=-
+   # Rotate later with the same command (adds a new version).
+   ```
+
+2. **Re-apply** to create the 2nd-gen connection, which now reads the PAT.
 
 The module grants the Cloud Build service agent
 (`service-1086706391144@gcp-sa-cloudbuild.iam.gserviceaccount.com`)
@@ -112,6 +126,7 @@ export APPLY_SA="terraform-apply@${PROJECT_ID}.iam.gserviceaccount.com"
 # Extra roles the build stack needs on the shared apply SA (idempotent).
 for ROLE in \
   roles/artifactregistry.admin \
+  roles/cloudkms.admin \
   roles/cloudbuild.connectionAdmin \
   roles/cloudbuild.builds.editor \
   roles/resourcemanager.projectIamAdmin \
@@ -125,15 +140,18 @@ Why each role:
 
 - `artifactregistry.admin` — create the `docker` repo and grant the
   build SA `writer` on it.
+- `cloudkms.admin` — create the build-owned key ring + key and grant the Secret
+  Manager service agent `encrypterDecrypter` on it.
 - `cloudbuild.connectionAdmin` — create the 2nd-gen connection + repository.
 - `cloudbuild.builds.editor` — create the triggers.
 - `resourcemanager.projectIamAdmin` — grant the build SA project-level
   `logging.logWriter`.
-- `serviceusage.serviceUsageAdmin` — create the Cloud Build service identity
-  (`google_project_service_identity`, beta).
+- `serviceusage.serviceUsageAdmin` — create the Cloud Build + Secret Manager
+  service identities (`google_project_service_identity`, beta).
 
-`secretmanager.admin` (PAT accessor binding) and `iam.serviceAccountAdmin` +
-`iam.serviceAccountUser` (create the build SA and `actAs` it) are already granted
+`secretmanager.admin` (create the PAT secret + accessor binding) and
+`iam.serviceAccountAdmin` + `iam.serviceAccountUser` (create the build SA and
+`actAs` it) are already granted
 to `terraform-apply@` in `google_cloud_init.md`. `projectIamAdmin` and
 `serviceUsageAdmin` are also required by the platform stack (its own project IAM
 bindings + API enablement), so they may already be present — re-granting is a
@@ -206,9 +224,9 @@ Already wired in the manifests (change the tag to the one you pushed):
   `v9.11.3-patched`. There is no separate dev image or dev tag.
 - **APIs come from the platform stack.** Apply it first; the build stack creates
   the registry + CI but enables no APIs itself.
-- **CMEK key comes from the platform stack.** It creates the shared Cloud KMS key
-  and grants this registry's service agent access; the build stack only references
-  the key. Keep `artifact_registry_kms_key_name` in sync with the platform's
-  `cmek_enabled`.
+- **CMEK is build-owned.** The build stack creates its own Cloud KMS key
+  (`europe-west3-build-keyring/github-pat`) and uses it only to encrypt the
+  github-pat secret; the public registry is not CMEK-encrypted. There is no CMEK
+  dependency on the platform stack.
 - **Rotating the PAT** is a `gcloud secrets versions add github-pat` away; the
   connection reads `versions/latest`.

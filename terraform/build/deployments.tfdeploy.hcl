@@ -30,13 +30,6 @@ locals {
   gcp_project        = "yourown-chat"
   gcp_project_number = "1086706391144"
   gcp_region         = "europe-west3" # Frankfurt, Germany (matches Artifact Registry)
-
-  # Shared CMEK key created + owned by the PLATFORM stack (its kms component).
-  # Deterministic path -- the platform names the keyring regionally (europe-west3-
-  # keyring) with a bare `cmek` key. The platform stack also grants this registry's
-  # service agent encrypterDecrypter on it, so it MUST be applied first. Set to null
-  # if the platform sets cmek_enabled = false.
-  cmek_key_id = "projects/${local.gcp_project}/locations/${local.gcp_region}/keyRings/${local.gcp_region}-keyring/cryptoKeys/cmek"
 }
 
 identity_token "gcp" {
@@ -60,16 +53,18 @@ deployment "build" {
     # plan until you set the real installation ID before the first apply.
     github_app_installation_id = 0
 
-    # Secret Manager secret holding the GitHub PAT (created + populated
-    # out-of-band before apply; the connection reads versions/latest at create).
+    # Secret Manager secret holding the GitHub PAT. This stack creates the
+    # secret CONTAINER (CMEK-encrypted by the build-owned kms key); only the PAT
+    # VALUE/version is added out-of-band (see docs/BUILD.md), then the connection
+    # reads versions/latest.
     github_pat_secret_id = "github-pat"
     github_remote_uri    = "https://github.com/pilprod/mattermost.git"
     image_name           = "mattermost"
 
-    # CMEK for the registry, using the shared key the platform stack owns (see
-    # local above). Keep in sync with the platform stack's cmek_enabled: set to
-    # null here if CMEK is disabled there.
-    artifact_registry_kms_key_name = local.cmek_key_id
+    # The container registry is PUBLIC -> no CMEK (null). The build stack's own
+    # kms component supplies the CMEK key for the github-pat secret instead, so
+    # there is no CMEK dependency on the platform stack.
+    artifact_registry_kms_key_name = null
 
     # One source repo, ONE unified registry, ONE image built on a single tag
     # pattern. The same artifact is promoted dev -> prod (Cloud Deploy), never
