@@ -6,12 +6,17 @@ the two stacks are fully independent and can be applied in **any order**.
 
 This guide:
 
-- enables **all** Google Cloud APIs both stacks need (neither stack manages APIs);
+- enables the **bootstrap** Google Cloud APIs (auth + Service Usage + Secret
+  Manager) so Terraform can then enable the rest itself;
 - creates the Workload Identity Pool and OIDC Provider;
 - creates service accounts for `plan` and `apply` runs;
-- grants impersonation permissions and project IAM roles;
+- grants impersonation permissions and all project IAM roles both stacks need;
 - creates the GitHub personal access token (PAT) secret the build stack reads;
 - configures HCP Terraform dynamic provider credentials.
+
+Everything a stack can provision itself (all other APIs, every cloud resource)
+is left to Terraform -- this doc is the single place for the manual, pre-Terraform
+prerequisites.
 
 ## Auth flow
 
@@ -64,32 +69,24 @@ export PLAN_SA="terraform-plan"
 export APPLY_SA="terraform-apply"
 ```
 
-## 2. Enable APIs
+## 2. Enable the bootstrap APIs
 
-Both stacks assume every API they use is already enabled here -- neither the
-`platform` nor the `build` stack manages `google_project_service` resources (two
-stacks cannot both own the same API resource without conflict). Enabling them
-once here is what lets the stacks be applied independently.
+Enable only the **bootstrap** APIs here -- the ones Terraform needs *before* it
+can authenticate and enable anything else, plus Secret Manager so the GitHub PAT
+secret (step 8) can be created by hand. Every other API is enabled **by the
+stacks themselves**: the `platform` stack's `project_services` component enables
+what the platform needs, and the `build` stack enables `cloudbuild` +
+`artifactregistry`. There is no overlap, so this list is the single source of
+truth for manual API enablement.
 
 ```sh
 gcloud services enable \
   cloudresourcemanager.googleapis.com \
+  serviceusage.googleapis.com \
   iam.googleapis.com \
   iamcredentials.googleapis.com \
   sts.googleapis.com \
-  compute.googleapis.com \
-  container.googleapis.com \
-  servicenetworking.googleapis.com \
-  sqladmin.googleapis.com \
   secretmanager.googleapis.com \
-  cloudkms.googleapis.com \
-  storage.googleapis.com \
-  artifactregistry.googleapis.com \
-  cloudbuild.googleapis.com \
-  clouddeploy.googleapis.com \
-  dns.googleapis.com \
-  logging.googleapis.com \
-  monitoring.googleapis.com \
   --project="$PROJECT_ID"
 ```
 
@@ -203,41 +200,59 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
 
 ### Roles for the apply service account
 
+One shared `terraform-apply@` SA backs **both** stacks, so grant it every role
+either stack needs here (single source of truth -- BUILD.md does not repeat
+these). `serviceUsageAdmin` is what lets each stack enable its own APIs via
+Terraform.
+
 ```sh
-gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-  --member="serviceAccount:$APPLY_SA@$PROJECT_ID.iam.gserviceaccount.com" \
-  --role="roles/container.admin"
+export APPLY="serviceAccount:$APPLY_SA@$PROJECT_ID.iam.gserviceaccount.com"
 
-gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-  --member="serviceAccount:$APPLY_SA@$PROJECT_ID.iam.gserviceaccount.com" \
-  --role="roles/compute.networkAdmin"
-
-gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-  --member="serviceAccount:$APPLY_SA@$PROJECT_ID.iam.gserviceaccount.com" \
-  --role="roles/iam.serviceAccountAdmin"
-
-gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-  --member="serviceAccount:$APPLY_SA@$PROJECT_ID.iam.gserviceaccount.com" \
-  --role="roles/iam.serviceAccountUser"
-
-gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-  --member="serviceAccount:$APPLY_SA@$PROJECT_ID.iam.gserviceaccount.com" \
-  --role="roles/secretmanager.admin"
-
-# CMEK: create the shared Cloud KMS key ring + HSM key and set encrypterDecrypter
-# on it for the Cloud SQL / GCS / Secret Manager service agents (platform stack
-# kms component). Scope down to the key ring later if you prefer.
-gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-  --member="serviceAccount:$APPLY_SA@$PROJECT_ID.iam.gserviceaccount.com" \
-  --role="roles/cloudkms.admin"
+for ROLE in \
+  roles/serviceusage.serviceUsageAdmin \
+  roles/resourcemanager.projectIamAdmin \
+  roles/iam.serviceAccountAdmin \
+  roles/iam.serviceAccountUser \
+  roles/secretmanager.admin \
+  roles/container.admin \
+  roles/compute.networkAdmin \
+  roles/cloudkms.admin \
+  roles/artifactregistry.admin \
+  roles/cloudbuild.connectionAdmin \
+  roles/cloudbuild.builds.editor ; do
+  gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+    --member="$APPLY" --role="$ROLE" --condition=None
+done
 ```
+
+Why each role (P = platform stack, B = build stack, shared = both):
+
+- `serviceusage.serviceUsageAdmin` — shared: each stack enables its own APIs
+  (`project_services`).
+- `resourcemanager.projectIamAdmin` — shared: project-level IAM bindings (e.g.
+  the GKE node SA's `artifactregistry.reader`, the build SA's `logging.logWriter`).
+- `iam.serviceAccountAdmin` + `iam.serviceAccountUser` — shared: create the
+  per-tenant / build service accounts and `actAs` them.
+- `secretmanager.admin` — shared: manage secrets (P) and grant the Cloud Build
+  agent `secretAccessor` on the `github-pat` secret (B).
+- `container.admin`, `compute.networkAdmin` — P: GKE + VPC/NAT/PSA.
+- `cloudkms.admin` — P: create the shared CMEK key ring + HSM key and grant the
+  Cloud SQL / GCS / Secret Manager service agents `encrypterDecrypter`.
+- `artifactregistry.admin` — B: create the `docker` repo and grant the build SA
+  `writer` on it.
+- `cloudbuild.connectionAdmin`, `cloudbuild.builds.editor` — B: create the
+  2nd-gen connection + repository and the tag triggers.
+
+> Start broad to keep the first apply unblocked without granting Owner/Editor;
+> tighten later by swapping project roles for resource-scoped IAM conditions once
+> names stabilise.
 
 ## Resulting Roles
 
 | Service account | Roles |
 | --- | --- |
 | `terraform-plan@yourown-chat.iam.gserviceaccount.com` | `roles/viewer`, `roles/browser` |
-| `terraform-apply@yourown-chat.iam.gserviceaccount.com` | `roles/container.admin`, `roles/compute.networkAdmin`, `roles/iam.serviceAccountAdmin`, `roles/iam.serviceAccountUser`, `roles/secretmanager.admin`, `roles/cloudkms.admin` |
+| `terraform-apply@yourown-chat.iam.gserviceaccount.com` | `roles/serviceusage.serviceUsageAdmin`, `roles/resourcemanager.projectIamAdmin`, `roles/iam.serviceAccountAdmin`, `roles/iam.serviceAccountUser`, `roles/secretmanager.admin`, `roles/container.admin`, `roles/compute.networkAdmin`, `roles/cloudkms.admin`, `roles/artifactregistry.admin`, `roles/cloudbuild.connectionAdmin`, `roles/cloudbuild.builds.editor` |
 
 ## Verification
 
@@ -344,8 +359,9 @@ Cloud Build GitHub App on your org/repo:
    `https://iam.googleapis.com/.../providers/...` URL).
 4. For the container-image CI, create a **second** Stack with working directory
    `terraform/build` (same org + project, so it reuses this WIF provider and apply
-   SA). Because APIs and the PAT secret are provisioned above, the two stacks are
-   independent and can be applied in **any order**. See [`BUILD.md`](BUILD.md).
+   SA). Each stack enables the APIs it owns and this bootstrap already created the
+   shared roles + the `github-pat` secret, so the two stacks are independent and
+   can be applied in **any order**. See [`BUILD.md`](BUILD.md).
 
 ## Notes
 
@@ -353,6 +369,6 @@ Cloud Build GitHub App on your org/repo:
   Identity component, not here, so it stays declarative and least-privilege.
 - One shared `terraform-apply@` account backs both the `plan` and `apply` phases
   of **both** stacks (the `terraform-plan` SA above is created and impersonable
-  too, reserved for a stricter plan/apply split later). The build stack needs a
-  few extra roles on `terraform-apply@`; see [`BUILD.md`](BUILD.md).
+  too, reserved for a stricter plan/apply split later). All of its roles — for
+  both stacks — are granted in step 7 above, so BUILD.md does not repeat them.
 - Rotating trust = delete/recreate the provider; there are no keys to rotate.

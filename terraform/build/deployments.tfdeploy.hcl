@@ -14,12 +14,12 @@
 # uses -- see INIT.md). No dedicated build SA; no static
 # credentials or SA keys exist anywhere.
 #
-# INDEPENDENCE: this stack does NOT depend on the platform stack. All shared
-# prerequisites (Google APIs + the github-pat secret) are provisioned once,
-# out-of-band, in docs/INIT.md, so the build and platform stacks can be applied
-# in ANY order. See docs/BUILD.md for bootstrap (the github-pat secret + OAuth
-# install id come from INIT.md; this stack needs only a few EXTRA roles on the
-# shared apply SA for the build resources).
+# INDEPENDENCE: this stack does NOT depend on the platform stack. It enables its
+# own APIs (cloudbuild, artifactregistry) via its project_services component and
+# only READS the out-of-band github-pat secret. The minimal bootstrap (auth APIs +
+# secretmanager), the shared apply-SA roles, the github-pat secret and the OAuth
+# install id are all provisioned once in docs/INIT.md, so the build and platform
+# stacks can be applied in ANY order. See docs/BUILD.md.
 # ---------------------------------------------------------------------------
 
 locals {

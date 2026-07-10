@@ -105,33 +105,34 @@ node SA holds project-level `artifactregistry.reader`.
 
 ```mermaid
 graph TD
-  NET[network<br/>VPC/NAT/PSA] --> SQL[cloudsql<br/>private PostgreSQL, prod]
+  PS[project_services<br/>enable platform APIs] --> NET[network<br/>VPC/NAT/PSA]
+  PS --> STO[storage<br/>GCS + HMAC creds]
+  PS --> SEC[secrets<br/>Secret Manager]
+  NET --> SQL[cloudsql<br/>private PostgreSQL, prod]
   NET --> GKE[gke<br/>1 cluster, 2 node pools]
-  STO[storage<br/>GCS + HMAC creds]
   WI[workload-identity<br/>GSA per tenant]
-  SEC[secrets<br/>Secret Manager]
   WI -->|accessors| SQL
   WI -->|accessors| STO
   WI -->|accessors| SEC
   GKE --> CD[clouddeploy<br/>dev→prod delivery of helm/ workloads]
 ```
 
-Google APIs are enabled once, out-of-band, in [`docs/INIT.md`](docs/INIT.md)
-(`gcloud services enable`) — no stack manages them.
-
 **build stack**
 
 ```mermaid
 graph TD
-  AR[artifact-registry<br/>unified docker] --> IMG[cloudbuild-image<br/>2nd-gen connection + tag triggers]
+  PS[project_services<br/>enable cloudbuild + artifactregistry] --> AR[artifact-registry<br/>unified docker]
+  PS --> IMG[cloudbuild-image<br/>2nd-gen connection + tag triggers]
+  AR --> IMG
 ```
 
 Ordering is expressed by components referencing each other's outputs — explicit
 dependencies, no implicit ordering. Workload Identity SA emails flow into the
-secret-owning components as least-privilege `secretAccessor` members. Neither
-stack enables APIs or manages the github-pat secret (both come from
-[`docs/INIT.md`](docs/INIT.md)), so the platform and build stacks are independent
-and can be applied in any order.
+secret-owning components as least-privilege `secretAccessor` members. Each stack
+enables the APIs it owns via its own `project_services` component (no overlap);
+only a minimal bootstrap set (auth + Service Usage + Secret Manager) and the
+`github-pat` secret are done once in [`docs/INIT.md`](docs/INIT.md). So the
+platform and build stacks are independent and can be applied in any order.
 
 ## Repository layout
 
@@ -146,6 +147,7 @@ terraform/                  # each subdir is ONE Terraform Stacks configuration
     outputs.tfcomponent.hcl    # stack outputs
     deployments.tfdeploy.hcl   # ONE `platform` deployment (1 cluster, 2 node pools)
     modules/                # small, single-purpose, reusable modules (this stack)
+      project-services/     # enable the platform-owned Google APIs
       network/              # VPC, subnet(+secondary ranges), Router, NAT, PSA
       gke/                  # zonal Standard cluster + node_pools map + WI + CSI
       cloudsql/             # private PostgreSQL + DB + user + password/conn secrets
@@ -157,10 +159,11 @@ terraform/                  # each subdir is ONE Terraform Stacks configuration
   build/                    # the build stack (unified registry + Mattermost image CI)
     providers.tfcomponent.hcl  # google + google-beta, same keyless auth
     variables.tfcomponent.hcl
-    components.tfcomponent.hcl # artifact_registry (docker) + mattermost_image
+    components.tfcomponent.hcl # project_services + artifact_registry (docker) + mattermost_image
     outputs.tfcomponent.hcl    # unified image path + registry/trigger/connection IDs
     deployments.tfdeploy.hcl   # single `build` deployment (routes by git tag)
     modules/
+      project-services/    # enable the build-owned Google APIs (cloudbuild, artifactregistry)
       artifact-registry/    # the unified Docker repo (moved here from platform)
       cloudbuild-image/     # 2nd-gen GitHub connection + repo + tag-triggered builds
 helm/                       # Kubernetes workloads, delivered by Cloud Deploy dev→prod
@@ -202,11 +205,12 @@ helm/                       # Kubernetes workloads, delivered by Cloud Deploy de
 1. Create **one** GCP project with billing linked, or reuse an existing one.
    This slice does **not** create projects/org (that is a separate future
    foundation stack requiring org + billing permissions).
-1. Run the one-time bootstrap in [`docs/INIT.md`](docs/INIT.md): enable all
-   Google Cloud APIs, create the Workload Identity Federation pool/provider and
-   `terraform plan`/`apply` service accounts, and create the `github-pat` secret.
-   This is the only shared prerequisite; afterwards the two stacks are
-   independent.
+1. Run the one-time bootstrap in [`docs/INIT.md`](docs/INIT.md): enable the
+   bootstrap APIs (auth + Service Usage + Secret Manager), create the Workload
+   Identity Federation pool/provider and `terraform plan`/`apply` service accounts
+   (with all IAM roles both stacks need), and create the `github-pat` secret. The
+   stacks enable every other API themselves; this is the only manual prerequisite,
+   after which the two stacks are independent.
 2. In `terraform/platform/deployments.tfdeploy.hcl` the project ID (`yourown-chat`),
    WIF `audience` and apply-SA are already wired; set the real
    `master_authorized_networks` CIDR if you want to restrict the control plane
@@ -231,10 +235,10 @@ helm/                       # Kubernetes workloads, delivered by Cloud Deploy de
    `helm/developing/networkpolicy.yaml` and `helm/developing/rbac.yaml`).
 6. (For custom Mattermost images) Create a **second** HCP Stack with working
    directory **`terraform/build`** and follow [`docs/BUILD.md`](docs/BUILD.md) to
-   wire the Cloud Build GitHub connection and grant the shared apply SA its few
-   extra build roles. Because APIs and the `github-pat` secret come from
-   `docs/INIT.md`, this stack is independent of the platform stack and can be
-   applied in any order.
+   set the Cloud Build App installation ID. The shared apply-SA roles, the
+   bootstrap APIs and the `github-pat` secret all come from `docs/INIT.md`, and
+   this stack enables its own `cloudbuild`/`artifactregistry` APIs, so it is
+   independent of the platform stack and can be applied in any order.
 
 ## CI/CD flow
 
