@@ -5,7 +5,7 @@ variable "project_id" {
 
 variable "name_prefix" {
   type        = string
-  description = "Prefix for Cloud Deploy resource names (pipeline, targets, execution SA), e.g. 'ycs'. The pipeline spans every stage, so use a tier-neutral prefix rather than an environment-scoped one."
+  description = "Prefix for Cloud Deploy resource names (pipeline, targets, execution SA), e.g. 'yourown-chat'. The pipeline spans every stage, so use a tier-neutral prefix rather than an environment-scoped one."
 }
 
 variable "region" {

@@ -15,7 +15,7 @@ variable "region" {
 
 variable "name_prefix" {
   type        = string
-  description = "Prefix for Cloud Build resource names, e.g. 'ycs'."
+  description = "Prefix for Cloud Build resource names, e.g. 'yourown-chat'."
 
   validation {
     # account_id = "${name_prefix}-img-build" must be <= 30 chars; "-img-build"
@@ -71,7 +71,7 @@ variable "artifact_registry_location" {
 
 variable "artifact_registry_repository_id" {
   type        = string
-  description = "ID of the unified Artifact Registry repository all images are pushed to (e.g. ycs-containers). The build SA gets a single repo-scoped writer binding on it."
+  description = "ID of the unified Artifact Registry repository all images are pushed to (e.g. docker). The build SA gets a single repo-scoped writer binding on it."
 }
 
 # --- Image build ------------------------------------------------------------

@@ -5,7 +5,7 @@ variable "project_id" {
 
 variable "name_prefix" {
   type        = string
-  description = "Prefix for all network resource names, e.g. 'ycs-dev'."
+  description = "Prefix for all network resource names, e.g. 'yourown-chat-dev'."
 
   validation {
     condition     = can(regex("^[a-z][a-z0-9-]{1,20}$", var.name_prefix))

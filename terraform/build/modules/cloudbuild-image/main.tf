@@ -5,7 +5,7 @@ locals {
   pat_secret_version = "projects/${var.project_id}/secrets/${var.github_pat_secret_id}/versions/latest"
 
   # Single unified image path (no tag) shared by every build, e.g.
-  # europe-west3-docker.pkg.dev/yourown-chat/ycs-containers/mattermost
+  # europe-west3-docker.pkg.dev/yourown-chat/docker/mattermost
   image_repo_path = "${var.artifact_registry_location}-docker.pkg.dev/${var.project_id}/${var.artifact_registry_repository_id}/${var.image_name}"
 
   # Tagged reference built/pushed by each trigger. $TAG_NAME is a Cloud Build

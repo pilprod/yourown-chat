@@ -5,7 +5,7 @@ variable "project_id" {
 
 variable "name_prefix" {
   type        = string
-  description = "Prefix for cluster resource names, e.g. 'ycs-dev'."
+  description = "Prefix for cluster resource names, e.g. 'yourown-chat-dev'."
 }
 
 variable "location" {

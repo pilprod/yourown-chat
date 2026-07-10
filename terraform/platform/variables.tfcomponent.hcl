@@ -27,7 +27,7 @@ variable "environment" {
 variable "project_prefix" {
   type        = string
   description = "Short platform prefix used in resource names."
-  default     = "ycs"
+  default     = "yourown-chat"
 }
 
 variable "region" {
