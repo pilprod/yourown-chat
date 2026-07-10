@@ -1,4 +1,4 @@
-# yourown-chat
+# YourOwn.Chat
 
 Production-grade, cloud-agnostic-where-practical GCP platform, managed with
 **HCP Terraform + Terraform Stacks** and validated in **GitLab CI**.
