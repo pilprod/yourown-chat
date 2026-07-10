@@ -3,14 +3,9 @@ variable "project_id" {
   description = "Project the bucket is created in."
 }
 
-variable "name_prefix" {
-  type        = string
-  description = "Prefix for the bucket name, e.g. 'yourown-chat-dev'."
-}
-
 variable "location" {
   type        = string
-  description = "Bucket location. Use a region (e.g. EUROPE-WEST3) to keep data in Germany."
+  description = "Bucket location. Use a region (e.g. EUROPE-WEST3) to keep data in Germany. Its lowercase form is also the bucket/filestore-SA name prefix."
   default     = "EUROPE-WEST3"
 }
 

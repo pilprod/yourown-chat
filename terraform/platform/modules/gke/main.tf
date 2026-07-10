@@ -1,6 +1,9 @@
 locals {
-  cluster_name  = "${var.name_prefix}-gke"
-  node_sa_id    = "${var.name_prefix}-gke-node"
+  # Regional names, project prefix dropped (project is already yourown-chat).
+  # The cluster may be zonal, but names use the region so the tag stays uniform
+  # across the platform and a second-region deployment can't collide.
+  cluster_name  = "${var.region}-gke"
+  node_sa_id    = "${var.region}-gke-node"
   workload_pool = "${var.project_id}.svc.id.goog"
 }
 
@@ -116,7 +119,7 @@ resource "google_container_node_pool" "pool" {
   for_each = var.node_pools
 
   project  = var.project_id
-  name     = "${var.name_prefix}-${each.key}"
+  name     = "${var.region}-${each.key}"
   cluster  = google_container_cluster.this.id
   location = var.location
 

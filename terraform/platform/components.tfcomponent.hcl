@@ -24,13 +24,11 @@
 # ---------------------------------------------------------------------------
 
 locals {
-  # Tier-neutral prefix for every platform resource (yourown-chat-*), matching the
-  # KMS key and Cloud Deploy pipeline. environment drives labels, not names: this is
-  # a single-deployment platform and "dev" is a tenant namespace, so an environment
-  # segment in names would only collide with the dev tenant (it would produce the
-  # contradictory yourown-chat-prod-dev). Reintroduce
-  # "${var.project_prefix}-${var.environment}" here if you ever run two deployments
-  # in one project.
+  # Prefix for the Workload Identity service accounts, whose names ARE the tenant
+  # identity (yourown-chat = prod Mattermost, -dev, -br). Every other platform
+  # resource is named regionally (europe-west3-*) with no project prefix, since the
+  # project is already called yourown-chat -- see each component below. environment
+  # drives labels, not names.
   name_prefix  = var.project_prefix
   gke_location = var.gke_regional ? var.region : var.zone
 
@@ -188,7 +186,6 @@ component "network" {
 
   inputs = {
     project_id  = component.project_services.project_id
-    name_prefix = local.name_prefix
     region      = var.region
     labels      = local.common_labels
 
@@ -215,10 +212,9 @@ component "kms" {
 
   inputs = {
     project_id = component.project_services.project_id
-    # Tier-neutral name (yourown-chat-*), like the Cloud Deploy pipeline below:
-    # the key is shared by prod Cloud SQL/GCS and the cross-environment registry,
-    # so it is not scoped to the per-environment platform prefix.
-    name_prefix      = var.project_prefix
+    # Regional name (europe-west3-keyring); the project prefix is dropped since the
+    # project is already yourown-chat. The key is shared by prod Cloud SQL/GCS and
+    # the cross-environment registry, all in the one region.
     location         = var.region
     protection_level = var.kms_protection_level
     rotation_period  = var.kms_rotation_period
@@ -237,7 +233,6 @@ component "storage" {
 
   inputs = {
     project_id    = component.project_services.project_id
-    name_prefix   = local.name_prefix
     location      = upper(var.region)
     force_destroy = var.storage_force_destroy
     labels        = local.common_labels
@@ -262,7 +257,7 @@ component "gke" {
 
   inputs = {
     project_id                 = component.project_services.project_id
-    name_prefix                = local.name_prefix
+    region                     = var.region
     location                   = local.gke_location
     network_id                 = component.network.network_id
     subnet_id                  = component.network.subnet_id
@@ -291,7 +286,6 @@ component "cloudsql" {
 
   inputs = {
     project_id                    = component.project_services.project_id
-    name_prefix                   = local.name_prefix
     region                        = var.region
     network_id                    = component.network.network_id
     private_service_connection_id = component.network.private_service_connection_id
@@ -338,9 +332,9 @@ component "cloudsql" {
 # comes entirely from its Skaffold profile, not a separate cluster. The Mattermost
 # image is built once by the build stack (terraform/build) and promoted by tag
 # (build-once/promote-the-same-tag); Cloud Deploy promotes the SAME manifests
-# dev -> prod. The pipeline spans both tiers; its resources (pipeline, targets,
-# execution SA) use bare project-scoped names (pipeline, dev, prod, clouddeploy)
-# rather than repeating the project prefix.
+# dev -> prod. The pipeline spans both tiers; its resources are named regionally
+# (europe-west3-pipeline, europe-west3-dev, europe-west3-prod, europe-west3-clouddeploy)
+# with no project prefix, since the project is already yourown-chat.
 component "clouddeploy" {
   source = "./modules/clouddeploy"
 

@@ -32,11 +32,11 @@ locals {
   gcp_region         = "europe-west3" # Frankfurt, Germany (matches Artifact Registry)
 
   # Shared CMEK key created + owned by the PLATFORM stack (its kms component).
-  # Deterministic path -- name_prefix there is the project prefix "yourown-chat",
-  # so ring/key are yourown-chat-keyring / yourown-chat-cmek. The platform stack
-  # also grants this registry's service agent encrypterDecrypter on it, so it
-  # MUST be applied first. Set to null if the platform sets cmek_enabled = false.
-  cmek_key_id = "projects/${local.gcp_project}/locations/${local.gcp_region}/keyRings/yourown-chat-keyring/cryptoKeys/yourown-chat-cmek"
+  # Deterministic path -- the platform names the keyring regionally (europe-west3-
+  # keyring) with a bare `cmek` key. The platform stack also grants this registry's
+  # service agent encrypterDecrypter on it, so it MUST be applied first. Set to null
+  # if the platform sets cmek_enabled = false.
+  cmek_key_id = "projects/${local.gcp_project}/locations/${local.gcp_region}/keyRings/${local.gcp_region}-keyring/cryptoKeys/cmek"
 }
 
 identity_token "gcp" {

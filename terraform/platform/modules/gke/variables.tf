@@ -3,9 +3,9 @@ variable "project_id" {
   description = "Project the cluster is created in."
 }
 
-variable "name_prefix" {
+variable "region" {
   type        = string
-  description = "Prefix for cluster resource names, e.g. 'yourown-chat-dev'."
+  description = "Region used as the name prefix for cluster resources (e.g. 'europe-west3'). Separate from location, which may be a zone."
 }
 
 variable "location" {

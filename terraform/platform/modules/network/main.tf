@@ -1,13 +1,19 @@
 locals {
-  network_name           = "${var.name_prefix}-vpc"
-  subnet_name            = "${var.name_prefix}-${var.region}-subnet"
-  pods_range_name        = "${var.name_prefix}-pods"
-  services_range_name    = "${var.name_prefix}-services"
-  router_name            = "${var.name_prefix}-router"
-  nat_name               = "${var.name_prefix}-nat"
-  psa_range_name         = "${var.name_prefix}-psa"
-  internal_firewall_name = "${var.name_prefix}-allow-internal"
-  ingress_ip_name        = "${var.name_prefix}-ingress-ip"
+  # Regional resources are named ${region}-<role>: the project is already called
+  # yourown-chat, so repeating it would only waste characters, and the region tag
+  # keeps a second regional deployment from colliding. Truly global resources in
+  # this module (the VPC-wide firewall, the PSA peering range) carry no region.
+  # The VPC is a global GCP object but its routing_mode is REGIONAL and every
+  # subnet is single-region, so it is named regionally too.
+  network_name           = "${var.region}-vpc"
+  subnet_name            = "${var.region}-subnet"
+  pods_range_name        = "${var.region}-pods"
+  services_range_name    = "${var.region}-services"
+  router_name            = "${var.region}-router"
+  nat_name               = "${var.region}-nat"
+  psa_range_name         = "psa"
+  internal_firewall_name = "allow-internal"
+  ingress_ip_name        = "${var.region}-ingress-ip"
 }
 
 # Custom-mode VPC: no auto subnets so ranges are explicit and predictable.

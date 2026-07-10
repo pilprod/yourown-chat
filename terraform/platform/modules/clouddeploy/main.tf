@@ -3,8 +3,8 @@ data "google_project" "this" {
 }
 
 locals {
-  exec_sa_id         = "clouddeploy"
-  pipeline_name      = "pipeline"
+  exec_sa_id         = "${var.region}-clouddeploy"
+  pipeline_name      = "${var.region}-pipeline"
   deploy_agent_email = "service-${data.google_project.this.number}@gcp-sa-clouddeploy.iam.gserviceaccount.com"
 
   # Targets keyed by stage name (order-independent); the pipeline below drives
@@ -43,7 +43,7 @@ resource "google_clouddeploy_target" "stage" {
 
   project  = var.project_id
   location = var.region
-  name     = each.value.name
+  name     = "${var.region}-${each.value.name}"
 
   require_approval = each.value.require_approval
 

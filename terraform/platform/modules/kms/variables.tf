@@ -3,14 +3,9 @@ variable "project_id" {
   description = "Project the key ring and key are created in."
 }
 
-variable "name_prefix" {
-  type        = string
-  description = "Tier-neutral prefix for KMS resource names, e.g. 'yourown-chat'. The key is shared by prod Cloud SQL/GCS and the cross-environment container registry, so it is named with the project prefix rather than the per-environment platform prefix."
-}
-
 variable "location" {
   type        = string
-  description = "KMS location. Must match the region of every CMEK consumer (Cloud SQL instance, GCS bucket, Artifact Registry repo), e.g. 'europe-west3'."
+  description = "KMS location. Must match the region of every CMEK consumer (Cloud SQL instance, GCS bucket, Artifact Registry repo), e.g. 'europe-west3'. Also used as the keyring name prefix."
 }
 
 variable "protection_level" {

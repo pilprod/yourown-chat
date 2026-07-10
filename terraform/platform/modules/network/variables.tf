@@ -3,19 +3,9 @@ variable "project_id" {
   description = "Project the network is created in."
 }
 
-variable "name_prefix" {
-  type        = string
-  description = "Prefix for all network resource names, e.g. 'yourown-chat-dev'."
-
-  validation {
-    condition     = can(regex("^[a-z][a-z0-9-]{1,20}$", var.name_prefix))
-    error_message = "name_prefix must be lowercase alphanumeric/hyphen, starting with a letter, <= 21 chars."
-  }
-}
-
 variable "region" {
   type        = string
-  description = "Region for the subnet, Cloud Router and Cloud NAT."
+  description = "Region for the network resources; also used as the name prefix for regional resources (e.g. 'europe-west3')."
 }
 
 variable "subnet_cidr" {
