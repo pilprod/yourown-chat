@@ -40,7 +40,7 @@ Secret **values** are created by Terraform (generated) or populated out-of-band:
 gcloud secrets versions add ycs-prod-matterbridge-tokens --data-file=matterbridge.toml
 
 # Cloudflare origin cert/key + Authenticated Origin Pulls CA — created empty by
-# Terraform; see platform/ingress-nginx/README.md for how to obtain each value:
+# Terraform; see helm/ingress-nginx/README.md for how to obtain each value:
 gcloud secrets versions add ycs-prod-mattermost-origin-tls-cert --data-file=origin.pem
 gcloud secrets versions add ycs-prod-mattermost-origin-tls-key  --data-file=origin.key
 gcloud secrets versions add ycs-prod-cloudflare-origin-pull-ca  --data-file=origin-pull-ca.pem
@@ -58,7 +58,7 @@ gcloud secrets versions add ycs-prod-cloudflare-origin-pull-ca  --data-file=orig
    helm repo add mattermost https://helm.mattermost.com && helm repo update
    helm upgrade --install mattermost-operator mattermost/mattermost-operator -n mattermost-operator --create-namespace
 
-   # Public edge, locked to Cloudflare — see platform/ingress-nginx/README.md
+   # Public edge, locked to Cloudflare — see helm/ingress-nginx/README.md
    helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx && helm repo update
    helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
      -n ingress-nginx --create-namespace -f ingress-nginx/values.yaml

@@ -46,7 +46,7 @@ variable "zone" {
 # No static credentials, SA keys, or JSON exist anywhere in this repo. HCP mints
 # a short-lived OIDC JWT per run (identity_token block in deployments.tfdeploy.
 # hcl); the google provider exchanges it through Workload Identity Federation
-# and impersonates a least-privilege service account. See docs/BOOTSTRAP.md.
+# and impersonates a least-privilege service account. See docs/google_cloud_init.md.
 variable "identity_token" {
   type        = string
   ephemeral   = true

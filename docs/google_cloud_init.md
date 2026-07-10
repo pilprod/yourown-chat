@@ -8,6 +8,29 @@ Initial setup guide for connecting a Google Cloud project to HCP Terraform:
 - grant impersonation permissions and project IAM roles;
 - configure HCP Terraform dynamic provider credentials.
 
+## Auth flow
+
+```
+HCP Terraform run
+   -> mints OIDC JWT   (identity_token "gcp", aud = full WIF provider URL)
+   -> WIF provider     (issuer app.terraform.io, verifies org + project)
+   -> STS token exchange (audience = full WIF provider resource name)
+   -> impersonates the least-privilege apply SA
+   -> short-lived access token
+   -> google provider  (external_credentials) -> Google Cloud APIs
+```
+
+The Terraform side is already wired, so this guide only creates the cloud-side
+resources below:
+
+- `stacks/platform/deployments.tfdeploy.hcl` -> `identity_token "gcp"` and the
+  single `platform` deployment already pass the real `audience` and
+  `service_account_email` (`terraform-apply@`) -- no placeholders to fill.
+- `stacks/platform/providers.tfcomponent.hcl` -> `provider "google"` uses
+  `external_credentials`.
+- The `build` stack authenticates the same way with the same apply SA (see
+  [`BUILD.md`](BUILD.md)).
+
 ## Input Values
 
 | Variable | Value |
@@ -216,3 +239,28 @@ gcloud projects get-iam-policy "$PROJECT_ID" \
   --filter="bindings.members:terraform-plan OR bindings.members:terraform-apply" \
   --format="table(bindings.role, bindings.members)"
 ```
+
+## 8. Create the Stack in HCP Terraform
+
+1. Connect the repo and create a Stack with its **working directory set to
+   `stacks/platform`**.
+2. HCP reads the `*.tfcomponent.hcl` files + `deployments.tfdeploy.hcl` and the
+   committed `.terraform.lock.hcl`.
+3. Plan and apply the single `platform` deployment. The first plan proves
+   federation end to end: if the token is rejected, re-check the provider's
+   `--attribute-condition` (org + project) and that its `--allowed-audiences`
+   matches the `identity_token` block's `audience` (the full
+   `https://iam.googleapis.com/.../providers/...` URL).
+4. For the container-image CI, create a **second** Stack with working directory
+   `stacks/build` (same org + project, so it reuses this WIF provider and apply
+   SA). See [`BUILD.md`](BUILD.md).
+
+## Notes
+
+- The **MCP runtime** service account is created **by the stack** via a Workload
+  Identity component, not here, so it stays declarative and least-privilege.
+- One shared `terraform-apply@` account backs both the `plan` and `apply` phases
+  of **both** stacks (the `terraform-plan` SA above is created and impersonable
+  too, reserved for a stricter plan/apply split later). The build stack needs a
+  few extra roles on `terraform-apply@`; see [`BUILD.md`](BUILD.md).
+- Rotating trust = delete/recreate the provider; there are no keys to rotate.

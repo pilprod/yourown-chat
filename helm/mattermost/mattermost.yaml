@@ -1,5 +1,5 @@
 # Prod Mattermost, managed by the Mattermost Operator (installation.mattermost.com/v1beta1).
-# Requires the operator + CRDs to be installed first (see platform/README.md).
+# Requires the operator + CRDs to be installed first (see helm/README.md).
 #
 # Scheduling: pinned to the dedicated prod node pool (nodeSelector tier=prod +
 # toleration for the dedicated=prod taint) so dev/bridge workloads can never
@@ -10,7 +10,7 @@
 # Filestore : external GCS via the S3-compatible interoperability endpoint
 #             (secret mattermost-filestore).
 # Ingress   : public host yourown.chat, fronted by Cloudflare. ingress-nginx
-#             admits only Cloudflare source ranges (platform/ingress-nginx) and
+#             admits only Cloudflare source ranges (helm/ingress-nginx) and
 #             enforces Authenticated Origin Pulls (mTLS) + Full (Strict) TLS via
 #             the mattermost-origin-tls / cloudflare-origin-pull-ca Secrets.
 #

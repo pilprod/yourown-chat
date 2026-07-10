@@ -26,7 +26,7 @@
 # WIF provider's allowed-audiences. The google provider then exchanges it at
 # STS (external_credentials.audience = the //iam.googleapis.com/... provider
 # resource name) and impersonates the least-privilege apply SA. Nothing secret
-# is committed. Bootstrap: docs/BOOTSTRAP.md + google_cloud_init.md.
+# is committed. Bootstrap: docs/google_cloud_init.md.
 # ---------------------------------------------------------------------------
 
 locals {

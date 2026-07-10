@@ -76,7 +76,7 @@ Secret Manager secret by the CSI SecretProviderClass.
 ```bash
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx && helm repo update
 helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
-  -n ingress-nginx --create-namespace -f platform/ingress-nginx/values.yaml
+  -n ingress-nginx --create-namespace -f helm/ingress-nginx/values.yaml
 ```
 
 ## Keeping the Cloudflare ranges current

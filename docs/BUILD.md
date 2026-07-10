@@ -185,10 +185,10 @@ gcloud artifacts docker images list \
 
 Already wired in the manifests (change the tag to the one you pushed):
 
-- **prod** `platform/mattermost/mattermost.yaml`:
+- **prod** `helm/mattermost/mattermost.yaml`:
   `spec.image: europe-west3-docker.pkg.dev/yourown-chat/ycs-containers/mattermost`,
   `spec.version: v9.11.3-patched` (the operator builds `image:version`).
-- **dev** `platform/dev/mattermost-dev.yaml`:
+- **dev** `helm/dev/mattermost-dev.yaml`:
   `image: europe-west3-docker.pkg.dev/yourown-chat/ycs-containers/mattermost:v9.11.3-patched-dev`.
 
 ## Notes

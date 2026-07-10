@@ -48,7 +48,7 @@ cluster would add ~$74/mo and break the budget. dev/prod isolation is achieved
   **on-demand, not Spot**, because preempting this pool would take CoreDNS down
   for prod too;
 - **namespace RBAC** (dev team scoped to the `dev` namespace only) and
-  **default-deny NetworkPolicies** in `dev` (see `platform/dev/`), so the dev
+  **default-deny NetworkPolicies** in `dev` (see `helm/dev/`), so the dev
   tenant cannot reach prod (or any other namespace) on the pod network.
 
 | Line item | Config | ~$/mo |
@@ -157,7 +157,7 @@ stacks/                     # each subdir is ONE Terraform Stacks configuration
     modules/
       artifact-registry/    # the unified Docker repo (moved here from platform)
       cloudbuild-image/     # 2nd-gen GitHub connection + repo + tag-triggered builds
-platform/                   # GitOps manifests (separate from infra + app)
+helm/                       # GitOps manifests (separate from infra + app)
   namespaces.yaml
   mattermost/               # prod: SA + SecretProviderClass + secret-sync + CR
   matterbridge/             # SA + SecretProviderClass + Deployment (dev pool)
@@ -190,7 +190,7 @@ app/                        # sample workload + CI/CD manifests
 > images are pinned to the same version so local, CI, and HCP runs agree.
 
 > Separation of concerns: **infra** (Terraform) provisions cloud resources,
-> **platform/** (GitOps) runs the chat workloads, and **app/** is a sample
+> **helm/** (GitOps) runs the chat workloads, and **app/** is a sample
 > deployed by Cloud Deploy — stateful, platform, and stateless are kept apart.
 
 ## Deploying (HCP Terraform Stacks)
@@ -205,8 +205,7 @@ app/                        # sample workload + CI/CD manifests
 3. Configure **keyless** GCP auth in HCP Terraform (no credentials are ever
    committed). The Workload Identity Federation pool/provider and least-privilege
    `terraform plan`/`apply` service accounts are documented in
-   [`google_cloud_init.md`](google_cloud_init.md) and
-   [`docs/BOOTSTRAP.md`](docs/BOOTSTRAP.md); the `audience` and
+   [`docs/google_cloud_init.md`](docs/google_cloud_init.md); the `audience` and
    `service_account_email` inputs are already wired to that setup. HCP mints the
    OIDC token via the `identity_token` block (its `aud` matches the provider's
    allowed-audiences); the google provider exchanges it through WIF
@@ -215,12 +214,12 @@ app/                        # sample workload + CI/CD manifests
    `stacks/platform`**, then plan and apply the single `platform` deployment.
    (An existing Stack that pointed at the repo root must be updated to this
    working directory after the reorg.)
-5. Deploy the chat workloads from [`platform/`](platform/README.md): install the
+5. Deploy the chat workloads from [`helm/`](helm/README.md): install the
    ingress-nginx controller + Mattermost operator, replace the `REPLACE-ME-*`
    markers (project ID, bucket, Workload Identity SA emails from
    `terraform output workload_identity_emails`, the dev-team RBAC principal),
    then apply the manifests (namespaces, then per-tenant resources including
-   `platform/dev/networkpolicy.yaml` and `platform/dev/rbac.yaml`).
+   `helm/dev/networkpolicy.yaml` and `helm/dev/rbac.yaml`).
 6. (For custom Mattermost images) Create a **second** HCP Stack with working
    directory **`stacks/build`** and follow [`docs/BUILD.md`](docs/BUILD.md) to
    wire the Cloud Build GitHub connection and grant the shared apply SA its few
@@ -247,8 +246,8 @@ git tag on github.com/pilprod/mattermost ──► Cloud Build (2nd-gen trigger)
   **shared** `terraform-apply@` SA (the same single account the platform uses).
   See [`docs/BUILD.md`](docs/BUILD.md).
 - The resulting image is referenced in both Mattermost manifests: prod
-  `platform/mattermost/mattermost.yaml` (`spec.image` + `version`), dev
-  `platform/dev/mattermost-dev.yaml`.
+  `helm/mattermost/mattermost.yaml` (`spec.image` + `version`), dev
+  `helm/dev/mattermost-dev.yaml`.
 
 **Delivery to GKE (platform stack)** — the `clouddeploy` component provisions a
 Cloud Deploy delivery pipeline + GKE target. The target practice is
@@ -279,7 +278,7 @@ by the build stack, a platform-side writer binding would create a
 - Public ingress: prod Mattermost is exposed at `yourown.chat` only through
   Cloudflare — ingress-nginx admits only Cloudflare source ranges and enforces
   Authenticated Origin Pulls (mTLS) + Full (Strict) TLS. dev has no public
-  ingress. See [`platform/ingress-nginx/README.md`](platform/ingress-nginx/README.md).
+  ingress. See [`helm/ingress-nginx/README.md`](helm/ingress-nginx/README.md).
 - Buckets: uniform bucket-level access + public access prevention enforced.
 
 ## Future scalability
@@ -288,7 +287,7 @@ Modules are intentionally small so the rest of the platform vision (Vault,
 Authentik, cert-manager, ExternalDNS, Prometheus/Grafana/Loki) slots in as **new
 components** in the same Stack, and additional MCP servers as GitOps workloads +
 Workload Identity tenants — no root-module rewrites. Mattermost and matterbridge
-already run as GitOps workloads in [`platform/`](platform/). The network module is
+already run as GitOps workloads in [`helm/`](helm/). The network module is
 hub-and-spoke-ready and provisions PSA for future private managed services. If the
 budget later rises, a hard dev/prod split is one more `deployment` (or a second
 cluster); hardening prod is flipping `gke_regional` / `cloudsql_availability_type`.
