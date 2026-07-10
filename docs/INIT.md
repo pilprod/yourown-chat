@@ -386,11 +386,13 @@ Create Custom Token**. Scope it to the `yourown.chat` zone only, with:
 | Zone -> Zone | Read | resolve the zone ID (always) |
 | Zone -> DNS | Edit | apex A / www / extra / CAA records **and DNSSEC** (always) |
 | Zone -> Zone Settings | Edit | SSL mode, HSTS, min TLS, HTTP/3, etc. (always) |
+| Zone -> SSL and Certificates | Edit | issue the Origin CA cert for Full (Strict) — **on by default** (`manage_origin_cert`); also `aop_enabled` |
 | Zone -> Zone WAF | Edit | *only if you set `custom_firewall_rules`, `managed_waf_enabled` or `rate_limit_rules`* |
-| Zone -> SSL and Certificates | Edit | *only if you set `manage_origin_cert` or `aop_enabled`* |
 
-The first three rows are enough for the default configuration (DNS + settings +
-DNSSEC). Add the last two only when you enable those optional features.
+The first four rows are the default configuration (DNS + settings + DNSSEC +
+origin cert for Full Strict). Add the last row only when you enable WAF rules.
+If you turn `manage_origin_cert` off (using a dashboard-created cert instead),
+the SSL and Certificates row is not required.
 
 **Zone Resources:** restrict to `Include -> Specific zone -> yourown.chat`.
 
@@ -441,6 +443,48 @@ Cloudflare API tokens can be rolled without downtime:
 
 If you set a TTL, roll before expiry. If you added IP filtering, re-check the
 HCP egress ranges when Cloudflare/HCP announce changes (rare).
+
+### 10.5 Load the origin certificate into the platform secrets (Full Strict)
+
+`ssl_mode = strict` (Full (Strict)) means Cloudflare validates the certificate
+the origin serves, so the GKE ingress must present a **Cloudflare Origin CA
+certificate**. The platform stack creates three *empty* Secret Manager
+containers for this (prod only, `public_ingress_enabled = true`):
+
+| Secret | Holds | Consumed by |
+|--------|-------|-------------|
+| `mattermost-origin-tls-cert` | Origin CA certificate PEM | ingress-nginx TLS (`tls.crt`) |
+| `mattermost-origin-tls-key`  | Origin CA private key PEM | ingress-nginx TLS (`tls.key`) |
+| `cloudflare-origin-pull-ca`  | CA that signs Cloudflare's AOP client cert | ingress-nginx mTLS verify (`ca.crt`) |
+
+The cloudflare stack **isolates the Cloudflare token from GCP** and so does not
+write to Secret Manager itself. Instead, with `manage_origin_cert = true`
+(default) it *issues* the cert and exposes it as outputs; you push those into the
+platform containers out-of-band (never in git):
+
+```bash
+# Cert + key issued by the cloudflare stack -> platform secret containers.
+terraform -chdir=terraform/cloudflare output -raw origin_certificate_pem \
+  | gcloud secrets versions add mattermost-origin-tls-cert --data-file=-
+terraform -chdir=terraform/cloudflare output -raw origin_private_key_pem \
+  | gcloud secrets versions add mattermost-origin-tls-key --data-file=-
+```
+
+> The private key also lives in the cloudflare stack state (HCP-encrypted). If
+> you would rather keep it entirely out of Terraform, set
+> `manage_origin_cert = false` and create the Origin CA cert in the dashboard
+> instead (Cloudflare -> SSL/TLS -> Origin Server -> Create Certificate), then run
+> the same two `gcloud secrets versions add` commands with the downloaded files.
+
+For **Authenticated Origin Pulls** (mTLS, `aop_enabled`), also load the CA that
+signs Cloudflare's presented client cert so nginx can verify it:
+
+```bash
+gcloud secrets versions add cloudflare-origin-pull-ca --data-file=origin-pull-ca.pem
+```
+
+The GKE ingress materialises all three via the Secret Manager CSI driver — see
+[`helm/ingress-nginx/README.md`](../helm/ingress-nginx/README.md).
 
 ## Notes
 

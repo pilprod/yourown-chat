@@ -1,14 +1,15 @@
 # ---------------------------------------------------------------------------
-# Origin TLS hardening (both optional, default OFF).
+# Origin TLS hardening.
 #
-#   * Origin CA certificate — issue a Cloudflare Origin CA cert (served by the
-#     GKE ingress) straight from Terraform. Needs the provider configured with an
-#     Origin CA key / a token carrying Origin CA edit; the PEM + key are exposed
-#     as (sensitive) outputs to load into the origin secret. Off by default.
+#   * Origin CA certificate (ON by default) — issue a Cloudflare Origin CA cert
+#     (served by the GKE ingress) straight from Terraform, so Full (Strict) TLS
+#     has a matching origin cert. Needs the token to carry SSL and Certificates:
+#     Edit; the PEM + key are exposed as (sensitive) outputs to load into the
+#     platform mattermost-origin-tls-cert / -key secrets.
 #
-#   * Authenticated Origin Pulls (per-hostname mTLS) — make the edge present a
-#     client cert to the origin so only our Cloudflare zone can reach it. Off by
-#     default; supply the client cert/key material to enable.
+#   * Authenticated Origin Pulls (per-hostname mTLS, OFF by default) — make the
+#     edge present a client cert to the origin so only our Cloudflare zone can
+#     reach it. Supply the client cert/key material to enable.
 # ---------------------------------------------------------------------------
 
 resource "tls_private_key" "origin" {

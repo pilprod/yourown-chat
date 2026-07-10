@@ -84,8 +84,8 @@ variable "always_use_https" {
 
 variable "min_tls_version" {
   type        = string
-  description = "Minimum TLS version the edge accepts from clients."
-  default     = "1.2"
+  description = "Minimum TLS version the edge accepts from clients. 1.3 by default."
+  default     = "1.3"
 }
 
 variable "hsts" {
@@ -141,8 +141,8 @@ variable "rate_limit_rules" {
 # --- Optional origin TLS (default off) --------------------------------------
 variable "manage_origin_cert" {
   type        = bool
-  description = "Issue a Cloudflare Origin CA cert from Terraform (needs Origin CA edit on the token). Off by default."
-  default     = false
+  description = "Issue a Cloudflare Origin CA cert from Terraform for Full (Strict) TLS. On by default (matches ssl_mode=strict). Needs SSL and Certificates: Edit on the token; load the (sensitive) cert/key outputs into the platform mattermost-origin-tls-* secrets."
+  default     = true
 }
 
 variable "aop_enabled" {

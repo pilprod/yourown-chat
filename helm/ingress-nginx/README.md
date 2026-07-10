@@ -46,10 +46,24 @@ A     yourown.chat    <ingress_ip_address>   Proxied
 IPv6 clients from its edge regardless.)
 
 ### 3. TLS mode + origin cert (Full Strict)
-1. Cloudflare → SSL/TLS → Overview → set mode to **Full (Strict)**.
-2. Cloudflare → SSL/TLS → Origin Server → **Create Certificate** (Origin CA).
-   Save the certificate (PEM) and private key (PEM).
-3. Load both into Secret Manager (containers already created by Terraform):
+
+The SSL mode and the origin cert are now managed by the **cloudflare stack**
+(`terraform/cloudflare`): `ssl_mode = strict` sets Full (Strict), and
+`manage_origin_cert = true` (default) issues the Cloudflare Origin CA cert. You
+only need to push that cert into the origin secrets:
+
+```bash
+# Issued by the cloudflare stack -> Secret Manager containers (created empty by
+# the platform stack). See docs/INIT.md §10.5.
+terraform -chdir=terraform/cloudflare output -raw origin_certificate_pem \
+  | gcloud secrets versions add mattermost-origin-tls-cert --data-file=-
+terraform -chdir=terraform/cloudflare output -raw origin_private_key_pem \
+  | gcloud secrets versions add mattermost-origin-tls-key --data-file=-
+```
+
+Prefer to keep the key out of Terraform? Set `manage_origin_cert = false` and
+create the cert by hand instead (Cloudflare → SSL/TLS → Origin Server → **Create
+Certificate**), then load the downloaded files:
 
 ```bash
 gcloud secrets versions add mattermost-origin-tls-cert --data-file=origin.pem
