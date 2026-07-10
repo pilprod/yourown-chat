@@ -13,7 +13,7 @@ Stacks** in a single GCP project:
   isolated tenant namespace** (RBAC + default-deny NetworkPolicies) scheduled
   onto its own node pool.
 - **`terraform/build`** — the container CI: one **unified** Artifact Registry
-  repository (`yourown-chat-containers`) plus the Mattermost image build (Cloud Build),
+  repository (`docker`) plus the Mattermost image build (Cloud Build),
   promoting a single image across environments by git tag.
 
 | Capability | Implementation |
@@ -21,7 +21,7 @@ Stacks** in a single GCP project:
 | PostgreSQL database (Germany) | Cloud SQL for PostgreSQL, private IP, `europe-west3`, PITR + 7-day backups (prod) |
 | Object storage ("S3") | Cloud Storage bucket, `EUROPE-WEST3` (+ S3-compatible HMAC creds for Mattermost) |
 | Kubernetes | **One** zonal GKE Standard cluster, private nodes, **two node pools**: prod `e2-standard-2` (on-demand, tainted) + dev `e2-small` (on-demand, untainted) |
-| Container registry | **One unified** Artifact Registry (Docker) repo `yourown-chat-containers`, owned by the build stack |
+| Container registry | **One unified** Artifact Registry (Docker) repo `docker`, owned by the build stack |
 | CI build | Cloud Build (2nd-gen GitHub trigger, dedicated least-privilege SA) builds the Mattermost image |
 | CD to GKE | Cloud Deploy **dev→prod** pipeline delivers the `helm/` workloads across two GKE targets on the one cluster — dev renders the dev tenant + matterbridge with a post-deploy `verify`, prod renders the operator-managed Mattermost gated by approval |
 | Secrets | **Every** credential in **Secret Manager**, mounted via the GKE Secret Manager CSI add-on + Workload Identity |
@@ -119,7 +119,7 @@ graph TD
 
 ```mermaid
 graph TD
-  AR[artifact-registry<br/>unified yourown-chat-containers] --> IMG[cloudbuild-image<br/>2nd-gen connection + tag triggers]
+  AR[artifact-registry<br/>unified docker] --> IMG[cloudbuild-image<br/>2nd-gen connection + tag triggers]
 ```
 
 Ordering is expressed by components referencing each other's outputs — explicit
@@ -151,7 +151,7 @@ terraform/                  # each subdir is ONE Terraform Stacks configuration
   build/                    # the build stack (unified registry + Mattermost image CI)
     providers.tfcomponent.hcl  # google + google-beta, same keyless auth
     variables.tfcomponent.hcl
-    components.tfcomponent.hcl # artifact_registry (yourown-chat-containers) + mattermost_image
+    components.tfcomponent.hcl # artifact_registry (docker) + mattermost_image
     outputs.tfcomponent.hcl    # unified image path + registry/trigger/connection IDs
     deployments.tfdeploy.hcl   # single `build` deployment (routes by git tag)
     modules/
@@ -232,7 +232,7 @@ the one unified registry, promote by tag:
 
 ```
 git tag on github.com/pilprod/mattermost ──► Cloud Build (2nd-gen trigger)
-   ^v.*-patched$   ─► build Dockerfile ─► push yourown-chat-containers/mattermost:<tag>
+   ^v.*-patched$   ─► build Dockerfile ─► push docker/mattermost:<tag>
 ```
 
 - One Cloud Build 2nd-gen GitHub connection + repository watches the external
@@ -305,7 +305,7 @@ These reflect the decisions we converged on; each is easy to change:
    **namespace tenant** (RBAC + NetworkPolicy), not a second cluster. Keeps the
    ~$86–93/mo budget under the $100 ceiling while isolating dev from prod.
 3. **Registry + CI:** a **single unified** Artifact Registry repo
-   (`yourown-chat-containers`) owned by the **build stack**; one Mattermost image promoted
+   (`docker`) owned by the **build stack**; one Mattermost image promoted
    dev->prod by tag. The demo platform-side Cloud Build identity was removed to
    avoid a dependency cycle.
 4. **Delivery:** a Cloud Deploy **dev→prod** pipeline delivers the `helm/`

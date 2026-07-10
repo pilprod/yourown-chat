@@ -3,13 +3,13 @@
 
 output "image_path" {
   type        = string
-  description = "Unified image path without tag, e.g. europe-west3-docker.pkg.dev/yourown-chat/yourown-chat-containers/mattermost. Reference this in BOTH Mattermost manifests with the single pushed tag (e.g. :v9.11.3-patched), promoted dev -> prod."
+  description = "Unified image path without tag, e.g. europe-west3-docker.pkg.dev/yourown-chat/docker/mattermost. Reference this in BOTH Mattermost manifests with the single pushed tag (e.g. :v9.11.3-patched), promoted dev -> prod."
   value       = component.mattermost_image.image_path
 }
 
 output "registry_repository_path" {
   type        = string
-  description = "Unified Artifact Registry repository path: HOST/PROJECT/REPO (e.g. europe-west3-docker.pkg.dev/yourown-chat/yourown-chat-containers)."
+  description = "Unified Artifact Registry repository path: HOST/PROJECT/REPO (e.g. europe-west3-docker.pkg.dev/yourown-chat/docker)."
   value       = component.artifact_registry.repository_path
 }
 

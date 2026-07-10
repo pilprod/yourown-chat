@@ -12,7 +12,7 @@
 #     └── secrets
 #
 # The container registry and image CI are NOT in this stack: they live in the
-# separate build stack (terraform/build), which owns the unified yourown-chat-containers
+# separate build stack (terraform/build), which owns the unified docker
 # repository. This stack only enables the artifactregistry/cloudbuild APIs (see
 # activate_apis) so the build stack can create the registry and the GKE nodes
 # can pull from it (the node SA gets project-level artifactregistry.reader).
@@ -194,7 +194,7 @@ component "storage" {
 
   inputs = {
     project_id    = component.project_services.project_id
-    name_prefix   = "${local.name_prefix}-app"
+    name_prefix   = local.name_prefix
     location      = upper(var.region)
     force_destroy = var.storage_force_destroy
     labels        = local.common_labels

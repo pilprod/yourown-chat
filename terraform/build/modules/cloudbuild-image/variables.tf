@@ -71,7 +71,7 @@ variable "artifact_registry_location" {
 
 variable "artifact_registry_repository_id" {
   type        = string
-  description = "ID of the unified Artifact Registry repository all images are pushed to (e.g. yourown-chat-containers). The build SA gets a single repo-scoped writer binding on it."
+  description = "ID of the unified Artifact Registry repository all images are pushed to (e.g. docker). The build SA gets a single repo-scoped writer binding on it."
 }
 
 # --- Image build ------------------------------------------------------------

@@ -1,7 +1,8 @@
 # ---------------------------------------------------------------------------
 # Build-stack component wiring. This stack owns the unified container registry
 # and the Mattermost image CI:
-#   - artifact_registry : ONE Docker repository (yourown-chat-containers) shared by every
+#   - artifact_registry : ONE Artifact Registry Docker repo, named `docker`,
+#                         shared by every
 #                         environment. It lives here (not in the platform stack)
 #                         because a single cross-environment registry has no
 #                         natural home in the per-environment platform stack, and

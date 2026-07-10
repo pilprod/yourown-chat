@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # Build-stack inputs. Supplied by the single `build` deployment in
 # deployments.tfdeploy.hcl. This stack owns the unified container registry
-# (one yourown-chat-containers repository) and the Mattermost image CI. It does NOT
+# (one Artifact Registry repo, named `docker`) and the Mattermost image CI. It does NOT
 # enable APIs (the platform stack owns artifactregistry/cloudbuild activation
 # and must be applied first). Its build SA gets a single repo-scoped writer
 # binding on the registry it creates.
@@ -73,7 +73,7 @@ variable "github_remote_uri" {
 variable "artifact_registry_repository_id" {
   type        = string
   description = "ID of the unified Artifact Registry repository this stack creates and pushes every image to (shared across environments; images are promoted by tag, not duplicated per env)."
-  default     = "yourown-chat-containers"
+  default     = "docker"
 }
 
 variable "image_name" {
