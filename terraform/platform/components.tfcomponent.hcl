@@ -24,12 +24,11 @@
 # ---------------------------------------------------------------------------
 
 locals {
-  # Prefix for the Workload Identity service accounts, whose names ARE the tenant
-  # identity (yourown-chat = prod Mattermost, -dev, -br). Every other platform
-  # resource is named regionally (europe-west3-*) with no project prefix, since the
-  # project is already called yourown-chat -- see each component below. environment
-  # drives labels, not names.
-  name_prefix  = var.project_prefix
+  # Workload Identity service accounts are named by ROLE (mattermost = prod
+  # Mattermost, mattermost-dev = dev copy, matterbridge = bridge), not by project:
+  # the project is already yourown-chat, so a yourown-chat-* prefix would just
+  # repeat it. Every other platform resource is named regionally (europe-west3-*).
+  # environment drives labels, not names.
   gke_location = var.gke_regional ? var.region : var.zone
 
   # Kubernetes tenants (namespace / service account) that consume GCP secrets.
@@ -83,9 +82,9 @@ component "workload_identity_mattermost" {
 
   inputs = {
     project_id = component.project_services.project_id
-    # The prod Mattermost IS the product, so its identity is the bare project
-    # prefix (yourown-chat); the dev copy is yourown-chat-dev, the bridge -br.
-    account_id   = substr(local.name_prefix, 0, 30)
+    # Named by role: the prod Mattermost is the product, so its identity is
+    # `mattermost`; the dev copy is `mattermost-dev`, the bridge `matterbridge`.
+    account_id   = "mattermost"
     display_name = "Mattermost (prod) workload identity"
     namespace    = local.ns.mattermost.namespace
     ksa_name     = local.ns.mattermost.ksa
@@ -101,7 +100,7 @@ component "workload_identity_matterbridge" {
 
   inputs = {
     project_id   = component.project_services.project_id
-    account_id   = substr("${local.name_prefix}-br", 0, 30)
+    account_id   = "matterbridge"
     display_name = "matterbridge workload identity"
     namespace    = local.ns.matterbridge.namespace
     ksa_name     = local.ns.matterbridge.ksa
@@ -117,7 +116,7 @@ component "workload_identity_dev" {
 
   inputs = {
     project_id   = component.project_services.project_id
-    account_id   = substr("${local.name_prefix}-dev", 0, 30)
+    account_id   = "mattermost-dev"
     display_name = "Dev tenant workload identity"
     namespace    = local.ns.dev.namespace
     ksa_name     = local.ns.dev.ksa

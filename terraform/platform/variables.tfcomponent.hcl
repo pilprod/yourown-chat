@@ -16,18 +16,12 @@ variable "project_id" {
 
 variable "environment" {
   type        = string
-  description = "Environment name (drives labels only; resource names use the tier-neutral project_prefix). The single-cluster budget default uses 'prod' as the platform cluster; dev workloads run as a tenant namespace on the dev node pool."
+  description = "Environment name (drives labels only; resource names are role-based or regional, never environment-scoped). The single-cluster budget default uses 'prod' as the platform cluster; dev workloads run as a tenant namespace on the dev node pool."
 
   validation {
     condition     = contains(["dev", "stage", "prod"], var.environment)
     error_message = "environment must be dev, stage or prod."
   }
-}
-
-variable "project_prefix" {
-  type        = string
-  description = "Short platform prefix used in resource names."
-  default     = "yourown-chat"
 }
 
 variable "region" {

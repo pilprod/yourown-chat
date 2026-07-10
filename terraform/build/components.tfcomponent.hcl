@@ -78,7 +78,6 @@ component "mattermost_image" {
     project_id     = var.project_id
     project_number = var.project_number
     region         = var.region
-    name_prefix    = var.name_prefix
 
     apply_service_account_email = var.service_account_email
 

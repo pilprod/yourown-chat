@@ -23,12 +23,6 @@ variable "region" {
   default     = "europe-west3"
 }
 
-variable "name_prefix" {
-  type        = string
-  description = "Short platform prefix used in build resource names (matches the platform stack's project_prefix)."
-  default     = "yourown-chat"
-}
-
 # --- Keyless auth: HCP Dynamic Provider Credentials -> GCP WIF ---------------
 variable "identity_token" {
   type        = string

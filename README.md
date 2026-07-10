@@ -242,7 +242,7 @@ git tag on github.com/pilprod/mattermost ──► Cloud Build (2nd-gen trigger)
   Mattermost source repo; a single tag pattern (`^v.*-patched$`) builds **one**
   image, and that same artifact is deployed to dev and prod (promoted, not
   rebuilt per environment). Builds run as a dedicated, least-privilege runtime SA
-  (`yourown-chat-img-build`: repo-scoped AR writer + log writer only). The Terraform that
+  (`img-build`: repo-scoped AR writer + log writer only). The Terraform that
   provisions the build stack impersonates the **shared** `terraform-apply@` SA
   (the same single account the platform uses). See [`docs/BUILD.md`](docs/BUILD.md).
 - The resulting image is referenced in both Mattermost manifests: prod

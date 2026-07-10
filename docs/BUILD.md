@@ -29,7 +29,7 @@ What the stack creates:
 - one Cloud Build **2nd-gen GitHub connection** + repository link to
   `pilprod/mattermost`, via the `cloudbuild-image` module;
 - a dedicated least-privilege **build service account**
-  (`yourown-chat-img-build@yourown-chat.iam.gserviceaccount.com`) with only
+  (`img-build@yourown-chat.iam.gserviceaccount.com`) with only
   `logging.logWriter` (project) and `artifactregistry.writer` (scoped to the one
   `docker` repo);
 - one **tag-triggered** build that runs `docker build -f Dockerfile .` and

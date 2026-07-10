@@ -87,8 +87,8 @@ resource "google_cloudbuildv2_repository" "this" {
 # --- Least-privilege build identity ----------------------------------------
 resource "google_service_account" "build" {
   project      = var.project_id
-  account_id   = "${var.name_prefix}-img-build"
-  display_name = "Mattermost image build (${var.name_prefix})"
+  account_id   = "img-build"
+  display_name = "Mattermost image build"
 }
 
 # Required so builds running as this SA can stream logs (CLOUD_LOGGING_ONLY).
@@ -121,7 +121,7 @@ resource "google_cloudbuild_trigger" "this" {
 
   project         = var.project_id
   location        = var.region
-  name            = "${var.name_prefix}-${each.key}-image"
+  name            = "${each.key}-image"
   description     = "Build + push the ${each.key} image on git tags matching ${each.value.tag_regex}."
   service_account = google_service_account.build.id
 
