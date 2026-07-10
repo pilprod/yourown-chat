@@ -1,5 +1,5 @@
 # Illustrative Cloud Build config that cuts a Cloud Deploy release delivering the
-# helm/ Kubernetes workloads through the dev -> prod pipeline (yourown-chat-pipeline): the
+# helm/ Kubernetes workloads through the dev -> prod pipeline (pipeline): the
 # release enters at the first stage (dev), runs the post-deploy verify smoke
 # test, then is promoted to prod after the manual-approval gate.
 #
@@ -14,11 +14,11 @@
 # To wire it up, add a Cloud Build 2nd-gen trigger (e.g. on release tags or on
 # helm/ changes). The runner SA needs roles/clouddeploy.releaser on the pipeline
 # and roles/iam.serviceAccountUser (actAs) on the Cloud Deploy execution SA
-# (yourown-chat-clouddeploy@) so `releases create` can hand off to the pipeline.
+# (clouddeploy@) so `releases create` can hand off to the pipeline.
 
 substitutions:
   _REGION: europe-west3
-  _PIPELINE: yourown-chat-pipeline
+  _PIPELINE: pipeline
   # Example runner SA. In practice use a dedicated releaser SA, or grant the
   # roles above to this one; it needs more than the image-build permissions.
   _RELEASE_SA_EMAIL: yourown-chat-img-build@${PROJECT_ID}.iam.gserviceaccount.com

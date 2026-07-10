@@ -1,8 +1,8 @@
 locals {
   bucket_name       = "${var.name_prefix}-${random_id.suffix.hex}"
   filestore_enabled = var.create_filestore_hmac
-  access_secret_id  = "${var.name_prefix}-filestore-access-key"
-  secret_secret_id  = "${var.name_prefix}-filestore-secret-key"
+  access_secret_id  = "filestore-access-key"
+  secret_secret_id  = "filestore-secret-key"
 }
 
 # Buckets share a global namespace; a short suffix avoids collisions.

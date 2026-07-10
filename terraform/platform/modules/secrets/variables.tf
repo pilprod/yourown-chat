@@ -3,11 +3,6 @@ variable "project_id" {
   description = "Project the secrets are created in."
 }
 
-variable "name_prefix" {
-  type        = string
-  description = "Prefix for secret IDs, e.g. 'yourown-chat'."
-}
-
 variable "replica_locations" {
   type        = list(string)
   description = "Regions to replicate each secret to (user-managed replication keeps data in-region)."

@@ -1,7 +1,7 @@
 locals {
   instance_name  = "${var.name_prefix}-pg-${random_id.suffix.hex}"
-  secret_id      = "${var.name_prefix}-cloudsql-${var.db_user_name}-password"
-  conn_secret_id = "${var.name_prefix}-cloudsql-${var.database_name}-connection"
+  secret_id      = "cloudsql-${var.db_user_name}-password"
+  conn_secret_id = "cloudsql-${var.database_name}-connection"
 
   connection_uri = "postgres://${var.db_user_name}:${random_password.user.result}@${google_sql_database_instance.this.private_ip_address}:5432/${var.database_name}?sslmode=require&connect_timeout=10"
 }
