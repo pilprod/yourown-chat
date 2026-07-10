@@ -198,13 +198,13 @@ component "network" {
   }
 }
 
-# --- Shared CMEK key (Cloud SQL + GCS + Artifact Registry) -------------------
+# --- Shared CMEK key (Cloud SQL + GCS + Secret Manager) ---------------------
 # One customer-managed Cloud KMS key wraps the data-encryption keys of every
-# at-rest store that supports CMEK. Gated by cmek_enabled; when false the
-# component is skipped and each store falls back to Google-managed keys. The
-# build stack's Artifact Registry references THIS key by its deterministic
-# resource path and relies on the encrypterDecrypter grant created here, so the
-# platform stack must be applied first (already the documented ordering).
+# platform at-rest store that supports CMEK. Gated by cmek_enabled; when false the
+# component is skipped and each store falls back to Google-managed keys. The build
+# stack's public Artifact Registry does NOT use CMEK, and the build stack owns its
+# own CMEK key for the github-pat secret, so this key is platform-only (no
+# platform<->build CMEK coupling).
 component "kms" {
   for_each = var.cmek_enabled ? toset(["default"]) : toset([])
 
@@ -213,12 +213,16 @@ component "kms" {
   inputs = {
     project_id = component.project_services.project_id
     # Regional name (europe-west3-keyring); the project prefix is dropped since the
-    # project is already yourown-chat. The key is shared by prod Cloud SQL/GCS and
-    # the cross-environment registry, all in the one region.
+    # project is already yourown-chat. The key is shared by prod Cloud SQL, GCS and
+    # Secret Manager, all in the one region.
     location         = var.region
     protection_level = var.kms_protection_level
     rotation_period  = var.kms_rotation_period
     labels           = local.common_labels
+
+    # The build stack's public registry is not CMEK-encrypted, so the Artifact
+    # Registry service agent never wraps a DEK with this key.
+    grant_artifact_registry = false
   }
 
   providers = {

@@ -1,13 +1,14 @@
 # ---------------------------------------------------------------------------
-# One shared CMEK key for the whole platform. A single symmetric key wraps the
-# data-encryption keys (DEKs) of every at-rest store that supports CMEK:
+# One shared CMEK key for the platform. A single symmetric key wraps the
+# data-encryption keys (DEKs) of every platform at-rest store that supports CMEK:
 #   - Cloud SQL (Postgres)     -- platform stack (this stack)
 #   - Cloud Storage (filestore)-- platform stack (this stack)
 #   - Secret Manager (secrets) -- platform stack (this stack)
-#   - Artifact Registry (Docker) -- build stack, which references THIS key by its
-#                                   deterministic resource path (see outputs).
-# The key is regional (must match every consumer's region) and lives in the
-# platform stack because that stack is applied first and enables the KMS API.
+# The build stack's container registry is PUBLIC and is NOT CMEK-encrypted, and
+# the build stack owns a separate key for its github-pat secret, so this key has
+# no build-stack consumer (grant_artifact_registry defaults on but is disabled by
+# the platform component). The key is regional (must match every consumer's
+# region) and lives in the platform stack because that stack enables the KMS API.
 #
 # Cost: a KMS key ring is free; you pay per active key version (~$1.00/mo for an
 # HSM version, ~$0.06 for SOFTWARE) plus negligible wrap/unwrap operations. One

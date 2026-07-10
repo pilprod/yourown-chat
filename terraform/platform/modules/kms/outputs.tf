@@ -1,6 +1,6 @@
 output "crypto_key_id" {
   type        = string
-  description = "Full resource ID of the shared CMEK key (projects/<p>/locations/<loc>/keyRings/<ring>/cryptoKeys/<key>). Wire this into every CMEK consumer; the build stack references the SAME value by its deterministic path for Artifact Registry."
+  description = "Full resource ID of the shared CMEK key (projects/<p>/locations/<loc>/keyRings/<ring>/cryptoKeys/<key>). Wire this into every platform CMEK consumer (Cloud SQL, GCS, Secret Manager)."
   value       = google_kms_crypto_key.this.id
 }
 
