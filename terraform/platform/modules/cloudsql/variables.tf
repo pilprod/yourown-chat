@@ -3,14 +3,15 @@ variable "project_id" {
   description = "Project the instance is created in."
 }
 
-variable "name_prefix" {
-  type        = string
-  description = "Prefix for Cloud SQL resource names, e.g. 'yourown-chat-dev'."
-}
-
 variable "region" {
   type        = string
-  description = "Region for the instance."
+  description = "Region for the instance; also used as the instance name prefix (e.g. 'europe-west3')."
+}
+
+variable "instance_name_random_suffix" {
+  type        = bool
+  description = "Append a random suffix to the instance name. false (default) = deterministic name (<region>-pg). Set true only to work around Cloud SQL's ~1 week name-reuse block when re-creating an instance you just deleted."
+  default     = false
 }
 
 variable "network_id" {

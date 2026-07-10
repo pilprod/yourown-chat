@@ -1,14 +1,18 @@
 locals {
-  instance_name  = "${var.name_prefix}-pg-${random_id.suffix.hex}"
+  instance_name  = var.instance_name_random_suffix ? "${var.region}-pg-${random_id.suffix[0].hex}" : "${var.region}-pg"
   secret_id      = "cloudsql-${var.db_user_name}-password"
   conn_secret_id = "cloudsql-${var.database_name}-connection"
 
   connection_uri = "postgres://${var.db_user_name}:${random_password.user.result}@${google_sql_database_instance.this.private_ip_address}:5432/${var.database_name}?sslmode=require&connect_timeout=10"
 }
 
-# Instance names are blocked from reuse for ~1 week after deletion; a suffix
-# keeps re-creates frictionless.
+# Deterministic instance name by default. Cloud SQL blocks reuse of an instance
+# name for ~1 week after deletion, so if you destroy and immediately re-create,
+# set instance_name_random_suffix = true to get a fresh, non-colliding name.
+# (Terraform can't "try the plain name, then fall back on conflict" -- the name
+# is fixed at plan time -- so this is an explicit opt-in rather than automatic.)
 resource "random_id" "suffix" {
+  count       = var.instance_name_random_suffix ? 1 : 0
   byte_length = 2
 }
 

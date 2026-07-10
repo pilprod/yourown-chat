@@ -22,8 +22,11 @@
 # ---------------------------------------------------------------------------
 
 locals {
-  key_ring_name   = "${var.name_prefix}-keyring"
-  crypto_key_name = "${var.name_prefix}-cmek"
+  # Regional names, project prefix dropped (the project is already yourown-chat):
+  # the keyring is location-scoped, so the region tag disambiguates a second-region
+  # deployment. The build stack references the key by this deterministic path.
+  key_ring_name   = "${var.location}-keyring"
+  crypto_key_name = "cmek"
 }
 
 resource "google_kms_key_ring" "this" {

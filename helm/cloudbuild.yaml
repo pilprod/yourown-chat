@@ -14,11 +14,11 @@
 # To wire it up, add a Cloud Build 2nd-gen trigger (e.g. on release tags or on
 # helm/ changes). The runner SA needs roles/clouddeploy.releaser on the pipeline
 # and roles/iam.serviceAccountUser (actAs) on the Cloud Deploy execution SA
-# (clouddeploy@) so `releases create` can hand off to the pipeline.
+# (europe-west3-clouddeploy@) so `releases create` can hand off to the pipeline.
 
 substitutions:
   _REGION: europe-west3
-  _PIPELINE: pipeline
+  _PIPELINE: europe-west3-pipeline
   # Example runner SA. In practice use a dedicated releaser SA, or grant the
   # roles above to this one; it needs more than the image-build permissions.
   _RELEASE_SA_EMAIL: yourown-chat-img-build@${PROJECT_ID}.iam.gserviceaccount.com

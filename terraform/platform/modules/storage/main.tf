@@ -1,5 +1,5 @@
 locals {
-  bucket_name       = "${var.name_prefix}-${random_id.suffix.hex}"
+  bucket_name       = "${lower(var.location)}-${random_id.suffix.hex}"
   filestore_enabled = var.create_filestore_hmac
   access_secret_id  = "filestore-access-key"
   secret_secret_id  = "filestore-secret-key"
@@ -56,7 +56,7 @@ resource "google_service_account" "filestore" {
   count = local.filestore_enabled ? 1 : 0
 
   project      = var.project_id
-  account_id   = substr("${var.name_prefix}-fs", 0, 30)
+  account_id   = substr("${lower(var.location)}-fs", 0, 30)
   display_name = "Filestore HMAC SA for ${local.bucket_name}"
 }
 
