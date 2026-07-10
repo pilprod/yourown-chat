@@ -130,9 +130,10 @@ one by hand.
   promotion (dev verify -> prod approval).
 - **Single tag pattern.** `^v.*-patched$` matches release tags like
   `v9.11.3-patched`. There is no separate dev image or dev tag.
-- **No CMEK here.** The public registry is not CMEK-encrypted, and the
-  `github-pat` secret's encryption is its own concern (Google-managed by default,
-  set in INIT.md). The image-CI components own no Cloud KMS key.
+- **No CMEK owned here.** The public registry is not CMEK-encrypted, and the
+  image-CI components own no Cloud KMS key. The `github-pat` secret *is*
+  CMEK-encrypted, but by a dedicated **bootstrap** key created by hand in INIT.md
+  §8.2 (it predates the stack), not by these components.
 - **One PAT, two connections.** The same `github-pat` backs both the image
   connection (`pilprod/mattermost`) and the release connection
   (`pilprod/yourown-chat`); scope it to both repos (INIT.md §8). Rotating it is a
