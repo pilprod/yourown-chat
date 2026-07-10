@@ -84,8 +84,10 @@ component "workload_identity_mattermost" {
   source = "./modules/workload-identity"
 
   inputs = {
-    project_id   = component.project_services.project_id
-    account_id   = substr("${local.name_prefix}-mm", 0, 30)
+    project_id = component.project_services.project_id
+    # The prod Mattermost IS the product, so its identity is the bare project
+    # prefix (yourown-chat); the dev copy is yourown-chat-dev, the bridge -br.
+    account_id   = substr(local.name_prefix, 0, 30)
     display_name = "Mattermost (prod) workload identity"
     namespace    = local.ns.mattermost.namespace
     ksa_name     = local.ns.mattermost.ksa
