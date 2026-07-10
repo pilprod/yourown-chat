@@ -285,6 +285,19 @@ Deploy release from `pilprod/yourown-chat` on a semver tag). Both need a GitHub
 stack never stores the token in git; it just reads `versions/latest` of the
 secret created here. One token, scoped to both repos, backs both connections.
 
+> **Why a PAT and not just the KMS key the Console asks for?** Creating a host
+> connection in the Cloud Console runs an interactive OAuth flow — you click
+> *Authorize* and Google fetches and stores the *Google Cloud Build* OAuth token
+> for you; the KMS key it offers is **optional** and only CMEK-encrypts that
+> stored token (it is not a substitute for the credential). We create the
+> connection **declaratively in Terraform** instead, where there is no browser
+> step, so the provider needs the credential up front: a GitHub PAT in Secret
+> Manager (`authorizer_credential.oauth_token_secret_version`). In other words the
+> PAT **is** the OAuth token the UI would obtain for you. The Cloud Build GitHub
+> App (8.4) is still required in both paths — only the token's origin differs. The
+> Console's KMS option maps here to encrypting the `github-pat` secret itself
+> (Google-managed by default in 8.2; wrap it in the shared CMEK key if you want).
+
 ### 8.1 Create the fine-grained PAT on GitHub
 
 Create a **fine-grained** token (GitHub -> Settings -> Developer settings ->
