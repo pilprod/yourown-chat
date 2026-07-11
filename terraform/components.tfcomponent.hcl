@@ -259,6 +259,7 @@ component "cloudsql" {
   inputs = {
     project_id                    = component.project_services.project_id
     region                        = var.region
+    zone                          = var.zone
     network_id                    = component.network.network_id
     private_service_connection_id = component.network.private_service_connection_id
     tier                          = var.cloudsql_tier
