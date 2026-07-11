@@ -503,6 +503,19 @@ Cloudflare API tokens can be rolled without downtime:
 2. Update the `cloudflare_api_token` value in the HCP variable set (10.2).
 3. The next plan/apply picks it up — nothing in git or state changes.
 
+#### 10.4 Operational toggles in the shared variable set
+
+The same variable set (the `store "varset" "shared"` block) also carries
+non-secret operational flags that you may need to flip between applies **without a
+code change**. Add each as a **Terraform variable** (category *Terraform*):
+
+| Key | Purpose |
+|-----|---------|
+| `cloudsql_adopt_existing_instance` | `true` for one apply to **import** a Cloud SQL instance that a create-wait timeout left orphaned (exists in GCP, missing from state) instead of re-creating it — Cloud SQL reserves a deleted instance name for ~1 week, so delete+recreate is not an option. Set back to `false` once the import lands. |
+
+Keep the key present at all times (`true`/`false`) — removing it from the varset
+makes the plan fail on the missing reference.
+
 If you set a TTL, roll before expiry. Do **not** IP-filter this token for
 HCP-managed runs (see 10.1); only pin it when the Stack runs on a self-hosted
 agent with a fixed egress IP.

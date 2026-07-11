@@ -265,6 +265,7 @@ component "cloudsql" {
     availability_type             = var.cloudsql_availability_type
     disk_size_gb                  = var.cloudsql_disk_size_gb
     deletion_protection           = var.cloudsql_deletion_protection
+    adopt_existing_instance       = var.cloudsql_adopt_existing_instance
 
     # CMEK: shared key (null when cmek_enabled = false). The key's
     # encrypterDecrypter grant for the Cloud SQL service agent is created by the
