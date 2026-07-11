@@ -437,15 +437,26 @@ instead), the SSL and Certificates row is not required.
 
 **Zone Resources:** restrict to `Include -> Specific zone -> yourown.chat`.
 
-**Client IP Address Filtering (recommended):** lock the token to HCP Terraform's
-egress ranges so a leaked token is unusable from anywhere else. Fetch the current
-ranges and add each CIDR under *Client IP Address Filtering -> Is in*:
+**Client IP Address Filtering (leave OFF for HCP-managed runs):** do **not** pin
+this token to an IP allowlist when the Stack runs on HCP Terraform's own
+infrastructure. HCP executes `plan`/`apply` from **dynamic** AWS `us-east-1`
+egress IPs that are **not** in its published ranges — the lists at
+`https://app.terraform.io/api/meta/ip-ranges` (`api`, `vcs`, `notifications`,
+`sentinel`) cover only fixed platform services (webhooks, notifications,
+Sentinel, the API front door), **not** run execution. Allowlisting them makes
+Cloudflare reject the provider's calls with
+`Cannot use the access token from location: <ip> (9109)`. Rely on zone-scoping +
+a short TTL + sensitive/ephemeral storage instead.
 
 ```bash
-# HCP Terraform publishes its egress ranges; the outbound API/run traffic uses
-# the "api" list. Re-check on changes (rare).
+# For reference only — these are the FIXED platform ranges, NOT the plan/apply
+# egress. Do not allowlist them for this token on HCP-managed runs (see above).
 curl -s https://app.terraform.io/api/meta/ip-ranges | jq -r '.api[]'
 ```
+
+Only use IP filtering if you run the Stack on a **self-hosted HCP agent** with a
+fixed NAT egress — then pin the token to **that** NAT IP (an egress you control),
+not to HCP's ranges.
 
 **TTL (recommended):** set a **TTL / expiry** (e.g. 90 days) and rotate — see 10.3.
 
@@ -476,8 +487,9 @@ Cloudflare API tokens can be rolled without downtime:
 2. Update the `cloudflare_api_token` value in the HCP variable set (10.2).
 3. The next plan/apply picks it up — nothing in git or state changes.
 
-If you set a TTL, roll before expiry. If you added IP filtering, re-check the
-HCP egress ranges when Cloudflare/HCP announce changes (rare).
+If you set a TTL, roll before expiry. Do **not** IP-filter this token for
+HCP-managed runs (see 10.1); only pin it when the Stack runs on a self-hosted
+agent with a fixed egress IP.
 
 ### 10.4 Origin TLS secrets (handled during ingress setup)
 
