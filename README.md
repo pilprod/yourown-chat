@@ -6,7 +6,7 @@ Production-grade, cloud-agnostic-where-practical GCP platform, managed with
 This repository implements the **first platform slice** as **one Terraform
 Stack** (working directory `terraform/`) in a single GCP project. GCP, the
 container CI and the Cloudflare edge are separate **components** of that one
-stack, provisioned by a single **deployment** (`prod-eu`):
+stack, provisioned by a single **deployment** (`eu`):
 
 - **GCP platform** — a **single zonal GKE cluster with two node pools**, managed
   Cloud SQL, object storage and the Cloudflare-fronted public ingress. **prod and
@@ -116,7 +116,7 @@ because the node SA holds project-level `artifactregistry.reader`.
 
 ## Dependency graph
 
-One stack, one deployment (`prod-eu`), all components below:
+One stack, one deployment (`eu`), all components below:
 
 ```mermaid
 graph TD
@@ -163,7 +163,7 @@ terraform/                  # ONE Terraform Stacks configuration (the whole prod
   variables.tfcomponent.hcl # typed stack input variables (GCP + build + cloudflare)
   components.tfcomponent.hcl # component wiring (one block per building block)
   outputs.tfcomponent.hcl    # stack outputs (platform + image CI + release + cloudflare)
-  deployments.tfdeploy.hcl   # ONE `prod-eu` deployment (identity_token + cloudflare varset)
+  deployments.tfdeploy.hcl   # ONE `eu` deployment (identity_token + cloudflare varset)
   modules/                  # small, single-purpose, reusable modules
     project-services/       # enable ALL Google APIs the product needs (one place)
     network/                # VPC, subnet(+secondary ranges), Router, NAT, PSA, reserved IP
@@ -236,7 +236,7 @@ helm/                       # Kubernetes workloads, delivered by Cloud Deploy de
    impersonates the apply SA.
 4. Create **one** Stack in HCP Terraform with its **working directory set to
    `terraform/`**, attach the Cloudflare variable set to it, then plan and apply
-   the single `prod-eu` deployment. (An existing Stack that pointed at
+   the single `eu` deployment. (An existing Stack that pointed at
    `terraform/platform` must be updated to this working directory after the
    reorg.) The one apply provisions the platform, the image CI **and** the
    Cloudflare edge together — the ingress IP and the Origin CA cert are wired

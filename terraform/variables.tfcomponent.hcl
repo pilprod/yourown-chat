@@ -1,6 +1,6 @@
 # ---------------------------------------------------------------------------
 # Unified stack inputs. Values are supplied per-environment by the deployment
-# blocks in deployments.tfdeploy.hcl. One deployment (prod-eu) provisions the
+# blocks in deployments.tfdeploy.hcl. One deployment (eu) provisions the
 # whole product: the GCP platform, the image-build CI and the Cloudflare edge.
 #
 # Naming: resources are named by ROLE (Workload Identity SAs) or REGIONALLY
