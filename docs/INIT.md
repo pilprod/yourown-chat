@@ -360,9 +360,12 @@ connection reconcile -- no Terraform change needed.
 
 ### 8.4 Host-connection encryption (keep it Google-managed)
 
-If you get the installation ID by creating a host connection in the Cloud Console
-(8.5, first option), its wizard asks how to encrypt the connection. You **don't
-need a customer-managed key** here -- leave it **Google-managed** (the default):
+Creating a host connection in the Cloud Console (8.5, first option) shows an
+**Encryption** section -- but Google's wizard marks it **Optional**. Skip it and
+the access token is stored as a Secret Manager secret with **Google default
+encryption**; a CMEK key there only matters if *you* want to manage that secret's
+key. So when the key picker shows *"No valid keys found"* (there is no bootstrap
+KMS key here, by design), just leave it empty / **Cancel** and click **Connect**:
 
 - That Console connection is **throwaway**. Terraform builds the real connections
   (`mattermost_image` + `deploy_release`) from the PAT stored in 8.2; you create
