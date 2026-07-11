@@ -424,6 +424,9 @@ component "mattermost_image" {
 
   providers = {
     google = provider.google.this
+    # Transitional: reconciles the pre-#30 beta service-agent still in state so
+    # this apply can destroy it. Remove once the plan shows no beta resources.
+    google-beta = provider.google-beta.this
   }
 }
 

@@ -2,11 +2,17 @@ locals {
   # Secrets whose value Terraform generates.
   generated = { for k, v in var.secrets : k => v if v.generate }
 
-  # Secrets that get an initial version (generated OR explicitly provided).
-  with_version = {
-    for k, v in var.secrets : k => v
+  # Secret IDs that receive an initial version (generated OR explicitly provided).
+  # Iterate the ID set — not the secret objects — so for_each stays non-sensitive
+  # even when a provided value is (e.g. the Cloudflare Origin CA private key): the
+  # secret *names* are not secret. The predicate touches v.value, so the raw set
+  # inherits its sensitivity; nonsensitive() unwraps it (only names leak), and
+  # try() falls back when no provided value happens to be sensitive.
+  with_version_raw = toset([
+    for k, v in var.secrets : k
     if v.generate || v.value != null
-  }
+  ])
+  with_version = try(nonsensitive(local.with_version_raw), local.with_version_raw)
 
   # Flatten (secret, accessor) pairs for per-secret least-privilege IAM.
   accessor_bindings = merge([
@@ -52,9 +58,9 @@ resource "google_secret_manager_secret" "this" {
 resource "google_secret_manager_secret_version" "this" {
   for_each = local.with_version
 
-  secret = google_secret_manager_secret.this[each.key].id
+  secret = google_secret_manager_secret.this[each.value].id
   secret_data = sensitive(
-    each.value.generate ? random_password.this[each.key].result : each.value.value
+    var.secrets[each.value].generate ? random_password.this[each.value].result : var.secrets[each.value].value
   )
 }
 
