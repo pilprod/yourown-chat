@@ -69,7 +69,7 @@ identity_token "gcp" {
 # touches git or state. Replace the id with your workspace's variable set ID and
 # store the token under the key `cloudflare_api_token`. See docs/INIT.md.
 store "varset" "cloudflare" {
-  id       = "varset-REPLACE_WITH_HCP_VARSET_ID"
+  id       = "varset-wrrdzyQKCP2no9U6"
   category = "terraform"
 }
 
