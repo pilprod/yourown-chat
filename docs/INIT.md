@@ -36,7 +36,7 @@ The Terraform side is already wired, so this guide only creates the cloud-side
 resources below:
 
 - `terraform/deployments.tfdeploy.hcl` -> `identity_token "gcp"` and the single
-  `prod-eu` deployment already pass the real `audience` and
+  `eu` deployment already pass the real `audience` and
   `service_account_email` (`terraform-apply@`) -- no placeholders to fill.
 - `terraform/providers.tfcomponent.hcl` -> `provider "google"` uses
   `external_credentials`.
@@ -397,7 +397,7 @@ Cloud Build GitHub App on your org/repos:
 2. HCP reads the `*.tfcomponent.hcl` files + `deployments.tfdeploy.hcl` and the
    committed `.terraform.lock.hcl` (all five providers).
 3. Attach the Cloudflare variable set (step 10) to this Stack.
-4. Plan and apply the single `prod-eu` deployment. The first plan proves
+4. Plan and apply the single `eu` deployment. The first plan proves
    federation end to end: if the token is rejected, re-check the provider's
    `--attribute-condition` (org + project) and that its `--allowed-audiences`
    matches the `identity_token` block's `audience` (the full

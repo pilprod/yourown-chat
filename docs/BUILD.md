@@ -4,7 +4,7 @@ The container CI is part of the **single Terraform Stack** at `terraform/`
 (working directory `terraform/`). It is not a separate stack — the
 `artifact_registry` and `mattermost_image` components own the **unified container
 registry** and build the Mattermost image with Cloud Build, alongside the
-platform and Cloudflare components in the one `prod-eu` deployment.
+platform and Cloudflare components in the one `eu` deployment.
 
 ```
 git tag on github.com/pilprod/mattermost
@@ -56,7 +56,7 @@ The Mattermost source lives at `https://github.com/pilprod/mattermost` with a
 
 ## 1. Fill the deployment inputs
 
-In `terraform/deployments.tfdeploy.hcl`, the `prod-eu` deployment is already wired
+In `terraform/deployments.tfdeploy.hcl`, the `eu` deployment is already wired
 for `yourown-chat`. Set the one real image-CI value:
 
 - `github_app_installation_id` -> the installation ID from [`INIT.md`](INIT.md)
@@ -72,7 +72,7 @@ The `builds` map has a **single entry** — it pushes to the unified `docker` re
 ## 2. Apply the stack
 
 There is **no separate stack to create** — the registry and image CI are
-components of the single stack. Plan and apply the `prod-eu` deployment as
+components of the single stack. Plan and apply the `eu` deployment as
 described in [`INIT.md`](INIT.md) §9; the same apply creates the registry, the
 Cloud Build connection and the tag trigger along with the rest of the platform.
 

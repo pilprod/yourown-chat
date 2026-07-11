@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# Deployments = environments. ONE Terraform Stacks deployment (`prod-eu`)
+# Deployments = environments. ONE Terraform Stacks deployment (`eu`)
 # provisions the WHOLE product in the single GCP project `yourown-chat`, in
 # europe-west3 (eu): the platform (one zonal GKE cluster with two node pools,
 # managed Cloud SQL, object storage, secrets), the image-build CI (Artifact
@@ -14,7 +14,7 @@
 # multi-deployment world: if two deployments ever share ONE Cloudflare zone, the
 # zone-level singletons (zone settings, DNSSEC, WAF) must NOT be co-owned by
 # both -- split them into a shared component and keep only per-env DNS records in
-# each deployment. Not a concern with this single prod-eu deployment.
+# each deployment. Not a concern with this single eu deployment.
 #
 # TOPOLOGY / COST: GKE's free tier waives the management fee for ONE zonal
 # cluster per billing account, so this single-cluster shape stays ~$86-93/mo
@@ -73,11 +73,11 @@ store "varset" "cloudflare" {
   category = "terraform"
 }
 
-# --- prod-eu: the whole product in one deployment ---------------------------
+# --- eu: the whole product in one deployment ---------------------------
 # environment = "prod" makes this the prod-grade platform cluster; the dev tenant
 # lives on it as an isolated namespace on the dev node pool. public_ingress is on,
 # so the Cloudflare edge component and the origin-TLS secrets are provisioned.
-deployment "prod-eu" {
+deployment "eu" {
   inputs = {
     # --- Keyless GCP auth: OIDC JWT exchanged via WIF to impersonate apply SA --
     identity_token        = identity_token.gcp.jwt
