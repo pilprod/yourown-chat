@@ -32,7 +32,7 @@ variable "github_app_installation_id" {
 
 variable "github_pat_secret_id" {
   type        = string
-  description = "Short ID of the Secret Manager secret holding the GitHub personal access token used by the connection. Created and populated out-of-band during bootstrap (see docs/INIT.md); the stack only references it (never in git)."
+  description = "Short ID of the Secret Manager secret holding the GitHub personal access token used by the connection. Created and populated out-of-band during bootstrap (see README.md); the stack only references it (never in git)."
 }
 
 variable "github_remote_uri" {

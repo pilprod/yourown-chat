@@ -50,7 +50,7 @@ variable "zone" {
 # No static credentials, SA keys, or JSON exist anywhere in this repo. HCP mints
 # a short-lived OIDC JWT per run (identity_token block in deployments.tfdeploy.
 # hcl); the google provider exchanges it through Workload Identity Federation
-# and impersonates a least-privilege service account. See docs/INIT.md.
+# and impersonates a least-privilege service account. See README.md.
 variable "identity_token" {
   type        = string
   ephemeral   = true
@@ -74,13 +74,13 @@ variable "github_app_installation_id" {
 
   validation {
     condition     = var.github_app_installation_id > 0
-    error_message = "Set the real GitHub App installation ID (a positive number) before applying. See docs/INIT.md."
+    error_message = "Set the real GitHub App installation ID (a positive number) before applying. See README.md."
   }
 }
 
 variable "github_pat_secret_id" {
   type        = string
-  description = "Short ID of the Secret Manager secret holding the GitHub PAT used by the Cloud Build connection. Created and populated out-of-band during bootstrap (see docs/INIT.md); the stack only references it."
+  description = "Short ID of the Secret Manager secret holding the GitHub PAT used by the Cloud Build connection. Created and populated out-of-band during bootstrap (see README.md); the stack only references it."
   default     = "github-pat"
 }
 
@@ -121,7 +121,7 @@ variable "builds" {
 # --- Automated release cutting (Cloud Deploy on a git tag) ------------------
 variable "github_deploy_remote_uri" {
   type        = string
-  description = "HTTPS clone URL of the DEPLOY repository (the one holding helm/, i.e. this repo). A second Cloud Build 2nd-gen connection points here so a semver tag cuts a Cloud Deploy release automatically. The Cloud Build GitHub App + PAT must cover this repo too (see docs/INIT.md)."
+  description = "HTTPS clone URL of the DEPLOY repository (the one holding helm/, i.e. this repo). A second Cloud Build 2nd-gen connection points here so a semver tag cuts a Cloud Deploy release automatically. The Cloud Build GitHub App + PAT must cover this repo too (see README.md)."
   default     = "https://github.com/pilprod/yourown-chat.git"
 }
 
@@ -293,7 +293,7 @@ variable "cloudflare_api_token" {
   type        = string
   ephemeral   = true
   sensitive   = true
-  description = "Cloudflare API token scoped to the yourown.chat zone (Zone:Read, DNS:Edit, Zone Settings:Edit; + SSL and Certificates:Edit if managing origin cert/AOP). Ephemeral: never persisted to state. Sourced from an HCP variable set (see docs/INIT.md)."
+  description = "Cloudflare API token scoped to the yourown.chat zone (Zone:Read, DNS:Edit, Zone Settings:Edit; + SSL and Certificates:Edit if managing origin cert/AOP). Ephemeral: never persisted to state. Sourced from an HCP variable set (see README.md)."
 }
 
 variable "domain" {

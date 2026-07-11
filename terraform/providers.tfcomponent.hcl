@@ -4,7 +4,7 @@
 # ONE Terraform Stack now owns the whole product (GCP platform, the image-build
 # CI and the Cloudflare edge) as separate components in a single deployment.
 # That collapses the previous three stacks into one working directory and
-# removes every cross-stack hand-off (see docs/README + docs/INIT.md).
+# removes every cross-stack hand-off (see README.md).
 #
 # Auth is mixed by necessity:
 #   - GCP (google/google-beta) is fully KEYLESS: HCP Terraform Dynamic Provider

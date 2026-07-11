@@ -2,7 +2,7 @@ locals {
   # Cloud Build service agent that the 2nd-gen connection uses to read the PAT.
   cloudbuild_agent = "serviceAccount:service-${var.project_number}@gcp-sa-cloudbuild.iam.gserviceaccount.com"
 
-  # The github-pat secret is created out-of-band (see docs/INIT.md); the stack
+  # The github-pat secret is created out-of-band (see README.md); the stack
   # only references its latest version.
   pat_secret_version = "projects/${var.project_id}/secrets/${var.github_pat_secret_id}/versions/latest"
 
