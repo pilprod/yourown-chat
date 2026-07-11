@@ -1,8 +1,8 @@
 locals {
   # Regional names, project prefix dropped (project is already yourown-chat).
-  # The cluster may be zonal, but names use the region so the tag stays uniform
-  # across the platform and a second-region deployment can't collide.
-  cluster_name  = "${var.region}-gke"
+  # The cluster is THE cluster, so its name needs no "-gke" qualifier; the region
+  # keeps it uniform across the platform and collision-free for a second region.
+  cluster_name  = var.region
   node_sa_id    = "${var.region}-gke-node"
   workload_pool = "${var.project_id}.svc.id.goog"
 }
