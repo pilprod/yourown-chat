@@ -1,11 +1,14 @@
 locals {
-  instance_name  = var.instance_name_random_suffix ? "${var.region}-pg-${random_id.suffix[0].hex}" : "${var.region}-pg"
+  instance_name  = var.instance_name_random_suffix ? "${var.region}-${random_id.suffix[0].hex}" : var.region
   secret_id      = "cloudsql-${var.db_user_name}-password"
   conn_secret_id = "cloudsql-${var.database_name}-connection"
 
   connection_uri = "postgres://${var.db_user_name}:${random_password.user.result}@${google_sql_database_instance.this.private_ip_address}:5432/${var.database_name}?sslmode=require&connect_timeout=10"
 }
 
+# Name after the region alone (no "-pg" type suffix): it is THE Postgres
+# instance, mirroring the GKE cluster which drops "-gke". europe-west3.
+#
 # Deterministic instance name by default. Cloud SQL blocks reuse of an instance
 # name for ~1 week after deletion, so if you destroy and immediately re-create,
 # set instance_name_random_suffix = true to get a fresh, non-colliding name.

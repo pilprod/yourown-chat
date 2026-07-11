@@ -4,7 +4,9 @@ locals {
   # cluster reads europe-west3-b, a regional one europe-west3. No "-gke" qualifier
   # (it is THE cluster) and collision-free for a second location.
   cluster_name  = var.location
-  node_sa_id    = "${var.location}-gke-node"
+  # Node SA keeps a "-node" role discriminator (several SAs share the region) but
+  # drops the now-redundant "gke" — the cluster no longer carries that qualifier.
+  node_sa_id    = "${var.location}-node"
   workload_pool = "${var.project_id}.svc.id.goog"
 }
 
