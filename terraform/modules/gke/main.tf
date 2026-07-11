@@ -1,9 +1,10 @@
 locals {
-  # Regional names, project prefix dropped (project is already yourown-chat).
-  # The cluster is THE cluster, so its name needs no "-gke" qualifier; the region
-  # keeps it uniform across the platform and collision-free for a second region.
-  cluster_name  = var.region
-  node_sa_id    = "${var.region}-gke-node"
+  # Location-based names, project prefix dropped (project is already yourown-chat).
+  # Name after the ACTUAL footprint (var.location) so it self-documents: a zonal
+  # cluster reads europe-west3-b, a regional one europe-west3. No "-gke" qualifier
+  # (it is THE cluster) and collision-free for a second location.
+  cluster_name  = var.location
+  node_sa_id    = "${var.location}-gke-node"
   workload_pool = "${var.project_id}.svc.id.goog"
 }
 
@@ -119,7 +120,7 @@ resource "google_container_node_pool" "pool" {
   for_each = var.node_pools
 
   project  = var.project_id
-  name     = "${var.region}-${each.key}"
+  name     = "${var.location}-${each.key}"
   cluster  = google_container_cluster.this.id
   location = var.location
 

@@ -230,7 +230,6 @@ component "gke" {
 
   inputs = {
     project_id                 = component.project_services.project_id
-    region                     = var.region
     location                   = local.gke_location
     network_id                 = component.network.network_id
     subnet_id                  = component.network.subnet_id
