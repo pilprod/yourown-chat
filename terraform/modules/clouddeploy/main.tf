@@ -1,6 +1,8 @@
 locals {
   exec_sa_id    = "${var.region}-clouddeploy"
-  pipeline_name = "${var.region}-pipeline"
+  # No "-pipeline" type suffix: it is THE delivery pipeline, named after the
+  # region alone (mirroring the GKE cluster / Cloud SQL instance).
+  pipeline_name = var.region
 
   # Targets keyed by stage name (order-independent); the pipeline below drives
   # the promotion order from the ordered var.stages list.

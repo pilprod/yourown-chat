@@ -21,10 +21,12 @@
 # ---------------------------------------------------------------------------
 
 locals {
-  # Regional names, project prefix dropped (the project is already yourown-chat):
-  # the keyring is location-scoped, so the region tag disambiguates a second-region
-  # deployment. Consumers reference the key by this deterministic path.
-  key_ring_name   = "${var.location}-keyring"
+  # Regional names, project prefix dropped (the project is already yourown-chat).
+  # No "-keyring" type suffix: it is THE keyring, named after its location alone
+  # (mirroring the GKE cluster / Cloud SQL instance). The location scope keeps it
+  # collision-free for a second-region deployment; consumers reference the key by
+  # this deterministic path.
+  key_ring_name   = var.location
   crypto_key_name = "cmek"
 }
 
