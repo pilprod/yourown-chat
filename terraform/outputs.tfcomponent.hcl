@@ -175,7 +175,14 @@ output "cloudflare_origin_ip" {
 }
 
 output "cloudflare_dnssec" {
-  type        = any
+  type = object({
+    status      = string
+    ds          = string
+    digest      = string
+    key_tag     = string
+    algorithm   = string
+    digest_type = string
+  })
   description = "DNSSEC DS material to publish at the registrar (null when dnssec disabled or no public ingress)."
   value       = one([for c in component.cloudflare : c.dnssec])
 }
