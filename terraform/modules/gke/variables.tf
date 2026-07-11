@@ -3,14 +3,9 @@ variable "project_id" {
   description = "Project the cluster is created in."
 }
 
-variable "region" {
-  type        = string
-  description = "Region used as the name prefix for cluster resources (e.g. 'europe-west3'). Separate from location, which may be a zone."
-}
-
 variable "location" {
   type        = string
-  description = "Cluster location. A zone (e.g. europe-west3-b) = cheapest zonal cluster; a region (e.g. europe-west3) = regional/HA control plane."
+  description = "Cluster location, and the basis for every GKE resource name. A zone (e.g. europe-west3-b) = cheapest zonal cluster; a region (e.g. europe-west3) = regional/HA control plane."
 }
 
 variable "network_id" {
