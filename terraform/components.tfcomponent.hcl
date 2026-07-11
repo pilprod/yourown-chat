@@ -315,7 +315,8 @@ component "clouddeploy" {
   }
 
   providers = {
-    google = provider.google.this
+    google      = provider.google.this
+    google-beta = provider.google-beta.this
   }
 }
 
