@@ -294,7 +294,7 @@ secret created here. One token, scoped to both repos, backs both connections.
 > step, so the provider needs the credential up front: a GitHub PAT in Secret
 > Manager (`authorizer_credential.oauth_token_secret_version`). In other words the
 > PAT **is** the OAuth token the UI would obtain for you. The Cloud Build GitHub
-> App (8.4) is still required in both paths — only the token's origin differs. The
+> App (8.5) is still required in both paths — only the token's origin differs. The
 > Console's KMS option maps here to encrypting the `github-pat` secret itself -- we
 > deliberately keep it on **Google default encryption** (8.2): the token is already
 > revocable on GitHub, and the stack's shared CMEK key can't protect a secret that
@@ -328,7 +328,7 @@ add a new secret version (8.3) -- the connections always read `versions/latest`.
 > tag (`MAJOR.MINOR.PATCH`) in this repo it runs `gcloud deploy releases create
 > --source=helm` for you (see [`helm/cloudbuild.yaml`](../helm/cloudbuild.yaml)
 > for the equivalent manual command). Because that connection lives in the stack,
-> the PAT — and the Cloud Build GitHub App (8.4) — must cover this repo too.
+> the PAT — and the Cloud Build GitHub App (8.5) — must cover this repo too.
 
 ### 8.2 Store it in Secret Manager
 
@@ -358,7 +358,21 @@ gcloud secrets versions add "$GITHUB_PAT_SECRET_ID" \
 The connections read `versions/latest`, so a new version takes effect on the next
 connection reconcile -- no Terraform change needed.
 
-### 8.4 Authorize the Cloud Build GitHub App (installation ID)
+### 8.4 Host-connection encryption (keep it Google-managed)
+
+If you get the installation ID by creating a host connection in the Cloud Console
+(8.5, first option), its wizard asks how to encrypt the connection. You **don't
+need a customer-managed key** here -- leave it **Google-managed** (the default):
+
+- That Console connection is **throwaway**. Terraform builds the real connections
+  (`mattermost_image` + `deploy_release`) from the PAT stored in 8.2; you create
+  the Console one only to authorize the App and read its installation ID, then you
+  can delete it.
+- It matches the `github-pat` choice (8.2): the sensitive credential is the PAT
+  (revocable on GitHub), so a dedicated CMEK key here would be overhead for no real
+  gain. CMEK stays on everything the **stack** manages.
+
+### 8.5 Authorize the Cloud Build GitHub App (installation ID)
 
 The 2nd-gen connections also need the numeric **installation ID** of the Google
 Cloud Build GitHub App on your org/repos:
