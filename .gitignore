@@ -1,9 +1,9 @@
 # Terraform / OpenTofu
 **/.terraform/*
-# Ignore transient per-module lock files, but KEEP each stack root lock file:
-# HCP Terraform Stacks requires .terraform.lock.hcl committed at each stack root.
+# Ignore transient per-module lock files, but KEEP the stack root lock file:
+# HCP Terraform Stacks requires .terraform.lock.hcl committed at the stack root.
 **/.terraform.lock.hcl
-!/terraform/*/.terraform.lock.hcl
+!/terraform/.terraform.lock.hcl
 *.tfstate
 *.tfstate.*
 *.tfplan
