@@ -25,6 +25,16 @@ resource "random_password" "user" {
   override_special = "!#%*_-+="
 }
 
+# Adopt an instance orphaned by a create-wait timeout instead of re-creating it.
+# Gated by a flag (default off) so a genuinely fresh deployment still creates
+# normally; when on, Terraform imports the same-named instance into state on the
+# next apply. Config-driven import (id known at plan time) is accepted by Stacks.
+import {
+  for_each = var.adopt_existing_instance ? toset([local.instance_name]) : toset([])
+  to       = google_sql_database_instance.this
+  id       = "${var.project_id}/${each.value}"
+}
+
 resource "google_sql_database_instance" "this" {
   project          = var.project_id
   name             = local.instance_name
@@ -80,6 +90,18 @@ resource "google_sql_database_instance" "this" {
         value = database_flags.value
       }
     }
+  }
+
+  # A private-IP instance is provisioned through the Service Networking peering
+  # and routinely takes 15-25 min to become RUNNABLE. The provider's default
+  # create wait can expire first, surfacing an empty "Error waiting for Create
+  # Instance:" while GCP finishes in the background -- the instance then exists
+  # but is absent from state, so the next apply collides with a 409. Wait long
+  # enough for the operation to complete and be recorded.
+  timeouts {
+    create = "60m"
+    update = "45m"
+    delete = "45m"
   }
 }
 

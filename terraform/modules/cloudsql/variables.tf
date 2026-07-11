@@ -174,3 +174,9 @@ variable "encryption_key_name" {
   description = "Optional CMEK key (full resource ID) used for both the instance disk encryption and this module's Secret Manager secrets (db password + connection URI). Null = Google-managed keys. The key must be in the same region as the instance and secret replicas, and the Cloud SQL and Secret Manager service agents must hold cryptoKeyEncrypterDecrypter on it BEFORE those resources are created. Immutable for the life of the instance (changing it forces a replacement)."
   default     = null
 }
+
+variable "adopt_existing_instance" {
+  type        = bool
+  description = "Import a pre-existing Cloud SQL instance of the same name into state instead of creating it. Cloud SQL create can time out on the Terraform wait while GCP finishes provisioning in the background, leaving an instance that exists but is absent from state; every later apply then fails with a 409, and the name cannot simply be deleted+recreated (Cloud SQL reserves a deleted instance name for ~1 week). Set true for one apply to adopt that orphan, then set back to false."
+  default     = false
+}

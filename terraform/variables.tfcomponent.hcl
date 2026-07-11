@@ -226,6 +226,12 @@ variable "cloudsql_deletion_protection" {
   default     = true
 }
 
+variable "cloudsql_adopt_existing_instance" {
+  type        = bool
+  description = "Import a same-named Cloud SQL instance already present in the project into state instead of creating it. Use to adopt an instance orphaned by a create-wait timeout (Cloud SQL reserves a deleted name for ~1 week, so delete+recreate is not an option). Set true for one apply, then back to false."
+  default     = false
+}
+
 # --- Storage ----------------------------------------------------------------
 variable "storage_force_destroy" {
   type        = bool
