@@ -1,5 +1,5 @@
 locals {
-  # The github-pat secret is created out-of-band (see docs/INIT.md); the stack
+  # The github-pat secret is created out-of-band (see README.md); the stack
   # only references its latest version. The Cloud Build service agent that reads
   # it is granted secretAccessor by the image-CI component (project singleton),
   # so this connection only consumes that grant — see pat_secret_grant_dependency.

@@ -22,7 +22,7 @@ What the image-CI components create:
   deliberately **not** CMEK-encrypted;
 - one Cloud Build **2nd-gen GitHub connection** + repository link to
   `pilprod/mattermost`, via the `cloudbuild-image` module. The connection reads
-  the **out-of-band `github-pat` secret** (created in [`INIT.md`](INIT.md)) at
+  the **out-of-band `github-pat` secret** (created in [the README setup](../README.md#google-cloud-initial-setup)) at
   `versions/latest`;
 - a dedicated least-privilege **build service account**
   (`img-build@yourown-chat.iam.gserviceaccount.com`) with only
@@ -34,14 +34,14 @@ What the image-CI components create:
 API enablement (`cloudbuild`, `artifactregistry`) is handled by the stack's one
 `project_services` component together with every other API. Authentication is the
 keyless HCP OIDC -> WIF -> `terraform-apply@` impersonation path shared by the
-whole stack (see [`INIT.md`](INIT.md), which also grants the apply SA the
+whole stack (see [the README setup](../README.md#google-cloud-initial-setup), which also grants the apply SA the
 build-specific roles). No static credentials, no SA keys.
 
 ---
 
 ## 0. Prerequisites
 
-All pre-Terraform setup is done **once** in [`INIT.md`](INIT.md) (the single
+All pre-Terraform setup is done **once** in [the README setup](../README.md#google-cloud-initial-setup) (the single
 source of truth) — do not repeat it here:
 
 - **Bootstrap APIs**, the **WIF pool/provider**, the `terraform-apply@` SA and
@@ -59,11 +59,11 @@ The Mattermost source lives at `https://github.com/pilprod/mattermost` with a
 In `terraform/deployments.tfdeploy.hcl`, the `eu` deployment is already wired
 for `yourown-chat`. Set the one real image-CI value:
 
-- `github_app_installation_id` -> the installation ID from [`INIT.md`](INIT.md)
+- `github_app_installation_id` -> the installation ID from [the README setup](../README.md#google-cloud-initial-setup)
   (**numeric**; replace the `0` sentinel). A `> 0` validation blocks the plan
   until it is set.
 - `github_pat_secret_id` -> `github-pat` (default; change only if you named it
-  differently in INIT.md).
+  differently in the README setup).
 
 The `builds` map has a **single entry** — it pushes to the unified `docker` repo
 (`artifact_registry_repository_id`, default `docker`) on the one git tag regex
@@ -73,7 +73,7 @@ The `builds` map has a **single entry** — it pushes to the unified `docker` re
 
 There is **no separate stack to create** — the registry and image CI are
 components of the single stack. Plan and apply the `eu` deployment as
-described in [`INIT.md`](INIT.md) §9; the same apply creates the registry, the
+described in [the README setup](../README.md#google-cloud-initial-setup) §9; the same apply creates the registry, the
 Cloud Build connection and the tag trigger along with the rest of the platform.
 
 ## 3. Build an image
@@ -132,9 +132,9 @@ one by hand.
   `v9.11.3-patched`. There is no separate dev image or dev tag.
 - **No CMEK here.** The public registry is not CMEK-encrypted, and the
   `github-pat` secret's encryption is its own concern (Google-managed by default,
-  set in INIT.md). The image-CI components own no Cloud KMS key.
+  set in the README setup). The image-CI components own no Cloud KMS key.
 - **One PAT, two connections.** The same `github-pat` backs both the image
   connection (`pilprod/mattermost`) and the release connection
-  (`pilprod/yourown-chat`); scope it to both repos (INIT.md §8). Rotating it is a
+  (`pilprod/yourown-chat`); scope it to both repos (the README setup §8). Rotating it is a
   `gcloud secrets versions add github-pat` away; both connections read
   `versions/latest`.

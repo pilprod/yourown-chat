@@ -25,7 +25,7 @@
 #     mattermost-origin-tls-* secrets, so there is no manual `gcloud secrets`.
 #
 # API enablement: one small BOOTSTRAP set (auth + serviceusage + secretmanager)
-# is enabled once by hand in docs/INIT.md (Terraform needs those before it can
+# is enabled once by hand in README.md (Terraform needs those before it can
 # authenticate and enable anything else). This stack's project_services then
 # enables everything else -- platform + build APIs together, no partitioning.
 #
@@ -57,7 +57,7 @@ locals {
 
   # ALL APIs the product needs, enabled in ONE place. The bootstrap set
   # (cloudresourcemanager, iam, iamcredentials, serviceusage, sts,
-  # secretmanager) is enabled by hand in docs/INIT.md before Terraform runs.
+  # secretmanager) is enabled by hand in README.md before Terraform runs.
   activate_apis = [
     "compute.googleapis.com",
     "container.googleapis.com",

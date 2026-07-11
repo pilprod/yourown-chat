@@ -33,7 +33,7 @@ variable "github_app_installation_id" {
 
 variable "github_pat_secret_id" {
   type        = string
-  description = "Short ID of the Secret Manager secret holding the GitHub PAT used by the connection. Created and populated out-of-band during bootstrap (see docs/INIT.md); the stack only references it. The Cloud Build service agent's read grant is owned by the image-CI component (shared project singleton)."
+  description = "Short ID of the Secret Manager secret holding the GitHub PAT used by the connection. Created and populated out-of-band during bootstrap (see README.md); the stack only references it. The Cloud Build service agent's read grant is owned by the image-CI component (shared project singleton)."
   default     = "github-pat"
 }
 

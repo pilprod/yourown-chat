@@ -33,7 +33,7 @@
 #   - Cloudflare: no Workload Identity path, so a single zone-scoped API token is
 #     pulled from an HCP variable set (store "varset") and passed as an EPHEMERAL
 #     input -- never in git or state. Only exercised when public_ingress_enabled.
-# Bootstrap (both): docs/INIT.md.
+# Bootstrap (both): README.md.
 # ---------------------------------------------------------------------------
 
 locals {
@@ -60,14 +60,14 @@ locals {
 
 # HCP mints this OIDC JWT once per run. Its `aud` claim must match the WIF
 # provider's allowed-audiences, which is the full https://iam.googleapis.com/...
-# provider URL (see INIT.md, gcloud ... --allowed-audiences=...).
+# provider URL (see README.md, gcloud ... --allowed-audiences=...).
 identity_token "gcp" {
   audience = ["https://iam.googleapis.com/projects/1086706391144/locations/global/workloadIdentityPools/hcp-terraform/providers/hcp-terraform"]
 }
 
 # Cloudflare zone-scoped API token, injected from an HCP variable set so it never
 # touches git or state. Replace the id with your workspace's variable set ID and
-# store the token under the key `cloudflare_api_token`. See docs/INIT.md.
+# store the token under the key `cloudflare_api_token`. See README.md.
 store "varset" "cloudflare" {
   id       = "varset-wrrdzyQKCP2no9U6"
   category = "terraform"
@@ -154,7 +154,7 @@ deployment "eu" {
     # --- Image-build CI ------------------------------------------------------
     # Cloud Build GitHub App installation ID from the one-time OAuth authorize.
     # NUMERIC. 0 is a sentinel; a `> 0` validation blocks the plan until you set
-    # the real installation ID before the first apply (see docs/INIT.md).
+    # the real installation ID before the first apply (see README.md).
     github_app_installation_id = 132865658
     github_pat_secret_id       = "github-pat"
     github_remote_uri          = "https://github.com/pilprod/mattermost.git"
