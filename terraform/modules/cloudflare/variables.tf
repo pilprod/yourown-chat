@@ -47,7 +47,7 @@ variable "record_comment" {
 
 variable "manage_www" {
   type        = bool
-  description = "Create a proxied www CNAME pointing at the apex."
+  description = "Create a proxied www CNAME and a 301 redirect from www to the apex (www is secondary; the apex is canonical)."
   default     = true
 }
 

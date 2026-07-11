@@ -507,4 +507,26 @@ component "cloudflare" {
     cloudflare = provider.cloudflare.this
     tls        = provider.tls.this
   }
+
+  # Run Cloudflare as LATE as possible: it is the public edge and its Origin CA
+  # cert/key feed the `secrets` component (mattermost-origin-tls-*), so it must
+  # finish just BEFORE `secrets` — it cannot be strictly last. Waiting on all the
+  # GCP infra here means a Cloudflare token/edge failure can't half-provision the
+  # platform, and DNS only flips once everything it fronts already exists. We
+  # depend on every component EXCEPT `secrets` (that would be a cycle) and self.
+  depends_on = [
+    component.project_services,
+    component.network,
+    component.kms,
+    component.storage,
+    component.gke,
+    component.cloudsql,
+    component.clouddeploy,
+    component.artifact_registry,
+    component.mattermost_image,
+    component.deploy_release,
+    component.workload_identity_mattermost,
+    component.workload_identity_matterbridge,
+    component.workload_identity_dev,
+  ]
 }

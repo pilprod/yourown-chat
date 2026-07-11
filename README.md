@@ -266,6 +266,9 @@ for ROLE in \
   roles/compute.networkAdmin \
   roles/compute.securityAdmin \
   roles/cloudkms.admin \
+  roles/cloudsql.admin \
+  roles/storage.admin \
+  roles/clouddeploy.admin \
   roles/artifactregistry.admin \
   roles/cloudbuild.connectionAdmin \
   roles/cloudbuild.builds.editor ; do
@@ -292,6 +295,12 @@ Why each role:
   `allow-internal` rule.
 - `cloudkms.admin` — create the shared CMEK key ring + HSM key and grant the
   Cloud SQL / GCS / Secret Manager service agents `encrypterDecrypter`.
+- `cloudsql.admin` — create the private PostgreSQL instance (`europe-west3-pg`) +
+  database + user (the `cloudsql` component).
+- `storage.admin` — create the GCS bucket and the Mattermost S3-compatible HMAC
+  keys (the `storage` component; `storage.buckets.create` + `storage.hmacKeys.create`).
+- `clouddeploy.admin` — create the delivery pipeline + dev/prod targets and bind
+  the execution SA (the `clouddeploy` and `deploy-release` components).
 - `artifactregistry.admin` — create the `docker` repo and grant the build SA
   `writer` on it.
 - `cloudbuild.connectionAdmin`, `cloudbuild.builds.editor` — link the
@@ -307,7 +316,7 @@ Why each role:
 | Service account | Roles |
 | --- | --- |
 | `terraform-plan@yourown-chat.iam.gserviceaccount.com` | `roles/viewer`, `roles/browser` |
-| `terraform-apply@yourown-chat.iam.gserviceaccount.com` | `roles/serviceusage.serviceUsageAdmin`, `roles/resourcemanager.projectIamAdmin`, `roles/iam.serviceAccountAdmin`, `roles/iam.serviceAccountUser`, `roles/secretmanager.admin`, `roles/container.admin`, `roles/compute.networkAdmin`, `roles/compute.securityAdmin`, `roles/cloudkms.admin`, `roles/artifactregistry.admin`, `roles/cloudbuild.connectionAdmin`, `roles/cloudbuild.builds.editor` |
+| `terraform-apply@yourown-chat.iam.gserviceaccount.com` | `roles/serviceusage.serviceUsageAdmin`, `roles/resourcemanager.projectIamAdmin`, `roles/iam.serviceAccountAdmin`, `roles/iam.serviceAccountUser`, `roles/secretmanager.admin`, `roles/container.admin`, `roles/compute.networkAdmin`, `roles/compute.securityAdmin`, `roles/cloudkms.admin`, `roles/cloudsql.admin`, `roles/storage.admin`, `roles/clouddeploy.admin`, `roles/artifactregistry.admin`, `roles/cloudbuild.connectionAdmin`, `roles/cloudbuild.builds.editor` |
 
 ### Verification
 
