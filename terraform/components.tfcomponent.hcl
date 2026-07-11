@@ -451,7 +451,8 @@ component "deploy_release" {
   }
 
   providers = {
-    google = provider.google.this
+    google    = provider.google.this
+    terraform = provider.terraform.this
   }
 }
 
