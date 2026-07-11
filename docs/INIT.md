@@ -58,7 +58,6 @@ resources below:
 ```sh
 export PROJECT_ID="yourown-chat"
 export PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')"
-export REGION="europe-west3"
 
 export TFC_ORG="papou-work"
 export TFC_PROJECT="yourown-chat"
@@ -78,8 +77,7 @@ secret (step 8) can be created by hand. Every other API is enabled **by the stac
 itself**: the `project_services` component enables everything the platform, the
 image CI and the rest need (compute, container, sqladmin, cloudkms, storage,
 clouddeploy, logging, monitoring, cloudbuild, artifactregistry). This list is the
-single source of truth for manual API enablement (the optional CMEK step in §8.2
-also enables `cloudkms` for the bootstrap key that protects the PAT secret).
+single source of truth for manual API enablement.
 
 ```sh
 gcloud services enable \
@@ -297,9 +295,10 @@ secret created here. One token, scoped to both repos, backs both connections.
 > Manager (`authorizer_credential.oauth_token_secret_version`). In other words the
 > PAT **is** the OAuth token the UI would obtain for you. The Cloud Build GitHub
 > App (8.4) is still required in both paths — only the token's origin differs. The
-> Console's KMS option maps here to encrypting the `github-pat` secret itself --
-> which 8.2 does with a dedicated **bootstrap** CMEK key (it cannot be the stack's
-> shared key, which does not exist until `apply`).
+> Console's KMS option maps here to encrypting the `github-pat` secret itself -- we
+> deliberately keep it on **Google default encryption** (8.2): the token is already
+> revocable on GitHub, and the stack's shared CMEK key can't protect a secret that
+> must exist *before* `apply`. CMEK stays on everything the stack manages.
 
 ### 8.1 Create the fine-grained PAT on GitHub
 
@@ -331,64 +330,21 @@ add a new secret version (8.3) -- the connections always read `versions/latest`.
 > for the equivalent manual command). Because that connection lives in the stack,
 > the PAT — and the Cloud Build GitHub App (8.4) — must cover this repo too.
 
-### 8.2 Store it in Secret Manager (CMEK-encrypted)
-
-Encrypt the token at rest with your own key. This uses a **dedicated bootstrap
-CMEK key**, created by hand right here -- not the stack's shared HSM key. The
-secret is read during `terraform apply`, so its key must exist *before* the stack
-runs, and the stack's key does not yet. CMEK is also bound when the secret is
-**created** (for a given replication policy), which is why the key steps come
-before `gcloud secrets create`, not after.
+### 8.2 Store it in Secret Manager
 
 ```sh
 export GITHUB_PAT_SECRET_ID="github-pat"
-export PAT_KMS_KEYRING="bootstrap"
-export PAT_KMS_KEY="github-pat"
 
-# CMEK needs Cloud KMS on now; the stack re-enables it later (idempotent).
-gcloud services enable cloudkms.googleapis.com --project="$PROJECT_ID"
-
-# A dedicated key in the stack's region. HSM matches the stack's FIPS 140-2 L3
-# posture (~$1/mo; swap --protection-level=software for ~$0.06/mo).
-gcloud kms keyrings create "$PAT_KMS_KEYRING" \
-  --project="$PROJECT_ID" --location="$REGION"
-
-gcloud kms keys create "$PAT_KMS_KEY" \
-  --project="$PROJECT_ID" --location="$REGION" --keyring="$PAT_KMS_KEYRING" \
-  --purpose="encryption" --protection-level="hsm"
-
-# Let the Secret Manager service agent use the key (create the agent if new).
-gcloud beta services identity create \
-  --service=secretmanager.googleapis.com --project="$PROJECT_ID"
-
-gcloud kms keys add-iam-policy-binding "$PAT_KMS_KEY" \
-  --project="$PROJECT_ID" --location="$REGION" --keyring="$PAT_KMS_KEYRING" \
-  --member="serviceAccount:service-$PROJECT_NUMBER@gcp-sa-secretmanager.iam.gserviceaccount.com" \
-  --role="roles/cloudkms.cryptoKeyEncrypterDecrypter"
-
-# Create the secret CMEK-encrypted. User-managed replication pins the single
-# replica to $REGION so it can use the in-region key above (an automatic-
-# replication secret would instead need a key in the `global` multi-region).
-# The secret stays readable from every location.
+# Create the container (Google-managed encryption; automatic replication).
 gcloud secrets create "$GITHUB_PAT_SECRET_ID" \
   --project="$PROJECT_ID" \
-  --replication-policy="user-managed" \
-  --locations="$REGION" \
-  --kms-key-name="projects/$PROJECT_ID/locations/$REGION/keyRings/$PAT_KMS_KEYRING/cryptoKeys/$PAT_KMS_KEY"
+  --replication-policy="automatic"
 
 # Add the token value as the first version (paste the PAT, then Ctrl-D).
 gcloud secrets versions add "$GITHUB_PAT_SECRET_ID" \
   --project="$PROJECT_ID" \
   --data-file=-
 ```
-
-> **Opting out / retrofitting.** For Google default encryption, drop the KMS block
-> and use `--replication-policy="automatic"` with no `--kms-key-name`. To add CMEK
-> *after the fact* to an existing **automatic**-replication secret, point it at a
-> key in the `global` multi-region: `gcloud secrets replication update
-> "$GITHUB_PAT_SECRET_ID" --set-kms-key <global-key>` (existing versions keep their
-> old key -- add a fresh version to bring the live token under CMEK). The in-region
-> user-managed layout above is fixed at creation.
 
 ### 8.3 Rotating / re-scoping the token
 
