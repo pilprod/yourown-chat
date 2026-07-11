@@ -1,15 +1,21 @@
-data "google_project" "this" {
-  project_id = var.project_id
-}
-
 locals {
-  exec_sa_id         = "${var.region}-clouddeploy"
-  pipeline_name      = "${var.region}-pipeline"
-  deploy_agent_email = "service-${data.google_project.this.number}@gcp-sa-clouddeploy.iam.gserviceaccount.com"
+  exec_sa_id    = "${var.region}-clouddeploy"
+  pipeline_name = "${var.region}-pipeline"
 
   # Targets keyed by stage name (order-independent); the pipeline below drives
   # the promotion order from the ordered var.stages list.
   targets = { for s in var.stages : s.name => s }
+}
+
+# The Cloud Deploy service agent is created lazily on first API use, so a fresh
+# project has none when the IAM binding below runs -> "service-...@gcp-sa-
+# clouddeploy... does not exist". Force it into existence up front and reference
+# its email so the act-as binding is ordered strictly after the agent exists.
+resource "google_project_service_identity" "clouddeploy" {
+  provider = google-beta
+
+  project = var.project_id
+  service = "clouddeploy.googleapis.com"
 }
 
 # Execution identity Cloud Deploy uses to render and deploy.
@@ -31,7 +37,7 @@ resource "google_project_iam_member" "exec" {
 resource "google_service_account_iam_member" "agent_act_as_exec" {
   service_account_id = google_service_account.exec.id
   role               = "roles/iam.serviceAccountUser"
-  member             = "serviceAccount:${local.deploy_agent_email}"
+  member             = "serviceAccount:${google_project_service_identity.clouddeploy.email}"
 }
 
 # One target per stage. Every target points at the SAME cluster; the deploy
