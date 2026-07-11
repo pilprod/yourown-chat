@@ -103,6 +103,12 @@ component "workload_identity_mattermost" {
   providers = {
     google = provider.google.this
   }
+
+  # The workloadIdentityUser binding member references PROJECT.svc.id.goog, the
+  # fixed Workload Identity pool that only comes into existence once a
+  # WI-enabled GKE cluster is created. Without this ordering a fresh apply races
+  # the cluster and 400s with "Identity Pool does not exist".
+  depends_on = [component.gke]
 }
 
 component "workload_identity_matterbridge" {
@@ -119,6 +125,10 @@ component "workload_identity_matterbridge" {
   providers = {
     google = provider.google.this
   }
+
+  # Needs the PROJECT.svc.id.goog pool created by the GKE cluster (see
+  # workload_identity_mattermost).
+  depends_on = [component.gke]
 }
 
 component "workload_identity_dev" {
@@ -135,6 +145,10 @@ component "workload_identity_dev" {
   providers = {
     google = provider.google.this
   }
+
+  # Needs the PROJECT.svc.id.goog pool created by the GKE cluster (see
+  # workload_identity_mattermost).
+  depends_on = [component.gke]
 }
 
 # --- Networking -------------------------------------------------------------

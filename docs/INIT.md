@@ -215,6 +215,7 @@ for ROLE in \
   roles/secretmanager.admin \
   roles/container.admin \
   roles/compute.networkAdmin \
+  roles/compute.securityAdmin \
   roles/cloudkms.admin \
   roles/artifactregistry.admin \
   roles/cloudbuild.connectionAdmin \
@@ -234,7 +235,11 @@ Why each role:
   build service accounts and `actAs` them.
 - `secretmanager.admin` — manage secrets and grant the Cloud Build agent
   `secretAccessor` on the `github-pat` secret.
-- `container.admin`, `compute.networkAdmin` — GKE + VPC/NAT/PSA + reserved IP.
+- `container.admin`, `compute.networkAdmin`, `compute.securityAdmin` — GKE +
+  VPC/NAT/PSA + reserved IP, plus firewall rules. `networkAdmin` can read
+  firewalls but NOT create them (`compute.firewalls.create/update/delete` live
+  in `securityAdmin`), so both are required for the `network` component's
+  `allow-internal` rule.
 - `cloudkms.admin` — create the shared CMEK key ring + HSM key and grant the
   Cloud SQL / GCS / Secret Manager service agents `encrypterDecrypter`.
 - `artifactregistry.admin` — create the `docker` repo and grant the build SA
@@ -251,7 +256,7 @@ Why each role:
 | Service account | Roles |
 | --- | --- |
 | `terraform-plan@yourown-chat.iam.gserviceaccount.com` | `roles/viewer`, `roles/browser` |
-| `terraform-apply@yourown-chat.iam.gserviceaccount.com` | `roles/serviceusage.serviceUsageAdmin`, `roles/resourcemanager.projectIamAdmin`, `roles/iam.serviceAccountAdmin`, `roles/iam.serviceAccountUser`, `roles/secretmanager.admin`, `roles/container.admin`, `roles/compute.networkAdmin`, `roles/cloudkms.admin`, `roles/artifactregistry.admin`, `roles/cloudbuild.connectionAdmin`, `roles/cloudbuild.builds.editor` |
+| `terraform-apply@yourown-chat.iam.gserviceaccount.com` | `roles/serviceusage.serviceUsageAdmin`, `roles/resourcemanager.projectIamAdmin`, `roles/iam.serviceAccountAdmin`, `roles/iam.serviceAccountUser`, `roles/secretmanager.admin`, `roles/container.admin`, `roles/compute.networkAdmin`, `roles/compute.securityAdmin`, `roles/cloudkms.admin`, `roles/artifactregistry.admin`, `roles/cloudbuild.connectionAdmin`, `roles/cloudbuild.builds.editor` |
 
 ## Verification
 
