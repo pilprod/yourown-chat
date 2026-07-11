@@ -19,11 +19,6 @@ variable "project_id" {
   description = "Existing GCP project ID for this environment."
 }
 
-variable "project_number" {
-  type        = string
-  description = "Numeric project number. Used to derive the Cloud Build service agent that reads the GitHub PAT."
-}
-
 variable "environment" {
   type        = string
   description = "Environment name (drives labels only; resource names are role-based or regional, never environment-scoped). The single-cluster budget default uses 'prod' as the platform cluster; dev workloads run as a tenant namespace on the dev node pool."
@@ -68,20 +63,10 @@ variable "service_account_email" {
 }
 
 # --- Image-build CI (Cloud Build 2nd-gen + Artifact Registry) ---------------
-variable "github_app_installation_id" {
-  type        = number
-  description = "Installation ID of the Cloud Build GitHub App on the source account/org (from the one-time OAuth authorize during bootstrap). Numeric (provider field app_installation_id is a number)."
-
-  validation {
-    condition     = var.github_app_installation_id > 0
-    error_message = "Set the real GitHub App installation ID (a positive number) before applying. See README.md."
-  }
-}
-
-variable "github_pat_secret_id" {
+variable "github_connection_name" {
   type        = string
-  description = "Short ID of the Secret Manager secret holding the GitHub PAT used by the Cloud Build connection. Created and populated out-of-band during bootstrap (see README.md); the stack only references it."
-  default     = "github-pat"
+  description = "Name of the EXISTING Cloud Build 2nd-gen GitHub connection, authorized once in the console via OAuth (see README.md). Both the image and deploy repositories are linked to it by ID; Terraform never creates or manages the connection."
+  default     = "pilprod-github"
 }
 
 variable "github_remote_uri" {

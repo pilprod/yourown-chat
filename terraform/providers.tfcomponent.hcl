@@ -45,11 +45,6 @@ required_providers {
     source  = "hashicorp/tls"
     version = ">= 4.0.0"
   }
-  # Built-in provider for terraform_data (the deploy_release PAT-grant sequencing
-  # gate). Stacks does not auto-assign it, so it is declared and passed explicitly.
-  terraform = {
-    source = "terraform.io/builtin/terraform"
-  }
 }
 
 # --- GCP: keyless WIF (impersonate the least-privilege apply SA) -------------
@@ -89,6 +84,3 @@ provider "cloudflare" "this" {
 }
 
 provider "tls" "this" {}
-
-# Built-in provider instance for the deploy_release component's terraform_data gate.
-provider "terraform" "this" {}

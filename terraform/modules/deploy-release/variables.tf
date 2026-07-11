@@ -16,25 +16,14 @@ variable "apply_service_account_email" {
 # --- GitHub source: THIS repo (holds helm/, the Skaffold render root) --------
 variable "connection_name" {
   type        = string
-  description = "Name of the Cloud Build 2nd-gen GitHub connection for the deploy repository. Separate from the image-CI connection so the release repo has its own lifecycle."
-  default     = "github-deploy"
+  description = "Name of the EXISTING Cloud Build 2nd-gen GitHub connection (authorized once in the console via OAuth, see README.md) the deploy repo is linked to. Shared with the image CI; Terraform never creates or manages the connection."
+  default     = "pilprod-github"
 }
 
 variable "repository_name" {
   type        = string
   description = "Name of the Cloud Build 2nd-gen repository resource linking the connection to the deploy source repo."
   default     = "yourown-chat"
-}
-
-variable "github_app_installation_id" {
-  type        = number
-  description = "Installation ID of the Cloud Build GitHub App on the account/org owning the deploy repo (same one-time OAuth authorize as the image CI; the App must cover this repo too). The provider field app_installation_id is numeric."
-}
-
-variable "github_pat_secret_id" {
-  type        = string
-  description = "Short ID of the Secret Manager secret holding the GitHub PAT used by the connection. Created and populated out-of-band during bootstrap (see README.md); the stack only references it. The Cloud Build service agent's read grant is owned by the image-CI component (shared project singleton)."
-  default     = "github-pat"
 }
 
 variable "github_remote_uri" {
@@ -82,13 +71,6 @@ variable "source_retention_days" {
   type        = number
   description = "Age (days) after which uploaded source tarballs in the staging bucket are auto-deleted. They are ephemeral inputs to a release, so they need not be kept."
   default     = 30
-}
-
-# --- Sequencing handle ------------------------------------------------------
-variable "pat_secret_grant_dependency" {
-  type        = string
-  description = "Opaque handle: the ID of the Cloud Build service agent's secretAccessor grant on the PAT, a project singleton owned by the image-CI component. Threading it in orders this component AFTER that grant so this connection validates against a readable secret (the grant is never re-created here, which would conflict)."
-  default     = null
 }
 
 variable "labels" {

@@ -1,10 +1,8 @@
 locals {
-  # Cloud Build service agent that the 2nd-gen connection uses to read the PAT.
-  cloudbuild_agent = "serviceAccount:service-${var.project_number}@gcp-sa-cloudbuild.iam.gserviceaccount.com"
-
-  # The github-pat secret is created out-of-band (see README.md); the stack
-  # only references its latest version.
-  pat_secret_version = "projects/${var.project_id}/secrets/${var.github_pat_secret_id}/versions/latest"
+  # The Cloud Build 2nd-gen GitHub connection is created out-of-band via the
+  # console OAuth flow (see README.md) and shared by every repository/trigger in
+  # the stack; here we only reference it by its deterministic resource ID.
+  connection_id = "projects/${var.project_id}/locations/${var.region}/connections/${var.connection_name}"
 
   # Single unified image path (no tag) shared by every build, e.g.
   # europe-west3-docker.pkg.dev/yourown-chat/docker/mattermost
@@ -16,45 +14,14 @@ locals {
   image_ref = "${local.image_repo_path}:$TAG_NAME"
 }
 
-# Ensure the Cloud Build service agent exists so we can grant it access to the
-# PAT before the connection validates it (beta-only resource).
-resource "google_project_service_identity" "cloudbuild" {
-  provider = google-beta
-  project  = var.project_id
-  service  = "cloudbuild.googleapis.com"
-}
-
-# The connection's service agent must read the out-of-band GitHub PAT secret.
-resource "google_secret_manager_secret_iam_member" "agent_reads_pat" {
-  project   = var.project_id
-  secret_id = var.github_pat_secret_id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = local.cloudbuild_agent
-
-  depends_on = [google_project_service_identity.cloudbuild]
-}
-
-# --- 2nd-gen GitHub connection + repository --------------------------------
-resource "google_cloudbuildv2_connection" "github" {
-  project  = var.project_id
-  location = var.region
-  name     = var.connection_name
-
-  github_config {
-    app_installation_id = var.github_app_installation_id
-    authorizer_credential {
-      oauth_token_secret_version = local.pat_secret_version
-    }
-  }
-
-  depends_on = [google_secret_manager_secret_iam_member.agent_reads_pat]
-}
-
+# --- 2nd-gen repository on the shared, out-of-band GitHub connection --------
+# The connection itself is authorized once in the Cloud Build console (OAuth) and
+# lives outside Terraform; we only link the source repo to it here.
 resource "google_cloudbuildv2_repository" "this" {
   project           = var.project_id
   location          = var.region
   name              = var.repository_name
-  parent_connection = google_cloudbuildv2_connection.github.id
+  parent_connection = local.connection_id
   remote_uri        = var.github_remote_uri
 }
 
