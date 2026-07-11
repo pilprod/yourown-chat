@@ -155,7 +155,7 @@ deployment "prod-eu" {
     # Cloud Build GitHub App installation ID from the one-time OAuth authorize.
     # NUMERIC. 0 is a sentinel; a `> 0` validation blocks the plan until you set
     # the real installation ID before the first apply (see docs/INIT.md).
-    github_app_installation_id = 0
+    github_app_installation_id = 132865658
     github_pat_secret_id       = "github-pat"
     github_remote_uri          = "https://github.com/pilprod/mattermost.git"
     image_name                 = "mattermost"
