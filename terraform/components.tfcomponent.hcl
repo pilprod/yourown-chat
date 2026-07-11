@@ -396,23 +396,23 @@ component "artifact_registry" {
 }
 
 # --- Mattermost image CI (Cloud Build 2nd-gen) ------------------------------
-# One GitHub connection + repository (source: pilprod/mattermost) that reads the
-# out-of-band github-pat secret, one least-privilege build SA (repo-scoped writer
-# on the registry above) and a tag-triggered build that pushes ONE image on a
-# single tag pattern (^v.*-patched$), promoted dev -> prod by Cloud Deploy.
+# Links the source repo (pilprod/mattermost) to the shared, out-of-band GitHub
+# connection (console OAuth), plus one least-privilege build SA (repo-scoped
+# writer on the registry above) and a tag-triggered build that pushes ONE image
+# on a single tag pattern (^v.*-patched$), promoted dev -> prod by Cloud Deploy.
 component "mattermost_image" {
   source = "./modules/cloudbuild-image"
 
   inputs = {
-    project_id     = component.project_services.project_id
-    project_number = var.project_number
-    region         = var.region
+    project_id = component.project_services.project_id
+    region     = var.region
 
     apply_service_account_email = var.service_account_email
 
-    github_app_installation_id = var.github_app_installation_id
-    github_pat_secret_id       = var.github_pat_secret_id
-    github_remote_uri          = var.github_remote_uri
+    # Existing, out-of-band Cloud Build connection (console OAuth) shared by the
+    # image and deploy repos; Terraform only links repositories/triggers to it.
+    connection_name   = var.github_connection_name
+    github_remote_uri = var.github_remote_uri
 
     # Push every build to the ONE unified repository created above.
     artifact_registry_location      = component.artifact_registry.location
@@ -423,20 +423,18 @@ component "mattermost_image" {
   }
 
   providers = {
-    google      = provider.google.this
-    google-beta = provider.google-beta.this
+    google = provider.google.this
   }
 }
 
 # --- Automated release cutting (Cloud Build 2nd-gen on git tags) -------------
-# Makes deployment hands-off: its OWN GitHub connection to the DEPLOY repo (this
-# one, which holds helm/) plus a least-privilege releaser SA and a tag trigger.
-# On a semver tag (release_tag_regex, i.e. *.*.*) it runs `gcloud deploy releases
-# create` against the clouddeploy pipeline, so a tag — not a human — cuts the
-# release. The releaser can create releases on that pipeline only and actAs the
-# execution SA; it never touches the image build. Ordered AFTER mattermost_image
-# via pat_secret_grant_dependency so it reuses (not re-creates) the shared Cloud
-# Build agent -> PAT read grant, and AFTER kms so the source bucket is CMEK-ready.
+# Makes deployment hands-off: links the DEPLOY repo (this one, holds helm/) to the
+# shared out-of-band GitHub connection, plus a least-privilege releaser SA and a
+# tag trigger. On a semver tag (release_tag_regex, i.e. *.*.*) it runs `gcloud
+# deploy releases create` against the clouddeploy pipeline, so a tag — not a human
+# — cuts the release. The releaser can create releases on that pipeline only and
+# actAs the execution SA; it never touches the image build. Ordered AFTER kms so
+# the source-staging bucket is CMEK-ready.
 component "deploy_release" {
   source = "./modules/deploy-release"
 
@@ -446,9 +444,10 @@ component "deploy_release" {
 
     apply_service_account_email = var.service_account_email
 
-    github_app_installation_id = var.github_app_installation_id
-    github_pat_secret_id       = var.github_pat_secret_id
-    github_remote_uri          = var.github_deploy_remote_uri
+    # Same shared, out-of-band Cloud Build connection as the image CI (both repos
+    # live under the pilprod account it authorizes).
+    connection_name   = var.github_connection_name
+    github_remote_uri = var.github_deploy_remote_uri
 
     # Cut releases against the pipeline the clouddeploy component owns.
     delivery_pipeline_name          = component.clouddeploy.delivery_pipeline_name
@@ -460,16 +459,11 @@ component "deploy_release" {
     # cmek_enabled = false), mirroring the other data buckets.
     source_bucket_kms_key_name = one([for k in component.kms : k.crypto_key_id])
 
-    # Sequencing handle: reuse the image component's Cloud Build agent -> PAT read
-    # grant (a project singleton) instead of re-creating it.
-    pat_secret_grant_dependency = component.mattermost_image.pat_secret_grant_id
-
     labels = local.common_labels
   }
 
   providers = {
-    google    = provider.google.this
-    terraform = provider.terraform.this
+    google = provider.google.this
   }
 }
 

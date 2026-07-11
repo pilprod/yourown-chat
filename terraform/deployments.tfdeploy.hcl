@@ -43,10 +43,9 @@ locals {
   # Least-privilege SA impersonated after the exchange (never Owner/Editor).
   gcp_apply_sa = "terraform-apply@yourown-chat.iam.gserviceaccount.com"
 
-  gcp_project        = "yourown-chat"
-  gcp_project_number = "1086706391144"
-  gcp_region         = "europe-west3" # Frankfurt, Germany
-  gcp_zone           = "europe-west3-b"
+  gcp_project = "yourown-chat"
+  gcp_region  = "europe-west3" # Frankfurt, Germany
+  gcp_zone    = "europe-west3-b"
 
   # CIDRs allowed to reach the GKE control-plane endpoint. The endpoint is public
   # but node-private (enable_private_endpoint = false); an EMPTY list omits the
@@ -84,11 +83,10 @@ deployment "eu" {
     audience              = local.gcp_wif_audience
     service_account_email = local.gcp_apply_sa
 
-    project_id     = local.gcp_project
-    project_number = local.gcp_project_number
-    environment    = "prod"
-    region         = local.gcp_region
-    zone           = local.gcp_zone
+    project_id  = local.gcp_project
+    environment = "prod"
+    region      = local.gcp_region
+    zone        = local.gcp_zone
 
     # --- GKE: ONE zonal cluster, TWO node pools sharing it -------------------
     #   prod - e2-standard-2, on-demand, TAINTED dedicated=prod so ONLY prod
@@ -152,13 +150,12 @@ deployment "eu" {
     storage_force_destroy = false
 
     # --- Image-build CI ------------------------------------------------------
-    # Cloud Build GitHub App installation ID from the one-time OAuth authorize.
-    # NUMERIC. 0 is a sentinel; a `> 0` validation blocks the plan until you set
-    # the real installation ID before the first apply (see README.md).
-    github_app_installation_id = 132865658
-    github_pat_secret_id       = "github-pat"
-    github_remote_uri          = "https://github.com/pilprod/mattermost.git"
-    image_name                 = "mattermost"
+    # The Cloud Build 2nd-gen GitHub connection is authorized once out-of-band in
+    # the console (OAuth) and named here; both the image and deploy repos are
+    # linked to it (see README.md).
+    github_connection_name = "pilprod-github"
+    github_remote_uri      = "https://github.com/pilprod/mattermost.git"
+    image_name             = "mattermost"
     # The container registry is PUBLIC -> no CMEK (null).
     artifact_registry_kms_key_name = null
     # One source repo, ONE unified registry, ONE image built on a single tag
@@ -169,9 +166,9 @@ deployment "eu" {
     }
 
     # --- Automated release cutting ------------------------------------------
-    # A second Cloud Build connection to THIS repo (holds helm/): a semver tag
-    # (MAJOR.MINOR.PATCH) cuts a Cloud Deploy release automatically — no manual
-    # `gcloud deploy releases create`. The GitHub App + PAT must cover this repo.
+    # THIS repo (holds helm/) is linked to the SAME shared connection: a semver
+    # tag (MAJOR.MINOR.PATCH) cuts a Cloud Deploy release automatically — no
+    # manual `gcloud deploy releases create`. The connection must cover this repo.
     github_deploy_remote_uri = "https://github.com/pilprod/yourown-chat.git"
     release_tag_regex        = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
 

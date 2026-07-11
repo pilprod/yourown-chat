@@ -4,8 +4,7 @@
 #   - Cloud SQL (Postgres)     -- database component
 #   - Cloud Storage (filestore)-- storage component
 #   - Secret Manager (secrets) -- secrets component
-# The container registry is PUBLIC and is NOT CMEK-encrypted, and the github-pat
-# secret uses Google-managed encryption (no separate key), so this key has no
+# The container registry is PUBLIC and is NOT CMEK-encrypted, so this key has no
 # image-CI consumer (grant_artifact_registry defaults on but is disabled by the
 # kms component). The key is regional (must match every consumer's region).
 #

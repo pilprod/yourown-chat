@@ -20,10 +20,11 @@ What the image-CI components create:
 - **one unified Artifact Registry repository** `docker` (Docker, `europe-west3`),
   via the `artifact-registry` module. The registry is **public**, so it is
   deliberately **not** CMEK-encrypted;
-- one Cloud Build **2nd-gen GitHub connection** + repository link to
-  `pilprod/mattermost`, via the `cloudbuild-image` module. The connection reads
-  the **out-of-band `github-pat` secret** (created in [the README setup](../README.md#google-cloud-initial-setup)) at
-  `versions/latest`;
+- one Cloud Build **2nd-gen repository link** to `pilprod/mattermost`, via the
+  `cloudbuild-image` module, attached to the **shared, out-of-band host
+  connection** `pilprod-github` (created once via console OAuth in
+  [the README setup](../README.md#google-cloud-initial-setup)) — the module never
+  creates the connection, only the repo link;
 - a dedicated least-privilege **build service account**
   (`img-build@yourown-chat.iam.gserviceaccount.com`) with only
   `logging.logWriter` (project) and `artifactregistry.writer` (scoped to the one
@@ -47,8 +48,8 @@ source of truth) — do not repeat it here:
 - **Bootstrap APIs**, the **WIF pool/provider**, the `terraform-apply@` SA and
   **all its IAM roles** (including the build-specific `artifactregistry.admin`,
   `cloudbuild.connectionAdmin`, `cloudbuild.builds.editor` and
-  `serviceusage.serviceUsageAdmin`), and the **`github-pat` secret** + **Cloud
-  Build App installation ID**.
+  `serviceusage.serviceUsageAdmin`), and the **shared `pilprod-github` Cloud Build
+  connection** (authorized once via console OAuth, covering both CI/CD repos).
 
 Constants used below: `PROJECT_ID=yourown-chat`, `PROJECT_NUMBER=1086706391144`.
 The Mattermost source lives at `https://github.com/pilprod/mattermost` with a
@@ -57,13 +58,10 @@ The Mattermost source lives at `https://github.com/pilprod/mattermost` with a
 ## 1. Fill the deployment inputs
 
 In `terraform/deployments.tfdeploy.hcl`, the `eu` deployment is already wired
-for `yourown-chat`. Set the one real image-CI value:
+for `yourown-chat`. The image-CI wiring needs no per-deploy secrets:
 
-- `github_app_installation_id` -> the installation ID from [the README setup](../README.md#google-cloud-initial-setup)
-  (**numeric**; replace the `0` sentinel). A `> 0` validation blocks the plan
-  until it is set.
-- `github_pat_secret_id` -> `github-pat` (default; change only if you named it
-  differently in the README setup).
+- `github_connection_name` -> `pilprod-github` (default; change only if you named
+  the shared Cloud Build connection differently in the README setup).
 
 The `builds` map has a **single entry** — it pushes to the unified `docker` repo
 (`artifact_registry_repository_id`, default `docker`) on the one git tag regex
@@ -130,11 +128,11 @@ one by hand.
   promotion (dev verify -> prod approval).
 - **Single tag pattern.** `^v.*-patched$` matches release tags like
   `v9.11.3-patched`. There is no separate dev image or dev tag.
-- **No CMEK here.** The public registry is not CMEK-encrypted, and the
-  `github-pat` secret's encryption is its own concern (Google-managed by default,
-  set in the README setup). The image-CI components own no Cloud KMS key.
-- **One PAT, two connections.** The same `github-pat` backs both the image
-  connection (`pilprod/mattermost`) and the release connection
-  (`pilprod/yourown-chat`); scope it to both repos (the README setup §8). Rotating it is a
-  `gcloud secrets versions add github-pat` away; both connections read
-  `versions/latest`.
+- **No CMEK here.** The public registry is not CMEK-encrypted, and the shared
+  Cloud Build connection is created out-of-band (its OAuth token is Google-managed).
+  The image-CI components own no Cloud KMS key.
+- **One connection, two repos.** The shared `pilprod-github` host connection
+  (authorized once via console OAuth on the `pilprod` account) backs both the image
+  repo (`pilprod/mattermost`) and the release repo (`pilprod/yourown-chat`); grant
+  the Cloud Build GitHub App access to both (the README setup §8). Re-scope it from
+  the Console — no Terraform change, since the stack references it by name.

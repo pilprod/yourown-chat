@@ -1,6 +1,6 @@
 output "connection_id" {
-  description = "Fully-qualified Cloud Build 2nd-gen connection ID for the deploy repository."
-  value       = google_cloudbuildv2_connection.github.id
+  description = "Fully-qualified Cloud Build 2nd-gen connection ID for the deploy repository (the shared, out-of-band connection it is linked to)."
+  value       = local.connection_id
 }
 
 output "repository_id" {

@@ -3,11 +3,6 @@ variable "project_id" {
   description = "Project the Cloud Build connection, repository, triggers and build identity live in."
 }
 
-variable "project_number" {
-  type        = string
-  description = "Numeric project number, used to derive the Cloud Build service agent (service-<num>@gcp-sa-cloudbuild.iam.gserviceaccount.com) that reads the GitHub PAT."
-}
-
 variable "region" {
   type        = string
   description = "Region for the 2nd-gen connection, repository and triggers (must match Artifact Registry region)."
@@ -18,21 +13,11 @@ variable "apply_service_account_email" {
   description = "Terraform apply SA (the impersonated identity). Granted actAs on the build SA so it can create triggers that run as a custom, least-privilege identity."
 }
 
-# --- GitHub source (2nd-gen connection) ------------------------------------
+# --- GitHub source (shared out-of-band 2nd-gen connection) -----------------
 variable "connection_name" {
   type        = string
-  description = "Name of the Cloud Build 2nd-gen GitHub connection."
-  default     = "github"
-}
-
-variable "github_app_installation_id" {
-  type        = number
-  description = "Installation ID of the Cloud Build GitHub App on the source account/org (from the one-time OAuth authorize during bootstrap). The provider field app_installation_id is numeric."
-}
-
-variable "github_pat_secret_id" {
-  type        = string
-  description = "Short ID of the Secret Manager secret holding the GitHub personal access token used by the connection. Created and populated out-of-band during bootstrap (see README.md); the stack only references it (never in git)."
+  description = "Name of the EXISTING Cloud Build 2nd-gen GitHub connection (authorized once in the console via OAuth, see README.md). The source repository is linked to it by its deterministic ID; Terraform never creates or manages the connection."
+  default     = "pilprod-github"
 }
 
 variable "github_remote_uri" {

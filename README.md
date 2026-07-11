@@ -59,7 +59,7 @@ This guide:
 - creates the Workload Identity Pool and OIDC Provider;
 - creates service accounts for `plan` and `apply` runs;
 - grants impersonation permissions and all project IAM roles the stack needs;
-- creates the GitHub personal access token (PAT) secret the image CI reads;
+- authorizes the shared Cloud Build GitHub connection (`pilprod-github`) the CI/CD reuses;
 - configures HCP Terraform dynamic provider credentials;
 - creates the Cloudflare API token the Cloudflare component reads (the only static
   secret, since Cloudflare has no Workload Identity path).
@@ -120,8 +120,9 @@ export APPLY_SA="terraform-apply"
 ### 2. Enable the bootstrap APIs
 
 Enable only the **bootstrap** APIs here -- the ones Terraform needs *before* it
-can authenticate and enable anything else, plus Secret Manager so the GitHub PAT
-secret (step 8) can be created by hand. Every other API is enabled **by the stack
+can authenticate and enable anything else, plus Secret Manager (which holds the
+credentials the stack generates but which the stack does not enable itself). Every
+other API is enabled **by the stack
 itself**: the `project_services` component enables everything the platform, the
 image CI and the rest need (compute, container, sqladmin, cloudkms, storage,
 clouddeploy, logging, monitoring, cloudbuild, artifactregistry). This list is the
@@ -281,8 +282,9 @@ Why each role:
   node SA's `artifactregistry.reader`, the build SA's `logging.logWriter`).
 - `iam.serviceAccountAdmin` + `iam.serviceAccountUser` — create the per-tenant /
   build service accounts and `actAs` them.
-- `secretmanager.admin` — manage secrets and grant the Cloud Build agent
-  `secretAccessor` on the `github-pat` secret.
+- `secretmanager.admin` — create and manage the secrets the stack stores (Cloud
+  SQL connection/URI, GCS HMAC keys, dev Postgres password, matterbridge tokens,
+  Cloudflare Origin CA cert) and grant tenants `secretAccessor`.
 - `container.admin`, `compute.networkAdmin`, `compute.securityAdmin` — GKE +
   VPC/NAT/PSA + reserved IP, plus firewall rules. `networkAdmin` can read
   firewalls but NOT create them (`compute.firewalls.create/update/delete` live
@@ -292,8 +294,9 @@ Why each role:
   Cloud SQL / GCS / Secret Manager service agents `encrypterDecrypter`.
 - `artifactregistry.admin` — create the `docker` repo and grant the build SA
   `writer` on it.
-- `cloudbuild.connectionAdmin`, `cloudbuild.builds.editor` — create the 2nd-gen
-  connection + repository and the tag triggers.
+- `cloudbuild.connectionAdmin`, `cloudbuild.builds.editor` — link the
+  repositories to the existing 2nd-gen connection (`pilprod-github`) and create
+  the tag triggers.
 
 > Start broad to keep the first apply unblocked without granting Owner/Editor;
 > tighten later by swapping project roles for resource-scoped IAM conditions once
@@ -329,119 +332,70 @@ gcloud projects get-iam-policy "$PROJECT_ID" \
   --format="table(bindings.role, bindings.members)"
 ```
 
-### 8. Create the GitHub PAT secret (for the CI/CD connections)
+### 8. Create the Cloud Build GitHub connection (for the CI/CD repos)
 
-Two Cloud Build 2nd-gen GitHub connections read this token: `mattermost_image`
-(builds the image from `pilprod/mattermost`) and `deploy_release` (cuts a Cloud
-Deploy release from `pilprod/yourown-chat` on a semver tag). Both need a GitHub
-**personal access token**, which is the only credential created by hand -- the
-stack never stores the token in git; it just reads `versions/latest` of the
-secret created here. One token, scoped to both repos, backs both connections.
+Two repositories are wired into Cloud Build 2nd-gen: `pilprod/mattermost`
+(`mattermost_image` builds the image) and `pilprod/yourown-chat` (`deploy_release`
+cuts a Cloud Deploy release on a semver tag). Both are linked to **one shared host
+connection** that you create **once, by hand, in the Cloud Console** — the stack
+never creates or owns the connection; it only references it by name and attaches
+the two repositories + their tag triggers to it.
 
-> **Why a PAT and not just the KMS key the Console asks for?** Creating a host
-> connection in the Cloud Console runs an interactive OAuth flow — you click
-> *Authorize* and Google fetches and stores the *Google Cloud Build* OAuth token
-> for you; the KMS key it offers is **optional** and only CMEK-encrypts that
-> stored token (it is not a substitute for the credential). We create the
-> connection **declaratively in Terraform** instead, where there is no browser
-> step, so the provider needs the credential up front: a GitHub PAT in Secret
-> Manager (`authorizer_credential.oauth_token_secret_version`). In other words the
-> PAT **is** the OAuth token the UI would obtain for you. The Cloud Build GitHub
-> App (8.5) is still required in both paths — only the token's origin differs. The
-> Console's KMS option maps here to encrypting the `github-pat` secret itself -- we
-> deliberately keep it on **Google default encryption** (8.2): the token is already
-> revocable on GitHub, and the stack's shared CMEK key can't protect a secret that
-> must exist *before* `apply`. CMEK stays on everything the stack manages.
+> **Why a console OAuth connection and not a PAT?** A 2nd-gen connection is
+> authorized either interactively (the Console's *Authorize* button runs the
+> GitHub OAuth flow and stores the *Google Cloud Build* token for you) or
+> declaratively from a GitHub PAT in Secret Manager
+> (`authorizer_credential.oauth_token_secret_version`). The PAT path is brittle:
+> the token must itself have access to the App installation, and Cloud Build
+> rejects it otherwise (*"the user token does not have access to installations"*).
+> Terraform cannot run the interactive OAuth step, so we do it **once** in the
+> Console — the reliable, Google-blessed path — and let the stack attach
+> repositories to the resulting connection by its deterministic ID. No PAT, no
+> Secret Manager secret, no installation-ID variable.
 
-#### 8.1 Create the fine-grained PAT on GitHub
+#### 8.1 Create the host connection (OAuth) and name it `pilprod-github`
 
-Create a **fine-grained** token (GitHub -> Settings -> Developer settings ->
-Fine-grained tokens):
+1. In the Google Cloud console open **Cloud Build → Repositories (2nd gen) →
+   Create host connection**, choose **GitHub**, and set the region to
+   `europe-west3` (must match the stack's region).
+2. Name the connection **`pilprod-github`** and click **Authorize** — this runs
+   the GitHub OAuth flow and installs / configures the *Google Cloud Build* GitHub
+   App on the `pilprod` account. Grant the App access to **both**
+   `pilprod/mattermost` **and** `pilprod/yourown-chat` (one connection backs both
+   repos, since both live under `pilprod`).
+3. If the wizard offers an **Encryption** (CMEK) key, you can skip it — it only
+   CMEK-encrypts the OAuth token Google stores (optional, not a credential you
+   manage). Leave it Google-managed and click **Connect**.
 
-- **Resource owner**: `pilprod`
-- **Repository access**: *Only select repositories* -> `pilprod/mattermost`
-  **and** `pilprod/yourown-chat`
-- **Repository permissions** (same on both repos):
-  | Permission | Access |
-  | --- | --- |
-  | Contents | Read-only |
-  | Metadata | Read-only |
-  | Webhooks | Read and write |
-  | Commit statuses | Read and write |
-  | Pull requests | Read and write |
+The connection then shows `Enabled` with a **Provider auth account** of `pilprod`.
+Do **not** link the repositories by hand — Terraform creates the
+`google_cloudbuildv2_repository` links (and the tag triggers) under it on apply.
 
-Scope the token to the fewest repos/permissions Cloud Build needs. To grant it
-more later (e.g. add a repo or a permission), edit the same token on GitHub and
-add a new secret version (8.3) -- the connections always read `versions/latest`.
+> **Why both repos?** The image build reads `pilprod/mattermost` (Mattermost
+> **source**); the automated release cut reads `pilprod/yourown-chat` (this repo,
+> which holds the **Helm charts** under `helm/`). On a semver tag
+> (`MAJOR.MINOR.PATCH`) in this repo, `deploy_release` runs `gcloud deploy releases
+> create --source=helm` for you (see [`helm/cloudbuild.yaml`](../helm/cloudbuild.yaml)
+> for the equivalent manual command). One connection authorized on the `pilprod`
+> account covers both repositories.
 
-> **Why both repos?** The token backs two connections: the image build reads
-> `pilprod/mattermost` (Mattermost **source**), and the automated release cut
-> reads `pilprod/yourown-chat` (this repo, which holds the **Helm charts** under
-> `helm/`). The `deploy_release` component makes deployment hands-off: on a semver
-> tag (`MAJOR.MINOR.PATCH`) in this repo it runs `gcloud deploy releases create
-> --source=helm` for you (see [`helm/cloudbuild.yaml`](../helm/cloudbuild.yaml)
-> for the equivalent manual command). Because that connection lives in the stack,
-> the PAT — and the Cloud Build GitHub App (8.5) — must cover this repo too.
+#### 8.2 Point the stack at the connection
 
-#### 8.2 Store it in Secret Manager
+The connection name is a single stack input with a sensible default:
 
-```sh
-export GITHUB_PAT_SECRET_ID="github-pat"
+- `github_connection_name` → **`pilprod-github`** (default in
+  `terraform/deployments.tfdeploy.hcl`; change it only if you named the connection
+  differently).
 
-# Create the container (Google-managed encryption; automatic replication).
-gcloud secrets create "$GITHUB_PAT_SECRET_ID" \
-  --project="$PROJECT_ID" \
-  --replication-policy="automatic"
+That is the only wiring needed — there is no PAT secret and no installation ID to
+set. The apply SA already holds `roles/cloudbuild.connectionAdmin`, which lets it
+create the repository links + tag triggers under the existing connection.
 
-# Add the token value as the first version (paste the PAT, then Ctrl-D).
-gcloud secrets versions add "$GITHUB_PAT_SECRET_ID" \
-  --project="$PROJECT_ID" \
-  --data-file=-
-```
-
-#### 8.3 Rotating / re-scoping the token
-
-```sh
-# After regenerating or re-scoping the PAT on GitHub, add a new version:
-gcloud secrets versions add "$GITHUB_PAT_SECRET_ID" \
-  --project="$PROJECT_ID" \
-  --data-file=-
-```
-
-The connections read `versions/latest`, so a new version takes effect on the next
-connection reconcile -- no Terraform change needed.
-
-#### 8.4 Host-connection encryption (keep it Google-managed)
-
-Creating a host connection in the Cloud Console (8.5, first option) shows an
-**Encryption** section -- but Google's wizard marks it **Optional**. Skip it and
-the access token is stored as a Secret Manager secret with **Google default
-encryption**; a CMEK key there only matters if *you* want to manage that secret's
-key. So when the key picker shows *"No valid keys found"* (there is no bootstrap
-KMS key here, by design), just leave it empty / **Cancel** and click **Connect**:
-
-- That Console connection is **throwaway**. Terraform builds the real connections
-  (`mattermost_image` + `deploy_release`) from the PAT stored in 8.2; you create
-  the Console one only to authorize the App and read its installation ID, then you
-  can delete it.
-- It matches the `github-pat` choice (8.2): the sensitive credential is the PAT
-  (revocable on GitHub), so a dedicated CMEK key here would be overhead for no real
-  gain. CMEK stays on everything the **stack** manages.
-
-#### 8.5 Authorize the Cloud Build GitHub App (installation ID)
-
-The 2nd-gen connections also need the numeric **installation ID** of the Google
-Cloud Build GitHub App on your org/repos:
-
-1. In the Google Cloud console, open **Cloud Build -> Repositories (2nd gen) ->
-   Create host connection** for GitHub, or install the *Google Cloud Build*
-   GitHub App on `pilprod` and grant it access to **both** `pilprod/mattermost`
-   and `pilprod/yourown-chat` (one installation backs both connections).
-2. Copy the numeric installation ID from the App installation URL
-   (`https://github.com/settings/installations/<INSTALLATION_ID>`).
-3. Set it in `terraform/deployments.tfdeploy.hcl` as
-   `github_app_installation_id` (a `> 0` validation blocks the plan until you
-   replace the `0` sentinel).
+> **Rotating / re-scoping access.** Re-authorize or re-scope the *Google Cloud
+> Build* App from the Console (or GitHub → *Settings → Applications*); the
+> connection keeps the same name and ID, so no Terraform change is needed. If you
+> ever delete and recreate the connection, keep the same name (`pilprod-github`)
+> so the stack's repository links still resolve.
 
 ### 9. Create the Stack in HCP Terraform
 
@@ -644,7 +598,7 @@ graph TD
   PS --> STO[storage<br/>GCS + HMAC creds]
   PS --> SEC[secrets<br/>Secret Manager]
   PS --> AR[artifact_registry<br/>unified docker repo]
-  PS --> IMG[mattermost_image<br/>2nd-gen connection + tag triggers]
+  PS --> IMG[mattermost_image<br/>repo link + tag-triggered builds]
   AR --> IMG
   NET --> SQL[cloudsql<br/>private PostgreSQL, prod]
   NET --> GKE[gke<br/>1 cluster, 2 node pools]
@@ -658,8 +612,9 @@ graph TD
   KMS -->|encrypt| SEC
   GKE --> CD[clouddeploy<br/>dev→prod delivery of helm/ workloads]
   CF -->|Origin CA cert/key| SEC
-  CD --> DR[deploy_release<br/>2nd-gen connection to this repo<br/>semver-tag trigger cuts a release]
-  IMG -->|shared PAT read grant| DR
+  CD --> DR[deploy_release<br/>repo link to this repo<br/>semver-tag trigger cuts a release]
+  CONN[pilprod-github<br/>manual OAuth connection] -.->|repo link| IMG
+  CONN -.->|repo link| DR
   KMS -->|encrypt source bucket| DR
 ```
 
@@ -670,8 +625,8 @@ Cloudflare apex A record, and the Cloudflare Origin CA cert/key flow straight
 into the `mattermost-origin-tls-*` secrets. Workload Identity SA emails flow into
 the secret-owning components as least-privilege `secretAccessor` members. The one
 `project_services` component enables every API the product needs; only a minimal
-bootstrap set (auth + Service Usage + Secret Manager) and the `github-pat` secret
-are done once in [Google Cloud Initial Setup](#google-cloud-initial-setup).
+bootstrap set (auth + Service Usage + Secret Manager) and the shared Cloud Build
+GitHub connection are done once in [Google Cloud Initial Setup](#google-cloud-initial-setup).
 
 ## Repository layout
 
@@ -695,8 +650,8 @@ terraform/                  # ONE Terraform Stacks configuration (the whole prod
     secrets/                # Secret Manager map (generate/provide + accessors)
     workload-identity/      # per-tenant GSA bound to a KSA (WI)
     artifact-registry/      # the unified Docker repo
-    cloudbuild-image/       # 2nd-gen GitHub connection + repo + tag-triggered builds
-    deploy-release/         # 2nd-gen connection to this repo + releaser SA + semver-tag trigger (cuts Cloud Deploy releases)
+    cloudbuild-image/       # repo link on the shared 2nd-gen connection + tag-triggered builds
+    deploy-release/         # repo link on the shared connection + releaser SA + semver-tag trigger (cuts Cloud Deploy releases)
     cloudflare/             # DNS records + edge TLS/security + DNSSEC + WAF + Origin CA cert / AOP
 helm/                       # Kubernetes workloads, delivered by Cloud Deploy dev→prod
   skaffold.yaml             # dev/prod profiles Cloud Deploy renders (+ dev verify)
@@ -737,14 +692,16 @@ helm/                       # Kubernetes workloads, delivered by Cloud Deploy de
 1. Run the one-time bootstrap in [Google Cloud Initial Setup](#google-cloud-initial-setup): enable the
    bootstrap APIs (auth + Service Usage + Secret Manager), create the Workload
    Identity Federation pool/provider and `terraform plan`/`apply` service accounts
-   (with all IAM roles the stack needs), create the `github-pat` secret, and
+   (with all IAM roles the stack needs), authorize the shared Cloud Build GitHub
+   connection, and
    create the Cloudflare API token + HCP variable set. The stack enables every
    other API itself; these are the only manual prerequisites.
 2. In `terraform/deployments.tfdeploy.hcl` the project ID (`yourown-chat`), WIF
    `audience` and apply-SA are already wired; set the real
    `master_authorized_networks` CIDR if you want to restrict the control plane
-   (empty = reachable but credential-gated, so Cloud Deploy can reach it), set the
-   real `github_app_installation_id`, and replace the `store "varset"` id with your
+   (empty = reachable but credential-gated, so Cloud Deploy can reach it), adjust
+   `github_connection_name` only if your Cloud Build connection is not named
+   `pilprod-github`, and replace the `store "varset"` id with your
    HCP variable set ID.
 3. Configure **keyless** GCP auth in HCP Terraform (no credentials are ever
    committed). The Workload Identity Federation pool/provider and least-privilege
@@ -768,7 +725,7 @@ helm/                       # Kubernetes workloads, delivered by Cloud Deploy de
    then apply the manifests (namespaces, then per-tenant resources including
    `helm/developing/networkpolicy.yaml` and `helm/developing/rbac.yaml`).
 
-The image-build flow (setting the Cloud Build App installation ID, the tag
+The image-build flow (the shared Cloud Build connection, the tag
 pattern, promotion) is described in [`docs/BUILD.md`](docs/BUILD.md); it is part
 of this same stack, so there is no separate stack to create.
 
@@ -782,7 +739,8 @@ git tag on github.com/pilprod/mattermost ──► Cloud Build (2nd-gen trigger)
    ^v.*-patched$   ─► build Dockerfile ─► push docker/mattermost:<tag>
 ```
 
-- One Cloud Build 2nd-gen GitHub connection + repository watches the external
+- One Cloud Build 2nd-gen repository — linked to the shared `pilprod-github`
+  connection — watches the external
   Mattermost source repo; a single tag pattern (`^v.*-patched$`) builds **one**
   image, and that same artifact is deployed to dev and prod (promoted, not
   rebuilt per environment). Builds run as a dedicated, least-privilege runtime SA
@@ -814,16 +772,18 @@ git tag on github.com/pilprod/yourown-chat ──► Cloud Build (2nd-gen trigge
    MAJOR.MINOR.PATCH  ─► gcloud deploy releases create ─► clouddeploy pipeline
 ```
 
-- A **second** Cloud Build 2nd-gen connection watches **this** repo (which holds
+- A **second** Cloud Build 2nd-gen repository — on the **same** shared connection
+  — watches **this** repo (which holds
   `helm/`). On a semver tag (`^[0-9]+\.[0-9]+\.[0-9]+$`, the `*.*.*` pattern) it
   runs `gcloud deploy releases create --source=helm` as a dedicated, least-privilege
   **releaser** SA (`europe-west3-releaser`): `roles/clouddeploy.releaser` on **that
   pipeline only**, `actAs` the Cloud Deploy execution SA, log writer, and object
   admin on its own private source-staging bucket (CMEK-encrypted, 30-day expiry).
-- It reuses — rather than re-creates — the Cloud Build service agent's read grant
-  on the `github-pat` secret (a project singleton owned by `mattermost_image`), so
-  the two connections share one PAT and one GitHub App installation. This means the
-  PAT/App must also cover this repo (see [Google Cloud Initial Setup](#google-cloud-initial-setup) §8).
+- Both repositories attach to the **same** shared 2nd-gen connection
+  (`pilprod-github`), authorized once via console OAuth on the `pilprod` account —
+  so the connection must cover this repo as well (see
+  [Google Cloud Initial Setup](#google-cloud-initial-setup) §8). Terraform creates
+  only the repository link + trigger + releaser SA here, never the connection.
 - The command it runs is the one documented in
   [`helm/cloudbuild.yaml`](helm/cloudbuild.yaml); you can still cut a release by
   hand from any checkout, but you no longer have to.

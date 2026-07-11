@@ -1,9 +1,8 @@
 locals {
-  # The github-pat secret is created out-of-band (see README.md); the stack
-  # only references its latest version. The Cloud Build service agent that reads
-  # it is granted secretAccessor by the image-CI component (project singleton),
-  # so this connection only consumes that grant — see pat_secret_grant_dependency.
-  pat_secret_version = "projects/${var.project_id}/secrets/${var.github_pat_secret_id}/versions/latest"
+  # The Cloud Build 2nd-gen GitHub connection is created out-of-band via the
+  # console OAuth flow (see README.md) and shared across the stack; the deploy
+  # repository is linked to it by its deterministic resource ID.
+  connection_id = "projects/${var.project_id}/locations/${var.region}/connections/${var.connection_name}"
 
   # Regional names, mirroring the rest of the stack (europe-west3-*). The project
   # is already yourown-chat, so a project prefix would just repeat it — except the
@@ -12,36 +11,14 @@ locals {
   source_bucket_name = "${var.project_id}-${var.region}-deploy-source"
 }
 
-# Sequencing gate: the Cloud Build service agent's read grant on the PAT is a
-# project singleton owned by the image-CI component. Threading its ID through a
-# no-op resource lets the connection below depend on it, so this component's
-# connection validates only after the grant exists (belt-and-suspenders on top of
-# the stack-level ordering created by the input reference).
-resource "terraform_data" "pat_grant_gate" {
-  input = var.pat_secret_grant_dependency
-}
-
-# --- 2nd-gen GitHub connection + repository (source: the deploy repo) --------
-resource "google_cloudbuildv2_connection" "github" {
-  project  = var.project_id
-  location = var.region
-  name     = var.connection_name
-
-  github_config {
-    app_installation_id = var.github_app_installation_id
-    authorizer_credential {
-      oauth_token_secret_version = local.pat_secret_version
-    }
-  }
-
-  depends_on = [terraform_data.pat_grant_gate]
-}
-
+# --- 2nd-gen repository on the shared, out-of-band GitHub connection ---------
+# The connection is authorized once in the Cloud Build console (OAuth) and lives
+# outside Terraform; here we only link the deploy repo (holds helm/) to it.
 resource "google_cloudbuildv2_repository" "this" {
   project           = var.project_id
   location          = var.region
   name              = var.repository_name
-  parent_connection = google_cloudbuildv2_connection.github.id
+  parent_connection = local.connection_id
   remote_uri        = var.github_remote_uri
 }
 
