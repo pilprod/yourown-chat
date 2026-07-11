@@ -35,8 +35,10 @@ terraform output ingress_ip_address    # e.g. 34.x.x.x
 Put that value in `values.yaml` (`controller.service.loadBalancerIP`).
 
 ### 2. Cloudflare DNS
-In the Cloudflare dashboard for the `yourown.chat` zone, create a **proxied**
-(orange-cloud) record pointing at the reserved IP:
+When `public_ingress_enabled = true`, the stack's `cloudflare` component creates
+the **proxied** (orange-cloud) apex `A` record for `yourown.chat` pointing at the
+reserved ingress IP automatically — the IP is wired internally from the network
+component's `ingress_ip_address`, so there is nothing to enter by hand:
 
 ```
 A     yourown.chat    <ingress_ip_address>   Proxied
@@ -46,10 +48,17 @@ A     yourown.chat    <ingress_ip_address>   Proxied
 IPv6 clients from its edge regardless.)
 
 ### 3. TLS mode + origin cert (Full Strict)
-1. Cloudflare → SSL/TLS → Overview → set mode to **Full (Strict)**.
-2. Cloudflare → SSL/TLS → Origin Server → **Create Certificate** (Origin CA).
-   Save the certificate (PEM) and private key (PEM).
-3. Load both into Secret Manager (containers already created by Terraform):
+
+The SSL mode and the origin cert are managed by the stack's **`cloudflare`
+component**: `cloudflare_ssl_mode = strict` sets Full (Strict), and
+`cloudflare_manage_origin_cert = true` (default) issues the Cloudflare Origin CA
+cert. The same apply writes that cert/key straight into the
+`mattermost-origin-tls-cert` / `mattermost-origin-tls-key` Secret Manager secrets
+(via the `secrets` component) — **no manual push, nothing to copy between runs.**
+
+Prefer to keep the key out of Terraform? Set `cloudflare_manage_origin_cert =
+false` and create the cert by hand instead (Cloudflare → SSL/TLS → Origin Server →
+**Create Certificate**), then load the downloaded files:
 
 ```bash
 gcloud secrets versions add mattermost-origin-tls-cert --data-file=origin.pem
@@ -57,12 +66,16 @@ gcloud secrets versions add mattermost-origin-tls-key  --data-file=origin.key
 ```
 
 ### 4. Authenticated Origin Pulls (per-hostname mTLS)
-1. Generate a client cert/key for the origin to trust, and upload the cert to
-   Cloudflare for `yourown.chat` via the per-hostname AOP API, then enable AOP
-   for the hostname. See Cloudflare docs: *SSL/TLS → Origin Server →
-   Authenticated Origin Pulls → Per-hostname*.
-2. Load the **CA that signs Cloudflare's presented client cert** into Secret
-   Manager so nginx can verify it:
+AOP is **off by default**. To turn it on:
+
+1. Generate a client cert/key signed by **your own CA** — the Cloudflare edge
+   presents this cert to the origin.
+2. Feed the client cert/key to the stack as `cloudflare_aop_certificate` /
+   `cloudflare_aop_private_key` and set `cloudflare_aop_enabled = true`. The
+   `cloudflare` component uploads the per-hostname cert and enables AOP for
+   `yourown.chat` — no manual Cloudflare API call.
+3. Load the **CA that signed that client cert** into Secret Manager so nginx can
+   verify the edge:
 
 ```bash
 gcloud secrets versions add cloudflare-origin-pull-ca --data-file=origin-pull-ca.pem

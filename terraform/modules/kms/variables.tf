@@ -47,7 +47,7 @@ variable "grant_storage" {
 
 variable "grant_artifact_registry" {
   type        = bool
-  description = "Grant the Artifact Registry service agent (service-<num>@gcp-sa-artifactregistry) encrypterDecrypter on the key. The registry itself lives in the build stack, which references this same key by its deterministic resource path."
+  description = "Grant the Artifact Registry service agent (service-<num>@gcp-sa-artifactregistry) encrypterDecrypter on the key. The registry itself lives in the artifact_registry component, which references this same key by its deterministic resource path."
   default     = true
 }
 

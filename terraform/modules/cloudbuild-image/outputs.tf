@@ -22,3 +22,8 @@ output "image_path" {
   description = "Full unified image path (no tag), e.g. europe-west3-docker.pkg.dev/PROJECT/docker/mattermost. Reference this in the Mattermost manifests with the pushed tag (single tag, e.g. :v9.11.3-patched, promoted dev -> prod)."
   value       = local.image_repo_path
 }
+
+output "pat_secret_grant_id" {
+  description = "ID of the Cloud Build service agent's secretAccessor grant on the GitHub PAT. A project singleton owned here — pass it to any other component (e.g. deploy-release) that opens its own 2nd-gen connection, so that component orders AFTER this grant instead of re-creating it (which would conflict)."
+  value       = google_secret_manager_secret_iam_member.agent_reads_pat.id
+}

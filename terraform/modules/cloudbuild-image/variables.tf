@@ -51,7 +51,7 @@ variable "repository_name" {
   default     = "mattermost"
 }
 
-# --- Target registry (ONE unified repository, owned by this build stack) -----
+# --- Target registry (ONE unified repository, owned by the artifact_registry component) -----
 variable "artifact_registry_location" {
   type        = string
   description = "Location of the unified Artifact Registry repository all images are pushed to (e.g. europe-west3)."

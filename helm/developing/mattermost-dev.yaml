@@ -55,7 +55,7 @@ spec:
         fsGroup: 2000
       containers:
         - name: mattermost
-          # Custom (patched) image built by the build stack (terraform/build) on
+          # Custom (patched) image built by the image-CI components (terraform/) on
           # git tags matching ^v.*-patched$ and pushed to the unified registry
           # (docker). Build once, promote the SAME image dev -> prod: dev
           # and prod reference the identical tag (no separate -patched-dev build).

@@ -1,6 +1,6 @@
 # Skaffold config consumed by Cloud Deploy to render and apply the platform's
 # Kubernetes workloads. Delivered as a dev -> prod pipeline by the `clouddeploy`
-# component (terraform/platform/modules/clouddeploy); each pipeline stage binds
+# component (terraform/modules/clouddeploy); each pipeline stage binds
 # one profile below via its `profiles` field:
 #
 #   dev  -> the dev tenant (in-cluster Postgres + dev Mattermost) plus
@@ -13,8 +13,8 @@
 # prod Mattermost is an Operator CR that splits the ref into `spec.image` +
 # `spec.version`, which defeats Skaffold's image substitution. Cloud Deploy
 # therefore provides the promotion workflow (verify -> approval -> rollback),
-# not tag templating. The Mattermost image is built once by the build stack
-# (terraform/build) on tags matching ^v.*-patched$; matterbridge uses the
+# not tag templating. The Mattermost image is built once by the stack's image-CI
+# components (terraform/) on tags matching ^v.*-patched$; matterbridge uses the
 # upstream 42wim/matterbridge image.
 #
 # Each profile REPLACES the (empty) base manifest list -- a non-empty profile

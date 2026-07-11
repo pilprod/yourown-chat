@@ -1,27 +1,35 @@
-# Illustrative Cloud Build config that cuts a Cloud Deploy release delivering the
-# helm/ Kubernetes workloads through the dev -> prod pipeline (pipeline): the
-# release enters at the first stage (dev), runs the post-deploy verify smoke
-# test, then is promoted to prod after the manual-approval gate.
+# The Cloud Build config that cuts a Cloud Deploy release delivering the helm/
+# Kubernetes workloads through the dev -> prod pipeline: the release enters at the
+# first stage (dev), runs the post-deploy verify smoke test, then is promoted to
+# prod after the manual-approval gate.
 #
-# This is a REFERENCE config (not created by Terraform). Unlike a typical app
-# pipeline it does NOT build an image: the Mattermost image is built by the
-# SEPARATE build stack (terraform/build) on git tags matching ^v.*-patched$, and
-# matterbridge runs the upstream 42wim/matterbridge image. The image tag is the
-# source of truth INSIDE the manifests (helm/mattermost/mattermost.yaml
-# spec.image + spec.version, and helm/developing/mattermost-dev.yaml), so there is
-# nothing to substitute here -- the release just promotes the manifests.
+# This is now IMPLEMENTED by the stack's `deploy_release` component
+# (terraform/modules/deploy-release): a Cloud Build 2nd-gen trigger on THIS repo
+# fires on semver tags (MAJOR.MINOR.PATCH) and runs exactly the `gcloud deploy
+# releases create` step below as the least-privilege `europe-west3-releaser` SA
+# (roles/clouddeploy.releaser on the pipeline + actAs on the execution SA
+# europe-west3-clouddeploy@ + object admin on its own source-staging bucket). This
+# file is kept as documentation of that command and as a manual fallback you can
+# run from any checkout.
 #
-# To wire it up, add a Cloud Build 2nd-gen trigger (e.g. on release tags or on
-# helm/ changes). The runner SA needs roles/clouddeploy.releaser on the pipeline
-# and roles/iam.serviceAccountUser (actAs) on the Cloud Deploy execution SA
-# (europe-west3-clouddeploy@) so `releases create` can hand off to the pipeline.
+# Unlike a typical app pipeline it does NOT build an image: the Mattermost image
+# is built by the stack's image-CI components (terraform/ -> artifact_registry +
+# mattermost_image) on git tags matching ^v.*-patched$, and matterbridge runs the
+# upstream 42wim/matterbridge image. The image tag is the source of truth INSIDE
+# the manifests (helm/mattermost/mattermost.yaml spec.image + spec.version, and
+# helm/developing/mattermost-dev.yaml), so there is nothing to substitute here --
+# the release just promotes the manifests.
+#
+# The component adds --gcs-source-staging-dir (its dedicated bucket) and an
+# --annotations git-tag=... for traceability; both are omitted here for a manual
+# run (gcloud then uses the project default staging bucket).
 
 substitutions:
   _REGION: europe-west3
   _PIPELINE: europe-west3-pipeline
-  # Example runner SA. In practice use a dedicated releaser SA, or grant the
-  # roles above to this one; it needs more than the image-build permissions.
-  _RELEASE_SA_EMAIL: img-build@${PROJECT_ID}.iam.gserviceaccount.com
+  # The stack's dedicated releaser SA. For a manual run, use any SA that has
+  # roles/clouddeploy.releaser on the pipeline + actAs on the execution SA.
+  _RELEASE_SA_EMAIL: europe-west3-releaser@${PROJECT_ID}.iam.gserviceaccount.com
 
 serviceAccount: projects/${PROJECT_ID}/serviceAccounts/${_RELEASE_SA_EMAIL}
 
