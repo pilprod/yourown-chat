@@ -348,6 +348,9 @@ component "secrets" {
           accessors = [component.workload_identity_mattermost.iam_member]
         }
         "cloudflare-origin-pull-ca" = {
+          # Explicit null (empty container) so all three entries share one object
+          # type -> the conditional's branches unify as map(object) against {}.
+          value     = null
           accessors = [component.workload_identity_mattermost.iam_member]
         }
       } : {}
