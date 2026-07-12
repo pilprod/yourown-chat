@@ -116,7 +116,7 @@ resource "google_service_account_iam_member" "apply_acts_as_releaser" {
 resource "google_cloudbuild_trigger" "release" {
   project         = var.project_id
   location        = var.region
-  name            = "cut-release"
+  name            = "release"
   description     = "Cut a Cloud Deploy release from ${var.source_subdir}/ on git tags matching ${var.release_tag_regex}."
   service_account = google_service_account.releaser.id
 
@@ -129,7 +129,7 @@ resource "google_cloudbuild_trigger" "release" {
 
   build {
     step {
-      id         = "cut-release"
+      id         = "release"
       name       = "gcr.io/google.com/cloudsdktool/cloud-sdk:slim"
       entrypoint = "gcloud"
       dir        = var.source_subdir

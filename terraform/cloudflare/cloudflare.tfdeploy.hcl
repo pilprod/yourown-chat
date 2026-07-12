@@ -1,8 +1,9 @@
 # ---------------------------------------------------------------------------
-# CLOUDFLARE deployments. ONE deployment (`eu`) provisions the public edge for
-# yourown.chat: DNS (proxied apex A + www), edge TLS/security settings, DNSSEC,
-# WAF rules, the Origin CA cert AND the origin-protection Secret Manager
-# containers it fills.
+# CLOUDFLARE deployments. ONE deployment (`yourown-chat`) provisions the public
+# edge for the zone. Named after the ZONE, not a region: a Cloudflare zone is a
+# GLOBAL object (the edge network has no "eu"), so the deployment unit here is
+# one domain -- a second deployment of this stack would be a second zone, not a
+# second region (unlike the GCP stacks, whose `eu` deployments are regional).
 #
 # LINKED to platform-gcp via upstream_input "platform" (last-APPLIED outputs):
 # the reserved static ingress IP for the apex A record, plus the CMEK key and
@@ -55,8 +56,8 @@ upstream_input "platform" {
   source = "app.terraform.io/papou-work/yourown-chat/platform-gcp"
 }
 
-# --- eu: the public edge in one deployment -------------------------------------
-deployment "eu" {
+# --- yourown-chat: the zone's public edge in one deployment --------------------
+deployment "yourown-chat" {
   inputs = {
     # --- Keyless GCP auth: OIDC JWT exchanged via WIF to impersonate apply SA --
     identity_token        = identity_token.gcp.jwt
