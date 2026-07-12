@@ -1,5 +1,7 @@
 locals {
-  exec_sa_id    = "${var.region}-clouddeploy"
+  # Platform-utility names read ROLE-then-SCOPE (clouddeploy-europe-west3),
+  # mirroring the workload class (mattermost-europe-west3).
+  exec_sa_id = "clouddeploy-${var.region}"
   # No "-pipeline" type suffix: it is THE delivery pipeline, named after the
   # region alone (mirroring the GKE cluster / Cloud SQL instance).
   pipeline_name = var.region
@@ -51,7 +53,7 @@ resource "google_clouddeploy_target" "stage" {
 
   project  = var.project_id
   location = var.region
-  name     = "${var.region}-${each.value.name}"
+  name     = "${each.value.name}-${var.region}"
 
   require_approval = each.value.require_approval
 

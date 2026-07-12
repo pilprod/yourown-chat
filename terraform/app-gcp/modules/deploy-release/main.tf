@@ -4,12 +4,12 @@ locals {
   # repository is linked to it by its deterministic resource ID.
   connection_id = "projects/${var.project_id}/locations/${var.region}/connections/${var.connection_name}"
 
-  # Regional names, mirroring the rest of the stack (europe-west3-*). The project
-  # is already yourown-chat, so a project prefix would just repeat it. The GCS
-  # bucket keeps only a role suffix (-deploy-source); note its name must be free in
-  # the GLOBAL GCS namespace since it no longer carries the project id.
-  releaser_sa_id     = "${var.region}-releaser"
-  source_bucket_name = "${var.region}-deploy-source"
+  # Platform-utility names read ROLE-then-SCOPE (releaser-europe-west3),
+  # mirroring the workload class (mattermost-europe-west3): the role/function
+  # leads, the footprint disambiguates. The project is already yourown-chat,
+  # so no project prefix. The GCS bucket must be free in the GLOBAL namespace.
+  releaser_sa_id     = "releaser-${var.region}"
+  source_bucket_name = "deploy-source-${var.region}"
 }
 
 # --- 2nd-gen repository on the shared, out-of-band GitHub connection ---------
@@ -32,7 +32,9 @@ resource "google_storage_bucket" "source" {
   name                        = local.source_bucket_name
   location                    = var.region
   uniform_bucket_level_access = true
-  force_destroy               = false
+  # Disposable release-staging content (30-day expiry tarballs): allow rename/
+  # destroy without manual emptying.
+  force_destroy = true
   labels                      = var.labels
 
   dynamic "encryption" {

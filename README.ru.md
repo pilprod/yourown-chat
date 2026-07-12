@@ -129,7 +129,8 @@ docs/BUILD.md            # процесс сборки образа подроб
 | Региональные синглтоны | регион | subnet/router/NAT = `europe-west3` |
 | Зональные | зона | GKE-кластер `europe-west3-b` |
 | Принадлежащие workload'у | функциональный префикс | SQL `mattermost-europe-west3-b`, бакет `mattermost-europe-west3`, HMAC SA `mattermost-storage` |
-| Ролевые SA | роль | `mattermost`, `matterbridge`, `europe-west3-releaser` |
+| Платформенная утварь | роль, затем охват | `releaser-europe-west3`, `clouddeploy-europe-west3`, `deploy-source-europe-west3`, `ingress-europe-west3` |
+| Ролевые SA | роль | `mattermost`, `matterbridge` |
 
 Деплои стеков: у GCP-стеков деплой `eu` (регион и есть единица деплоя), у
 cloudflare — `yourown-chat` (зона глобальна, единица деплоя — домен).
@@ -174,6 +175,16 @@ git tag 1.2.3  (на pilprod/yourown-chat)
   → Cloud Build триггер "release" запускает gcloud deploy releases create
   → dev-таргет деплоится + smoke-тест verify
   → промоушен в prod ждёт апрува
+```
+
+**Ротировать пароль БД** — бампни одно закоммиченное значение, без
+внезапных time-based ротаций:
+
+```
+правка terraform/platform-gcp/platform.tfdeploy.hcl:
+  cloudsql_password_rotation = "2026-07-13"   # любое новое значение
+merge + apply  → новый пароль, SQL-юзер и оба секрета обновлены разом
+kubectl rollout restart -n mattermost deploy  → поды подхватят секрет
 ```
 
 Подробности: [`docs/BUILD.md`](docs/BUILD.md).

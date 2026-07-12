@@ -291,6 +291,9 @@ component "cloudsql" {
     create_connection_secret    = true
     connection_secret_accessors = [component.workload_identity_mattermost.iam_member]
 
+    # Deliberate password rotation: bump cloudsql_password_rotation to rotate.
+    password_rotation = var.cloudsql_password_rotation
+
     user_labels = local.common_labels
   }
 

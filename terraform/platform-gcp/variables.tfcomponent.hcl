@@ -254,3 +254,9 @@ variable "kms_adopt_existing" {
   description = "Import the same-named KMS key ring + crypto key already present in the project instead of creating them. Cloud KMS objects can never be deleted from GCP, so re-bootstrapping an existing project (e.g. after a manual teardown) always needs this on -- a fresh create 409s. Safe to leave on: the import is a no-op once both are in state."
   default     = false
 }
+
+variable "cloudsql_password_rotation" {
+  type        = string
+  description = "Rotation trigger for the Cloud SQL user password. Bump the committed value in platform.tfdeploy.hcl (e.g. to a date) and apply: the password, SQL user and both Secret Manager secrets update in one apply -- then restart the Mattermost pods (the CSI mount refreshes on pod start). A committed literal on purpose: varset values are ephemeral in Stacks and cannot feed persisted state, and time-based keepers would rotate as a side effect of unrelated applies."
+  default     = "1"
+}

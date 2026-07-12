@@ -4,9 +4,14 @@ locals {
   # ONLY object of its GCP type in the region, so no "-subnet/-router/-nat"
   # type suffix is needed and the region tag still keeps a second deployment
   # from colliding (names are unique per resource type, so a subnet, router
-  # and NAT may all read europe-west3). The two secondary ranges share one
-  # subnet, so they keep a functional discriminator (-pods/-services); the
-  # ingress address keeps its role (-ingress).
+  # and NAT may all read europe-west3).
+  #
+  # NON-singleton platform utilities read ROLE-then-SCOPE (ingress-europe-west3),
+  # mirroring the workload class (mattermost-europe-west3): the role leads, the
+  # footprint disambiguates. EXCEPTION: the two secondary ranges stay
+  # ${region}-pods/-services -- they are not standalone resources but fields of
+  # the subnet, and renaming them REPLACES the subnet (and the live cluster on
+  # it), which is never worth a cosmetic flip.
   #
   # GLOBAL objects carry no region -- a region tag would lie about their
   # footprint. Their names reduce to the bare role: the VPC is the project's
@@ -23,7 +28,7 @@ locals {
   nat_name               = var.region
   psa_range_name         = "psa"
   internal_firewall_name = "allow-internal"
-  ingress_ip_name        = "${var.region}-ingress"
+  ingress_ip_name        = "ingress-${var.region}"
 }
 
 # Custom-mode VPC: no auto subnets so ranges are explicit and predictable.

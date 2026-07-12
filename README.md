@@ -128,7 +128,8 @@ project (it's already `yourown-chat`) and never by resource type:
 | Regional singletons | region | subnet/router/NAT = `europe-west3` |
 | Zonal resources | zone | GKE cluster `europe-west3-b` |
 | Workload-owned | function prefix | `mattermost-europe-west3-b` (SQL), `mattermost-europe-west3` (bucket), `mattermost-storage` (HMAC SA) |
-| Role SAs | role | `mattermost`, `matterbridge`, `europe-west3-releaser` |
+| Platform utilities | role, then scope | `releaser-europe-west3`, `clouddeploy-europe-west3`, `deploy-source-europe-west3`, `ingress-europe-west3` |
+| Role SAs | role | `mattermost`, `matterbridge` |
 
 ---
 
@@ -173,6 +174,16 @@ git tag 1.2.3  (on pilprod/yourown-chat)
   → Cloud Build trigger "release" runs gcloud deploy releases create
   → dev target deploys + smoke-test verify
   → prod promotion waits for approval
+```
+
+**Rotate the DB password** — bump one committed value, no time-based
+surprises:
+
+```
+edit terraform/platform-gcp/platform.tfdeploy.hcl:
+  cloudsql_password_rotation = "2026-07-13"   # any new value
+merge + apply  → new password, SQL user + both secrets updated together
+kubectl rollout restart -n mattermost deploy  → pods pick up the new secret
 ```
 
 Details: [`docs/BUILD.md`](docs/BUILD.md).
