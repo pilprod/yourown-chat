@@ -77,7 +77,7 @@ deployment "eu" {
     # installed the Helm releases but did not record them in Terraform state, then
     # switch it back to false. Keep false for a genuinely fresh cluster, because
     # importing a missing Helm release fails.
-    adopt_existing_cluster_bootstrap_releases = true # for import
+    adopt_existing_cluster_bootstrap_releases = false
 
     # --- Image-build CI ------------------------------------------------------
     # The Cloud Build 2nd-gen GitHub connection is authorized once out-of-band in
