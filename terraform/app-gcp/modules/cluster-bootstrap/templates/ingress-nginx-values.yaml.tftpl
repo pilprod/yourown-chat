@@ -1,0 +1,76 @@
+# Helm values for the ingress-nginx controller, RENDERED BY TERRAFORM
+# (app-gcp stack, cluster-bootstrap module). ${load_balancer_ip} is injected
+# from the platform stack's published ingress_ip_address -- no manual
+# loadBalancerIP step.
+#
+# Keep this file in sync with the manual-fallback copy
+# helm/ingress-nginx/values.yaml (same defense-in-depth rationale there):
+#   1. L4  : loadBalancerSourceRanges = Cloudflare ranges (GCP firewall).
+#   2. mTLS: Authenticated Origin Pulls, enforced per-Ingress by nginx.
+#   3. TLS : Cloudflare Full (Strict) with a Cloudflare Origin CA cert.
+#
+# Refresh the Cloudflare ranges from https://www.cloudflare.com/ips-v4 and
+# https://www.cloudflare.com/ips-v6; stale ranges cause dropped traffic or a
+# widened allowlist.
+controller:
+  replicaCount: 1
+
+  # Keep the public edge on the isolated prod pool: the tier=prod nodes carry
+  # the dedicated=prod:NoSchedule taint, so the selector needs the matching
+  # toleration or the controller would never schedule.
+  nodeSelector:
+    tier: prod
+  tolerations:
+    - key: dedicated
+      operator: Equal
+      value: prod
+      effect: NoSchedule
+
+  service:
+    type: LoadBalancer
+    # Reserved static IP (the Cloudflare-facing "white address"), injected
+    # from the platform stack's published ingress_ip_address.
+    loadBalancerIP: "${load_balancer_ip}"
+    # Preserve the real L4 source IP (the Cloudflare edge) and avoid extra SNAT.
+    externalTrafficPolicy: Local
+    # Only Cloudflare may reach the origin. GKE programs a GCP firewall from this.
+    loadBalancerSourceRanges:
+      # Cloudflare IPv4 (https://www.cloudflare.com/ips-v4)
+      - 173.245.48.0/20
+      - 103.21.244.0/22
+      - 103.22.200.0/22
+      - 103.31.4.0/22
+      - 141.101.64.0/18
+      - 108.162.192.0/18
+      - 190.93.240.0/20
+      - 188.114.96.0/20
+      - 197.234.240.0/22
+      - 198.41.128.0/17
+      - 162.158.0.0/15
+      - 104.16.0.0/13
+      - 104.24.0.0/14
+      - 172.64.0.0/13
+      - 131.0.72.0/22
+      # Cloudflare IPv6 (https://www.cloudflare.com/ips-v6)
+      - 2400:cb00::/32
+      - 2606:4700::/32
+      - 2803:f800::/32
+      - 2405:b500::/32
+      - 2405:8100::/32
+      - 2a06:98c0::/29
+      - 2c0f:f248::/32
+
+  config:
+    # Trust X-Forwarded-For, but ONLY when the immediate peer is Cloudflare, so a
+    # client cannot spoof its source IP. proxy-real-ip-cidr = set_real_ip_from.
+    use-forwarded-headers: "true"
+    compute-full-forwarded-for: "true"
+    proxy-real-ip-cidr: "173.245.48.0/20,103.21.244.0/22,103.22.200.0/22,103.31.4.0/22,141.101.64.0/18,108.162.192.0/18,190.93.240.0/20,188.114.96.0/20,197.234.240.0/22,198.41.128.0/17,162.158.0.0/15,104.16.0.0/13,104.24.0.0/14,172.64.0.0/13,131.0.72.0/22,2400:cb00::/32,2606:4700::/32,2803:f800::/32,2405:b500::/32,2405:8100::/32,2a06:98c0::/29,2c0f:f248::/32"
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi

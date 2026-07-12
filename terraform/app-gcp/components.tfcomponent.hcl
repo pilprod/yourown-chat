@@ -15,6 +15,8 @@
 #   mattermost_image  -> pushes to <artifact_registry_*>
 #   secrets (dev-postgres-password + matterbridge-tokens,
 #            accessors = <workload_identity_members>)
+#   gke_auth (lookup on <gke_cluster_id>) ─ helm provider ─ cluster_bootstrap
+#            (mattermost-operator + ingress-nginx on <ingress_ip_address>)
 # ---------------------------------------------------------------------------
 
 locals {
@@ -170,5 +172,47 @@ component "deploy_release" {
 
   providers = {
     google = provider.google.this
+  }
+}
+
+# --- Cluster bootstrap (auth lookup) -----------------------------------------
+# Data-only: resolves the platform cluster's endpoint/CA from the published
+# cluster ID and mints a short-lived apply-SA token. Its outputs configure the
+# stack-level helm provider (providers.tfcomponent.hcl) -- a separate component
+# from cluster_bootstrap because a component cannot both feed a provider's
+# configuration and consume that provider.
+component "gke_auth" {
+  source = "./modules/gke-auth"
+
+  inputs = {
+    gke_cluster_id = var.gke_cluster_id
+  }
+
+  providers = {
+    google = provider.google.this
+  }
+}
+
+# --- Cluster bootstrap (releases) --------------------------------------------
+# The cluster-scoped prerequisites for the helm/ workloads (docs/DEPLOY.md
+# "One-time setup" step 2), installed automatically right after the platform
+# cluster exists instead of a manual `helm upgrade --install`:
+#   - Mattermost Operator + CRDs (prod Mattermost is an operator CR)
+#   - ingress-nginx, pinned to the platform-published ingress IP and admitting
+#     only Cloudflare source ranges (skipped when the IP is null)
+component "cluster_bootstrap" {
+  source = "./modules/cluster-bootstrap"
+
+  inputs = {
+    mattermost_operator_chart_version = var.mattermost_operator_chart_version
+    ingress_nginx_chart_version       = var.ingress_nginx_chart_version
+
+    # Platform-published "white address"; replaces the manual loadBalancerIP
+    # step in helm/ingress-nginx/values.yaml (kept as the manual fallback).
+    ingress_load_balancer_ip = var.ingress_ip_address
+  }
+
+  providers = {
+    helm = provider.helm.this
   }
 }

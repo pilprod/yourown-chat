@@ -153,7 +153,14 @@ kubectl apply -f helm/mattermost/     # operator CRDs must already be installed
 1. **Terraform applied**: all three stacks (the `gke` component enables the
    Secret Manager CSI add-on; `workload-identity` creates the per-tenant SAs;
    `clouddeploy` + `deploy-release` create the pipeline and both triggers).
-2. **Install the Mattermost Operator and ingress-nginx:**
+2. **Mattermost Operator and ingress-nginx — installed by Terraform.** The
+   app-gcp stack's `cluster_bootstrap` component installs both as
+   Terraform-managed Helm releases as soon as the platform cluster exists: the
+   helm provider authenticates to the GKE endpoint with a short-lived token
+   for the same impersonated apply SA (`roles/container.admin` ⇒
+   cluster-admin — no kubeconfig, no extra IAM), and `loadBalancerIP` is
+   injected from the platform-published `ingress_ip_address`. Chart versions
+   are pinned in `terraform/app-gcp/app.tfdeploy.hcl`. Manual fallback:
 
    ```bash
    helm repo add mattermost https://helm.mattermost.com && helm repo update
@@ -166,12 +173,14 @@ kubectl apply -f helm/mattermost/     # operator CRDs must already be installed
      -n ingress-nginx --create-namespace -f helm/ingress-nginx/values.yaml
    ```
 
-3. **The two deliberate manual values** (everything else is injected by deploy
+3. **The one deliberate manual value** (everything else is injected by deploy
    parameters at render time):
-   - `loadBalancerIP` in `helm/ingress-nginx/values.yaml` =
-     `terraform output ingress_ip_address` (one-time ingress runbook step);
    - the dev-team RBAC principal in `helm/developing/rbac.yaml`
      (organizational, not a Terraform value).
+
+   (`loadBalancerIP` in `helm/ingress-nginx/values.yaml` only matters on the
+   manual-fallback path above — the Terraform-managed release gets it from the
+   platform stack automatically.)
 4. **Fill the out-of-band secrets** (Terraform created empty containers):
 
    ```bash

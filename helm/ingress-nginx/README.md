@@ -86,6 +86,11 @@ the `cloudflare-origin-pull-ca` Secret (key `ca.crt`), materialised from that
 Secret Manager secret by the CSI SecretProviderClass.
 
 ### 5. Install the controller
+
+**Automated:** the app-gcp stack's `cluster_bootstrap` component installs this
+release at cluster bootstrap and injects `loadBalancerIP` from the
+platform-published ingress IP (no manual value). Manual fallback:
+
 ```bash
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx && helm repo update
 helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \

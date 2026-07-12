@@ -129,3 +129,20 @@ variable "workload_identity_emails" {
   type        = map(string)
   description = "Tenant (mattermost/matterbridge/dev) => GSA email. Published by the platform-gcp stack; rendered into the KSA iam.gke.io/gcp-service-account annotations via Cloud Deploy deploy parameters."
 }
+
+# --- Cluster bootstrap (operator + ingress-nginx Helm releases) --------------
+variable "ingress_ip_address" {
+  type        = string
+  description = "Reserved static ingress IP (the Cloudflare-facing 'white address'). Published by the platform-gcp stack; injected into the ingress-nginx values as loadBalancerIP. null skips the ingress-nginx release."
+  default     = null
+}
+
+variable "mattermost_operator_chart_version" {
+  type        = string
+  description = "mattermost/mattermost-operator chart version (https://helm.mattermost.com). Pinned for reproducible bootstrap; bump deliberately."
+}
+
+variable "ingress_nginx_chart_version" {
+  type        = string
+  description = "ingress-nginx/ingress-nginx chart version (https://kubernetes.github.io/ingress-nginx). Pinned for reproducible bootstrap; bump deliberately."
+}

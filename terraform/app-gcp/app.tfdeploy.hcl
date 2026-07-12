@@ -63,6 +63,16 @@ deployment "eu" {
     artifact_registry_repository_id = upstream_input.platform.artifact_registry_repository_id
     cmek_key_id                     = upstream_input.platform.cmek_key_id
     workload_identity_members       = upstream_input.platform.workload_identity_members
+    ingress_ip_address              = upstream_input.platform.ingress_ip_address
+
+    # --- Cluster bootstrap (Terraform-managed Helm releases) ------------------
+    # mattermost-operator + ingress-nginx install automatically once the
+    # platform cluster exists (docs/DEPLOY.md step 2 is the manual fallback).
+    # Chart pins -- bump deliberately, never track "latest" implicitly:
+    #   helm search repo mattermost/mattermost-operator --versions | head
+    #   helm search repo ingress-nginx/ingress-nginx --versions | head
+    mattermost_operator_chart_version = "1.22.0"
+    ingress_nginx_chart_version       = "4.12.1"
 
     # --- Image-build CI ------------------------------------------------------
     # The Cloud Build 2nd-gen GitHub connection is authorized once out-of-band in
