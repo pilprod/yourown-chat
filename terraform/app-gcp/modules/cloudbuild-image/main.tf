@@ -6,12 +6,8 @@ locals {
 
   # Single unified image path (no tag) shared by every build, e.g.
   # europe-west3-docker.pkg.dev/yourown-chat/docker/mattermost
+  # Each trigger pushes :$TAG_NAME (the git tag), :latest and :buildcache.
   image_repo_path = "${var.artifact_registry_location}-docker.pkg.dev/${var.project_id}/${var.artifact_registry_repository_id}/${var.image_name}"
-
-  # Tagged reference built/pushed by each trigger. $TAG_NAME is a Cloud Build
-  # built-in substitution set from the git tag that fired the trigger, so the
-  # prod and dev triggers push the SAME path with different tags.
-  image_ref = "${local.image_repo_path}:$TAG_NAME"
 }
 
 # --- 2nd-gen repository on the shared, out-of-band GitHub connection --------
@@ -74,13 +70,56 @@ resource "google_cloudbuild_trigger" "this" {
   }
 
   build {
-    images = [local.image_ref]
+    # NOTE: no `images` block -- buildx pushes from inside the step (--push),
+    # including the :buildcache ref; listing images here would make Cloud Build
+    # try a second, redundant push after the step.
 
     step {
       id   = "docker-build"
       name = "gcr.io/cloud-builders/docker"
-      args = ["build", "-t", local.image_ref, "-f", var.dockerfile, "."]
+      # BuildKit/buildx is REQUIRED: the Mattermost Dockerfile uses RUN
+      # --mount=type=cache, which the legacy builder rejects.
+      env = [
+        "DOCKER_BUILDKIT=1",
+        "IMAGE_REPO=${local.image_repo_path}",
+        "PIPELINE_TAG=$TAG_NAME",
+        "PIPELINE_COMMIT_SHA=$COMMIT_SHA",
+        "PIPELINE_BUILD_ID=$BUILD_ID",
+      ]
+      entrypoint = "bash"
+      # Ported from the original upstream build script, minus the CICD_REPORT/
+      # notify plumbing: buildx with a registry cache (:buildcache ref) and the
+      # Mattermost version build-args, pushing :<tag> and :latest. `$$` escapes
+      # keep the shell variables out of Cloud Build's substitution pass.
+      args = [
+        "-ceu",
+        <<-EOT
+          pipeline_tag="$${PIPELINE_TAG:-manual}"
+          pipeline_commit_sha="$${PIPELINE_COMMIT_SHA:-unknown}"
+          pipeline_build_id="$${PIPELINE_BUILD_ID:-unknown}"
+          pipeline_build_date="$$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+          docker buildx create --name cloudbuild --use || docker buildx use cloudbuild
+          docker buildx build \
+            --file=${var.dockerfile} \
+            --cache-from=type=registry,ref="$${IMAGE_REPO}:buildcache" \
+            --cache-to=type=registry,ref="$${IMAGE_REPO}:buildcache",mode=max \
+            --no-cache-filter=server-builder,runtime \
+            --build-arg BUILD_NUMBER="$${pipeline_tag}" \
+            --build-arg BUILD_HASH="$${pipeline_commit_sha}" \
+            --build-arg EE_BUILD_HASH="$${pipeline_build_id}" \
+            --build-arg BUILD_DATE="$${pipeline_build_date}" \
+            --tag "$${IMAGE_REPO}:$${pipeline_tag}" \
+            --tag "$${IMAGE_REPO}:latest" \
+            --push \
+            .
+        EOT
+      ]
     }
+
+    # Multi-stage Mattermost builds (webapp + server) are heavy; the default
+    # build timeout is nowhere near enough.
+    timeout = "3600s"
 
     options {
       # Mandatory when the build runs as a user-specified service account.
