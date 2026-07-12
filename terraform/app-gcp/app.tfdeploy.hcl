@@ -71,8 +71,8 @@ deployment "eu" {
     # Chart pins -- bump deliberately, never track "latest" implicitly:
     #   helm search repo mattermost/mattermost-operator --versions | head
     #   helm search repo ingress-nginx/ingress-nginx --versions | head
-    mattermost_operator_chart_version = "1.22.0"
-    ingress_nginx_chart_version       = "4.12.1"
+    mattermost_operator_chart_version = "1.0.5"
+    ingress_nginx_chart_version       = "4.15.1"
 
     # --- Image-build CI ------------------------------------------------------
     # The Cloud Build 2nd-gen GitHub connection is authorized once out-of-band in
