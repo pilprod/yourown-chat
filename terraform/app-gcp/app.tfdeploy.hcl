@@ -73,6 +73,11 @@ deployment "eu" {
     #   helm search repo ingress-nginx/ingress-nginx --versions | head
     mattermost_operator_chart_version = "1.0.5"
     ingress_nginx_chart_version       = "4.15.1"
+    # Emergency recovery only: set true for one apply if an interrupted bootstrap
+    # installed the Helm releases but did not record them in Terraform state, then
+    # switch it back to false. Keep false for a genuinely fresh cluster, because
+    # importing a missing Helm release fails.
+    adopt_existing_cluster_bootstrap_releases = false
 
     # --- Image-build CI ------------------------------------------------------
     # The Cloud Build 2nd-gen GitHub connection is authorized once out-of-band in
