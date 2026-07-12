@@ -129,6 +129,10 @@ deployment "eu" {
     # assurance for cost.
     cmek_enabled         = true
     kms_protection_level = "HSM"
+    # The ring (europe-west3) + key (cmek) already exist from the previous
+    # bootstrap and can never be deleted from GCP -- adopt them into state
+    # instead of 409-ing on create. No-op on every apply after the first.
+    kms_adopt_existing = true
 
     storage_force_destroy = false
 

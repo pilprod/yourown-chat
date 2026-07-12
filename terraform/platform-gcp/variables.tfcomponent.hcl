@@ -242,3 +242,9 @@ variable "extra_labels" {
   description = "Additional labels merged onto every labellable resource."
   default     = {}
 }
+
+variable "kms_adopt_existing" {
+  type        = bool
+  description = "Import the same-named KMS key ring + crypto key already present in the project instead of creating them. Cloud KMS objects can never be deleted from GCP, so re-bootstrapping an existing project (e.g. after a manual teardown) always needs this on -- a fresh create 409s. Safe to leave on: the import is a no-op once both are in state."
+  default     = false
+}
