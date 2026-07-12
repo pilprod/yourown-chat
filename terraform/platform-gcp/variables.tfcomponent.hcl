@@ -76,6 +76,12 @@ variable "artifact_registry_kms_key_name" {
   default     = null
 }
 
+variable "artifact_registry_vulnerability_scanning" {
+  type        = bool
+  description = "Automatically scan images pushed to the unified registry (i.e. the Mattermost image the CI builds) for vulnerabilities via Artifact Analysis. Enables the containerscanning API and sets the repository's vulnerability_scanning_config to INHERITED. Paid: ~$0.26 per scanned image digest; default off."
+  default     = false
+}
+
 # --- GKE cost / topology knobs ---------------------------------------------
 variable "gke_regional" {
   type        = bool

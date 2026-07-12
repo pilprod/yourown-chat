@@ -16,6 +16,16 @@ resource "google_artifact_registry_repository" "this" {
     immutable_tags = var.immutable_tags
   }
 
+  # Automatic vulnerability scanning (Artifact Analysis) for images pushed to
+  # THIS repository. Scanning is a two-part switch in GCP: the project-level
+  # containerscanning API (enabled by project_services when the stack input is
+  # on) plus this per-repository gate -- INHERITED follows the project setting,
+  # DISABLED opts the repo out. Cost: ~$0.26 per scanned image digest, so it is
+  # a paid opt-in (default off).
+  vulnerability_scanning_config {
+    enablement_config = var.vulnerability_scanning ? "INHERITED" : "DISABLED"
+  }
+
   # Reclaim storage from throwaway/untagged image layers.
   dynamic "cleanup_policies" {
     for_each = var.keep_untagged_days > 0 ? [1] : []

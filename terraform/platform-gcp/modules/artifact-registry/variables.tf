@@ -54,3 +54,9 @@ variable "labels" {
   description = "Labels applied to the repository."
   default     = {}
 }
+
+variable "vulnerability_scanning" {
+  type        = bool
+  description = "Automatically scan images pushed to this repository for vulnerabilities (Artifact Analysis). Requires the containerscanning API on the project. Paid: ~$0.26 per scanned image digest."
+  default     = false
+}
