@@ -13,7 +13,7 @@ Internet ──▶ Cloudflare (TLS + WAF) ──▶ GCP static IP ──▶ ingr
 
 | Layer | Where | Effect |
 |-------|-------|--------|
-| L4 IP allowlist | `values.yaml` `loadBalancerSourceRanges` → GCP firewall | Drops any packet whose source is not a Cloudflare IP. |
+| L4 IP allowlist | `values.yaml` `loadBalancerSourceRanges` → GCP firewall | Drops any packet whose source is not a Cloudflare IPv4 proxy IP. |
 | mTLS (Authenticated Origin Pulls) | `mattermost.yaml` `auth-tls-*` annotations + `cloudflare-origin-pull-ca` Secret | Origin completes the handshake only when the caller presents **our zone's** client cert. Closes the shared-Cloudflare-IP gap. |
 | Full (Strict) TLS | `mattermost.yaml` `tlsSecret: mattermost-origin-tls` | Cloudflare validates the origin cert (Cloudflare Origin CA) over HTTPS. |
 
@@ -44,8 +44,10 @@ component's `ingress_ip_address`, so there is nothing to enter by hand:
 A     yourown.chat    <ingress_ip_address>   Proxied
 ```
 
-(Optional AAAA if you enable an IPv6 LB. IPv4 is sufficient — Cloudflare serves
-IPv6 clients from its edge regardless.)
+(Optional AAAA if you enable a separate IPv6 LB path. IPv4 is sufficient —
+Cloudflare serves IPv6 clients from its edge regardless; keep the GKE
+`loadBalancerSourceRanges` list IPv4-only because GCP rejects mixed-family
+firewall source ranges.)
 
 ### 3. TLS mode + origin cert (Full Strict)
 
@@ -106,9 +108,10 @@ diff it against `values.yaml`:
 { curl -fsSL https://www.cloudflare.com/ips-v4; echo; curl -fsSL https://www.cloudflare.com/ips-v6; }
 ```
 
-If they changed, update **both** `loadBalancerSourceRanges` and
-`proxy-real-ip-cidr` in `values.yaml`, then re-apply the Helm release. Consider a
-scheduled job (GitLab CI) that opens an MR when the upstream list drifts.
+If they changed, update IPv4 ranges in `loadBalancerSourceRanges`, and update
+both IPv4 and IPv6 ranges in `proxy-real-ip-cidr`, then re-apply the Helm
+release. Consider a scheduled job (GitLab CI) that opens an MR when the upstream
+list drifts.
 
 ## Verifying the lock-down
 

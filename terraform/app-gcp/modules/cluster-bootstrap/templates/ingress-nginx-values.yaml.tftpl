@@ -9,9 +9,10 @@
 #   2. mTLS: Authenticated Origin Pulls, enforced per-Ingress by nginx.
 #   3. TLS : Cloudflare Full (Strict) with a Cloudflare Origin CA cert.
 #
-# Refresh the Cloudflare ranges from https://www.cloudflare.com/ips-v4 and
-# https://www.cloudflare.com/ips-v6; stale ranges cause dropped traffic or a
-# widened allowlist.
+# Refresh Cloudflare ranges from https://www.cloudflare.com/ips-v4 and
+# https://www.cloudflare.com/ips-v6. Keep loadBalancerSourceRanges IPv4-only:
+# GKE creates a single GCP firewall rule for the Service, and GCP rejects rules
+# that mix IPv4 and IPv6 CIDRs.
 controller:
   replicaCount: 1
 
@@ -34,6 +35,7 @@ controller:
     # Preserve the real L4 source IP (the Cloudflare edge) and avoid extra SNAT.
     externalTrafficPolicy: Local
     # Only Cloudflare may reach the origin. GKE programs a GCP firewall from this.
+    # The reserved origin address is IPv4; do not mix IPv6 ranges into this list.
     loadBalancerSourceRanges:
       # Cloudflare IPv4 (https://www.cloudflare.com/ips-v4)
       - 173.245.48.0/20
@@ -51,14 +53,6 @@ controller:
       - 104.24.0.0/14
       - 172.64.0.0/13
       - 131.0.72.0/22
-      # Cloudflare IPv6 (https://www.cloudflare.com/ips-v6)
-      - 2400:cb00::/32
-      - 2606:4700::/32
-      - 2803:f800::/32
-      - 2405:b500::/32
-      - 2405:8100::/32
-      - 2a06:98c0::/29
-      - 2c0f:f248::/32
 
   config:
     # Trust X-Forwarded-For, but ONLY when the immediate peer is Cloudflare, so a
