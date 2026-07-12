@@ -2,7 +2,7 @@
 
 Kubernetes manifests for the chat platform, kept **separate from infrastructure**
 (Terraform). They are delivered to the cluster by the **Cloud Deploy dev → prod
-pipeline** (`terraform/modules/clouddeploy`), which renders them through
+pipeline** (`terraform/app-gcp/modules/clouddeploy`), which renders them through
 [`skaffold.yaml`](skaffold.yaml): the `dev` profile ships the dev tenant +
 matterbridge and runs an on-cluster post-deploy smoke test, and the `prod` profile
 ships the operator-managed Mattermost behind a manual-approval gate. Applying with

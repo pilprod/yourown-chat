@@ -3,31 +3,36 @@
 Production-grade, cloud-agnostic-where-practical GCP platform, managed with
 **HCP Terraform + Terraform Stacks**.
 
-This repository implements the **first platform slice** as **one Terraform
-Stack** (working directory `terraform/`) in a single GCP project. GCP, the
-container CI and the Cloudflare edge are separate **components** of that one
-stack, provisioned by a single **deployment** (`eu`):
+This repository implements the **first platform slice** as **three LINKED
+Terraform Stacks** in a single GCP project:
 
-- **GCP platform** — a **single zonal GKE cluster with two node pools**, managed
-  Cloud SQL, object storage and the Cloudflare-fronted public ingress. **prod and
-  dev share this one cluster**: prod runs on a dedicated, tainted node pool;
-  **dev is an isolated tenant namespace** (RBAC + default-deny NetworkPolicies)
-  scheduled onto its own node pool.
-- **Container CI** — one **unified** Artifact Registry repository (`docker`) plus
-  the Mattermost image build (Cloud Build 2nd-gen), promoting a single image
-  across environments by git tag.
-- **Cloudflare edge** — the public edge for `yourown.chat`: the proxied apex A
-  record wired **live** to the platform ingress IP, plus zone TLS/security
-  settings, DNSSEC, WAF rules and origin TLS. It carries the only non-GCP secret
-  (a zone-scoped Cloudflare API token), which stays isolated from the keyless GCP
-  components.
+- **`terraform/platform-gcp`** — the long-lived, stateful foundation: enabled APIs,
+  network (+ reserved ingress IP), the shared CMEK key, a **single zonal GKE
+  cluster with two node pools**, managed Cloud SQL, object storage, the unified
+  container registry and the Workload Identity SAs. **prod and dev share the
+  one cluster**: prod runs on a dedicated, tainted node pool; **dev is an
+  isolated tenant namespace** (RBAC + default-deny NetworkPolicies) scheduled
+  onto its own node pool.
+- **`terraform/cloudflare`** — the public edge for `yourown.chat`: the proxied
+  apex A record (pointed at the platform ingress IP over the stack link), zone
+  TLS/security settings, DNSSEC, WAF and the Origin CA cert. It carries the
+  only non-GCP secret (a zone-scoped Cloudflare API token) and is completely
+  GCP-free, so the third-party edge shares no credentials or blast radius with
+  the GCP stacks.
+- **`terraform/app-gcp`** — the fast-moving GCP delivery layer: application
+  secrets (fed the Origin CA cert/key over the stack link), the Cloud Deploy
+  dev→prod pipeline, the Mattermost image CI (Cloud Build 2nd-gen) and the
+  semver-tag release cutting.
 
-> **One stack, not three.** These used to be three separate stacks
-> (`platform`, `build`, `cloudflare`) with manual hand-offs between them.
-> Consolidating them into one deployment removes every cross-stack step: the
-> ingress IP is wired live into the Cloudflare record, and the Cloudflare Origin
-> CA cert/key flow straight into the platform origin-TLS secrets. One HCP Stack,
-> zero hand-offs.
+> **Three linked stacks, zero hand-offs.** The chain is
+> `platform-gcp -> cloudflare -> app-gcp`: each downstream stack consumes the
+> upstream's `publish_output` values via `upstream_input` — HCP wires them
+> automatically from the upstream's **last applied** state and triggers a
+> downstream plan whenever an apply changes one. There is still no manual
+> copy-paste, but the blast radius is now split three ways: an edge or
+> delivery-layer mistake can never touch the state that holds the VPC, the
+> cluster and the database, and the Cloudflare token never shares a stack with
+> GCP resources.
 
 | Capability | Implementation |
 |------------|----------------|
@@ -48,9 +53,10 @@ stack, provisioned by a single **deployment** (`eu`):
 
 ## Google Cloud Initial Setup
 
-One-time, out-of-band bootstrap that the Terraform **stack** depends on. Run this
-**once** before applying; afterwards the single stack provisions the platform,
-the image CI **and** the Cloudflare edge in one apply.
+One-time, out-of-band bootstrap that the Terraform **stacks** depend on. Run this
+**once** before applying; afterwards the three linked stacks provision the
+platform, the edge and the delivery layer (platform-gcp apply, then cloudflare,
+then app-gcp).
 
 This guide:
 
@@ -83,10 +89,11 @@ HCP Terraform run
 The Terraform side is already wired, so this section only creates the cloud-side
 resources below:
 
-- `terraform/deployments.tfdeploy.hcl` -> `identity_token "gcp"` and the single
-  `eu` deployment already pass the real `audience` and
-  `service_account_email` (`terraform-apply@`) -- no placeholders to fill.
-- `terraform/providers.tfcomponent.hcl` -> `provider "google"` uses
+- `terraform/platform-gcp/platform.tfdeploy.hcl` and `terraform/app-gcp/app.tfdeploy.hcl`
+  -> the `identity_token "gcp"` blocks and the `eu` deployments already pass the
+  real `audience` and `service_account_email` (`terraform-apply@`) -- no
+  placeholders to fill.
+- `providers.tfcomponent.hcl` (both stacks) -> `provider "google"` uses
   `external_credentials`.
 
 ### Input Values
@@ -393,7 +400,7 @@ Do **not** link the repositories by hand — Terraform creates the
 The connection name is a single stack input with a sensible default:
 
 - `github_connection_name` → **`pilprod-github`** (default in
-  `terraform/deployments.tfdeploy.hcl`; change it only if you named the connection
+  `terraform/app-gcp/app.tfdeploy.hcl`; change it only if you named the connection
   differently).
 
 That is the only wiring needed — there is no PAT secret and no installation ID to
@@ -406,24 +413,44 @@ create the repository links + tag triggers under the existing connection.
 > ever delete and recreate the connection, keep the same name (`pilprod-github`)
 > so the stack's repository links still resolve.
 
-### 9. Create the Stack in HCP Terraform
+### 9. Create the three linked Stacks in HCP Terraform
 
-1. Connect the repo and create **one** Stack with its **working directory set to
-   `terraform/`**.
-2. HCP reads the `*.tfcomponent.hcl` files + `deployments.tfdeploy.hcl` and the
-   committed `.terraform.lock.hcl` (all five providers).
-3. Attach the Cloudflare variable set (step 10) to this Stack.
-4. Plan and apply the single `eu` deployment. The first plan proves
-   federation end to end: if the token is rejected, re-check the provider's
+All three stacks live in the SAME HCP project (linked stacks only work
+project-locally) and connect to this repo, differing only in working directory.
+Stack NAMES must match the `upstream_input` `source` strings exactly
+(`app.terraform.io/papou-work/yourown-chat/<stack name>`).
+
+1. In your HCP Terraform organization (`papou-work`), open the project
+   (`yourown-chat`) and create Stack **`platform-gcp`**: connect this repository
+   and set the **working directory to `terraform/platform-gcp`**. HCP reads the
+   `*.tfcomponent.hcl` files + `platform.tfdeploy.hcl` and the committed
+   `.terraform.lock.hcl`.
+2. Create Stack **`cloudflare`** the same way, working directory
+   **`terraform/cloudflare`** (consumes `upstream_input "platform"` →
+   `.../platform-gcp`).
+3. Create Stack **`app-gcp`**, working directory **`terraform/app-gcp`**
+   (consumes both `.../platform-gcp` and `.../cloudflare`).
+4. Attach the Cloudflare variable set (step 10) to the **cloudflare** Stack
+   (only it talks to Cloudflare).
+5. Plan and apply **platform-gcp** `eu` first. The first plan proves federation
+   end to end: if the token is rejected, re-check the provider's
    `--attribute-condition` (org + project) and that its `--allowed-audiences`
    matches the `identity_token` block's `audience` (the full
-   `https://iam.googleapis.com/.../providers/...` URL). The one apply provisions
-   the platform, the image CI **and** the Cloudflare edge together.
+   `https://iam.googleapis.com/.../providers/...` URL).
+6. Once the platform-gcp apply succeeds, its `publish_output` values become
+   available and HCP triggers the **cloudflare** stack's plan automatically (or
+   start one by hand). Apply it — the apex A record points at the reserved IP
+   and the Origin CA cert is issued.
+7. The cloudflare apply publishes the Origin CA cert/key, which (with the
+   platform values) unlocks the **app-gcp** plan. Apply it: secrets, pipeline,
+   CI and release cutting provision on top of both upstreams (last-applied, so
+   never stale-ahead).
 
-> Migrating from the old three-stack layout: delete (or repoint) the separate
-> `platform` / `build` / `cloudflare` HCP Stacks and use this single Stack with
-> working directory `terraform/`. State from a prior split layout is not carried
-> over automatically.
+> Migrating from the previous single-stack layout (working directory
+> `terraform/`): create the three Stacks above, then delete (or repoint) the
+> old one. State is not carried over automatically — with a torn-down
+> environment the stacks simply create everything fresh; with live
+> infrastructure you would need state moves before switching.
 
 ### 10. Create the Cloudflare API token (for the Cloudflare component)
 
@@ -482,18 +509,19 @@ Copy the token value once (it is not shown again).
 
 #### 10.2 Store it in an HCP variable set
 
-1. In HCP Terraform, create a **variable set** and apply it to the Stack.
+1. In HCP Terraform, create a **variable set** and apply it to the
+   **cloudflare** Stack (only it talks to Cloudflare).
 2. Add a **Terraform variable** (category *Terraform*, matching
    `category = "terraform"` in the `store "varset"` block) named
    `cloudflare_api_token` = the token. Tick **Sensitive**; leave **HCL
    unchecked** — the token is a plain string, not an HCL expression (HCL is only
    for list/map/object values).
-3. In `terraform/deployments.tfdeploy.hcl`, set the `store "varset"` block's `id`
-   to that variable set's ID. The token flows in as the ephemeral
+3. In `terraform/cloudflare/cloudflare.tfdeploy.hcl`, set the `store "varset"`
+   block's `id` to that variable set's ID. The token flows in as the ephemeral
    `cloudflare_api_token` input.
 
-> No manual IP hand-off: the proxied apex A record is wired **live** to the
-> reserved ingress IP inside the stack (`component.network.ingress_ip_address`),
+> No manual IP hand-off: the proxied apex A record is wired to the reserved
+> ingress IP through the stack link (`upstream_input.platform.ingress_ip_address`),
 > so there is nothing to copy between runs.
 
 #### 10.3 Rotating / re-scoping the token
@@ -590,14 +618,16 @@ for the dev team — no cluster-scoped rights, no path to prod.
 architecture calls for explicit multiple node pools and node-level cost control
 (machine type, disk, taints) that Autopilot abstracts away.
 
-**Why the registry is its own component (not a separate stack):** a single
-cross-environment registry has no natural home in a per-environment deployment,
-but keeping it as an `artifact_registry` component in the one stack — next to the
-`mattermost_image` CI that writes to it — is the simplest home. When the CI was a
-separate stack, a platform-side writer binding would have created a
-`platform <-> build` cycle; inside one stack the dependency is a plain component
-reference and the cycle disappears. GKE nodes still pull with zero extra IAM
-because the node SA holds project-level `artifactregistry.reader`.
+**Why the registry lives in the platform-gcp stack (not the app-gcp stack):** the
+repository is a stateful store of released images — losing it would orphan every
+promoted tag — so it sits with the other stateful singletons. The app-gcp stack's
+`mattermost_image` CI receives its coordinates over the stack link
+(`upstream_input.platform.artifact_registry_*`), an edge that points the same
+way as every other app→platform reference, so no dependency cycle appears (the
+old `platform <-> build` cycle came from a platform-side writer binding; the
+writer binding now lives with the CI in the app-gcp stack). GKE nodes still pull
+with zero extra IAM because the node SA holds project-level
+`artifactregistry.reader`.
 
 ## Dependency graph
 
@@ -642,28 +672,47 @@ GitHub connection are done once in [Google Cloud Initial Setup](#google-cloud-in
 ## Repository layout
 
 ```
-terraform/                  # ONE Terraform Stacks configuration (the whole product)
-  .terraform-version        # Terraform Core version pin (read by HCP Stacks + CI)
-  .terraform.lock.hcl       # provider lock (all 5 providers, committed at the root)
-  providers.tfcomponent.hcl # stack provider requirements: google, google-beta, random, cloudflare, tls
-  variables.tfcomponent.hcl # typed stack input variables (GCP + build + cloudflare)
-  components.tfcomponent.hcl # component wiring (one block per building block)
-  outputs.tfcomponent.hcl    # stack outputs (platform + image CI + release + cloudflare)
-  deployments.tfdeploy.hcl   # ONE `eu` deployment (identity_token + cloudflare varset)
-  modules/                  # small, single-purpose, reusable modules
-    project-services/       # enable ALL Google APIs the product needs (one place)
-    network/                # VPC, subnet(+secondary ranges), Router, NAT, PSA, reserved IP
-    gke/                    # zonal Standard cluster + node_pools map + WI + CSI
-    cloudsql/               # private PostgreSQL + DB + user + password/conn secrets
-    storage/                # GCS bucket (+ optional Mattermost S3 HMAC creds)
-    kms/                    # one shared Cloud KMS HSM key (CMEK) + service-agent grants
-    clouddeploy/            # dev→prod delivery pipeline + 2 GKE targets + exec SA
-    secrets/                # Secret Manager map (generate/provide + accessors)
-    workload-identity/      # per-tenant GSA bound to a KSA (WI)
-    artifact-registry/      # the unified Docker repo
-    cloudbuild-image/       # repo link on the shared 2nd-gen connection + tag-triggered builds
-    deploy-release/         # repo link on the shared connection + releaser SA + semver-tag trigger (cuts Cloud Deploy releases)
-    cloudflare/             # DNS records + edge TLS/security + DNSSEC + WAF + Origin CA cert / AOP
+terraform/                  # THREE linked Terraform Stacks configurations
+  platform-gcp/             # STACK 1: the long-lived, stateful foundation
+    .terraform-version      # Terraform Core version pin (read by HCP Stacks + CI)
+    .terraform.lock.hcl     # provider lock (google, google-beta, random)
+    providers.tfcomponent.hcl  # keyless GCP providers (WIF) — no third-party edge here
+    variables.tfcomponent.hcl  # typed stack inputs (GCP platform knobs)
+    components.tfcomponent.hcl # project_services, network, kms, storage, gke, cloudsql, artifact_registry, workload_identity_*
+    outputs.tfcomponent.hcl    # human outputs + everything the downstream stacks link to
+    platform.tfdeploy.hcl      # ONE `eu` deployment + publish_output contract (IP, cluster, CMEK, registry, WI members)
+    modules/
+      project-services/     # enable ALL Google APIs the product needs (one place)
+      network/              # VPC, subnet(+secondary ranges), Router, NAT, PSA, reserved IP
+      gke/                  # zonal Standard cluster + node_pools map + WI + CSI
+      cloudsql/             # private PostgreSQL + DB + user + password/conn secrets
+      storage/              # GCS bucket (+ optional Mattermost S3 HMAC creds)
+      kms/                  # one shared Cloud KMS HSM key (CMEK) + service-agent grants
+      workload-identity/    # per-tenant GSA bound to a KSA (WI)
+      artifact-registry/    # the unified Docker repo
+  cloudflare/               # STACK 2: the public edge (LINKED to platform-gcp)
+    .terraform-version      # same Core pin as the other stacks
+    .terraform.lock.hcl     # provider lock (cloudflare, tls) — GCP-free
+    providers.tfcomponent.hcl  # the one Cloudflare token (ephemeral) + tls
+    variables.tfcomponent.hcl  # edge knobs + the platform-published ingress IP
+    components.tfcomponent.hcl # the cloudflare component (DNS/TLS/WAF/Origin CA)
+    outputs.tfcomponent.hcl    # zone id, hostname, DNSSEC DS + origin cert/key for app-gcp
+    cloudflare.tfdeploy.hcl    # ONE `eu` deployment + upstream_input "platform" + publish_output (origin cert/key)
+    modules/
+      cloudflare/           # DNS records + edge TLS/security + DNSSEC + WAF + Origin CA cert / AOP
+  app-gcp/                  # STACK 3: the fast-moving GCP delivery layer (LINKED to both)
+    .terraform-version      # same Core pin as the other stacks
+    .terraform.lock.hcl     # provider lock (google, google-beta, random)
+    providers.tfcomponent.hcl  # keyless GCP providers (WIF) — no third-party edge here
+    variables.tfcomponent.hcl  # typed stack inputs incl. the upstream-published values
+    components.tfcomponent.hcl # secrets, clouddeploy, mattermost_image, deploy_release
+    outputs.tfcomponent.hcl    # delivery-layer outputs (pipeline, image path, release)
+    app.tfdeploy.hcl           # ONE `eu` deployment + upstream_input "platform" & "cloudflare"
+    modules/
+      clouddeploy/          # dev→prod delivery pipeline + 2 GKE targets + exec SA
+      secrets/              # Secret Manager map (generate/provide + accessors)
+      cloudbuild-image/     # repo link on the shared 2nd-gen connection + tag-triggered builds
+      deploy-release/       # repo link on the shared connection + releaser SA + semver-tag trigger (cuts Cloud Deploy releases)
 helm/                       # Kubernetes workloads, delivered by Cloud Deploy dev→prod
   skaffold.yaml             # dev/prod profiles Cloud Deploy renders (+ dev verify)
   cloudbuild.yaml           # the release-cut command the deploy_release trigger runs (also usable by hand)
@@ -677,15 +726,21 @@ helm/                       # Kubernetes workloads, delivered by Cloud Deploy de
 .gitlab-ci.yml              # module fmt/validate + manifest lint
 ```
 
-> Stack layout: the repo hosts **one** Terraform Stacks configuration at
-> `terraform/`, using the `*.tfcomponent.hcl` (components, providers, variables,
-> outputs) and `*.tfdeploy.hcl` (deployments) suffixes Terraform Stacks requires.
-> HCP reads **one stack per working directory**, so there is a single HCP Stack
-> with its working directory set to `terraform/`. Modules are co-located under
-> `terraform/modules/` and referenced as `./modules/X`: the Stacks source bundler
-> roots the bundle at the stack config directory and cannot follow `../` sources
-> that escape it. The stack commits one `.terraform.lock.hcl` (covering all five
-> providers) for reproducible runs.
+> Stack layout: the repo hosts **three** Terraform Stacks configurations —
+> `terraform/platform-gcp` (foundation), `terraform/cloudflare` (edge) and
+> `terraform/app-gcp` (delivery layer) — using the `*.tfcomponent.hcl`
+> (components, providers, variables, outputs) and `*.tfdeploy.hcl`
+> (deployments) suffixes Terraform Stacks requires. HCP reads **one stack per
+> working directory**, so there are three HCP Stacks pointed at those
+> directories. They are **linked** along the chain
+> `platform-gcp -> cloudflare -> app-gcp`: each upstream publishes its
+> cross-stack contract (`publish_output`) and each downstream consumes it
+> (`upstream_input`), so every stack builds on its upstreams' last-applied
+> values. Modules are co-located under each stack's `modules/` and referenced
+> as `./modules/X`: the Stacks source bundler roots the bundle at the stack
+> config directory and cannot follow `../` sources that escape it (no module is
+> shared between stacks). Each stack commits its own `.terraform.lock.hcl` for
+> reproducible runs.
 
 > Version pin: HCP Terraform Stacks selects the Terraform Core version from the
 > stack's **`.terraform-version`** file (currently `1.15.8`). The GitLab CI
@@ -707,13 +762,15 @@ helm/                       # Kubernetes workloads, delivered by Cloud Deploy de
    connection, and
    create the Cloudflare API token + HCP variable set. The stack enables every
    other API itself; these are the only manual prerequisites.
-2. In `terraform/deployments.tfdeploy.hcl` the project ID (`yourown-chat`), WIF
+2. In `terraform/platform-gcp/platform.tfdeploy.hcl`,
+   `terraform/cloudflare/cloudflare.tfdeploy.hcl` and
+   `terraform/app-gcp/app.tfdeploy.hcl` the project ID (`yourown-chat`), WIF
    `audience` and apply-SA are already wired; set the real
-   `master_authorized_networks` CIDR if you want to restrict the control plane
-   (empty = reachable but credential-gated, so Cloud Deploy can reach it), adjust
-   `github_connection_name` only if your Cloud Build connection is not named
-   `pilprod-github`, and replace the `store "varset"` id with your
-   HCP variable set ID.
+   `master_authorized_networks` CIDR (platform-gcp) if you want to restrict the
+   control plane (empty = reachable but credential-gated, so Cloud Deploy can
+   reach it), adjust `github_connection_name` (app-gcp) only if your Cloud
+   Build connection is not named `pilprod-github`, and replace the
+   `store "varset"` id (cloudflare) with your HCP variable set ID.
 3. Configure **keyless** GCP auth in HCP Terraform (no credentials are ever
    committed). The Workload Identity Federation pool/provider and least-privilege
    `terraform plan`/`apply` service accounts are documented in
@@ -722,13 +779,15 @@ helm/                       # Kubernetes workloads, delivered by Cloud Deploy de
    `identity_token` block (its `aud` matches the provider's allowed-audiences); the
    google provider exchanges it through WIF (`external_credentials`) and
    impersonates the apply SA.
-4. Create **one** Stack in HCP Terraform with its **working directory set to
-   `terraform/`**, attach the Cloudflare variable set to it, then plan and apply
-   the single `eu` deployment. (An existing Stack that pointed at
-   `terraform/platform` must be updated to this working directory after the
-   reorg.) The one apply provisions the platform, the image CI **and** the
-   Cloudflare edge together — the ingress IP and the Origin CA cert are wired
-   internally, so there is nothing to copy between runs.
+4. Create the **three linked Stacks** in HCP Terraform (see
+   [step 9](#9-create-the-three-linked-stacks-in-hcp-terraform)):
+   `platform-gcp`, `cloudflare` and `app-gcp` with the matching
+   `terraform/<stack>` working directories; attach the Cloudflare variable set
+   to the **cloudflare** Stack. Plan and apply **platform-gcp** `eu` first; its
+   `publish_output` values feed the **cloudflare** stack's plan automatically,
+   whose apply in turn (Origin CA cert/key) unlocks **app-gcp**. The ingress IP
+   and the Origin CA cert are wired through the links — there is nothing to
+   copy between runs.
 5. Deploy the chat workloads from [`helm/`](helm/README.md): install the
    ingress-nginx controller + Mattermost operator, replace the `REPLACE-ME-*`
    markers (project ID, bucket, Workload Identity SA emails from
@@ -738,7 +797,7 @@ helm/                       # Kubernetes workloads, delivered by Cloud Deploy de
 
 The image-build flow (the shared Cloud Build connection, the tag
 pattern, promotion) is described in [`docs/BUILD.md`](docs/BUILD.md); it is part
-of this same stack, so there is no separate stack to create.
+of the **app** stack, so there is no additional stack to create beyond the two above.
 
 ## CI/CD flow
 
@@ -771,9 +830,10 @@ matterbridge, then runs a post-deploy **`verify`** smoke test on the cluster; th
 **prod** target deploys the operator-managed Mattermost, with **`requireApproval`**
 gating promotion. The Mattermost image is **built once** by the `mattermost_image`
 component and promoted by tag — dev and prod reference the same tag in-manifest,
-so Cloud Deploy promotes the identical manifests rather than rebuilding. Because
-the registry and CI are components of the same stack (not a separate one), the
-registry writer binding is a plain component reference with no dependency cycle.
+so Cloud Deploy promotes the identical manifests rather than rebuilding. The
+registry lives in the platform-gcp stack; the CI reaches it through the stack link
+(`upstream_input.platform.artifact_registry_*`), so the writer binding stays
+cycle-free.
 
 **Automated release cutting (the `deploy_release` component)** — a git tag, not a
 human, cuts the Cloud Deploy release:
@@ -852,8 +912,9 @@ These reflect the decisions we converged on; each is easy to change:
    **namespace tenant** (RBAC + NetworkPolicy), not a second cluster. Keeps the
    ≈$86–93/mo budget under the $100 ceiling while isolating dev from prod.
 3. **Registry + CI:** a **single unified** Artifact Registry repo (`docker`) as an
-   `artifact_registry` component; one Mattermost image promoted dev->prod by tag.
-   Kept in the one stack next to the CI that writes to it — no dependency cycle.
+   `artifact_registry` component in the platform-gcp stack; one Mattermost image
+   promoted dev->prod by tag, built by the app-gcp stack's CI over the stack link —
+   no dependency cycle.
 4. **Delivery:** a Cloud Deploy **dev→prod** pipeline delivers the `helm/`
    workloads (two GKE targets on the one cluster, dev `verify` + prod approval);
    the Mattermost image is built once and promoted by tag, so both tiers deploy

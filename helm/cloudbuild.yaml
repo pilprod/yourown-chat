@@ -4,7 +4,7 @@
 # prod after the manual-approval gate.
 #
 # This is now IMPLEMENTED by the stack's `deploy_release` component
-# (terraform/modules/deploy-release): a Cloud Build 2nd-gen trigger on THIS repo
+# (terraform/app-gcp/modules/deploy-release): a Cloud Build 2nd-gen trigger on THIS repo
 # fires on semver tags (MAJOR.MINOR.PATCH) and runs exactly the `gcloud deploy
 # releases create` step below as the least-privilege `europe-west3-releaser` SA
 # (roles/clouddeploy.releaser on the pipeline + actAs on the execution SA
