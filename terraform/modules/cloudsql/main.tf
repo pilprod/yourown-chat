@@ -1,14 +1,17 @@
 locals {
-  instance_name  = var.instance_name_random_suffix ? "${var.region}-${random_id.suffix[0].hex}" : var.region
-  secret_id      = "cloudsql-${var.db_user_name}-password"
-  conn_secret_id = "cloudsql-${var.database_name}-connection"
+  # Name after the ACTUAL footprint, mirroring the GKE cluster: a ZONAL instance
+  # lives in one zone -> name it after the zone (europe-west3-b); a REGIONAL (HA)
+  # instance spans the region -> name it after the region (europe-west3). No "-pg"
+  # type suffix (it is THE Postgres instance). The API 'region' field always stays
+  # the region; only the name (and the pinned zone below) reflect the footprint.
+  instance_location = upper(var.availability_type) == "REGIONAL" ? var.region : var.zone
+  instance_name     = var.instance_name_random_suffix ? "${local.instance_location}-${random_id.suffix[0].hex}" : local.instance_location
+  secret_id         = "cloudsql-${var.db_user_name}-password"
+  conn_secret_id    = "cloudsql-${var.database_name}-connection"
 
   connection_uri = "postgres://${var.db_user_name}:${random_password.user.result}@${google_sql_database_instance.this.private_ip_address}:5432/${var.database_name}?sslmode=require&connect_timeout=10"
 }
 
-# Name after the region alone (no "-pg" type suffix): it is THE Postgres
-# instance, mirroring the GKE cluster which drops "-gke". europe-west3.
-#
 # Deterministic instance name by default. Cloud SQL blocks reuse of an instance
 # name for ~1 week after deletion, so if you destroy and immediately re-create,
 # set instance_name_random_suffix = true to get a fresh, non-colliding name.
@@ -56,6 +59,16 @@ resource "google_sql_database_instance" "this" {
     disk_type         = var.disk_type
     disk_autoresize   = var.disk_autoresize
     user_labels       = var.user_labels
+
+    # Pin the primary zone for a ZONAL instance so the "-b" in its name is truthful
+    # (GCP otherwise picks a zone). Omitted for REGIONAL, where GCP manages the
+    # primary/secondary zones for failover.
+    dynamic "location_preference" {
+      for_each = upper(var.availability_type) == "REGIONAL" ? [] : [1]
+      content {
+        zone = var.zone
+      }
+    }
 
     ip_configuration {
       # Private IP only: no public IPv4 endpoint.

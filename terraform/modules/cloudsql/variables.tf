@@ -5,12 +5,17 @@ variable "project_id" {
 
 variable "region" {
   type        = string
-  description = "Region for the instance; also used as the instance name prefix (e.g. 'europe-west3')."
+  description = "Region for the instance (API 'region' field), e.g. 'europe-west3'. Used as the instance name for a REGIONAL (HA) instance."
+}
+
+variable "zone" {
+  type        = string
+  description = "Zone within the region, e.g. 'europe-west3-b'. A ZONAL instance lives in a single zone, so it is named after (and pinned to) this zone, mirroring the zonal GKE cluster."
 }
 
 variable "instance_name_random_suffix" {
   type        = bool
-  description = "Append a random suffix to the instance name. false (default) = deterministic name (<region>-pg). Set true only to work around Cloud SQL's ~1 week name-reuse block when re-creating an instance you just deleted."
+  description = "Append a random suffix to the instance name. false (default) = deterministic name (the zone for a ZONAL instance, the region for a REGIONAL one). Set true only to work around Cloud SQL's ~1 week name-reuse block when re-creating an instance you just deleted."
   default     = false
 }
 

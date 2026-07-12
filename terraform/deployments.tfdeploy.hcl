@@ -64,11 +64,10 @@ identity_token "gcp" {
   audience = ["https://iam.googleapis.com/projects/1086706391144/locations/global/workloadIdentityPools/hcp-terraform/providers/hcp-terraform"]
 }
 
-# Shared HCP variable set: values injected at deploy time so they never touch git
-# or state. Holds the Cloudflare zone-scoped API token (key `cloudflare_api_token`)
-# and operational toggles such as `cloudsql_adopt_existing_instance`. Replace the
-# id with your workspace's variable set ID. See README.md.
-store "varset" "shared" {
+# Cloudflare zone-scoped API token, injected from an HCP variable set so it never
+# touches git or state. Replace the id with your workspace's variable set ID and
+# store the token under the key `cloudflare_api_token`. See README.md.
+store "varset" "cloudflare" {
   id       = "varset-wrrdzyQKCP2no9U6"
   category = "terraform"
 }
@@ -133,10 +132,6 @@ deployment "eu" {
     cloudsql_backup_retained_count = 7
     cloudsql_txlog_retention_days  = 7
     cloudsql_deletion_protection   = true
-    # Sourced from the shared HCP variable set so it can be toggled from the UI
-    # (no code change): set the varset key cloudsql_adopt_existing_instance = true
-    # for the one apply that adopts the orphaned instance, then back to false.
-    cloudsql_adopt_existing_instance = tobool(store.varset.shared.cloudsql_adopt_existing_instance)
 
     # --- Public ingress + Cloudflare edge ------------------------------------
     # Reserves the Cloudflare-facing static IP, creates the origin-TLS secret
@@ -178,7 +173,7 @@ deployment "eu" {
     release_tag_regex        = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
 
     # --- Cloudflare edge (token from the varset; IP wired live in the stack) --
-    cloudflare_api_token          = store.varset.shared.cloudflare_api_token
+    cloudflare_api_token          = store.varset.cloudflare.cloudflare_api_token
     domain                        = "yourown.chat"
     cloudflare_proxied            = true
     cloudflare_ssl_mode           = "strict"
