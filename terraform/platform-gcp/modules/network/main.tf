@@ -1,14 +1,21 @@
 locals {
-  # Regional singletons are named after the region alone (europe-west3): the
-  # project is already yourown-chat and each is the ONLY object of its GCP type in
-  # the region, so no "-vpc/-subnet/-router/-nat" type suffix is needed and the
-  # region tag still keeps a second deployment from colliding (names are unique
-  # per resource type, so a network, subnet, router and NAT may all read
-  # europe-west3). The two secondary ranges share one subnet, so they keep a
-  # functional discriminator (-pods/-services); the ingress address keeps its role
-  # (-ingress). Truly global objects (VPC-wide firewall, PSA peering range) carry
-  # no region.
-  network_name           = var.region
+  # Name = ACTUAL footprint. Regional singletons are named after the region
+  # alone (europe-west3): the project is already yourown-chat and each is the
+  # ONLY object of its GCP type in the region, so no "-subnet/-router/-nat"
+  # type suffix is needed and the region tag still keeps a second deployment
+  # from colliding (names are unique per resource type, so a subnet, router
+  # and NAT may all read europe-west3). The two secondary ranges share one
+  # subnet, so they keep a functional discriminator (-pods/-services); the
+  # ingress address keeps its role (-ingress).
+  #
+  # GLOBAL objects carry no region -- a region tag would lie about their
+  # footprint. Their names reduce to the bare role: the VPC is the project's
+  # sole network -> "vpc" (mirroring the crypto key "cmek"); the VPC-wide
+  # firewall -> "allow-internal"; the PSA peering range -> "psa". (The VPC's
+  # routing_mode is REGIONAL and its one subnet is single-region, but the
+  # OBJECT itself is global -- a second region would reuse this same VPC with
+  # another subnet, not create a sibling.)
+  network_name           = "vpc"
   subnet_name            = var.region
   pods_range_name        = "${var.region}-pods"
   services_range_name    = "${var.region}-services"
