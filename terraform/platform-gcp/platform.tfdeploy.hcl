@@ -56,18 +56,14 @@ identity_token "gcp" {
   audience = ["https://iam.googleapis.com/projects/1086706391144/locations/global/workloadIdentityPools/hcp-terraform/providers/hcp-terraform"]
 }
 
-# Shared HCP variable set (the same one the cloudflare stack reads its API
-# token from). Ops toggles live here so they can be flipped in the HCP UI
-# without a commit. NOTE (learned the hard way in the cloudsql varset attempt):
-# the tfdeploy dialect has NO conversion functions (tobool etc.) and a MISSING
-# key resolves to null -> "attempt to get attribute from null value". So every
-# key referenced below MUST exist in the varset, stored as an HCL-typed value
-# (tick "HCL", value true/false) -- it is then a real bool, no conversion
-# needed.
-store "varset" "shared" {
-  id       = "varset-wrrdzyQKCP2no9U6"
-  category = "terraform"
-}
+# NO varset store here -- and none can work for plan-persisted values. Stacks
+# treats every `store` value as EPHEMERAL: fine for credentials read by an
+# ephemeral variable (the cloudflare stack's API token), but a config toggle
+# (API list, repository settings) must persist into the plan, and HCP rejects
+# ephemeral values there ("Cannot use an ephemeral value for input variable").
+# On top of the earlier lessons (no tobool(); a missing key = null), the rule
+# is: varsets carry SECRETS ONLY; operational toggles are committed literals
+# in this file.
 
 # --- eu: the stateful foundation in one deployment ---------------------------
 # environment = "prod" makes this the prod-grade platform cluster; the dev tenant
@@ -151,10 +147,11 @@ deployment "eu" {
 
     # The container registry is PUBLIC -> no CMEK (null).
     artifact_registry_kms_key_name = null
-    # Vulnerability scanning for the built Mattermost image: flipped from the
-    # HCP varset (HCL bool key artifact_registry_vulnerability_scanning), so
-    # ops can toggle the paid scanner without a commit.
-    artifact_registry_vulnerability_scanning = store.varset.shared.artifact_registry_vulnerability_scanning
+    # Vulnerability scanning for the built Mattermost image (Artifact
+    # Analysis, ~$0.26 per scanned digest). A committed literal on purpose:
+    # varset values are ephemeral in Stacks and cannot reach plan-persisted
+    # config (see the note above the deployment).
+    artifact_registry_vulnerability_scanning = true
 
     extra_labels = { cost-center = "platform" }
   }

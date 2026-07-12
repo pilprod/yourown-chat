@@ -508,27 +508,22 @@ Copy the token value once (it is not shown again).
 
 #### 10.2 Store it in an HCP variable set
 
-The variable set doubles as the ops-toggle surface: besides the Cloudflare
-token it carries the platform's `artifact_registry_vulnerability_scanning`
-flag, so it is applied to **both** the **cloudflare** and **platform-gcp**
-Stacks.
+> Varsets carry **secrets only**. Terraform Stacks treats every `store` value
+> as **ephemeral** — fine for credentials read by an `ephemeral` variable like
+> this token, but rejected for anything that must persist into the plan
+> ("Cannot use an ephemeral value for input variable"). Operational toggles
+> (e.g. `artifact_registry_vulnerability_scanning`) are therefore committed
+> literals in the `.tfdeploy.hcl` files, not varset keys.
 
 1. In HCP Terraform, create a **variable set** and apply it to the
-   **cloudflare** and **platform-gcp** Stacks.
+   **cloudflare** Stack (only it talks to Cloudflare).
 2. Add a **Terraform variable** (category *Terraform*, matching
-   `category = "terraform"` in the `store "varset"` blocks) named
+   `category = "terraform"` in the `store "varset"` block) named
    `cloudflare_api_token` = the token. Tick **Sensitive**; leave **HCL
    unchecked** — the token is a plain string, not an HCL expression.
-3. Add a second **Terraform variable** named
-   `artifact_registry_vulnerability_scanning`, value `true` or `false`, and
-   **tick HCL** so it is a real bool. It MUST exist: the `.tfdeploy.hcl`
-   dialect has no conversion functions and a missing varset key resolves to
-   null, failing the plan. This flag turns Artifact Analysis scanning of the
-   built Mattermost image on/off (paid, ~$0.26 per scanned digest) without a
-   commit.
-4. In `terraform/cloudflare/cloudflare.tfdeploy.hcl` and
-   `terraform/platform-gcp/platform.tfdeploy.hcl`, set the `store "varset"`
-   blocks' `id` to that variable set's ID.
+3. In `terraform/cloudflare/cloudflare.tfdeploy.hcl`, set the `store "varset"`
+   block's `id` to that variable set's ID. The token flows in as the ephemeral
+   `cloudflare_api_token` input.
 
 > No manual IP hand-off: the proxied apex A record is wired to the reserved
 > ingress IP through the stack link (`upstream_input.platform.ingress_ip_address`),
