@@ -206,6 +206,7 @@ component "cluster_bootstrap" {
   inputs = {
     mattermost_operator_chart_version = var.mattermost_operator_chart_version
     ingress_nginx_chart_version       = var.ingress_nginx_chart_version
+    adopt_existing_releases           = var.adopt_existing_cluster_bootstrap_releases
 
     # Platform-published "white address"; replaces the manual loadBalancerIP
     # step in helm/ingress-nginx/values.yaml (kept as the manual fallback).

@@ -146,3 +146,9 @@ variable "ingress_nginx_chart_version" {
   type        = string
   description = "ingress-nginx/ingress-nginx chart version (https://kubernetes.github.io/ingress-nginx). Pinned for reproducible bootstrap; bump deliberately."
 }
+
+variable "adopt_existing_cluster_bootstrap_releases" {
+  type        = bool
+  description = "Import pre-existing cluster bootstrap Helm releases (mattermost-operator and ingress-nginx) that were installed by an interrupted/previous apply but are not yet in Terraform state."
+  default     = false
+}

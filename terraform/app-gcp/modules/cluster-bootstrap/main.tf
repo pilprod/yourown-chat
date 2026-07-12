@@ -7,6 +7,12 @@
 # custom values: the operator's default scheduling lands on the untainted dev
 # pool alongside kube-system, which is intentional -- the tainted prod pool is
 # reserved for prod workloads that explicitly tolerate it.
+import {
+  for_each = var.adopt_existing_releases ? toset(["mattermost-operator/mattermost-operator"]) : toset([])
+  to       = helm_release.mattermost_operator
+  id       = each.value
+}
+
 resource "helm_release" "mattermost_operator" {
   name       = "mattermost-operator"
   repository = "https://helm.mattermost.com"
@@ -25,6 +31,12 @@ resource "helm_release" "mattermost_operator" {
 # IP is supplied (environments without a public edge). Values are rendered
 # from templates/ingress-nginx-values.yaml.tftpl -- keep it in sync with the
 # manual-fallback copy helm/ingress-nginx/values.yaml.
+import {
+  for_each = var.adopt_existing_releases && var.ingress_load_balancer_ip != null ? toset(["ingress-nginx/ingress-nginx"]) : toset([])
+  to       = helm_release.ingress_nginx[0]
+  id       = each.value
+}
+
 resource "helm_release" "ingress_nginx" {
   count = var.ingress_load_balancer_ip != null ? 1 : 0
 

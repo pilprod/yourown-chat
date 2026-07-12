@@ -13,3 +13,9 @@ variable "ingress_load_balancer_ip" {
   description = "Reserved regional external IP to pin the ingress-nginx Service to (the platform's published ingress_ip_address). null skips the ingress-nginx release."
   default     = null
 }
+
+variable "adopt_existing_releases" {
+  type        = bool
+  description = "Import bootstrap Helm releases that already exist in the cluster but are missing from Terraform state."
+  default     = false
+}
