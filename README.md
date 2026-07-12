@@ -443,11 +443,13 @@ Create Custom Token**. Scope it to the `yourown.chat` zone only, with:
 | Zone -> Zone | Read | resolve the zone ID (always) |
 | Zone -> DNS | Edit | apex A / www / extra / CAA records **and DNSSEC** (always) |
 | Zone -> Zone Settings | Edit | SSL mode, HSTS, min TLS, HTTP/3, etc. (always) |
+| Zone -> Single Redirect | Edit | the `www` -> apex 301 redirect ruleset (`http_request_dynamic_redirect` phase), created when `manage_www = true` — **the default** |
 | Zone -> SSL and Certificates | Edit | issue the Origin CA cert for Full (Strict) — **on by default** (`cloudflare_manage_origin_cert`); also `cloudflare_aop_enabled` |
 | Zone -> Zone WAF | Edit | *only if you set `cloudflare_custom_firewall_rules`, `cloudflare_managed_waf_enabled` or `cloudflare_rate_limit_rules`* |
 
-The first four rows are the default configuration (DNS + settings + DNSSEC +
-origin cert for Full Strict). Add the last row only when you enable WAF rules.
+The first five rows are the default configuration (DNS + settings + the www
+redirect + DNSSEC + origin cert for Full Strict). Add the last row only when you
+enable WAF rules.
 If you turn `cloudflare_manage_origin_cert` off (using a dashboard-created cert
 instead), the SSL and Certificates row is not required.
 
