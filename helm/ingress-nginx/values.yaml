@@ -14,7 +14,11 @@
 #   3. TLS : Cloudflare Full (Strict) with a Cloudflare Origin CA cert served by
 #            the Mattermost Ingress (tlsSecret mattermost-origin-tls).
 #
-# Install:
+# AUTOMATED INSTALL: the app-gcp stack's cluster_bootstrap component installs
+# this release at cluster bootstrap, rendering
+# terraform/app-gcp/modules/cluster-bootstrap/templates/ingress-nginx-values.yaml.tftpl
+# with loadBalancerIP injected from the platform-published ingress IP (keep
+# both files in sync). This file remains the MANUAL FALLBACK:
 #   helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
 #   helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
 #     -n ingress-nginx --create-namespace -f helm/ingress-nginx/values.yaml
@@ -25,9 +29,16 @@
 controller:
   replicaCount: 1
 
-  # Prod cluster has a single tier=prod node pool; keep the edge on it.
+  # Prod cluster has a single tier=prod node pool; keep the edge on it. The
+  # pool carries the dedicated=prod:NoSchedule taint, so the selector needs
+  # the matching toleration or the controller would never schedule.
   nodeSelector:
     tier: prod
+  tolerations:
+    - key: dedicated
+      operator: Equal
+      value: prod
+      effect: NoSchedule
 
   service:
     type: LoadBalancer

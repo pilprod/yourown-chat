@@ -17,7 +17,7 @@ Terraform Stacks**, each owning a piece with its own state and blast radius:
 |---|---|---|---|
 | **platform-gcp** | `terraform/platform-gcp` | The stateful foundation: APIs, network + reserved ingress IP, CMEK key, GKE cluster, Cloud SQL, object storage, container registry, Workload Identity SAs | Rarely |
 | **cloudflare** | `terraform/cloudflare` | The public edge for `yourown.chat`: DNS, TLS/security settings, DNSSEC, WAF, Origin CA cert + the origin-TLS secrets it fills | Sometimes |
-| **app-gcp** | `terraform/app-gcp` | The delivery machinery: app secrets, Cloud Deploy pipeline, image CI, tag-triggered release cutting | Often |
+| **app-gcp** | `terraform/app-gcp` | The delivery machinery: app secrets, Cloud Deploy pipeline, image CI, tag-triggered release cutting, cluster bootstrap (Mattermost Operator + ingress-nginx as Helm releases) | Often |
 
 The platform stack **publishes** its key values (ingress IP, cluster ID,
 registry coordinates, CMEK key, Workload Identity members); the other two
@@ -84,7 +84,11 @@ The flow in plain words:
 3. **app-gcp** wires up delivery: Cloud Build watches
    `pilprod/mattermost` for image tags, Cloud Deploy delivers the `helm/`
    workloads dev → prod, and a semver tag on **this** repo cuts a release
-   without any human running a command.
+   without any human running a command. It also bootstraps the cluster
+   itself — the Mattermost Operator and the Cloudflare-locked ingress-nginx
+   edge install as Terraform-managed Helm releases (the helm provider talks
+   to the GKE endpoint with a short-lived token for the same keyless apply
+   SA; `loadBalancerIP` arrives from the platform's published ingress IP).
 4. Kubernetes workloads (`helm/`) mount their credentials from Secret Manager
    at runtime — pods read secrets directly, no matter which stack wrote them.
 
@@ -96,7 +100,8 @@ The flow in plain words:
 terraform/
   platform-gcp/          # stack 1: foundation (network, GKE, SQL, storage, KMS, registry, WI)
   cloudflare/            # stack 2: edge (DNS/TLS/WAF/Origin CA) + origin-TLS secrets
-  app-gcp/               # stack 3: delivery (secrets, Cloud Deploy, image CI, release cutting)
+  app-gcp/               # stack 3: delivery (secrets, Cloud Deploy, image CI, release cutting,
+                         #   cluster bootstrap: operator + ingress-nginx Helm releases)
                          # each stack: *.tfcomponent.hcl + *.tfdeploy.hcl + modules/ + its own lock file
 helm/                    # Kubernetes workloads, delivered by Cloud Deploy
   skaffold.yaml          # dev/prod render profiles

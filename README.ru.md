@@ -20,7 +20,7 @@ Stacks** — у каждого свой стейт и свой blast radius:
 |---|---|---|---|
 | **platform-gcp** | `terraform/platform-gcp` | Stateful-фундамент: API, сеть + статический ingress-IP, CMEK-ключ, GKE-кластер, Cloud SQL, хранилище, реестр образов, Workload Identity SA | Редко |
 | **cloudflare** | `terraform/cloudflare` | Публичный edge `yourown.chat`: DNS, TLS/security-настройки, DNSSEC, WAF, Origin CA cert + origin-TLS секреты | Иногда |
-| **app-gcp** | `terraform/app-gcp` | Машинерия доставки: секреты приложений, пайплайн Cloud Deploy, CI образа, автонарезка релизов по тегу | Часто |
+| **app-gcp** | `terraform/app-gcp` | Машинерия доставки: секреты приложений, пайплайн Cloud Deploy, CI образа, автонарезка релизов по тегу, бутстрап кластера (Mattermost Operator + ingress-nginx как Helm-релизы) | Часто |
 
 Платформенный стек **публикует** ключевые значения (ingress-IP, ID кластера,
 координаты реестра, CMEK-ключ, WI-члены); два других **потребляют** их через
@@ -86,6 +86,10 @@ graph TD
 3. **app-gcp** подключает доставку: Cloud Build следит за тегами в
    `pilprod/mattermost`, Cloud Deploy доставляет workloads из `helm/`
    dev → prod, а semver-тег на **этом** репо режет релиз без участия человека.
+   Он же бутстрапит сам кластер — Mattermost Operator и закрытый на Cloudflare
+   ingress-nginx ставятся как Terraform-managed Helm-релизы (helm-провайдер
+   ходит на endpoint GKE с короткоживущим токеном того же keyless apply SA;
+   `loadBalancerIP` приезжает из опубликованного платформой ingress IP).
 4. Kubernetes-workloads (`helm/`) читают свои креды из Secret Manager в
    рантайме — подам всё равно, какой стек положил значение.
 
@@ -97,7 +101,8 @@ graph TD
 terraform/
   platform-gcp/          # стек 1: фундамент (сеть, GKE, SQL, storage, KMS, реестр, WI)
   cloudflare/            # стек 2: edge (DNS/TLS/WAF/Origin CA) + origin-TLS секреты
-  app-gcp/               # стек 3: доставка (секреты, Cloud Deploy, CI, релизы)
+  app-gcp/               # стек 3: доставка (секреты, Cloud Deploy, CI, релизы,
+                         #   бутстрап кластера: operator + ingress-nginx Helm-релизы)
                          # в каждом: *.tfcomponent.hcl + *.tfdeploy.hcl + modules/ + свой lock
 helm/                    # Kubernetes-workloads, доставляются Cloud Deploy
   skaffold.yaml          # профили рендера dev/prod

@@ -69,3 +69,16 @@ output "release_source_bucket" {
   description = "Private staging bucket the release source tarballs are uploaded to."
   value       = component.deploy_release.source_bucket_name
 }
+
+# --- Cluster bootstrap --------------------------------------------------------
+output "mattermost_operator_chart_version" {
+  type        = string
+  description = "Installed mattermost-operator chart version."
+  value       = component.cluster_bootstrap.mattermost_operator_chart_version
+}
+
+output "ingress_nginx_chart_version" {
+  type        = string
+  description = "Installed ingress-nginx chart version (null when the release is skipped)."
+  value       = component.cluster_bootstrap.ingress_nginx_chart_version
+}
