@@ -210,7 +210,8 @@ kubectl rollout restart -n mattermost deploy  → поды подхватят с
 - prod на выделенном **tainted**-пуле (`e2-standard-2`) — dev-workloads туда
   не шедулятся и не конкурируют за CPU/память prod'а;
 - dev на untainted `e2-medium` system-пуле вместе с `kube-system` —
-  on-demand, не Spot: преемпция CoreDNS ударила бы и по prod;
+  on-demand, не Spot: преемпция CoreDNS ударила бы и по prod; в простое держит
+  одну ноду и может autoscale до трёх, когда системным pod'ам нужен запас;
 - namespace `dev` заперт: RBAC только на свой namespace + default-deny
   NetworkPolicies — пути к prod по pod-сети нет.
 

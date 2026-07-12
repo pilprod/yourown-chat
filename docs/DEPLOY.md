@@ -203,7 +203,7 @@ One zonal GKE cluster, two node pools (provisioned by Terraform):
 | Node pool | Machine | Taint | Runs |
 |-----------|---------|-------|------|
 | `prod` | `e2-standard-2` | `dedicated=prod:NoSchedule` | prod Mattermost (+ its secret-sync) |
-| `dev`  | `e2-medium` | none | dev Mattermost, in-cluster Postgres, matterbridge, kube-system |
+| `dev`  | `e2-medium`, autoscale 1–3 | none | dev Mattermost, in-cluster Postgres, matterbridge, kube-system |
 
 Prod workloads carry `nodeSelector: {tier: prod}` **and** a matching
 toleration, so they can only land on the isolated prod pool. Dev/bridge
