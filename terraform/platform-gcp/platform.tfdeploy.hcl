@@ -86,6 +86,8 @@ deployment "eu" {
     #          workloads (which tolerate it + nodeSelector tier=prod) land here.
     #   dev  - e2-medium, on-demand, UNTAINTED so kube-system/CoreDNS + the dev
     #          tenant (nodeSelector tier=dev) share this cheap system pool.
+    #          min=1 keeps idle cost low; max=3 gives autoscaler headroom when
+    #          system pods are pending or a node is cordoned during replacement.
     #          On-demand, not Spot: preempting this pool would take CoreDNS down
     #          for prod.
     gke_regional            = false
@@ -105,7 +107,7 @@ deployment "eu" {
         machine_type = "e2-medium"
         spot         = false
         min_count    = 1
-        max_count    = 2
+        max_count    = 3
         disk_size_gb = 30
         disk_type    = "pd-standard"
         labels       = { tier = "dev" }

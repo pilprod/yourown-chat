@@ -120,7 +120,7 @@ variable "gke_node_pools" {
       machine_type = "e2-medium"
       spot         = false
       min_count    = 1
-      max_count    = 2
+      max_count    = 3
       disk_size_gb = 30
       labels       = { tier = "dev" }
       taints       = []

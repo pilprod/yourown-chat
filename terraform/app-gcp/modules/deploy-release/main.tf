@@ -74,19 +74,12 @@ resource "google_clouddeploy_delivery_pipeline_iam_member" "releaser" {
 # `gcloud deploy releases create` starts a long-running operation, then polls it.
 # roles/clouddeploy.releaser is scoped to the pipeline and can start the release,
 # but the operation is a regional project child, so polling needs this separate
-# project-level permission. Keep it as a single-permission custom role instead of
-# granting broad project-wide Cloud Deploy viewer.
-resource "google_project_iam_custom_role" "clouddeploy_operation_getter" {
-  project     = var.project_id
-  role_id     = "cloudDeployOperationGetter"
-  title       = "Cloud Deploy Operation Getter"
-  description = "Allows release triggers to poll Cloud Deploy long-running operations."
-  permissions = ["clouddeploy.operations.get"]
-}
-
-resource "google_project_iam_member" "releaser_clouddeploy_operations_get" {
+# project-level read permission. Using the predefined viewer role avoids forcing
+# the Terraform apply SA to hold iam.roleAdmin just to manage a one-permission
+# custom role.
+resource "google_project_iam_member" "releaser_clouddeploy_viewer" {
   project = var.project_id
-  role    = google_project_iam_custom_role.clouddeploy_operation_getter.name
+  role    = "roles/clouddeploy.viewer"
   member  = "serviceAccount:${google_service_account.releaser.email}"
 }
 
@@ -179,7 +172,7 @@ resource "google_cloudbuild_trigger" "release" {
     google_service_account_iam_member.releaser_acts_as_exec,
     google_storage_bucket_iam_member.releaser_source,
     google_storage_bucket_iam_member.releaser_source_bucket_read,
-    google_project_iam_member.releaser_clouddeploy_operations_get,
+    google_project_iam_member.releaser_clouddeploy_viewer,
     google_project_iam_member.releaser_logs,
   ]
 }

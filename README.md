@@ -209,7 +209,8 @@ and prod share **one cluster** and are isolated in-cluster instead of physically
 - prod runs on a dedicated **tainted** pool (`e2-standard-2`) — dev workloads
   can't schedule there, so they can never contend for prod's CPU or memory;
 - dev shares an untainted `e2-medium` system pool with `kube-system` —
-  on-demand, not Spot, because preempting CoreDNS would hurt prod too;
+  on-demand, not Spot, because preempting CoreDNS would hurt prod too; it idles
+  at one node and may autoscale to three when system pods need headroom;
 - the `dev` namespace is locked down with namespace-scoped RBAC and
   default-deny NetworkPolicies — no path to prod on the pod network.
 
