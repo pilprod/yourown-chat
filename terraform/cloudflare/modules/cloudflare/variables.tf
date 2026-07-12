@@ -108,8 +108,13 @@ variable "min_tls_version" {
 
 variable "tls_1_3" {
   type        = string
-  description = "Enable TLS 1.3 ('on'/'off'/'zrt')."
-  default     = "on"
+  description = "Enable TLS 1.3 ('on'/'off'/'zrt'). MUST be 'zrt' while zero_rtt = 'on': with 0-RTT enabled the Cloudflare API stores and reports this setting as 'zrt', so sending 'on' produces a perpetual zrt->on plan diff that apply can never settle."
+  default     = "zrt"
+
+  validation {
+    condition     = contains(["on", "off", "zrt"], var.tls_1_3)
+    error_message = "tls_1_3 must be one of: on, off, zrt."
+  }
 }
 
 variable "automatic_https_rewrites" {

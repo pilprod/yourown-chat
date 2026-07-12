@@ -8,9 +8,11 @@ resource "cloudflare_zone_settings_override" "this" {
 
   settings {
     # --- TLS ---
-    ssl                      = var.ssl_mode # strict = Full (Strict)
-    always_use_https         = var.always_use_https
-    min_tls_version          = var.min_tls_version
+    ssl              = var.ssl_mode # strict = Full (Strict)
+    always_use_https = var.always_use_https
+    min_tls_version  = var.min_tls_version
+    # 'zrt' = TLS 1.3 + 0-RTT: the value the API reports while zero_rtt = "on".
+    # Sending plain "on" here would drift back to 'zrt' on every plan.
     tls_1_3                  = var.tls_1_3
     automatic_https_rewrites = var.automatic_https_rewrites
     opportunistic_encryption = var.opportunistic_encryption
