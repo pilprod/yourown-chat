@@ -57,7 +57,7 @@ spec:
   fileStore:
     external:
       url: storage.googleapis.com
-      bucket: "REPLACE-ME-BUCKET"  # Terraform output gcs_bucket_name (e.g. europe-west3-xxxx)
+      bucket: "REPLACE-ME-BUCKET"  # Terraform output gcs_bucket_name (e.g. mattermost-europe-west3)
       secret: mattermost-filestore
 
   scheduling:

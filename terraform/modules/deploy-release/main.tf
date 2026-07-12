@@ -5,10 +5,11 @@ locals {
   connection_id = "projects/${var.project_id}/locations/${var.region}/connections/${var.connection_name}"
 
   # Regional names, mirroring the rest of the stack (europe-west3-*). The project
-  # is already yourown-chat, so a project prefix would just repeat it — except the
-  # GCS bucket, which needs a GLOBALLY unique name and so keeps the project id.
+  # is already yourown-chat, so a project prefix would just repeat it. The GCS
+  # bucket keeps only a role suffix (-deploy-source); note its name must be free in
+  # the GLOBAL GCS namespace since it no longer carries the project id.
   releaser_sa_id     = "${var.region}-releaser"
-  source_bucket_name = "${var.project_id}-${var.region}-deploy-source"
+  source_bucket_name = "${var.region}-deploy-source"
 }
 
 # --- 2nd-gen repository on the shared, out-of-band GitHub connection ---------

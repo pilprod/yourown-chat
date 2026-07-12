@@ -1,19 +1,22 @@
 locals {
-  # Regional resources are named ${region}-<role>: the project is already called
-  # yourown-chat, so repeating it would only waste characters, and the region tag
-  # keeps a second regional deployment from colliding. Truly global resources in
-  # this module (the VPC-wide firewall, the PSA peering range) carry no region.
-  # The VPC is a global GCP object but its routing_mode is REGIONAL and every
-  # subnet is single-region, so it is named regionally too.
-  network_name           = "${var.region}-vpc"
-  subnet_name            = "${var.region}-subnet"
+  # Regional singletons are named after the region alone (europe-west3): the
+  # project is already yourown-chat and each is the ONLY object of its GCP type in
+  # the region, so no "-vpc/-subnet/-router/-nat" type suffix is needed and the
+  # region tag still keeps a second deployment from colliding (names are unique
+  # per resource type, so a network, subnet, router and NAT may all read
+  # europe-west3). The two secondary ranges share one subnet, so they keep a
+  # functional discriminator (-pods/-services); the ingress address keeps its role
+  # (-ingress). Truly global objects (VPC-wide firewall, PSA peering range) carry
+  # no region.
+  network_name           = var.region
+  subnet_name            = var.region
   pods_range_name        = "${var.region}-pods"
   services_range_name    = "${var.region}-services"
-  router_name            = "${var.region}-router"
-  nat_name               = "${var.region}-nat"
+  router_name            = var.region
+  nat_name               = var.region
   psa_range_name         = "psa"
   internal_firewall_name = "allow-internal"
-  ingress_ip_name        = "${var.region}-ingress-ip"
+  ingress_ip_name        = "${var.region}-ingress"
 }
 
 # Custom-mode VPC: no auto subnets so ranges are explicit and predictable.

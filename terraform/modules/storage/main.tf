@@ -1,13 +1,12 @@
 locals {
-  bucket_name       = "${lower(var.location)}-${random_id.suffix.hex}"
+  # Named by FUNCTION: this is Mattermost's object store (S3-compatible filestore),
+  # so it carries the mattermost- prefix; future buckets for other functions of the
+  # shared yourown-chat project get their own prefix. Deterministic (no random
+  # suffix), so the name must be free in the GLOBAL GCS namespace.
+  bucket_name       = "mattermost-${lower(var.location)}"
   filestore_enabled = var.create_filestore_hmac
-  access_secret_id  = "filestore-access-key"
-  secret_secret_id  = "filestore-secret-key"
-}
-
-# Buckets share a global namespace; a short suffix avoids collisions.
-resource "random_id" "suffix" {
-  byte_length = 3
+  access_secret_id  = "mattermost-storage-access-key"
+  secret_secret_id  = "mattermost-storage-secret-key"
 }
 
 resource "google_storage_bucket" "this" {
@@ -56,8 +55,8 @@ resource "google_service_account" "filestore" {
   count = local.filestore_enabled ? 1 : 0
 
   project      = var.project_id
-  account_id   = substr("${lower(var.location)}-fs", 0, 30)
-  display_name = "Filestore HMAC SA for ${local.bucket_name}"
+  account_id   = "mattermost-storage"
+  display_name = "Mattermost object-storage HMAC SA"
 }
 
 resource "google_storage_bucket_iam_member" "filestore" {
