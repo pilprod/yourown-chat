@@ -32,7 +32,7 @@ needs a `secretKeyRef`.
 | Secret Manager secret | Consumed by | As |
 |-----------------------|-------------|----|
 | `cloudsql-mattermost-connection` | prod Mattermost | Secret `mattermost-db` → `DB_CONNECTION_STRING` |
-| `filestore-access-key` / `-secret-key` | prod Mattermost | Secret `mattermost-filestore` → `accesskey`/`secretkey` |
+| `mattermost-storage-access-key` / `-secret-key` | prod Mattermost | Secret `mattermost-filestore` → `accesskey`/`secretkey` |
 | `dev-postgres-password` | dev Postgres / dev Mattermost | file `POSTGRES_PASSWORD_FILE` + Secret `dev-postgres` |
 | `matterbridge-tokens` | matterbridge | file `/etc/matterbridge/matterbridge.toml` |
 | `mattermost-origin-tls-cert` / `-key` | ingress-nginx (Mattermost Ingress) | Secret `mattermost-origin-tls` → `tls.crt`/`tls.key` |

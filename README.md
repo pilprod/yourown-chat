@@ -295,7 +295,7 @@ Why each role:
   `allow-internal` rule.
 - `cloudkms.admin` — create the shared CMEK key ring + HSM key and grant the
   Cloud SQL / GCS / Secret Manager service agents `encrypterDecrypter`.
-- `cloudsql.admin` — create the private PostgreSQL instance (`europe-west3-pg`) +
+- `cloudsql.admin` — create the private PostgreSQL instance (`mattermost-europe-west3-b`) +
   database + user (the `cloudsql` component).
 - `storage.admin` — create the GCS bucket and the Mattermost S3-compatible HMAC
   keys (the `storage` component; `storage.buckets.create` + `storage.hmacKeys.create`).

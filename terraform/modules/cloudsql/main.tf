@@ -1,11 +1,13 @@
 locals {
-  # Name after the ACTUAL footprint, mirroring the GKE cluster: a ZONAL instance
-  # lives in one zone -> name it after the zone (europe-west3-b); a REGIONAL (HA)
-  # instance spans the region -> name it after the region (europe-west3). No "-pg"
+  # Named by FUNCTION + footprint: this is Mattermost's database, so it carries the
+  # mattermost- prefix (future databases for other functions of the shared
+  # yourown-chat project get their own prefix). The footprint mirrors the GKE
+  # cluster: a ZONAL instance lives in one zone -> mattermost-europe-west3-b; a
+  # REGIONAL (HA) instance spans the region -> mattermost-europe-west3. No "-pg"
   # type suffix (it is THE Postgres instance). The API 'region' field always stays
   # the region; only the name (and the pinned zone below) reflect the footprint.
   instance_location = upper(var.availability_type) == "REGIONAL" ? var.region : var.zone
-  instance_name     = var.instance_name_random_suffix ? "${local.instance_location}-${random_id.suffix[0].hex}" : local.instance_location
+  instance_name     = var.instance_name_random_suffix ? "mattermost-${local.instance_location}-${random_id.suffix[0].hex}" : "mattermost-${local.instance_location}"
   secret_id         = "cloudsql-${var.db_user_name}-password"
   conn_secret_id    = "cloudsql-${var.database_name}-connection"
 

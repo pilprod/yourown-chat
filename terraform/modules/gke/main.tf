@@ -4,9 +4,10 @@ locals {
   # cluster reads europe-west3-b, a regional one europe-west3. No "-gke" qualifier
   # (it is THE cluster) and collision-free for a second location.
   cluster_name  = var.location
-  # Node SA keeps a "-node" role discriminator (several SAs share the region) but
-  # drops the now-redundant "gke" — the cluster no longer carries that qualifier.
-  node_sa_id    = "${var.location}-node"
+  # The node SA is the cluster's node identity; it drops the type/role suffix and
+  # is named after the location alone. Its own IAM namespace keeps it distinct from
+  # the clouddeploy/releaser SAs, and from the cluster (a different resource type).
+  node_sa_id    = var.location
   workload_pool = "${var.project_id}.svc.id.goog"
 }
 
