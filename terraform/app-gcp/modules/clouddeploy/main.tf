@@ -90,6 +90,18 @@ resource "google_clouddeploy_delivery_pipeline" "this" {
         target_id = google_clouddeploy_target.stage[stage.value.name].name
         profiles  = stage.value.profiles
 
+        # Injected into the Skaffold render: any manifest field carrying a
+        # `# from-param: ${key}` comment gets the value below substituted on
+        # every release. Same map on both stages -- each profile's manifests
+        # pick the keys they use.
+        dynamic "deploy_parameters" {
+          for_each = length(var.deploy_parameters) > 0 ? [1] : []
+
+          content {
+            values = var.deploy_parameters
+          }
+        }
+
         # Emit a strategy only when it differs from the API default. `standard
         # { verify = false }` IS the default: the API normalizes it away and
         # never stores the block, so always sending it re-plans a phantom

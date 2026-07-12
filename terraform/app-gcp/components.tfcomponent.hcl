@@ -43,6 +43,16 @@ component "clouddeploy" {
       { name = "prod", profiles = ["prod"], require_approval = true, verify = false },
     ]
 
+    # Rendered into the manifests' `# from-param: ${...}` placeholders on every
+    # release, so the platform-published values (bucket, WI emails) flow from
+    # Terraform into Kubernetes without hand-edited markers.
+    deploy_parameters = {
+      filestore_bucket   = var.gcs_bucket_name
+      mattermost_gsa     = var.workload_identity_emails.mattermost
+      mattermost_dev_gsa = var.workload_identity_emails.dev
+      matterbridge_gsa   = var.workload_identity_emails.matterbridge
+    }
+
     labels = local.common_labels
   }
 
