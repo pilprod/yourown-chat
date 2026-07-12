@@ -81,7 +81,6 @@ resource "google_cloudbuild_trigger" "this" {
       # --mount=type=cache, which the legacy builder rejects.
       env = [
         "DOCKER_BUILDKIT=1",
-        "IMAGE_REPO=${local.image_repo_path}",
         "PIPELINE_TAG=$TAG_NAME",
         "PIPELINE_COMMIT_SHA=$COMMIT_SHA",
         "PIPELINE_BUILD_ID=$BUILD_ID",
@@ -89,28 +88,35 @@ resource "google_cloudbuild_trigger" "this" {
       entrypoint = "bash"
       # Ported from the original upstream build script, minus the CICD_REPORT/
       # notify plumbing: buildx with a registry cache (:buildcache ref) and the
-      # Mattermost version build-args, pushing :<tag> and :latest. `$$` escapes
-      # keep the shell variables out of Cloud Build's substitution pass.
+      # Mattermost version build-args, pushing :<tag> and :latest.
+      #
+      # ESCAPING (three interpolation layers): Terraform renders this heredoc,
+      # then Cloud Build scans the result for ITS $-substitutions, then bash
+      # runs it. Static values (image path, dockerfile) are inlined by
+      # Terraform. Bash variables use the BRACELESS $$VAR form only: HCL
+      # passes `$$` through untouched (it only escapes `$${`), Cloud Build
+      # unescapes `$$` -> `$`, bash expands. Braced `$${VAR}` must NOT be used
+      # here -- HCL would collapse it to `${VAR}`, which Cloud Build then
+      # rejects as an unknown substitution.
       args = [
         "-ceu",
         <<-EOT
-          pipeline_tag="$${PIPELINE_TAG:-manual}"
-          pipeline_commit_sha="$${PIPELINE_COMMIT_SHA:-unknown}"
-          pipeline_build_id="$${PIPELINE_BUILD_ID:-unknown}"
+          pipeline_tag="$$PIPELINE_TAG"
+          [ -n "$$pipeline_tag" ] || pipeline_tag="manual"
           pipeline_build_date="$$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
           docker buildx create --name cloudbuild --use || docker buildx use cloudbuild
           docker buildx build \
             --file=${var.dockerfile} \
-            --cache-from=type=registry,ref="$${IMAGE_REPO}:buildcache" \
-            --cache-to=type=registry,ref="$${IMAGE_REPO}:buildcache",mode=max \
+            --cache-from=type=registry,ref="${local.image_repo_path}:buildcache" \
+            --cache-to=type=registry,ref="${local.image_repo_path}:buildcache",mode=max \
             --no-cache-filter=server-builder,runtime \
-            --build-arg BUILD_NUMBER="$${pipeline_tag}" \
-            --build-arg BUILD_HASH="$${pipeline_commit_sha}" \
-            --build-arg EE_BUILD_HASH="$${pipeline_build_id}" \
-            --build-arg BUILD_DATE="$${pipeline_build_date}" \
-            --tag "$${IMAGE_REPO}:$${pipeline_tag}" \
-            --tag "$${IMAGE_REPO}:latest" \
+            --build-arg BUILD_NUMBER="$$pipeline_tag" \
+            --build-arg BUILD_HASH="$$PIPELINE_COMMIT_SHA" \
+            --build-arg EE_BUILD_HASH="$$PIPELINE_BUILD_ID" \
+            --build-arg BUILD_DATE="$$pipeline_build_date" \
+            --tag "${local.image_repo_path}:$$pipeline_tag" \
+            --tag "${local.image_repo_path}:latest" \
             --push \
             .
         EOT
