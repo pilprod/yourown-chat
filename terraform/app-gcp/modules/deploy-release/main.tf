@@ -71,6 +71,25 @@ resource "google_clouddeploy_delivery_pipeline_iam_member" "releaser" {
   member   = "serviceAccount:${google_service_account.releaser.email}"
 }
 
+# `gcloud deploy releases create` starts a long-running operation, then polls it.
+# roles/clouddeploy.releaser is scoped to the pipeline and can start the release,
+# but the operation is a regional project child, so polling needs this separate
+# project-level permission. Keep it as a single-permission custom role instead of
+# granting broad project-wide Cloud Deploy viewer.
+resource "google_project_iam_custom_role" "clouddeploy_operation_getter" {
+  project     = var.project_id
+  role_id     = "cloudDeployOperationGetter"
+  title       = "Cloud Deploy Operation Getter"
+  description = "Allows release triggers to poll Cloud Deploy long-running operations."
+  permissions = ["clouddeploy.operations.get"]
+}
+
+resource "google_project_iam_member" "releaser_clouddeploy_operations_get" {
+  project = var.project_id
+  role    = google_project_iam_custom_role.clouddeploy_operation_getter.name
+  member  = "serviceAccount:${google_service_account.releaser.email}"
+}
+
 # Creating a release runs the render/deploy jobs as the Cloud Deploy execution
 # SA, so the releaser must be able to actAs it.
 resource "google_service_account_iam_member" "releaser_acts_as_exec" {
@@ -160,6 +179,7 @@ resource "google_cloudbuild_trigger" "release" {
     google_service_account_iam_member.releaser_acts_as_exec,
     google_storage_bucket_iam_member.releaser_source,
     google_storage_bucket_iam_member.releaser_source_bucket_read,
+    google_project_iam_member.releaser_clouddeploy_operations_get,
     google_project_iam_member.releaser_logs,
   ]
 }
