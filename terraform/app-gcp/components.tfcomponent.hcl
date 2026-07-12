@@ -3,19 +3,17 @@
 # to recreate and changes often: application secrets, the Cloud Deploy
 # pipeline, the image-build CI and the tag-triggered release cutting.
 #
-# This stack is LINKED to two upstreams (see app.tfdeploy.hcl):
-#   - platform-gcp: the stateful foundation (cluster ID, CMEK, registry
-#     coordinates, Workload Identity members);
-#   - cloudflare: the public edge, publishing the Origin CA cert/key this
-#     stack pours into the mattermost-origin-tls-* secrets.
-# Values arrive as last-APPLIED upstream outputs, so both upstreams always
-# settle first and a mistake here can never touch their state (separate
-# state, separate blast radius).
+# This stack is LINKED to platform-gcp (see app.tfdeploy.hcl): the stateful
+# foundation (cluster ID, CMEK, registry coordinates, Workload Identity
+# members) arrives as last-APPLIED upstream outputs, so the platform always
+# settles first and a mistake here can never touch its state (separate state,
+# separate blast radius). The Cloudflare edge and its origin-TLS secrets live
+# in the sibling cloudflare stack.
 #
 # Graph (this stack; <upstream> = linked values passed in as plain vars):
 #   clouddeploy (targets on <gke_cluster_id>) ── deploy_release
 #   mattermost_image  -> pushes to <artifact_registry_*>
-#   secrets (origin TLS material = <cloudflare origin cert/key>,
+#   secrets (dev-postgres-password + matterbridge-tokens,
 #            accessors = <workload_identity_members>)
 # ---------------------------------------------------------------------------
 
@@ -67,43 +65,22 @@ component "secrets" {
     # the platform runs with cmek_enabled = false).
     kms_key_name = var.cmek_key_id
 
-    secrets = merge(
-      {
-        # In-cluster dev Postgres password (generated, read by the dev tenant).
-        "dev-postgres-password" = {
-          generate  = true
-          accessors = [var.workload_identity_members.dev]
-        }
-        # matterbridge bot tokens / bridge config — created empty, populated
-        # out-of-band (never in git), read by the matterbridge workload.
-        "matterbridge-tokens" = {
-          accessors = [var.workload_identity_members.matterbridge]
-        }
-      },
-      # Cloudflare origin-protection material for the public ingress (prod only).
-      # The origin TLS cert/key arrive from the LINKED cloudflare stack (Origin
-      # CA cert, upstream_input.cloudflare.*), so ingress-nginx can serve Full
-      # (Strict) TLS with zero manual steps. When the cloudflare stack runs with
-      # manage_origin_cert = false the values are null and the module creates
-      # empty containers to be filled out-of-band. The AOP CA stays an empty
-      # container (Cloudflare-supplied, not issued here).
-      var.public_ingress_enabled ? {
-        "mattermost-origin-tls-cert" = {
-          value     = var.origin_certificate_pem
-          accessors = [var.workload_identity_members.mattermost]
-        }
-        "mattermost-origin-tls-key" = {
-          value     = var.origin_private_key_pem
-          accessors = [var.workload_identity_members.mattermost]
-        }
-        "cloudflare-origin-pull-ca" = {
-          # Explicit null (empty container) so all three entries share one object
-          # type -> the conditional's branches unify as map(object) against {}.
-          value     = null
-          accessors = [var.workload_identity_members.mattermost]
-        }
-      } : {}
-    )
+    secrets = {
+      # In-cluster dev Postgres password (generated, read by the dev tenant).
+      "dev-postgres-password" = {
+        generate  = true
+        accessors = [var.workload_identity_members.dev]
+      }
+      # matterbridge bot tokens / bridge config — created empty, populated
+      # out-of-band (never in git), read by the matterbridge workload.
+      "matterbridge-tokens" = {
+        accessors = [var.workload_identity_members.matterbridge]
+      }
+      # The Cloudflare origin-protection secrets (mattermost-origin-tls-* +
+      # cloudflare-origin-pull-ca) live in the CLOUDFLARE stack: linked stacks
+      # cannot publish sensitive values, so the Origin CA private key is
+      # written into Secret Manager there and never crosses a stack boundary.
+    }
   }
 
   providers = {

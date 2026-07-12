@@ -1,7 +1,5 @@
-# Cloudflare stack outputs. The origin cert/key feed the LINKED app-gcp stack
-# (publish_output in cloudflare.tfdeploy.hcl); the rest is the human surface.
-# All are gated with one([...]) because the component only exists when
-# public_ingress_enabled = true.
+# Cloudflare stack outputs — the human surface. All are gated with one([...])
+# because the components only exist when public_ingress_enabled = true.
 
 output "cloudflare_zone_id" {
   type        = string
@@ -34,16 +32,9 @@ output "cloudflare_dnssec" {
   value       = one([for c in component.cloudflare : c.dnssec])
 }
 
-# --- Origin CA material for the app-gcp stack --------------------------------
-output "origin_certificate_pem" {
-  type        = string
-  description = "Cloudflare Origin CA certificate (PEM). Null when manage_origin_cert = false or no public ingress. Consumed by the app-gcp stack's mattermost-origin-tls-cert secret."
-  value       = one([for c in component.cloudflare : c.origin_certificate_pem])
-}
-
-output "origin_private_key_pem" {
-  type        = string
-  description = "Private key (PEM) for the Origin CA certificate. Null when manage_origin_cert = false or no public ingress. Consumed by the app-gcp stack's mattermost-origin-tls-key secret."
-  value       = one([for c in component.cloudflare : c.origin_private_key_pem])
-  sensitive   = true
+# --- Origin-protection secrets ------------------------------------------------
+output "origin_secret_ids" {
+  type        = map(string)
+  description = "Logical name => Secret Manager secret ID for the origin-protection secrets (mattermost-origin-tls-cert/-key + cloudflare-origin-pull-ca). Empty when public_ingress_enabled = false."
+  value       = one([for s in component.origin_secrets : s.secret_ids])
 }
