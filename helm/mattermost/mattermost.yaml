@@ -14,7 +14,8 @@
 #             enforces Authenticated Origin Pulls (mTLS) + Full (Strict) TLS via
 #             the mattermost-origin-tls / cloudflare-origin-pull-ca Secrets.
 #
-# Replace REPLACE-ME-* (bucket) before applying. The image below is built and
+# The bucket is injected by Cloud Deploy deploy parameters (from-param) on each
+# release. The image below is built and
 # pushed by the stack's image-CI components (terraform/) on git tags matching ^v.*-patched$.
 apiVersion: installation.mattermost.com/v1beta1
 kind: Mattermost
@@ -57,7 +58,7 @@ spec:
   fileStore:
     external:
       url: storage.googleapis.com
-      bucket: "REPLACE-ME-BUCKET"  # Terraform output gcs_bucket_name (e.g. mattermost-europe-west3)
+      bucket: "from-deploy-parameters" # from-param: ${filestore_bucket}
       secret: mattermost-filestore
 
   scheduling:

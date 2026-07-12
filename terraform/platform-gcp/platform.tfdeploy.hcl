@@ -196,3 +196,13 @@ publish_output "workload_identity_members" {
   description = "Tenant => IAM member string for least-privilege secretAccessor grants in the app-gcp stack."
   value       = deployment.eu.workload_identity_members
 }
+
+publish_output "gcs_bucket_name" {
+  description = "Mattermost object-storage bucket, rendered into the operator CR via Cloud Deploy deploy parameters."
+  value       = deployment.eu.gcs_bucket_name
+}
+
+publish_output "workload_identity_emails" {
+  description = "Tenant => GSA email, rendered into the KSA annotations via Cloud Deploy deploy parameters."
+  value       = deployment.eu.workload_identity_emails
+}

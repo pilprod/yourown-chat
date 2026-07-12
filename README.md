@@ -155,7 +155,9 @@ short version:
 5. **Apply**: platform-gcp first; cloudflare and app-gcp follow automatically
    (they only depend on the platform, so their order doesn't matter).
 6. **Deploy the workloads** from [`helm/`](helm/README.md): ingress-nginx +
-   Mattermost operator, replace the `REPLACE-ME-*` markers, apply manifests.
+   Mattermost operator, apply manifests. The bucket and Workload Identity
+   emails are injected automatically via Cloud Deploy deploy parameters; only
+   the ingress `loadBalancerIP` and the dev-team RBAC principal stay manual.
 
 ### Day-2 flows
 

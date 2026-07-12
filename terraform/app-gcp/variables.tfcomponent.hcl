@@ -119,3 +119,13 @@ variable "extra_labels" {
   description = "Additional labels merged onto every labellable resource."
   default     = {}
 }
+
+variable "gcs_bucket_name" {
+  type        = string
+  description = "Mattermost object-storage bucket name. Published by the platform-gcp stack; rendered into the operator CR (spec.fileStore.external.bucket) via Cloud Deploy deploy parameters."
+}
+
+variable "workload_identity_emails" {
+  type        = map(string)
+  description = "Tenant (mattermost/matterbridge/dev) => GSA email. Published by the platform-gcp stack; rendered into the KSA iam.gke.io/gcp-service-account annotations via Cloud Deploy deploy parameters."
+}

@@ -24,7 +24,7 @@ spec:
       containers:
         - name: matterbridge
           # Pin to a digest/tag you trust rather than a moving tag.
-          image: "42wim/matterbridge:REPLACE-ME-stable"
+          image: "42wim/matterbridge:1.26.0"
           args:
             - "-conf"
             - "/etc/matterbridge/matterbridge.toml"

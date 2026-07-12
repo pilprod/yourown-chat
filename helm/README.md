@@ -71,9 +71,14 @@ gcloud secrets versions add cloudflare-origin-pull-ca  --data-file=origin-pull-c
 4. Public ingress for `yourown.chat`: reserve the static IP, wire Cloudflare DNS,
    Full (Strict) TLS + Authenticated Origin Pulls, and populate the origin
    secrets. Full runbook: [`ingress-nginx/README.md`](ingress-nginx/README.md).
-5. Replace all `REPLACE-ME-*` markers (project ID, bucket, image versions, and
-   `loadBalancerIP` = `terraform output ingress_ip_address`). The bucket name is
-   `terraform output gcs_bucket_name`.
+5. Most values arrive automatically: the bucket and the Workload Identity SA
+   emails are injected by **Cloud Deploy deploy parameters** (`# from-param:`
+   placeholders, values published by the platform-gcp stack) on every release —
+   nothing to edit. The remaining manual markers are deliberate:
+   `loadBalancerIP` in `ingress-nginx/values.yaml` (= `terraform output
+   ingress_ip_address`, part of the one-time ingress runbook) and the dev-team
+   RBAC principal in `developing/rbac.yaml` (organizational, not a Terraform
+   value).
 
 ## Apply order
 

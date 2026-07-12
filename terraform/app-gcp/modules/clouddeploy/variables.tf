@@ -60,3 +60,9 @@ variable "labels" {
   description = "Labels applied to Cloud Deploy resources."
   default     = {}
 }
+
+variable "deploy_parameters" {
+  type        = map(string)
+  description = "Key => value map injected into every stage's Skaffold render. A manifest field annotated `# from-param: $${key}` has its value replaced on each release -- the Terraform-owned values (bucket, Workload Identity emails) flow into Kubernetes without hand-edited markers. Note: substitution replaces the WHOLE field value; partial interpolation inside a string is not supported."
+  default     = {}
+}
