@@ -36,6 +36,24 @@ resource "google_kms_key_ring" "this" {
   location = var.location
 }
 
+# Adopt the pre-existing key ring + key instead of re-creating them. Cloud KMS
+# objects can NEVER be deleted from GCP (only key versions can), so after any
+# teardown the same-named ring/key still exist and a fresh create 409s. Gated
+# by a flag (default off) so a genuinely new project still creates normally;
+# when on, Terraform imports both into state on the next apply (a no-op once
+# they are already in state). Config-driven import is accepted by Stacks.
+import {
+  for_each = var.adopt_existing ? toset([local.key_ring_name]) : toset([])
+  to       = google_kms_key_ring.this
+  id       = "projects/${var.project_id}/locations/${var.location}/keyRings/${each.value}"
+}
+
+import {
+  for_each = var.adopt_existing ? toset([local.crypto_key_name]) : toset([])
+  to       = google_kms_crypto_key.this
+  id       = "projects/${var.project_id}/locations/${var.location}/keyRings/${local.key_ring_name}/cryptoKeys/${each.value}"
+}
+
 resource "google_kms_crypto_key" "this" {
   name     = local.crypto_key_name
   key_ring = google_kms_key_ring.this.id

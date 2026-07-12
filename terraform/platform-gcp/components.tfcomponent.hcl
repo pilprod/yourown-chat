@@ -185,6 +185,10 @@ component "kms" {
     rotation_period  = var.kms_rotation_period
     labels           = local.common_labels
 
+    # KMS objects are never deletable in GCP: adopt the pre-existing ring/key
+    # when re-bootstrapping this project (see kms_adopt_existing).
+    adopt_existing = var.kms_adopt_existing
+
     # The public registry is not CMEK-encrypted, so the Artifact Registry
     # service agent never wraps a DEK with this key.
     grant_artifact_registry = false

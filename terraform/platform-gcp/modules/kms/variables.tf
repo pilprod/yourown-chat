@@ -62,3 +62,9 @@ variable "labels" {
   description = "Labels applied to the crypto key."
   default     = {}
 }
+
+variable "adopt_existing" {
+  type        = bool
+  description = "Import the same-named key ring and crypto key already present in the project into state instead of creating them. Cloud KMS objects are never deletable, so any re-bootstrap of an existing project needs this on. No-op once both are in state."
+  default     = false
+}
