@@ -2,7 +2,7 @@
 
 A self-hosted Mattermost chat platform on Google Cloud, fronted by Cloudflare,
 managed end-to-end with **HCP Terraform Stacks** — production practices on a
-~$90/month budget.
+~$100/month budget.
 
 **[Русская версия → README.ru.md](README.ru.md)**
 
@@ -41,7 +41,7 @@ holds the VPC, the cluster and the database — and the Cloudflare API token
 |---|---|
 | PostgreSQL | Cloud SQL, private IP only, Frankfurt (`europe-west3`), PITR + 7-day backups |
 | Object storage | GCS bucket with S3-compatible HMAC creds for Mattermost ("filestore") |
-| Kubernetes | One zonal GKE Standard cluster, private nodes, two pools: tainted prod (`e2-standard-2`) + dev (`e2-small`) |
+| Kubernetes | One zonal GKE Standard cluster, private nodes, two pools: tainted prod (`e2-standard-2`) + dev/system (`e2-medium`) |
 | Container registry | One Artifact Registry repo (`docker`), optional vulnerability scanning |
 | CI | Cloud Build builds the Mattermost image on a `v*-patched` git tag |
 | CD | Cloud Deploy dev → prod pipeline; a semver tag on this repo cuts a release automatically |
@@ -199,17 +199,17 @@ Details: [`docs/BUILD.md`](docs/BUILD.md).
 
 ## Design decisions & tradeoffs
 
-### One cluster, ~$90/month
+### One cluster, ~$100/month
 
-The brief asks for production practices **and** the cheapest possible GKE under
-a ~$100/month ceiling. GKE's free tier waives the management fee for exactly
-one zonal cluster — a second cluster would add ~$74/month. So dev and prod
-share **one cluster** and are isolated in-cluster instead of physically:
+The brief asks for production practices **and** the cheapest practical GKE
+footprint around a ~$100/month target. GKE's free tier waives the management fee
+for exactly one zonal cluster — a second cluster would add ~$74/month. So dev
+and prod share **one cluster** and are isolated in-cluster instead of physically:
 
 - prod runs on a dedicated **tainted** pool (`e2-standard-2`) — dev workloads
   can't schedule there, so they can never contend for prod's CPU or memory;
-- dev shares an untainted `e2-small` pool with `kube-system` — on-demand, not
-  Spot, because preempting CoreDNS would hurt prod too;
+- dev shares an untainted `e2-medium` system pool with `kube-system` —
+  on-demand, not Spot, because preempting CoreDNS would hurt prod too;
 - the `dev` namespace is locked down with namespace-scoped RBAC and
   default-deny NetworkPolicies — no path to prod on the pod network.
 
@@ -217,11 +217,11 @@ share **one cluster** and are isolated in-cluster instead of physically:
 |---|---|---|
 | GKE control plane | 1 zonal cluster | $0 (free tier) |
 | prod nodes | 1× `e2-standard-2` | ≈$49 |
-| dev nodes | 1× `e2-small` | ≈$12 |
+| dev/system nodes | 1× `e2-medium` | ≈$24 |
 | Cloud SQL | `db-f1-micro`, 20 GiB, PITR | ≈$12–15 |
 | GCS + PVCs | small | ≈$3 |
 | Buffer | egress/growth | ≈$10–15 |
-| **Total** | | **≈$86–93** |
+| **Total** | | **≈$98–106** |
 
 Every knob has a hardening path — flip a variable, don't re-architect:
 `gke_regional = true` for an HA control plane, `REGIONAL` for HA Cloud SQL,

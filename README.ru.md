@@ -1,7 +1,7 @@
 # YourOwn.Chat
 
 Self-hosted чат-платформа Mattermost в Google Cloud за Cloudflare, целиком
-описанная в **HCP Terraform Stacks** — production-практики в бюджете ~$90/мес.
+описанная в **HCP Terraform Stacks** — production-практики в бюджете около ~$100/мес.
 
 **[English version → README.md](README.md)**
 
@@ -43,7 +43,7 @@ graph LR
 |---|---|
 | PostgreSQL | Cloud SQL, только private IP, Франкфурт (`europe-west3`), PITR + бэкапы 7 дней |
 | Объектное хранилище | GCS-бакет + S3-совместимые HMAC-ключи для Mattermost |
-| Kubernetes | Один зональный GKE Standard, приватные ноды, два пула: tainted prod (`e2-standard-2`) + dev (`e2-small`) |
+| Kubernetes | Один зональный GKE Standard, приватные ноды, два пула: tainted prod (`e2-standard-2`) + dev/system (`e2-medium`) |
 | Реестр образов | Один Artifact Registry (`docker`), опциональное сканирование уязвимостей |
 | CI | Cloud Build собирает образ Mattermost по git-тегу `v*-patched` |
 | CD | Пайплайн Cloud Deploy dev → prod; semver-тег на этом репо режет релиз автоматически |
@@ -200,17 +200,17 @@ kubectl rollout restart -n mattermost deploy  → поды подхватят с
 
 ## Решения и компромиссы
 
-### Один кластер, ~$90/мес
+### Один кластер, ~$100/мес
 
-Требование — production-практики **и** самый дешёвый GKE при потолке
+Требование — production-практики **и** самый дешёвый практичный GKE около
 ~$100/мес. Free tier GKE прощает плату за управление ровно одному зональному
 кластеру — второй добавил бы ~$74/мес. Поэтому dev и prod делят **один
 кластер**, а изоляция — внутри него:
 
 - prod на выделенном **tainted**-пуле (`e2-standard-2`) — dev-workloads туда
   не шедулятся и не конкурируют за CPU/память prod'а;
-- dev на untainted `e2-small` вместе с `kube-system` — on-demand, не Spot:
-  преемпция CoreDNS ударила бы и по prod;
+- dev на untainted `e2-medium` system-пуле вместе с `kube-system` —
+  on-demand, не Spot: преемпция CoreDNS ударила бы и по prod;
 - namespace `dev` заперт: RBAC только на свой namespace + default-deny
   NetworkPolicies — пути к prod по pod-сети нет.
 
@@ -218,11 +218,11 @@ kubectl rollout restart -n mattermost deploy  → поды подхватят с
 |---|---|---|
 | Управление GKE | 1 зональный кластер | $0 (free tier) |
 | Ноды prod | 1× `e2-standard-2` | ≈$49 |
-| Ноды dev | 1× `e2-small` | ≈$12 |
+| Ноды dev/system | 1× `e2-medium` | ≈$24 |
 | Cloud SQL | `db-f1-micro`, 20 GiB, PITR | ≈$12–15 |
 | GCS + PVC | мелочь | ≈$3 |
 | Буфер | egress/рост | ≈$10–15 |
-| **Итого** | | **≈$86–93** |
+| **Итого** | | **≈$98–106** |
 
 Каждая ручка имеет путь ужесточения — переменная, а не переделка:
 `gke_regional = true` для HA control plane, `REGIONAL` для HA Cloud SQL,
