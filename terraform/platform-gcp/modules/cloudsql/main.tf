@@ -28,6 +28,16 @@ resource "random_password" "user" {
   length           = 32
   special          = true
   override_special = "!#%*_-+="
+
+  # Deliberate, on-demand rotation: bump var.password_rotation (a committed
+  # literal -- varset values are ephemeral in Stacks and cannot feed keepers)
+  # and apply. The new password flows to the SQL user and both secrets in the
+  # same apply; then restart the consumers (kubectl rollout restart) since the
+  # CSI mount only refreshes on pod start. NOT time-based on purpose: a
+  # time_rotating keeper would rotate as a side effect of an unrelated apply.
+  keepers = {
+    rotation = var.password_rotation
+  }
 }
 
 # Adopt an instance orphaned by a create-wait timeout instead of re-creating it.

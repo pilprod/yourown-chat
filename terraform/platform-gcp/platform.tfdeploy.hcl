@@ -125,6 +125,11 @@ deployment "eu" {
     cloudsql_backup_retained_count = 7
     cloudsql_txlog_retention_days  = 7
     cloudsql_deletion_protection   = true
+    # DB password rotation trigger. To rotate: change this value (a date works
+    # well), merge, apply, then `kubectl rollout restart -n mattermost` so the
+    # pods pick up the new connection secret. Committed literal by design --
+    # varsets are ephemeral-only, and each bump leaves a dated git record.
+    cloudsql_password_rotation = "2026-07-12"
 
     # --- Public ingress -------------------------------------------------------
     # Reserves the Cloudflare-facing static IP the cloudflare stack's apex A record

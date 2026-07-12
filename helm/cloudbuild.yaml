@@ -6,9 +6,9 @@
 # This is now IMPLEMENTED by the stack's `deploy_release` component
 # (terraform/app-gcp/modules/deploy-release): a Cloud Build 2nd-gen trigger on THIS repo
 # fires on semver tags (MAJOR.MINOR.PATCH) and runs exactly the `gcloud deploy
-# releases create` step below as the least-privilege `europe-west3-releaser` SA
+# releases create` step below as the least-privilege `releaser-europe-west3` SA
 # (roles/clouddeploy.releaser on the pipeline + actAs on the execution SA
-# europe-west3-clouddeploy@ + object admin on its own source-staging bucket). This
+# clouddeploy-europe-west3@ + object admin on its own source-staging bucket). This
 # file is kept as documentation of that command and as a manual fallback you can
 # run from any checkout.
 #
@@ -29,7 +29,7 @@ substitutions:
   _PIPELINE: europe-west3-pipeline
   # The stack's dedicated releaser SA. For a manual run, use any SA that has
   # roles/clouddeploy.releaser on the pipeline + actAs on the execution SA.
-  _RELEASE_SA_EMAIL: europe-west3-releaser@${PROJECT_ID}.iam.gserviceaccount.com
+  _RELEASE_SA_EMAIL: releaser-europe-west3@${PROJECT_ID}.iam.gserviceaccount.com
 
 serviceAccount: projects/${PROJECT_ID}/serviceAccounts/${_RELEASE_SA_EMAIL}
 

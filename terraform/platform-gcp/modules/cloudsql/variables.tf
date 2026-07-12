@@ -185,3 +185,9 @@ variable "adopt_existing_instance" {
   description = "Import a pre-existing Cloud SQL instance of the same name into state instead of creating it. Cloud SQL create can time out on the Terraform wait while GCP finishes provisioning in the background, leaving an instance that exists but is absent from state; every later apply then fails with a 409, and the name cannot simply be deleted+recreated (Cloud SQL reserves a deleted instance name for ~1 week). Set true for one apply to adopt that orphan, then set back to false."
   default     = false
 }
+
+variable "password_rotation" {
+  type        = string
+  description = "Rotation trigger for the DB user password. Any change regenerates the password and updates the SQL user + both secrets in one apply (restart consumers afterwards). Bump deliberately (e.g. '2', or a date '2026-07-13'); no time-based auto-rotation on purpose."
+  default     = "1"
+}
