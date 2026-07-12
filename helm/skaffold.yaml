@@ -1,6 +1,6 @@
 # Skaffold config consumed by Cloud Deploy to render and apply the platform's
 # Kubernetes workloads. Delivered as a dev -> prod pipeline by the `clouddeploy`
-# component (terraform/modules/clouddeploy); each pipeline stage binds
+# component (terraform/app-gcp/modules/clouddeploy); each pipeline stage binds
 # one profile below via its `profiles` field:
 #
 #   dev  -> the dev tenant (in-cluster Postgres + dev Mattermost) plus

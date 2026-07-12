@@ -57,7 +57,7 @@ The Mattermost source lives at `https://github.com/pilprod/mattermost` with a
 
 ## 1. Fill the deployment inputs
 
-In `terraform/deployments.tfdeploy.hcl`, the `eu` deployment is already wired
+In `terraform/app-gcp/app.tfdeploy.hcl`, the `eu` deployment is already wired
 for `yourown-chat`. The image-CI wiring needs no per-deploy secrets:
 
 - `github_connection_name` -> `pilprod-github` (default; change only if you named
@@ -69,10 +69,11 @@ The `builds` map has a **single entry** — it pushes to the unified `docker` re
 
 ## 2. Apply the stack
 
-There is **no separate stack to create** — the registry and image CI are
-components of the single stack. Plan and apply the `eu` deployment as
-described in [the README setup](../README.md#google-cloud-initial-setup) §9; the same apply creates the registry, the
-Cloud Build connection and the tag trigger along with the rest of the platform.
+There is **no additional stack to create** — the registry lives in the
+**platform-gcp** stack and the image CI in the **app-gcp** stack (linked). Plan and
+apply them as described in [the README setup](../README.md#google-cloud-initial-setup) §9 (platform first, then app);
+those applies create the registry, the Cloud Build repository link and the tag
+trigger along with the rest of the platform.
 
 ## 3. Build an image
 
