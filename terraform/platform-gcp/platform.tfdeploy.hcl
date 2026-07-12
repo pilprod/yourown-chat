@@ -13,10 +13,10 @@
 # mistake can never touch platform state.
 #
 # TOPOLOGY / COST: GKE's free tier waives the management fee for ONE zonal
-# cluster per billing account, so this single-cluster shape stays ~$86-93/mo
-# (vs ~$140-150/mo for a physically separate dev cluster). Isolation between
+# cluster per billing account, so this single-cluster shape stays ~$98-106/mo
+# (vs ~$150-160/mo for a physically separate dev cluster). Isolation between
 # dev and prod is achieved in-cluster: a tainted prod pool (e2-standard-2), an
-# untainted dev pool (e2-small) that also hosts kube-system, and namespace
+# untainted dev/system pool (e2-medium) that also hosts kube-system, and namespace
 # RBAC + default-deny NetworkPolicies. The dev pool is on-demand (NOT Spot) on
 # purpose: it runs CoreDNS/kube-system, which must not be preempted under prod.
 #
@@ -84,9 +84,10 @@ deployment "eu" {
     # --- GKE: ONE zonal cluster, TWO node pools sharing it -------------------
     #   prod - e2-standard-2, on-demand, TAINTED dedicated=prod so ONLY prod
     #          workloads (which tolerate it + nodeSelector tier=prod) land here.
-    #   dev  - e2-small, on-demand, UNTAINTED so kube-system/CoreDNS + the dev
-    #          tenant (nodeSelector tier=dev) share this cheap pool. On-demand,
-    #          not Spot: preempting this pool would take CoreDNS down for prod.
+    #   dev  - e2-medium, on-demand, UNTAINTED so kube-system/CoreDNS + the dev
+    #          tenant (nodeSelector tier=dev) share this cheap system pool.
+    #          On-demand, not Spot: preempting this pool would take CoreDNS down
+    #          for prod.
     gke_regional            = false
     gke_deletion_protection = true
     gke_node_pools = {
@@ -101,7 +102,7 @@ deployment "eu" {
         taints       = [{ key = "dedicated", value = "prod", effect = "NO_SCHEDULE" }]
       }
       dev = {
-        machine_type = "e2-small"
+        machine_type = "e2-medium"
         spot         = false
         min_count    = 1
         max_count    = 2

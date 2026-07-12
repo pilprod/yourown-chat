@@ -117,10 +117,10 @@ variable "gke_node_pools" {
       taints       = [{ key = "dedicated", value = "prod", effect = "NO_SCHEDULE" }]
     }
     dev = {
-      machine_type = "e2-small"
+      machine_type = "e2-medium"
       spot         = false
       min_count    = 1
-      max_count    = 1
+      max_count    = 2
       disk_size_gb = 30
       labels       = { tier = "dev" }
       taints       = []
