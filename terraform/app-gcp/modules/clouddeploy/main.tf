@@ -90,11 +90,19 @@ resource "google_clouddeploy_delivery_pipeline" "this" {
         target_id = google_clouddeploy_target.stage[stage.value.name].name
         profiles  = stage.value.profiles
 
-        strategy {
-          standard {
-            # Run the Skaffold `verify` tests after deploy on stages that opt in
-            # (the target also carries the VERIFY execution usage).
-            verify = stage.value.verify
+        # Emit a strategy only when it differs from the API default. `standard
+        # { verify = false }` IS the default: the API normalizes it away and
+        # never stores the block, so always sending it re-plans a phantom
+        # "create strategy" forever (same class of drift as tls_1_3 = zrt).
+        dynamic "strategy" {
+          for_each = stage.value.verify ? [1] : []
+
+          content {
+            standard {
+              # Run the Skaffold `verify` tests after deploy on stages that opt
+              # in (the target also carries the VERIFY execution usage).
+              verify = true
+            }
           }
         }
       }
