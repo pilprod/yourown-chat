@@ -1,5 +1,5 @@
 # Prod Mattermost, managed by the Mattermost Operator (installation.mattermost.com/v1beta1).
-# Requires the operator + CRDs to be installed first (see helm/README.md).
+# Requires the operator + CRDs to be installed first (see docs/DEPLOY.md).
 #
 # Scheduling: pinned to the dedicated prod node pool (nodeSelector tier=prod +
 # toleration for the dedicated=prod taint) so dev/bridge workloads can never

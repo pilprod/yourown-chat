@@ -26,7 +26,7 @@
 
 substitutions:
   _REGION: europe-west3
-  _PIPELINE: europe-west3-pipeline
+  _PIPELINE: europe-west3
   # The stack's dedicated releaser SA. For a manual run, use any SA that has
   # roles/clouddeploy.releaser on the pipeline + actAs on the execution SA.
   _RELEASE_SA_EMAIL: releaser-europe-west3@${PROJECT_ID}.iam.gserviceaccount.com
