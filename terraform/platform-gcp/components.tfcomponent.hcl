@@ -51,7 +51,7 @@ locals {
   # same google_project_service resources. The bootstrap set
   # (cloudresourcemanager, iam, iamcredentials, serviceusage, sts,
   # secretmanager) is enabled by hand in README.md before Terraform runs.
-  activate_apis = [
+  activate_apis = concat([
     "compute.googleapis.com",
     "container.googleapis.com",
     "servicenetworking.googleapis.com",
@@ -63,7 +63,12 @@ locals {
     "monitoring.googleapis.com",
     "cloudbuild.googleapis.com",
     "artifactregistry.googleapis.com",
-  ]
+    ],
+    # Artifact Analysis (vulnerability scanning) is a paid opt-in: the API is
+    # only enabled when the registry actually scans, so a default deployment
+    # carries no scanning surface (or cost) at all.
+    var.artifact_registry_vulnerability_scanning ? ["containerscanning.googleapis.com"] : []
+  )
 }
 
 component "project_services" {
@@ -309,6 +314,9 @@ component "artifact_registry" {
     description   = "Unified container images (Mattermost + future services), promoted by tag across environments."
     kms_key_name  = var.artifact_registry_kms_key_name
     labels        = local.common_labels
+
+    # Scan pushed images for vulnerabilities (paid; API gated in activate_apis).
+    vulnerability_scanning = var.artifact_registry_vulnerability_scanning
   }
 
   providers = {

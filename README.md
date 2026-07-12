@@ -508,16 +508,27 @@ Copy the token value once (it is not shown again).
 
 #### 10.2 Store it in an HCP variable set
 
+The variable set doubles as the ops-toggle surface: besides the Cloudflare
+token it carries the platform's `artifact_registry_vulnerability_scanning`
+flag, so it is applied to **both** the **cloudflare** and **platform-gcp**
+Stacks.
+
 1. In HCP Terraform, create a **variable set** and apply it to the
-   **cloudflare** Stack (only it talks to Cloudflare).
+   **cloudflare** and **platform-gcp** Stacks.
 2. Add a **Terraform variable** (category *Terraform*, matching
-   `category = "terraform"` in the `store "varset"` block) named
+   `category = "terraform"` in the `store "varset"` blocks) named
    `cloudflare_api_token` = the token. Tick **Sensitive**; leave **HCL
-   unchecked** — the token is a plain string, not an HCL expression (HCL is only
-   for list/map/object values).
-3. In `terraform/cloudflare/cloudflare.tfdeploy.hcl`, set the `store "varset"`
-   block's `id` to that variable set's ID. The token flows in as the ephemeral
-   `cloudflare_api_token` input.
+   unchecked** — the token is a plain string, not an HCL expression.
+3. Add a second **Terraform variable** named
+   `artifact_registry_vulnerability_scanning`, value `true` or `false`, and
+   **tick HCL** so it is a real bool. It MUST exist: the `.tfdeploy.hcl`
+   dialect has no conversion functions and a missing varset key resolves to
+   null, failing the plan. This flag turns Artifact Analysis scanning of the
+   built Mattermost image on/off (paid, ~$0.26 per scanned digest) without a
+   commit.
+4. In `terraform/cloudflare/cloudflare.tfdeploy.hcl` and
+   `terraform/platform-gcp/platform.tfdeploy.hcl`, set the `store "varset"`
+   blocks' `id` to that variable set's ID.
 
 > No manual IP hand-off: the proxied apex A record is wired to the reserved
 > ingress IP through the stack link (`upstream_input.platform.ingress_ip_address`),
