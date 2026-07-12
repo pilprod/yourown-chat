@@ -28,7 +28,7 @@ spec:
   # "<image>:<version>", so `version` is the git tag Cloud Build produced.
   image: "europe-west3-docker.pkg.dev/yourown-chat/docker/mattermost"
   # Must match a pushed git tag matching ^v.*-patched$ (see docs/BUILD.md).
-  version: "v9.11.3-patched"
+  version: "v11.8.3-patched"
   replicas: 1
 
   ingress:
