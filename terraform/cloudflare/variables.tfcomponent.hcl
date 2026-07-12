@@ -1,18 +1,59 @@
 # ---------------------------------------------------------------------------
-# CLOUDFLARE stack inputs. The ingress IP arrives in cloudflare.tfdeploy.hcl as
+# CLOUDFLARE stack inputs. The platform-published values (ingress IP, CMEK key,
+# Workload Identity members) arrive in cloudflare.tfdeploy.hcl as
 # upstream_input from the LINKED platform-gcp stack; the API token comes from
 # an HCP variable set. Everything else is edge configuration.
 # ---------------------------------------------------------------------------
 
+variable "project_id" {
+  type        = string
+  description = "Existing GCP project ID (for the origin-TLS Secret Manager containers this stack fills)."
+}
+
+variable "region" {
+  type        = string
+  description = "Primary region for the secret replicas. europe-west3 = Frankfurt, Germany."
+  default     = "europe-west3"
+}
+
+# --- Keyless auth: HCP Dynamic Provider Credentials -> GCP WIF ---------------
+variable "identity_token" {
+  type        = string
+  ephemeral   = true
+  description = "HCP Terraform OIDC JWT, minted per run. Ephemeral: never persisted to stack state."
+}
+
+variable "audience" {
+  type        = string
+  description = "STS audience = full WIF provider resource name (//iam.googleapis.com/projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/<POOL_ID>/providers/<PROVIDER_ID>)."
+}
+
+variable "service_account_email" {
+  type        = string
+  description = "Least-privilege GCP apply SA impersonated by Terraform via WIF (never Owner/Editor)."
+}
+
+# --- Values published by the LINKED platform-gcp stack -----------------------
 variable "ingress_ip_address" {
   type        = string
   description = "Reserved static external ingress IP the proxied apex A record points at. Published by the platform-gcp stack (upstream_input.platform.ingress_ip_address). Only consumed when public_ingress_enabled = true."
   default     = null
 }
 
+variable "cmek_key_id" {
+  type        = string
+  description = "Shared CMEK key resource ID encrypting the origin-TLS secret replicas (null when the platform runs cmek_enabled = false). Published by the platform-gcp stack."
+  default     = null
+}
+
+variable "workload_identity_members" {
+  type        = map(string)
+  description = "Tenant (mattermost/matterbridge/dev) => IAM member string (serviceAccount:<email>); the mattermost member reads the origin-TLS secrets. Published by the platform-gcp stack."
+}
+
 variable "public_ingress_enabled" {
   type        = bool
-  description = "Provision the public edge (DNS + settings + WAF + origin TLS). MUST match the platform-gcp deployment's public_ingress_enabled (which reserves the static IP this edge points at). Enable for prod only; dev stays private."
+  description = "Provision the public edge (DNS + settings + WAF + origin TLS + the origin-TLS secret containers). MUST match the platform-gcp deployment's public_ingress_enabled (which reserves the static IP this edge points at). Enable for prod only; dev stays private."
   default     = false
 }
 
@@ -137,7 +178,7 @@ variable "cloudflare_rate_limit_rules" {
 
 variable "cloudflare_manage_origin_cert" {
   type        = bool
-  description = "Issue a Cloudflare Origin CA cert from Terraform for Full (Strict) TLS. On by default (matches ssl_mode=strict). Needs SSL and Certificates: Edit on the token. The cert/key are PUBLISHED to the app-gcp stack, which pours them into the mattermost-origin-tls-* secrets -- no manual step."
+  description = "Issue a Cloudflare Origin CA cert from Terraform for Full (Strict) TLS. On by default (matches ssl_mode=strict). Needs SSL and Certificates: Edit on the token. The cert/key are written straight into the mattermost-origin-tls-* Secret Manager containers by this stack -- no manual step, and the private key never crosses a stack boundary."
   default     = true
 }
 

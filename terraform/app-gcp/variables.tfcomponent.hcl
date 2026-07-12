@@ -1,8 +1,8 @@
 # ---------------------------------------------------------------------------
 # APP-GCP stack inputs. Values are supplied by app.tfdeploy.hcl. The upstream-owned
 # values (cluster ID, registry coordinates, CMEK key, Workload Identity
-# members, Cloudflare origin cert/key) arrive there as upstream_input from the
-# LINKED platform-gcp and cloudflare stacks -- declared here as ordinary variables, so the components stay
+# members) arrive there as upstream_input from the
+# LINKED platform-gcp stack -- declared here as ordinary variables, so the components stay
 # testable and the linkage is confined to the deployment file.
 # ---------------------------------------------------------------------------
 
@@ -111,27 +111,6 @@ variable "release_tag_regex" {
   type        = string
   description = "Git tag regex (on the deploy repo) that triggers an automatic Cloud Deploy release cut. Defaults to semantic MAJOR.MINOR.PATCH — the *.*.* pattern (e.g. 1.2.3)."
   default     = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
-}
-
-# --- Public ingress (Cloudflare-fronted) ------------------------------------
-variable "public_ingress_enabled" {
-  type        = bool
-  description = "Provision the origin-TLS secret containers for the public edge. MUST match the platform-gcp and cloudflare deployments' public_ingress_enabled. Enable for prod only; dev stays private."
-  default     = false
-}
-
-# --- Values published by the LINKED cloudflare stack --------------------------
-variable "origin_certificate_pem" {
-  type        = string
-  description = "Cloudflare Origin CA certificate (PEM) poured into the mattermost-origin-tls-cert secret. Published by the cloudflare stack (upstream_input.cloudflare.origin_certificate_pem); null when it runs manage_origin_cert = false (the secret container is then created empty)."
-  default     = null
-}
-
-variable "origin_private_key_pem" {
-  type        = string
-  sensitive   = true
-  description = "Origin CA private key (PEM) poured into the mattermost-origin-tls-key secret. Published by the cloudflare stack; null when manage_origin_cert = false."
-  default     = null
 }
 
 # --- Labels -----------------------------------------------------------------

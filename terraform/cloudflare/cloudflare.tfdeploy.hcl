@@ -1,21 +1,42 @@
 # ---------------------------------------------------------------------------
 # CLOUDFLARE deployments. ONE deployment (`eu`) provisions the public edge for
 # yourown.chat: DNS (proxied apex A + www), edge TLS/security settings, DNSSEC,
-# WAF rules and the Origin CA cert.
+# WAF rules, the Origin CA cert AND the origin-protection Secret Manager
+# containers it fills.
 #
-# LINKED STACKS chain: platform-gcp -> cloudflare -> app-gcp.
-#   - upstream_input "platform" below delivers the reserved static ingress IP
-#     (last-APPLIED platform-gcp output), so the apex A record can never point
-#     at an address that does not exist yet;
-#   - the publish_output blocks at the bottom hand the Origin CA cert/key to
-#     the app-gcp stack, which pours them into the mattermost-origin-tls-*
-#     Secret Manager containers.
-# HCP orders all three stacks automatically along these edges.
+# LINKED to platform-gcp via upstream_input "platform" (last-APPLIED outputs):
+# the reserved static ingress IP for the apex A record, plus the CMEK key and
+# the mattermost Workload Identity member for the secret containers. Linked
+# stacks cannot publish SENSITIVE values, so the Origin CA private key is
+# written into Secret Manager HERE and never crosses a stack boundary -- this
+# stack publishes nothing downstream.
 #
-# AUTH: no GCP here. The one zone-scoped Cloudflare API token is pulled from an
-# HCP variable set (store "varset") and passed as an EPHEMERAL input -- never
-# in git or state. Bootstrap: README.md.
+# AUTH is mixed by necessity:
+#   - Cloudflare: the one zone-scoped API token, pulled from an HCP variable
+#     set (store "varset") and passed as an EPHEMERAL input -- never in git or
+#     state.
+#   - GCP: keyless HCP Terraform Dynamic Provider Credentials -> Workload
+#     Identity Federation (identity_token block), needed only for the
+#     origin-TLS secrets. Bootstrap: README.md.
 # ---------------------------------------------------------------------------
+
+locals {
+  # --- Keyless GCP auth wiring (project `yourown-chat`) ----------------------
+  # STS token-exchange audience = full WIF provider resource name (leading //).
+  gcp_wif_audience = "//iam.googleapis.com/projects/1086706391144/locations/global/workloadIdentityPools/hcp-terraform/providers/hcp-terraform"
+  # Least-privilege SA impersonated after the exchange (never Owner/Editor).
+  gcp_apply_sa = "terraform-apply@yourown-chat.iam.gserviceaccount.com"
+
+  gcp_project = "yourown-chat"
+  gcp_region  = "europe-west3" # Frankfurt, Germany
+}
+
+# HCP mints this OIDC JWT once per run. Its `aud` claim must match the WIF
+# provider's allowed-audiences, which is the full https://iam.googleapis.com/...
+# provider URL (see README.md, gcloud ... --allowed-audiences=...).
+identity_token "gcp" {
+  audience = ["https://iam.googleapis.com/projects/1086706391144/locations/global/workloadIdentityPools/hcp-terraform/providers/hcp-terraform"]
+}
 
 # Cloudflare zone-scoped API token, injected from an HCP variable set so it never
 # touches git or state. Replace the id with your workspace's variable set ID and
@@ -37,8 +58,18 @@ upstream_input "platform" {
 # --- eu: the public edge in one deployment -------------------------------------
 deployment "eu" {
   inputs = {
-    # Reserved static IP from the platform-gcp stack (linked, last-applied).
-    ingress_ip_address = upstream_input.platform.ingress_ip_address
+    # --- Keyless GCP auth: OIDC JWT exchanged via WIF to impersonate apply SA --
+    identity_token        = identity_token.gcp.jwt
+    audience              = local.gcp_wif_audience
+    service_account_email = local.gcp_apply_sa
+
+    project_id = local.gcp_project
+    region     = local.gcp_region
+
+    # --- platform-gcp published values (linked stack, last-applied) -----------
+    ingress_ip_address        = upstream_input.platform.ingress_ip_address
+    cmek_key_id               = upstream_input.platform.cmek_key_id
+    workload_identity_members = upstream_input.platform.workload_identity_members
 
     # MUST match the platform-gcp deployment's public_ingress_enabled (which
     # reserves the static IP this edge points at).
@@ -54,20 +85,4 @@ deployment "eu" {
     cloudflare_dnssec_enabled     = true
     cloudflare_manage_origin_cert = true
   }
-}
-
-# --- Linked-stack contract: values the APP-GCP stack consumes ------------------
-# Each publish_output republishes a stack output of the LAST APPLIED state of
-# deployment.eu. The app-gcp stack references them as
-#   upstream_input.cloudflare.<name>
-# and HCP automatically triggers an app-gcp plan whenever an apply here changes
-# one.
-publish_output "origin_certificate_pem" {
-  description = "Cloudflare Origin CA certificate (PEM) for the mattermost-origin-tls-cert secret."
-  value       = deployment.eu.origin_certificate_pem
-}
-
-publish_output "origin_private_key_pem" {
-  description = "Origin CA private key (PEM) for the mattermost-origin-tls-key secret."
-  value       = deployment.eu.origin_private_key_pem
 }

@@ -1,15 +1,25 @@
 # ---------------------------------------------------------------------------
-# CLOUDFLARE stack: the public edge for yourown.chat, isolated in its own
-# stack. It is the only place the Cloudflare API token is ever exercised, so
-# the third-party edge shares no state (and no blast radius) with either GCP
-# stack.
+# CLOUDFLARE stack: the public edge for yourown.chat plus its origin-protection
+# secrets, isolated in their own stack. It is the only place the Cloudflare API
+# token is ever exercised.
 #
-# LINKED both ways along the chain platform-gcp -> cloudflare -> app-gcp:
-#   - consumes upstream_input.platform.ingress_ip_address (the reserved static
-#     IP the platform-gcp stack allocates) for the proxied apex A record;
-#   - publishes the Origin CA cert/key, which the app-gcp stack pours into the
-#     mattermost-origin-tls-* Secret Manager containers.
+# LINKED to platform-gcp (upstream_input "platform" in cloudflare.tfdeploy.hcl):
+#   - consumes the reserved static ingress IP for the proxied apex A record;
+#   - consumes the CMEK key + the mattermost Workload Identity member for the
+#     origin-TLS Secret Manager containers.
+#
+# The origin_secrets component lives HERE (not in app-gcp) because linked
+# stacks cannot publish SENSITIVE values: the Origin CA private key therefore
+# never crosses a stack boundary -- this stack issues the cert AND writes the
+# cert/key into Secret Manager itself.
 # ---------------------------------------------------------------------------
+
+locals {
+  common_labels = {
+    managed-by = "terraform"
+    stack      = "yourown-chat-cloudflare"
+  }
+}
 
 # --- Cloudflare edge (public ingress only) ----------------------------------
 # Drives the whole zone: DNS (proxied apex A wired to the platform ingress IP
@@ -52,5 +62,50 @@ component "cloudflare" {
   providers = {
     cloudflare = provider.cloudflare.this
     tls        = provider.tls.this
+  }
+}
+
+# --- Origin-protection secrets (Secret Manager) ------------------------------
+# The Origin CA cert/key flow straight from the cloudflare component into these
+# containers, so ingress-nginx can serve Full (Strict) TLS with zero manual
+# steps. When manage_origin_cert = false the values are null and the module
+# creates empty containers to be filled out-of-band. The AOP CA stays an empty
+# container (Cloudflare-supplied, not issued here). Only the mattermost
+# workload (platform-published IAM member) may read them; replicas are
+# CMEK-encrypted with the platform's shared key.
+component "origin_secrets" {
+  for_each = var.public_ingress_enabled ? toset(["default"]) : toset([])
+
+  source = "./modules/secrets"
+
+  inputs = {
+    project_id        = var.project_id
+    replica_locations = [var.region]
+    labels            = local.common_labels
+
+    # CMEK: the platform's shared key (null when it runs cmek_enabled = false).
+    kms_key_name = var.cmek_key_id
+
+    secrets = {
+      "mattermost-origin-tls-cert" = {
+        value     = one([for c in component.cloudflare : c.origin_certificate_pem])
+        accessors = [var.workload_identity_members.mattermost]
+      }
+      "mattermost-origin-tls-key" = {
+        value     = one([for c in component.cloudflare : c.origin_private_key_pem])
+        accessors = [var.workload_identity_members.mattermost]
+      }
+      "cloudflare-origin-pull-ca" = {
+        # Explicit null (empty container) so all three entries share one object
+        # type.
+        value     = null
+        accessors = [var.workload_identity_members.mattermost]
+      }
+    }
+  }
+
+  providers = {
+    google = provider.google.this
+    random = provider.random.this
   }
 }

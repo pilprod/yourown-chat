@@ -15,24 +15,24 @@ Terraform Stacks** in a single GCP project:
   onto its own node pool.
 - **`terraform/cloudflare`** — the public edge for `yourown.chat`: the proxied
   apex A record (pointed at the platform ingress IP over the stack link), zone
-  TLS/security settings, DNSSEC, WAF and the Origin CA cert. It carries the
-  only non-GCP secret (a zone-scoped Cloudflare API token) and is completely
-  GCP-free, so the third-party edge shares no credentials or blast radius with
-  the GCP stacks.
+  TLS/security settings, DNSSEC, WAF, the Origin CA cert **and the
+  origin-protection Secret Manager containers it fills** (linked stacks cannot
+  publish sensitive values, so the Origin CA private key never crosses a stack
+  boundary). It carries the only non-GCP secret (a zone-scoped Cloudflare API
+  token), isolated from everything else.
 - **`terraform/app-gcp`** — the fast-moving GCP delivery layer: application
-  secrets (fed the Origin CA cert/key over the stack link), the Cloud Deploy
-  dev→prod pipeline, the Mattermost image CI (Cloud Build 2nd-gen) and the
-  semver-tag release cutting.
+  secrets, the Cloud Deploy dev→prod pipeline, the Mattermost image CI (Cloud
+  Build 2nd-gen) and the semver-tag release cutting.
 
-> **Three linked stacks, zero hand-offs.** The chain is
-> `platform-gcp -> cloudflare -> app-gcp`: each downstream stack consumes the
-> upstream's `publish_output` values via `upstream_input` — HCP wires them
-> automatically from the upstream's **last applied** state and triggers a
+> **Three linked stacks, zero hand-offs.** The graph is
+> `platform-gcp -> {cloudflare, app-gcp}`: both downstream stacks consume the
+> platform's `publish_output` values via `upstream_input` — HCP wires them
+> automatically from the platform's **last applied** state and triggers a
 > downstream plan whenever an apply changes one. There is still no manual
 > copy-paste, but the blast radius is now split three ways: an edge or
 > delivery-layer mistake can never touch the state that holds the VPC, the
 > cluster and the database, and the Cloudflare token never shares a stack with
-> GCP resources.
+> the rest of the GCP estate.
 
 | Capability | Implementation |
 |------------|----------------|
@@ -429,7 +429,7 @@ Stack NAMES must match the `upstream_input` `source` strings exactly
    **`terraform/cloudflare`** (consumes `upstream_input "platform"` →
    `.../platform-gcp`).
 3. Create Stack **`app-gcp`**, working directory **`terraform/app-gcp`**
-   (consumes both `.../platform-gcp` and `.../cloudflare`).
+   (also consumes `.../platform-gcp`; it does NOT link to cloudflare).
 4. Attach the Cloudflare variable set (step 10) to the **cloudflare** Stack
    (only it talks to Cloudflare).
 5. Plan and apply **platform-gcp** `eu` first. The first plan proves federation
@@ -438,13 +438,12 @@ Stack NAMES must match the `upstream_input` `source` strings exactly
    matches the `identity_token` block's `audience` (the full
    `https://iam.googleapis.com/.../providers/...` URL).
 6. Once the platform-gcp apply succeeds, its `publish_output` values become
-   available and HCP triggers the **cloudflare** stack's plan automatically (or
-   start one by hand). Apply it — the apex A record points at the reserved IP
-   and the Origin CA cert is issued.
-7. The cloudflare apply publishes the Origin CA cert/key, which (with the
-   platform values) unlocks the **app-gcp** plan. Apply it: secrets, pipeline,
-   CI and release cutting provision on top of both upstreams (last-applied, so
-   never stale-ahead).
+   available and HCP triggers the **cloudflare** and **app-gcp** plans
+   automatically (or start them by hand) — they only depend on the platform,
+   so they can apply in any order. The cloudflare apply points the apex A
+   record at the reserved IP, issues the Origin CA cert and writes it into the
+   `mattermost-origin-tls-*` secrets; the app-gcp apply provisions the
+   remaining secrets, the pipeline, the CI and the release cutting.
 
 > Migrating from the previous single-stack layout (working directory
 > `terraform/`): create the three Stacks above, then delete (or repoint) the
@@ -690,24 +689,25 @@ terraform/                  # THREE linked Terraform Stacks configurations
       kms/                  # one shared Cloud KMS HSM key (CMEK) + service-agent grants
       workload-identity/    # per-tenant GSA bound to a KSA (WI)
       artifact-registry/    # the unified Docker repo
-  cloudflare/               # STACK 2: the public edge (LINKED to platform-gcp)
+  cloudflare/               # STACK 2: the public edge + its origin secrets (LINKED to platform-gcp)
     .terraform-version      # same Core pin as the other stacks
-    .terraform.lock.hcl     # provider lock (cloudflare, tls) — GCP-free
-    providers.tfcomponent.hcl  # the one Cloudflare token (ephemeral) + tls
-    variables.tfcomponent.hcl  # edge knobs + the platform-published ingress IP
-    components.tfcomponent.hcl # the cloudflare component (DNS/TLS/WAF/Origin CA)
-    outputs.tfcomponent.hcl    # zone id, hostname, DNSSEC DS + origin cert/key for app-gcp
-    cloudflare.tfdeploy.hcl    # ONE `eu` deployment + upstream_input "platform" + publish_output (origin cert/key)
+    .terraform.lock.hcl     # provider lock (cloudflare, tls, google, random)
+    providers.tfcomponent.hcl  # the one Cloudflare token (ephemeral) + tls + keyless GCP (WIF)
+    variables.tfcomponent.hcl  # edge knobs + the platform-published IP/CMEK/WI values
+    components.tfcomponent.hcl # cloudflare (DNS/TLS/WAF/Origin CA) + origin_secrets
+    outputs.tfcomponent.hcl    # zone id, hostname, DNSSEC DS, origin secret ids
+    cloudflare.tfdeploy.hcl    # ONE `eu` deployment + upstream_input "platform" (publishes nothing: the key is sensitive)
     modules/
       cloudflare/           # DNS records + edge TLS/security + DNSSEC + WAF + Origin CA cert / AOP
-  app-gcp/                  # STACK 3: the fast-moving GCP delivery layer (LINKED to both)
+      secrets/              # Secret Manager map (copy: modules aren't shared across stacks)
+  app-gcp/                  # STACK 3: the fast-moving GCP delivery layer (LINKED to platform-gcp)
     .terraform-version      # same Core pin as the other stacks
     .terraform.lock.hcl     # provider lock (google, google-beta, random)
     providers.tfcomponent.hcl  # keyless GCP providers (WIF) — no third-party edge here
-    variables.tfcomponent.hcl  # typed stack inputs incl. the upstream-published values
+    variables.tfcomponent.hcl  # typed stack inputs incl. the platform-published values
     components.tfcomponent.hcl # secrets, clouddeploy, mattermost_image, deploy_release
     outputs.tfcomponent.hcl    # delivery-layer outputs (pipeline, image path, release)
-    app.tfdeploy.hcl           # ONE `eu` deployment + upstream_input "platform" & "cloudflare"
+    app.tfdeploy.hcl           # ONE `eu` deployment + upstream_input "platform"
     modules/
       clouddeploy/          # dev→prod delivery pipeline + 2 GKE targets + exec SA
       secrets/              # Secret Manager map (generate/provide + accessors)
@@ -732,15 +732,17 @@ helm/                       # Kubernetes workloads, delivered by Cloud Deploy de
 > (components, providers, variables, outputs) and `*.tfdeploy.hcl`
 > (deployments) suffixes Terraform Stacks requires. HCP reads **one stack per
 > working directory**, so there are three HCP Stacks pointed at those
-> directories. They are **linked** along the chain
-> `platform-gcp -> cloudflare -> app-gcp`: each upstream publishes its
-> cross-stack contract (`publish_output`) and each downstream consumes it
-> (`upstream_input`), so every stack builds on its upstreams' last-applied
-> values. Modules are co-located under each stack's `modules/` and referenced
-> as `./modules/X`: the Stacks source bundler roots the bundle at the stack
-> config directory and cannot follow `../` sources that escape it (no module is
-> shared between stacks). Each stack commits its own `.terraform.lock.hcl` for
-> reproducible runs.
+> directories. They are **linked** in a fan-out
+> `platform-gcp -> {cloudflare, app-gcp}`: the platform publishes its
+> cross-stack contract (`publish_output`) and both downstreams consume it
+> (`upstream_input`), so every stack builds on the platform's last-applied
+> values. The origin-TLS secrets live in the cloudflare stack because linked
+> stacks cannot publish SENSITIVE values — the Origin CA private key never
+> crosses a stack boundary. Modules are co-located under each stack's
+> `modules/` and referenced as `./modules/X`: the Stacks source bundler roots
+> the bundle at the stack config directory and cannot follow `../` sources that
+> escape it (the secrets module is duplicated in cloudflare/ for that reason).
+> Each stack commits its own `.terraform.lock.hcl` for reproducible runs.
 
 > Version pin: HCP Terraform Stacks selects the Terraform Core version from the
 > stack's **`.terraform-version`** file (currently `1.15.8`). The GitLab CI
@@ -784,9 +786,10 @@ helm/                       # Kubernetes workloads, delivered by Cloud Deploy de
    `platform-gcp`, `cloudflare` and `app-gcp` with the matching
    `terraform/<stack>` working directories; attach the Cloudflare variable set
    to the **cloudflare** Stack. Plan and apply **platform-gcp** `eu` first; its
-   `publish_output` values feed the **cloudflare** stack's plan automatically,
-   whose apply in turn (Origin CA cert/key) unlocks **app-gcp**. The ingress IP
-   and the Origin CA cert are wired through the links — there is nothing to
+   `publish_output` values feed the **cloudflare** and **app-gcp** plans
+   automatically (they only depend on the platform, so they apply in any
+   order). The ingress IP flows through the link and the Origin CA cert is
+   written into Secret Manager by the cloudflare stack — there is nothing to
    copy between runs.
 5. Deploy the chat workloads from [`helm/`](helm/README.md): install the
    ingress-nginx controller + Mattermost operator, replace the `REPLACE-ME-*`
