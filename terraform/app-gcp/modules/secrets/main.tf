@@ -26,7 +26,7 @@ resource "random_password" "this" {
   for_each = local.generated
 
   length  = each.value.length
-  special = true
+  special = each.value.special
 }
 
 resource "google_secret_manager_secret" "this" {

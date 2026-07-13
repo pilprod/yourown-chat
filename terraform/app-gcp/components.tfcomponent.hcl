@@ -53,6 +53,11 @@ component "clouddeploy" {
       mattermost_gsa     = var.workload_identity_emails.mattermost
       mattermost_dev_gsa = var.workload_identity_emails.dev
       matterbridge_gsa   = var.workload_identity_emails.matterbridge
+      # The Terraform-generated dev Postgres password, rendered into the
+      # dev-postgres Kubernetes Secret (helm/developing/postgres-secret.yaml) at
+      # release time. Cloud Deploy owns the dev namespace + Secret ordering, so
+      # there is no Terraform<->cluster apply-order problem.
+      dev_postgres_password = component.secrets.generated_values["dev-postgres-password"]
     }
 
     labels = local.common_labels
@@ -79,8 +84,15 @@ component "secrets" {
 
     secrets = {
       # In-cluster dev Postgres password (generated, read by the dev tenant).
+      # special = false keeps it alphanumeric: dev Mattermost embeds it in a
+      # postgres://mmuser:PW@dev-postgres/... DSN, where @ : / would corrupt the
+      # URL. Rendered into the dev-postgres Kubernetes Secret via the
+      # dev_postgres_password deploy parameter below (the managed GKE Secret
+      # Manager add-on cannot sync secretObjects to a Kubernetes Secret, so dev
+      # does not use the CSI mount for it).
       "dev-postgres-password" = {
         generate  = true
+        special   = false
         accessors = [var.workload_identity_members.dev]
       }
       # matterbridge bridge config. Seed a DEFAULT matterbridge.toml so a secret

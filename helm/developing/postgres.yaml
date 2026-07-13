@@ -1,6 +1,9 @@
 # In-cluster Postgres for the dev tenant (no managed Cloud SQL cost in dev).
-# 5Gi PVC, pinned to the dev node pool. Password comes from Secret Manager via
-# the CSI file mount (POSTGRES_PASSWORD_FILE) — never from a plain env literal.
+# 5Gi PVC, pinned to the dev node pool. The password comes from the dev-postgres
+# Kubernetes Secret (postgres-secret.yaml), which Cloud Deploy fills from the
+# Terraform-generated dev_postgres_password deploy parameter — never a git
+# literal. (The managed GKE Secret Manager add-on can't sync secretObjects to a
+# Kubernetes Secret, so dev uses a deploy-parameter-rendered Secret, not CSI.)
 apiVersion: v1
 kind: Service
 metadata:
@@ -44,8 +47,11 @@ spec:
               value: mmuser
             - name: POSTGRES_DB
               value: mattermost
-            - name: POSTGRES_PASSWORD_FILE
-              value: /etc/secrets/postgres-password
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: dev-postgres
+                  key: POSTGRES_PASSWORD
             - name: PGDATA
               value: /var/lib/postgresql/data/pgdata
           ports:
@@ -60,16 +66,6 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
-            - name: secrets
-              mountPath: /etc/secrets
-              readOnly: true
-      volumes:
-        - name: secrets
-          csi:
-            driver: secrets-store-gke.csi.k8s.io
-            readOnly: true
-            volumeAttributes:
-              secretProviderClass: dev-gcp
   volumeClaimTemplates:
     - metadata:
         name: data

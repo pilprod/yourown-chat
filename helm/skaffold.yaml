@@ -36,6 +36,7 @@ profiles:
         - developing/serviceaccount.yaml
         - developing/rbac.yaml
         - developing/networkpolicy.yaml
+        - developing/postgres-secret.yaml
         - developing/postgres.yaml
         - developing/mattermost-dev.yaml
         - matterbridge/serviceaccount.yaml

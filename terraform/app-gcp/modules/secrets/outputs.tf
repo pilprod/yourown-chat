@@ -12,3 +12,9 @@ output "secret_version_ids" {
   description = "Map of logical name => created version resource ID (only for generated/provided secrets)."
   value       = { for k, v in google_secret_manager_secret_version.this : k => v.id }
 }
+
+output "generated_values" {
+  description = "Map of generated secret name => plaintext value. Sensitive. Consumed where a Terraform-generated credential must be rendered elsewhere (e.g. a Cloud Deploy deploy parameter that injects it into a Kubernetes Secret manifest)."
+  value       = { for k, r in random_password.this : k => r.result }
+  sensitive   = true
+}

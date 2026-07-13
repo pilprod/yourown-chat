@@ -224,7 +224,7 @@ stack wrote them.
 |-----------------------|-------------|----|
 | `cloudsql-mattermost-connection` | prod Mattermost | Secret `mattermost-db` → `DB_CONNECTION_STRING` |
 | `mattermost-storage-access-key` / `-secret-key` | prod Mattermost | Secret `mattermost-filestore` → `accesskey`/`secretkey` |
-| `dev-postgres-password` | dev Postgres / dev Mattermost | file `POSTGRES_PASSWORD_FILE` + Secret `dev-postgres` |
+| `dev-postgres-password` | dev Postgres / dev Mattermost | Secret `dev-postgres` → `POSTGRES_PASSWORD`, rendered by Cloud Deploy from the `dev_postgres_password` deploy parameter (not CSI — see note below) |
 | `matterbridge-tokens` | matterbridge | file `/etc/matterbridge/matterbridge.toml` |
 | `mattermost-origin-tls-cert` / `-key` | ingress-nginx (Mattermost Ingress) | Secret `mattermost-origin-tls` → `tls.crt`/`tls.key` |
 | `cloudflare-origin-pull-ca` | ingress-nginx (Mattermost Ingress) | Secret `cloudflare-origin-pull-ca` → `ca.crt` |
@@ -232,6 +232,18 @@ stack wrote them.
 Operator-managed pods don't mount the CSI volume themselves, so a tiny
 `secret-sync` Deployment (pause container) keeps the volume mounted and the
 mirrored Secrets materialised in the `mattermost` namespace.
+
+> ⚠️ **Managed add-on limitation — `secretObjects` is not supported.** The
+> cluster runs the **managed** GKE Secret Manager add-on
+> (`secret_manager_config`), which mounts secrets as files but **cannot sync
+> them into Kubernetes Secret objects** (the open-source driver's `secretObjects`
+> feature). The dev Postgres password therefore does **not** use CSI: it is
+> rendered into the `dev-postgres` Secret via a Cloud Deploy deploy parameter
+> (`helm/developing/postgres-secret.yaml`). The prod `mattermost/` flow above
+> still relies on `secretObjects` (`mattermost-db`, `mattermost-filestore`,
+> `mattermost-origin-tls`, `cloudflare-origin-pull-ca`) and needs the same
+> treatment before prod can start — either enable Google's SecretSync controller
+> or install the open-source Secrets Store CSI driver.
 
 > **After a DB password rotation** (`cloudsql_password_rotation` bump in
 > Terraform): `kubectl rollout restart -n mattermost deploy` — CSI mounts

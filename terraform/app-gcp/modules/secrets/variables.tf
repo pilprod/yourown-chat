@@ -24,6 +24,10 @@ variable "secrets" {
     length    = optional(number, 32)
     value     = optional(string)
     accessors = optional(list(string), [])
+    # Include special characters in a generated value. Set false for values
+    # embedded in URLs/DSNs (e.g. a Postgres password used in postgres://...),
+    # where characters like @ : / would corrupt the connection string.
+    special = optional(bool, true)
   }))
   description = "Map of logical secret name => spec. Accessors are IAM members granted secretAccessor on that secret."
   default     = {}
