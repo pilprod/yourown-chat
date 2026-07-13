@@ -5,10 +5,12 @@
 # toleration for the dedicated=prod taint) so dev/bridge workloads can never
 # contend with prod for CPU/memory.
 #
-# Database  : external Cloud SQL (secret mattermost-db, materialised from Secret
-#             Manager by the CSI SecretProviderClass).
+# Database  : external Cloud SQL (secret mattermost-db, rendered from the
+#             Terraform-written Secret Manager value via a Cloud Deploy deploy
+#             parameter -- see helm/mattermost/db-secret.yaml).
 # Filestore : external GCS via the S3-compatible interoperability endpoint
-#             (secret mattermost-filestore).
+#             (secret mattermost-filestore, rendered the same way -- see
+#             helm/mattermost/filestore-secret.yaml).
 # Ingress   : public host yourown.chat, fronted by Cloudflare. ingress-nginx
 #             admits only Cloudflare source ranges (helm/ingress-nginx) and
 #             enforces Authenticated Origin Pulls (mTLS) + Full (Strict) TLS via

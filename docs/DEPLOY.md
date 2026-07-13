@@ -222,8 +222,8 @@ stack wrote them.
 
 | Secret Manager secret | Consumed by | As |
 |-----------------------|-------------|----|
-| `cloudsql-mattermost-connection` | prod Mattermost | Secret `mattermost-db` → `DB_CONNECTION_STRING` |
-| `mattermost-storage-access-key` / `-secret-key` | prod Mattermost | Secret `mattermost-filestore` → `accesskey`/`secretkey` |
+| `cloudsql-mattermost-connection` | prod Mattermost | Secret `mattermost-db` → `DB_CONNECTION_STRING`, rendered by Cloud Deploy from the `mattermost_db_connection` deploy parameter (app-gcp reads the value back from Secret Manager) |
+| `mattermost-storage-access-key` / `-secret-key` | prod Mattermost | Secret `mattermost-filestore` → `accesskey`/`secretkey`, rendered from deploy parameters the same way |
 | `dev-postgres-password` | dev Postgres / dev Mattermost | Secret `dev-postgres` → `POSTGRES_PASSWORD`, rendered by Cloud Deploy from the `dev_postgres_password` deploy parameter (not CSI — see note below) |
 | `matterbridge-tokens` | matterbridge | file `/etc/matterbridge/matterbridge.toml` |
 | `mattermost-origin-tls-cert` / `-key` | ingress-nginx (Mattermost Ingress) | Secret `mattermost-origin-tls` → `tls.crt`/`tls.key` |
@@ -237,13 +237,20 @@ mirrored Secrets materialised in the `mattermost` namespace.
 > cluster runs the **managed** GKE Secret Manager add-on
 > (`secret_manager_config`), which mounts secrets as files but **cannot sync
 > them into Kubernetes Secret objects** (the open-source driver's `secretObjects`
-> feature). The dev Postgres password therefore does **not** use CSI: it is
-> rendered into the `dev-postgres` Secret via a Cloud Deploy deploy parameter
-> (`helm/developing/postgres-secret.yaml`). The prod `mattermost/` flow above
-> still relies on `secretObjects` (`mattermost-db`, `mattermost-filestore`,
-> `mattermost-origin-tls`, `cloudflare-origin-pull-ca`) and needs the same
-> treatment before prod can start — either enable Google's SecretSync controller
-> or install the open-source Secrets Store CSI driver.
+> feature). Credentials the operator/pods consume as Kubernetes Secrets are
+> therefore rendered directly from Cloud Deploy deploy parameters, not synced
+> via CSI: the dev Postgres password (`helm/developing/postgres-secret.yaml`),
+> and the prod `mattermost-db` / `mattermost-filestore` Secrets
+> (`helm/mattermost/db-secret.yaml`, `filestore-secret.yaml`) — app-gcp reads
+> the Terraform-written values back from Secret Manager and passes them as
+> parameters.
+>
+> **Still on `secretObjects` (not yet migrated):** the ingress origin material
+> `mattermost-origin-tls` and `cloudflare-origin-pull-ca` in
+> `mattermost/secretproviderclass.yaml` will not materialise under the managed
+> add-on. Ingress TLS/AOP needs the same treatment (render from the cloudflare
+> stack's secrets) or the open-source Secrets Store CSI driver before the public
+> HTTPS edge works.
 
 > **After a DB password rotation** (`cloudsql_password_rotation` bump in
 > Terraform): `kubectl rollout restart -n mattermost deploy` — CSI mounts

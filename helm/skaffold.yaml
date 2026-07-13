@@ -69,6 +69,8 @@ profiles:
       rawYaml:
         - namespaces.yaml
         - mattermost/serviceaccount.yaml
+        - mattermost/db-secret.yaml
+        - mattermost/filestore-secret.yaml
         - mattermost/secretproviderclass.yaml
         - mattermost/secret-sync.yaml
         - mattermost/mattermost.yaml

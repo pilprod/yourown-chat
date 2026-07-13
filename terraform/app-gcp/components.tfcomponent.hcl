@@ -58,6 +58,14 @@ component "clouddeploy" {
       # release time. Cloud Deploy owns the dev namespace + Secret ordering, so
       # there is no Terraform<->cluster apply-order problem.
       dev_postgres_password = component.secrets.generated_values["dev-postgres-password"]
+      # Prod operator secrets. The platform stack writes these to Secret Manager
+      # at Cloud SQL / storage init; the managed GKE add-on can't sync them into
+      # Kubernetes Secrets (no secretObjects), so app-gcp reads the values back
+      # and renders them into the mattermost-db / mattermost-filestore Secrets
+      # (helm/mattermost/*-secret.yaml) the operator consumes via secretKeyRef.
+      mattermost_db_connection      = component.prod_secret_values.values["mattermost_db_connection"]
+      mattermost_storage_access_key = component.prod_secret_values.values["mattermost_storage_access_key"]
+      mattermost_storage_secret_key = component.prod_secret_values.values["mattermost_storage_secret_key"]
     }
 
     labels = local.common_labels
@@ -139,6 +147,31 @@ component "secrets" {
   providers = {
     google = provider.google.this
     random = provider.random.this
+  }
+}
+
+# --- Prod operator secret values (read back from Secret Manager) -------------
+# The platform stack writes the Cloud SQL connection string and the GCS HMAC
+# keys to Secret Manager at init. They are sensitive, so the platform can't
+# publish them as linked outputs; this stack reads them back and hands them to
+# the clouddeploy component as deploy parameters, which render the mattermost-db
+# / mattermost-filestore Kubernetes Secrets the operator consumes. (The managed
+# GKE Secret Manager add-on cannot sync secretObjects into Kubernetes Secrets,
+# so the operator secrets are materialised this way instead of via CSI.)
+component "prod_secret_values" {
+  source = "./modules/secret-lookup"
+
+  inputs = {
+    project_id = var.project_id
+    secret_ids = {
+      mattermost_db_connection      = "cloudsql-mattermost-connection"
+      mattermost_storage_access_key = "mattermost-storage-access-key"
+      mattermost_storage_secret_key = "mattermost-storage-secret-key"
+    }
+  }
+
+  providers = {
+    google = provider.google.this
   }
 }
 
