@@ -10,6 +10,11 @@ metadata:
     app: matterbridge
 spec:
   replicas: 1
+  # matterbridge is a singleton bridge: two concurrent instances would both
+  # connect to Mattermost and double-deliver messages. Recreate tears the old
+  # pod down before starting the new one (no RollingUpdate surge to 2 pods).
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: matterbridge
