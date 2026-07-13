@@ -32,6 +32,12 @@ required_providers {
     source  = "hashicorp/helm"
     version = "~> 3.0"
   }
+  # Namespaces + credential Secrets created directly in the cluster, so the DB /
+  # filestore secrets never pass through Cloud Deploy; configured from gke_auth.
+  kubernetes = {
+    source  = "hashicorp/kubernetes"
+    version = "~> 2.30"
+  }
 }
 
 # --- GCP: keyless WIF (impersonate the least-privilege apply SA) -------------
@@ -78,5 +84,18 @@ provider "helm" "this" {
       cluster_ca_certificate = component.gke_auth.cluster_ca_certificate
       token                  = component.gke_auth.access_token
     }
+  }
+}
+
+# Same keyless GKE auth as the helm provider. Used by the cluster_secrets
+# component to create the tenant namespaces and the credential Secrets
+# (dev-postgres, mattermost-db, mattermost-filestore) straight in etcd -- the
+# values come from Secret Manager / a generated password via Terraform state,
+# never through a Cloud Deploy deploy parameter.
+provider "kubernetes" "this" {
+  config {
+    host                   = component.gke_auth.host
+    cluster_ca_certificate = component.gke_auth.cluster_ca_certificate
+    token                  = component.gke_auth.access_token
   }
 }

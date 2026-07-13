@@ -53,19 +53,11 @@ component "clouddeploy" {
       mattermost_gsa     = var.workload_identity_emails.mattermost
       mattermost_dev_gsa = var.workload_identity_emails.dev
       matterbridge_gsa   = var.workload_identity_emails.matterbridge
-      # The Terraform-generated dev Postgres password, rendered into the
-      # dev-postgres Kubernetes Secret (helm/developing/postgres-secret.yaml) at
-      # release time. Cloud Deploy owns the dev namespace + Secret ordering, so
-      # there is no Terraform<->cluster apply-order problem.
-      dev_postgres_password = component.secrets.generated_values["dev-postgres-password"]
-      # Prod operator secrets. The platform stack writes these to Secret Manager
-      # at Cloud SQL / storage init; the managed GKE add-on can't sync them into
-      # Kubernetes Secrets (no secretObjects), so app-gcp reads the values back
-      # and renders them into the mattermost-db / mattermost-filestore Secrets
-      # (helm/mattermost/*-secret.yaml) the operator consumes via secretKeyRef.
-      mattermost_db_connection      = component.prod_secret_values.values["mattermost_db_connection"]
-      mattermost_storage_access_key = component.prod_secret_values.values["mattermost_storage_access_key"]
-      mattermost_storage_secret_key = component.prod_secret_values.values["mattermost_storage_secret_key"]
+      # NOTE: credential values (dev Postgres password, DB connection string,
+      # filestore HMAC keys) are deliberately NOT deploy parameters -- they would
+      # land in the Cloud Deploy pipeline config and release renders. The
+      # cluster_secrets component creates those Kubernetes Secrets directly in
+      # etcd instead. Only non-secret wiring (bucket, WI emails) flows here.
     }
 
     labels = local.common_labels
@@ -94,10 +86,10 @@ component "secrets" {
       # In-cluster dev Postgres password (generated, read by the dev tenant).
       # special = false keeps it alphanumeric: dev Mattermost embeds it in a
       # postgres://mmuser:PW@dev-postgres/... DSN, where @ : / would corrupt the
-      # URL. Rendered into the dev-postgres Kubernetes Secret via the
-      # dev_postgres_password deploy parameter below (the managed GKE Secret
-      # Manager add-on cannot sync secretObjects to a Kubernetes Secret, so dev
-      # does not use the CSI mount for it).
+      # URL. The value feeds the dev-postgres Kubernetes Secret via the
+      # cluster_secrets component (created directly in etcd, not via Cloud
+      # Deploy); the managed GKE add-on cannot sync secretObjects, so dev does
+      # not use the CSI mount for it.
       "dev-postgres-password" = {
         generate  = true
         special   = false
@@ -172,6 +164,58 @@ component "prod_secret_values" {
 
   providers = {
     google = provider.google.this
+  }
+}
+
+# --- Tenant namespaces + credential Secrets (created directly, not via CD) ----
+# The secure path for every credential the workloads consume as a Kubernetes
+# Secret: Terraform writes them straight to etcd from Secret Manager / a
+# generated password, so they never touch a Cloud Deploy deploy parameter or a
+# rendered release. Terraform owns the namespaces so the Secrets exist before
+# Cloud Deploy deploys the workloads into them (replacing helm/namespaces.yaml).
+component "cluster_secrets" {
+  source = "./modules/cluster-secrets"
+
+  inputs = {
+    namespaces = {
+      dev          = { labels = { tier = "dev", "part-of" = "yourown-chat" } }
+      matterbridge = { labels = { tier = "dev", "part-of" = "yourown-chat" } }
+      mattermost   = { labels = { tier = "prod", "part-of" = "yourown-chat" } }
+    }
+
+    secrets = {
+      # dev in-cluster Postgres password (generated). Read by dev Postgres
+      # (POSTGRES_PASSWORD) and dev Mattermost (secretKeyRef -> datasource).
+      dev-postgres = {
+        name      = "dev-postgres"
+        namespace = "dev"
+        labels    = { app = "dev-postgres" }
+        data      = { POSTGRES_PASSWORD = component.secrets.generated_values["dev-postgres-password"] }
+      }
+      # prod external DB connection string (Cloud SQL), consumed by the operator
+      # CR as spec.database.external.secret: mattermost-db.
+      mattermost-db = {
+        name      = "mattermost-db"
+        namespace = "mattermost"
+        labels    = { app = "mattermost" }
+        data      = { DB_CONNECTION_STRING = component.prod_secret_values.values["mattermost_db_connection"] }
+      }
+      # prod external filestore (GCS S3-compatible HMAC keys), consumed by the
+      # operator CR as spec.fileStore.external.secret: mattermost-filestore.
+      mattermost-filestore = {
+        name      = "mattermost-filestore"
+        namespace = "mattermost"
+        labels    = { app = "mattermost" }
+        data = {
+          accesskey = component.prod_secret_values.values["mattermost_storage_access_key"]
+          secretkey = component.prod_secret_values.values["mattermost_storage_secret_key"]
+        }
+      }
+    }
+  }
+
+  providers = {
+    kubernetes = provider.kubernetes.this
   }
 }
 

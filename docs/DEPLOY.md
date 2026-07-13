@@ -137,11 +137,12 @@ gcloud builds submit --config=helm/cloudbuild.yaml .
 Apply manifests directly with kubectl (bypasses render — the `# from-param:`
 placeholders will NOT be substituted, so fill them by hand first; order
 matters, and `kubectl apply -f` is non-recursive so the verify Job template is
-skipped):
+skipped). The namespaces and the credential Secrets (`dev-postgres`,
+`mattermost-db`, `mattermost-filestore`) are created by the app-gcp
+`cluster_secrets` component — apply that stack first, or create them by hand:
 
 ```bash
-kubectl apply -f helm/namespaces.yaml
-kubectl apply -f helm/developing/     # in-cluster Postgres materialises dev-postgres first
+kubectl apply -f helm/developing/     # dev tenant (dev-postgres Secret already exists)
 kubectl apply -f helm/matterbridge/
 kubectl apply -f helm/mattermost/     # operator CRDs must already be installed
 ```
@@ -222,9 +223,9 @@ stack wrote them.
 
 | Secret Manager secret | Consumed by | As |
 |-----------------------|-------------|----|
-| `cloudsql-mattermost-connection` | prod Mattermost | Secret `mattermost-db` → `DB_CONNECTION_STRING`, rendered by Cloud Deploy from the `mattermost_db_connection` deploy parameter (app-gcp reads the value back from Secret Manager) |
-| `mattermost-storage-access-key` / `-secret-key` | prod Mattermost | Secret `mattermost-filestore` → `accesskey`/`secretkey`, rendered from deploy parameters the same way |
-| `dev-postgres-password` | dev Postgres / dev Mattermost | Secret `dev-postgres` → `POSTGRES_PASSWORD`, rendered by Cloud Deploy from the `dev_postgres_password` deploy parameter (not CSI — see note below) |
+| `cloudsql-mattermost-connection` | prod Mattermost | Secret `mattermost-db` → `DB_CONNECTION_STRING`, created directly in etcd by Terraform (`cluster_secrets`, value read from Secret Manager) |
+| `mattermost-storage-access-key` / `-secret-key` | prod Mattermost | Secret `mattermost-filestore` → `accesskey`/`secretkey`, created the same way |
+| `dev-postgres-password` | dev Postgres / dev Mattermost | Secret `dev-postgres` → `POSTGRES_PASSWORD`, created directly in etcd by Terraform (`cluster_secrets`, generated value) — not CSI (see note below) |
 | `matterbridge-tokens` | matterbridge | file `/etc/matterbridge/matterbridge.toml` |
 | `mattermost-origin-tls-cert` / `-key` | ingress-nginx (Mattermost Ingress) | Secret `mattermost-origin-tls` → `tls.crt`/`tls.key` |
 | `cloudflare-origin-pull-ca` | ingress-nginx (Mattermost Ingress) | Secret `cloudflare-origin-pull-ca` → `ca.crt` |
@@ -238,19 +239,21 @@ mirrored Secrets materialised in the `mattermost` namespace.
 > (`secret_manager_config`), which mounts secrets as files but **cannot sync
 > them into Kubernetes Secret objects** (the open-source driver's `secretObjects`
 > feature). Credentials the operator/pods consume as Kubernetes Secrets are
-> therefore rendered directly from Cloud Deploy deploy parameters, not synced
-> via CSI: the dev Postgres password (`helm/developing/postgres-secret.yaml`),
-> and the prod `mattermost-db` / `mattermost-filestore` Secrets
-> (`helm/mattermost/db-secret.yaml`, `filestore-secret.yaml`) — app-gcp reads
-> the Terraform-written values back from Secret Manager and passes them as
-> parameters.
+> therefore created **directly in etcd by Terraform** (the app-gcp
+> `cluster_secrets` component, via the `kubernetes` provider), NOT rendered
+> through Cloud Deploy — so the DB connection string and HMAC keys never land in
+> a deploy parameter or a release render. Terraform also owns the tenant
+> namespaces (so the Secrets exist before Cloud Deploy deploys workloads):
+> `dev-postgres` (generated password), `mattermost-db` and `mattermost-filestore`
+> (values read back from Secret Manager). The values live only in Terraform
+> state (HCP, encrypted) and etcd.
 >
 > **Still on `secretObjects` (not yet migrated):** the ingress origin material
 > `mattermost-origin-tls` and `cloudflare-origin-pull-ca` in
 > `mattermost/secretproviderclass.yaml` will not materialise under the managed
-> add-on. Ingress TLS/AOP needs the same treatment (render from the cloudflare
-> stack's secrets) or the open-source Secrets Store CSI driver before the public
-> HTTPS edge works.
+> add-on. Ingress TLS/AOP needs the same treatment (create them via
+> `cluster_secrets` from the cloudflare stack's secrets) or the open-source
+> Secrets Store CSI driver before the public HTTPS edge works.
 
 > **After a DB password rotation** (`cloudsql_password_rotation` bump in
 > Terraform): `kubectl rollout restart -n mattermost deploy` — CSI mounts

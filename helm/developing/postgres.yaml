@@ -1,9 +1,9 @@
 # In-cluster Postgres for the dev tenant (no managed Cloud SQL cost in dev).
 # 5Gi PVC, pinned to the dev node pool. The password comes from the dev-postgres
-# Kubernetes Secret (postgres-secret.yaml), which Cloud Deploy fills from the
-# Terraform-generated dev_postgres_password deploy parameter — never a git
-# literal. (The managed GKE Secret Manager add-on can't sync secretObjects to a
-# Kubernetes Secret, so dev uses a deploy-parameter-rendered Secret, not CSI.)
+# Kubernetes Secret, which Terraform (app-gcp cluster_secrets) creates directly
+# in etcd from the generated password — never a git literal and never through
+# Cloud Deploy. (The managed GKE Secret Manager add-on can't sync secretObjects
+# to a Kubernetes Secret, so dev does not use the CSI mount for it.)
 apiVersion: v1
 kind: Service
 metadata:

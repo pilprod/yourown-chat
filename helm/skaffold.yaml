@@ -19,8 +19,9 @@
 #
 # Each profile REPLACES the (empty) base manifest list -- a non-empty profile
 # slice overlays by replacement in Skaffold -- so a profile renders exactly its
-# own workload set and nothing else. namespaces.yaml is idempotent and shared by
-# both stages so each target self-heals its namespace prerequisites.
+# own workload set and nothing else. Namespaces and the credential Secrets are
+# NOT rendered here: Terraform (app-gcp cluster_secrets) creates them, so no
+# secret ever passes through a Cloud Deploy deploy parameter or release render.
 apiVersion: skaffold/v4beta11
 kind: Config
 metadata:
@@ -31,12 +32,13 @@ profiles:
   # --- dev stage: dev tenant + matterbridge ---------------------------------
   - name: dev
     manifests:
+      # Namespaces and the credential Secrets (dev-postgres, mattermost-db,
+      # mattermost-filestore) are created by Terraform (app-gcp cluster_secrets
+      # component), not here -- so no secret ever passes through Cloud Deploy.
       rawYaml:
-        - namespaces.yaml
         - developing/serviceaccount.yaml
         - developing/rbac.yaml
         - developing/networkpolicy.yaml
-        - developing/postgres-secret.yaml
         - developing/postgres.yaml
         - developing/mattermost-dev.yaml
         - matterbridge/serviceaccount.yaml
@@ -66,11 +68,10 @@ profiles:
   # --- prod stage: operator-managed Mattermost ------------------------------
   - name: prod
     manifests:
+      # Namespace + the mattermost-db / mattermost-filestore Secrets are created
+      # by Terraform (app-gcp cluster_secrets), not here.
       rawYaml:
-        - namespaces.yaml
         - mattermost/serviceaccount.yaml
-        - mattermost/db-secret.yaml
-        - mattermost/filestore-secret.yaml
         - mattermost/secretproviderclass.yaml
         - mattermost/secret-sync.yaml
         - mattermost/mattermost.yaml
