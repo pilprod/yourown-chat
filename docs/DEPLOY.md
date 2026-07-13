@@ -184,7 +184,9 @@ kubectl apply -f helm/mattermost/     # operator CRDs must already be installed
 4. **Fill the out-of-band secrets** (Terraform created empty containers):
 
    ```bash
-   # matterbridge config (contains bot tokens) — never in git:
+   # matterbridge config (contains bot tokens) — never in git. Terraform already
+   # seeds a default with a DISABLED gateway so the pod starts; add a real config
+   # (bot Token/Team, enable=true) to actually bridge the prod Mattermost:
    gcloud secrets versions add matterbridge-tokens --data-file=matterbridge.toml
 
    # Authenticated Origin Pulls CA (only if cloudflare_aop_enabled):

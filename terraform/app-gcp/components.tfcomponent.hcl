@@ -83,9 +83,38 @@ component "secrets" {
         generate  = true
         accessors = [var.workload_identity_members.dev]
       }
-      # matterbridge bot tokens / bridge config — created empty, populated
-      # out-of-band (never in git), read by the matterbridge workload.
+      # matterbridge bridge config. Seed a DEFAULT matterbridge.toml so a secret
+      # version always exists and the pod leaves ContainerCreating on init (the
+      # CSI mount needs >=1 version -- an empty secret would wedge the pod). The
+      # default points at the IN-CLUSTER prod Mattermost Service on 8065
+      # (matterbridge bridges in-cluster; the public yourown.chat path is closed
+      # to it by Cloudflare + Authenticated Origin Pulls -- see
+      # helm/matterbridge/networkpolicy.yaml). The gateway ships DISABLED with
+      # placeholder creds, so matterbridge starts and idles without a failing
+      # login. To go live, add a NEW version out-of-band with a real bot Token,
+      # Team and enable=true (versions/latest is what the pod mounts):
+      #   gcloud secrets versions add matterbridge-tokens --data-file=matterbridge.toml
       "matterbridge-tokens" = {
+        value     = <<-TOML
+          # Default seeded by Terraform so the matterbridge pod starts on init.
+          # Replace Token/Team and set enable=true (add a new Secret Manager
+          # version) to bridge the prod Mattermost.
+          [mattermost.prod]
+          Server="mattermost.mattermost.svc.cluster.local:8065"
+          NoTLS=true
+          Team="REPLACE_ME_TEAM"
+          Token="REPLACE_ME_TOKEN"
+          PrefixMessagesWithNick=true
+          RemoteNickFormat="[{PROTOCOL}] <{NICK}> "
+
+          [[gateway]]
+          name="prod"
+          enable=false
+
+          [[gateway.inout]]
+          account="mattermost.prod"
+          channel="off-topic"
+        TOML
         accessors = [var.workload_identity_members.matterbridge]
       }
       # The Cloudflare origin-protection secrets (mattermost-origin-tls-* +
