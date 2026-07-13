@@ -145,19 +145,35 @@ resource "google_cloudbuild_trigger" "release" {
     step {
       id         = "release"
       name       = "gcr.io/google.com/cloudsdktool/cloud-sdk:slim"
-      entrypoint = "gcloud"
+      entrypoint = "bash"
       dir        = var.source_subdir
-      # $SHORT_SHA / $BUILD_ID / $TAG_NAME are Cloud Build built-ins populated for
-      # tag-triggered builds. The release name avoids dots (semver tags contain
-      # them, which release names disallow); the tag is kept as an annotation.
+      # Cloud Deploy derives the rollout ID as "<release>-to-<target>-NNNN" and
+      # caps it at 63 chars. BUILD_ID is a 36-char UUID, so rel-$SHORT_SHA-$BUILD_ID
+      # (48) plus the "-to-prod-europe-west3-0001" suffix (26) overflows the cap;
+      # keep only the first 8 chars of BUILD_ID -- still unique per build, ~20-char
+      # release name. The name avoids dots (semver tags contain them, which release
+      # names disallow); the full tag is kept as an annotation.
+      #
+      # Escaping: static values are inlined by Terraform. Cloud Build built-ins
+      # ($SHORT_SHA/$BUILD_ID/$TAG_NAME) keep a SINGLE `$` so Cloud Build
+      # substitutes them before bash runs -- HCL leaves `$NAME` (no brace)
+      # untouched. Genuine bash constructs use the escaped `$$` form (HCL passes
+      # `$$` through, Cloud Build unescapes `$$` -> `$`): `$$( … )` for command
+      # substitution, `$$short_build` for the bash var. Braced `$${VAR}` must NOT
+      # appear (HCL would collapse it to `${VAR}`, which Cloud Build then rejects
+      # as an unknown substitution).
       args = [
-        "deploy", "releases", "create", "rel-$SHORT_SHA-$BUILD_ID",
-        "--project", var.project_id,
-        "--region", var.region,
-        "--delivery-pipeline", var.delivery_pipeline_name,
-        "--source", ".",
-        "--gcs-source-staging-dir", "gs://${google_storage_bucket.source.name}/source",
-        "--annotations", "git-tag=$TAG_NAME",
+        "-ceu",
+        <<-EOT
+          short_build="$$(printf '%s' '$BUILD_ID' | cut -c1-8)"
+          gcloud deploy releases create "rel-$SHORT_SHA-$$short_build" \
+            --project "${var.project_id}" \
+            --region "${var.region}" \
+            --delivery-pipeline "${var.delivery_pipeline_name}" \
+            --source "." \
+            --gcs-source-staging-dir "gs://${google_storage_bucket.source.name}/source" \
+            --annotations "git-tag=$TAG_NAME"
+        EOT
       ]
     }
 
