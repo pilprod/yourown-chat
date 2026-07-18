@@ -29,7 +29,6 @@ automatically triggers the downstream plans:
 graph LR
   P[platform-gcp<br/>foundation] -->|ingress IP, CMEK, WI| CF[cloudflare<br/>edge]
   P -->|cluster, registry, CMEK, WI| A[app-gcp<br/>delivery]
-  CF -->|origin-TLS secret IDs| A
 ```
 
 Why split? A mistake in edge rules or CI can now never touch the state that

@@ -87,14 +87,3 @@ deployment "yourown-chat" {
     cloudflare_manage_origin_cert = true
   }
 }
-
-# --- Published for the app-gcp stack -----------------------------------------
-# app-gcp materialises the mattermost-origin-tls Kubernetes Secret from the
-# origin cert/key this stack writes to Secret Manager. Publishing this (non-
-# sensitive) map lets app-gcp both order after cloudflare and detect whether the
-# origin material exists (empty => no public ingress => skip the Secret). The
-# cert/key VALUES are never published -- app-gcp reads them from Secret Manager.
-publish_output "origin_secret_ids" {
-  description = "Logical name => Secret Manager secret ID for the origin-protection secrets. Empty when public_ingress_enabled = false."
-  value       = deployment.yourown-chat.origin_secret_ids
-}
