@@ -164,3 +164,9 @@ variable "aop_enabled" {
   description = "Authenticated Origin Pulls (per-hostname mTLS) for the ingress. MUST match the cloudflare stack's cloudflare_aop_enabled. When true, the cloudflare-origin-pull-ca Kubernetes Secret is materialised (value read from Secret Manager, loaded out-of-band) and the ingress enforces client-cert verification; when false, the ingress skips auth-tls (Full (Strict) TLS only)."
   default     = false
 }
+
+variable "adopt_existing_namespaces" {
+  type        = bool
+  description = "Import the tenant namespaces (dev/matterbridge/mattermost) if they already exist in the cluster (e.g. created by a previous Cloud Deploy namespaces.yaml) instead of failing with 'already exists'. Set true for the one-time adoption apply, then back to false."
+  default     = false
+}

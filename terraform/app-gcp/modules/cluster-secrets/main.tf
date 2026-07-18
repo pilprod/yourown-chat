@@ -6,6 +6,16 @@
 #
 # Terraform owns the namespaces so this stack can create the Secrets before
 # Cloud Deploy runs (Cloud Deploy only deploys workloads INTO these namespaces).
+# Adopt namespaces that already exist in the cluster (created out-of-band by a
+# prior Cloud Deploy namespaces.yaml) instead of failing to create them. The
+# import ID of a namespace is its name. Gated so a genuinely fresh cluster still
+# creates them (importing a non-existent namespace would fail).
+import {
+  for_each = var.adopt_existing_namespaces ? var.namespaces : {}
+  to       = kubernetes_namespace.this[each.key]
+  id       = each.key
+}
+
 resource "kubernetes_namespace" "this" {
   for_each = var.namespaces
 

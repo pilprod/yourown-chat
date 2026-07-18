@@ -5,6 +5,12 @@ variable "namespaces" {
   description = "Tenant namespaces to create (map keyed by namespace name). Terraform owns these so credential Secrets can be created before Cloud Deploy deploys workloads into them."
 }
 
+variable "adopt_existing_namespaces" {
+  type        = bool
+  description = "Import namespaces that already exist in the cluster (e.g. created out-of-band by a prior Cloud Deploy namespaces.yaml) into Terraform state instead of failing with 'already exists'. Set true for the one-time adoption apply, then back to false (importing a non-existent namespace on a fresh cluster fails)."
+  default     = false
+}
+
 variable "secrets" {
   type = map(object({
     name      = string

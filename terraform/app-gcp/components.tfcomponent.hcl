@@ -199,6 +199,7 @@ component "cluster_secrets" {
       matterbridge = { labels = { tier = "dev", "part-of" = "yourown-chat" } }
       mattermost   = { labels = { tier = "prod", "part-of" = "yourown-chat" } }
     }
+    adopt_existing_namespaces = var.adopt_existing_namespaces
 
     secrets = merge(
       {
