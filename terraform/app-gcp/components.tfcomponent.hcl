@@ -57,7 +57,11 @@ component "clouddeploy" {
       # filestore HMAC keys) are deliberately NOT deploy parameters -- they would
       # land in the Cloud Deploy pipeline config and release renders. The
       # cluster_secrets component creates those Kubernetes Secrets directly in
-      # etcd instead. Only non-secret wiring (bucket, WI emails) flows here.
+      # etcd instead. Only non-secret wiring flows here.
+      #
+      # AOP toggle for the ingress (non-secret): "on" enforces client-cert mTLS
+      # against cloudflare-origin-pull-ca, "off" is Full (Strict) TLS only.
+      aop_verify_client = var.aop_enabled ? "on" : "off"
     }
 
     labels = local.common_labels
@@ -155,11 +159,24 @@ component "prod_secret_values" {
 
   inputs = {
     project_id = var.project_id
-    secret_ids = {
-      mattermost_db_connection      = "cloudsql-mattermost-connection"
-      mattermost_storage_access_key = "mattermost-storage-access-key"
-      mattermost_storage_secret_key = "mattermost-storage-secret-key"
-    }
+    secret_ids = merge(
+      {
+        mattermost_db_connection      = "cloudsql-mattermost-connection"
+        mattermost_storage_access_key = "mattermost-storage-access-key"
+        mattermost_storage_secret_key = "mattermost-storage-secret-key"
+      },
+      # Origin CA cert/key written by the cloudflare stack; read only when a
+      # public ingress exists (else the containers are empty/absent).
+      var.manage_ingress_origin_tls ? {
+        mattermost_origin_tls_cert = "mattermost-origin-tls-cert"
+        mattermost_origin_tls_key  = "mattermost-origin-tls-key"
+      } : {},
+      # AOP client-cert CA (loaded out-of-band into Secret Manager); read only
+      # when AOP is enabled, otherwise the container has no version.
+      var.aop_enabled ? {
+        cloudflare_origin_pull_ca = "cloudflare-origin-pull-ca"
+      } : {},
+    )
   }
 
   providers = {
@@ -183,35 +200,62 @@ component "cluster_secrets" {
       mattermost   = { labels = { tier = "prod", "part-of" = "yourown-chat" } }
     }
 
-    secrets = {
-      # dev in-cluster Postgres password (generated). Read by dev Postgres
-      # (POSTGRES_PASSWORD) and dev Mattermost (secretKeyRef -> datasource).
-      dev-postgres = {
-        name      = "dev-postgres"
-        namespace = "dev"
-        labels    = { app = "dev-postgres" }
-        data      = { POSTGRES_PASSWORD = component.secrets.generated_values["dev-postgres-password"] }
-      }
-      # prod external DB connection string (Cloud SQL), consumed by the operator
-      # CR as spec.database.external.secret: mattermost-db.
-      mattermost-db = {
-        name      = "mattermost-db"
-        namespace = "mattermost"
-        labels    = { app = "mattermost" }
-        data      = { DB_CONNECTION_STRING = component.prod_secret_values.values["mattermost_db_connection"] }
-      }
-      # prod external filestore (GCS S3-compatible HMAC keys), consumed by the
-      # operator CR as spec.fileStore.external.secret: mattermost-filestore.
-      mattermost-filestore = {
-        name      = "mattermost-filestore"
-        namespace = "mattermost"
-        labels    = { app = "mattermost" }
-        data = {
-          accesskey = component.prod_secret_values.values["mattermost_storage_access_key"]
-          secretkey = component.prod_secret_values.values["mattermost_storage_secret_key"]
+    secrets = merge(
+      {
+        # dev in-cluster Postgres password (generated). Read by dev Postgres
+        # (POSTGRES_PASSWORD) and dev Mattermost (secretKeyRef -> datasource).
+        dev-postgres = {
+          name      = "dev-postgres"
+          namespace = "dev"
+          labels    = { app = "dev-postgres" }
+          data      = { POSTGRES_PASSWORD = component.secrets.generated_values["dev-postgres-password"] }
         }
-      }
-    }
+        # prod external DB connection string (Cloud SQL), consumed by the operator
+        # CR as spec.database.external.secret: mattermost-db.
+        mattermost-db = {
+          name      = "mattermost-db"
+          namespace = "mattermost"
+          labels    = { app = "mattermost" }
+          data      = { DB_CONNECTION_STRING = component.prod_secret_values.values["mattermost_db_connection"] }
+        }
+        # prod external filestore (GCS S3-compatible HMAC keys), consumed by the
+        # operator CR as spec.fileStore.external.secret: mattermost-filestore.
+        mattermost-filestore = {
+          name      = "mattermost-filestore"
+          namespace = "mattermost"
+          labels    = { app = "mattermost" }
+          data = {
+            accesskey = component.prod_secret_values.values["mattermost_storage_access_key"]
+            secretkey = component.prod_secret_values.values["mattermost_storage_secret_key"]
+          }
+        }
+      },
+      # prod ingress Origin CA keypair (Cloudflare Full (Strict) TLS), served by
+      # the Mattermost Ingress via spec.ingress.tlsSecret: mattermost-origin-tls.
+      # Values are read from the cloudflare-written Secret Manager secrets (this
+      # stack runs after cloudflare); type must be kubernetes.io/tls.
+      var.manage_ingress_origin_tls ? {
+        mattermost-origin-tls = {
+          name      = "mattermost-origin-tls"
+          namespace = "mattermost"
+          type      = "kubernetes.io/tls"
+          labels    = { app = "mattermost" }
+          data = {
+            "tls.crt" = component.prod_secret_values.values["mattermost_origin_tls_cert"]
+            "tls.key" = component.prod_secret_values.values["mattermost_origin_tls_key"]
+          }
+        }
+      } : {},
+      # AOP client-cert CA (ingress auth-tls-secret), only when AOP is enabled.
+      var.aop_enabled ? {
+        cloudflare-origin-pull-ca = {
+          name      = "cloudflare-origin-pull-ca"
+          namespace = "mattermost"
+          labels    = { app = "mattermost" }
+          data      = { "ca.crt" = component.prod_secret_values.values["cloudflare_origin_pull_ca"] }
+        }
+      } : {},
+    )
   }
 
   providers = {

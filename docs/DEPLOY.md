@@ -205,7 +205,7 @@ One zonal GKE cluster, two node pools (provisioned by Terraform):
 
 | Node pool | Machine | Taint | Runs |
 |-----------|---------|-------|------|
-| `prod` | `e2-standard-2` | `dedicated=prod:NoSchedule` | prod Mattermost (+ its secret-sync) |
+| `prod` | `e2-standard-2` | `dedicated=prod:NoSchedule` | prod Mattermost |
 | `dev`  | `e2-medium`, autoscale 1–3 | none | dev Mattermost, in-cluster Postgres, matterbridge, kube-system |
 
 Prod workloads carry `nodeSelector: {tier: prod}` **and** a matching
@@ -215,11 +215,13 @@ off prod.
 
 ## Secrets — everything via Secret Manager
 
-No credential is committed or placed in a ConfigMap. The GKE **Secret Manager
-CSI add-on** mounts secrets into pods at start; `secretObjects` mirror them
-into Kubernetes Secrets where a controller (the Mattermost operator, ingress)
-needs a `secretKeyRef`. Pods read values at runtime — it does not matter which
-stack wrote them.
+No credential is committed or placed in a ConfigMap. Two delivery paths:
+- **file mount** via the GKE Secret Manager CSI add-on — used by matterbridge
+  (`matterbridge.toml`), the one thing that reads a mounted file;
+- **Kubernetes Secret created directly in etcd by Terraform** — everything a
+  controller consumes via `secretKeyRef`/`tlsSecret` (the Mattermost operator,
+  the ingress), because the managed add-on can't sync `secretObjects` (see the
+  note below).
 
 | Secret Manager secret | Consumed by | As |
 |-----------------------|-------------|----|
@@ -227,34 +229,35 @@ stack wrote them.
 | `mattermost-storage-access-key` / `-secret-key` | prod Mattermost | Secret `mattermost-filestore` → `accesskey`/`secretkey`, created the same way |
 | `dev-postgres-password` | dev Postgres / dev Mattermost | Secret `dev-postgres` → `POSTGRES_PASSWORD`, created directly in etcd by Terraform (`cluster_secrets`, generated value) — not CSI (see note below) |
 | `matterbridge-tokens` | matterbridge | file `/etc/matterbridge/matterbridge.toml` |
-| `mattermost-origin-tls-cert` / `-key` | ingress-nginx (Mattermost Ingress) | Secret `mattermost-origin-tls` → `tls.crt`/`tls.key` |
-| `cloudflare-origin-pull-ca` | ingress-nginx (Mattermost Ingress) | Secret `cloudflare-origin-pull-ca` → `ca.crt` |
-
-Operator-managed pods don't mount the CSI volume themselves, so a tiny
-`secret-sync` Deployment (pause container) keeps the volume mounted and the
-mirrored Secrets materialised in the `mattermost` namespace.
+| `mattermost-origin-tls-cert` / `-key` | prod Mattermost Ingress | Secret `mattermost-origin-tls` → `tls.crt`/`tls.key`, created in etcd by Terraform (`cluster_secrets`) from the cloudflare-written values (app-gcp runs after cloudflare) |
+| `cloudflare-origin-pull-ca` | prod Mattermost Ingress (AOP mTLS) | Secret `cloudflare-origin-pull-ca` → `ca.crt`, created by Terraform **only when `aop_enabled`** |
 
 > ⚠️ **Managed add-on limitation — `secretObjects` is not supported.** The
 > cluster runs the **managed** GKE Secret Manager add-on
 > (`secret_manager_config`), which mounts secrets as files but **cannot sync
 > them into Kubernetes Secret objects** (the open-source driver's `secretObjects`
-> feature). Credentials the operator/pods consume as Kubernetes Secrets are
-> therefore created **directly in etcd by Terraform** (the app-gcp
-> `cluster_secrets` component, via the `kubernetes` provider), NOT rendered
-> through Cloud Deploy — so the DB connection string and HMAC keys never land in
-> a deploy parameter or a release render. Terraform also owns the tenant
-> namespaces (so the Secrets exist before Cloud Deploy deploys workloads):
-> `dev-postgres` (generated password), `mattermost-db` and `mattermost-filestore`
-> (values read back from Secret Manager). The values live only in Terraform
-> state (HCP, encrypted) and etcd.
+> feature). So every credential the operator/pods consume as a Kubernetes Secret
+> is created **directly in etcd by Terraform** (the app-gcp `cluster_secrets`
+> component, via the `kubernetes` provider), NOT via CSI and NOT through Cloud
+> Deploy — the values never land in a deploy parameter or a release render.
+> Terraform also owns the tenant namespaces (so the Secrets exist before Cloud
+> Deploy deploys workloads). There is no `SecretProviderClass` and no
+> `secret-sync` Deployment. The Secrets:
+> - `dev-postgres` (generated password);
+> - `mattermost-db`, `mattermost-filestore` (read back from Secret Manager);
+> - `mattermost-origin-tls` (Origin CA cert/key, read from the values the
+>   **cloudflare** stack writes — app-gcp links cloudflare for ordering);
+> - `cloudflare-origin-pull-ca` (AOP client-cert CA), **only when `aop_enabled`**.
 >
-> **Still on `secretObjects` (not yet migrated):** the ingress origin material
-> `mattermost-origin-tls` and `cloudflare-origin-pull-ca` in
-> `mattermost/secretproviderclass.yaml` will not materialise under the managed
-> add-on. Ingress TLS/AOP needs the same treatment (create them via
-> `cluster_secrets` from the cloudflare stack's secrets) or the open-source
-> Secrets Store CSI driver before the public HTTPS edge works.
+> All values live only in Terraform state (HCP, encrypted) and etcd, and **etcd
+> itself is CMEK-encrypted** (application-layer Secrets encryption, see above).
+>
+> **AOP (Authenticated Origin Pulls):** off by default. The ingress
+> `auth-tls-verify-client` annotation is driven by the `aop_verify_client` deploy
+> parameter (`off` → Full (Strict) TLS only, `on` → enforce client-cert mTLS).
+> To enable: set `aop_enabled = true` in the app-gcp deployment **and**
+> `cloudflare_aop_enabled = true` in the cloudflare stack, and load the AOP CA
+> into the `cloudflare-origin-pull-ca` Secret Manager secret out-of-band.
 
-> **After a DB password rotation** (`cloudsql_password_rotation` bump in
-> Terraform): `kubectl rollout restart -n mattermost deploy` — CSI mounts
-> refresh on pod start, not live.
+> **After a DB password rotation**: `kubectl rollout restart -n mattermost deploy`
+> — pods pick up the updated Secret on restart, not live.

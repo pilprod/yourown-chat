@@ -37,17 +37,19 @@ spec:
     host: "yourown.chat"
     ingressClass: nginx
     # Full (Strict): serve the Cloudflare Origin CA keypair so the Cloudflare
-    # edge validates the origin over HTTPS. Materialised as a kubernetes.io/tls
-    # Secret from Secret Manager by the CSI SecretProviderClass.
+    # edge validates the origin over HTTPS. The mattermost-origin-tls Secret is
+    # created directly in etcd by Terraform (app-gcp cluster_secrets) from the
+    # cloudflare stack's Origin CA cert/key -- not via CSI.
     tlsSecret: mattermost-origin-tls
     annotations:
       # Authenticated Origin Pulls (mTLS): the origin only completes the TLS
       # handshake when the caller presents the client cert from OUR Cloudflare
-      # zone. Use per-hostname AOP (your own client cert) so the shared
-      # Cloudflare proxy IPs of other tenants cannot reach this origin. The CA
-      # that signs Cloudflare's client cert is mounted as ca.crt in the
-      # cloudflare-origin-pull-ca Secret.
-      nginx.ingress.kubernetes.io/auth-tls-verify-client: "on"
+      # zone (closes the shared-Cloudflare-IP gap). auth-tls-verify-client is
+      # toggled by the aop_verify_client deploy parameter -- "on" only when the
+      # cloudflare stack has AOP enabled AND the cloudflare-origin-pull-ca Secret
+      # exists (Terraform-created when aop_enabled). "off" = Full (Strict) TLS
+      # only; nginx then ignores auth-tls-secret, so the CA need not exist.
+      nginx.ingress.kubernetes.io/auth-tls-verify-client: "off" # from-param: ${aop_verify_client}
       nginx.ingress.kubernetes.io/auth-tls-secret: "mattermost/cloudflare-origin-pull-ca"
       nginx.ingress.kubernetes.io/auth-tls-verify-depth: "1"
       nginx.ingress.kubernetes.io/ssl-redirect: "true"

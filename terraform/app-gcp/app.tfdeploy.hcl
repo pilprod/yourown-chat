@@ -4,12 +4,15 @@
 # the Cloud Deploy pipeline, the image-build CI and the tag-triggered release
 # cutting.
 #
-# LINKED STACK: platform-gcp -> app-gcp. The stateful foundation's values
-# (cluster ID, registry coordinates, CMEK key, Workload Identity members) are
-# the LAST APPLIED publish_output of the platform-gcp stack -- HCP triggers a
-# plan here automatically whenever it changes one, and this stack can never
-# run ahead of a platform that hasn't settled. The Cloudflare edge (and its
-# origin-TLS secrets) is the sibling cloudflare stack; the two do not link.
+# LINKED STACKS: platform-gcp -> cloudflare -> app-gcp. The stateful
+# foundation's values (cluster ID, registry coordinates, CMEK key, Workload
+# Identity members) are the LAST APPLIED publish_output of the platform-gcp
+# stack. app-gcp ALSO links the cloudflare stack: it materialises the
+# mattermost-origin-tls Kubernetes Secret from the Origin CA cert/key the
+# cloudflare stack writes to Secret Manager, so it must run after cloudflare
+# (the cert/key are read from Secret Manager, never published across the link).
+# HCP triggers a plan here whenever an upstream output changes, and this stack
+# can never run ahead of an upstream that hasn't settled.
 #
 # AUTH: keyless HCP Terraform Dynamic Provider Credentials -> Workload Identity
 # Federation (identity_token block; no static keys, no TFC_GCP_*). No
@@ -43,6 +46,17 @@ upstream_input "platform" {
   source = "app.terraform.io/papou-work/yourown-chat/platform-gcp"
 }
 
+# --- Linked cloudflare stack (ORDERING) --------------------------------------
+# app-gcp materialises the mattermost-origin-tls Kubernetes Secret from the
+# origin cert/key the CLOUDFLARE stack writes to Secret Manager. Linking here
+# makes HCP run cloudflare first, so those Secret Manager versions exist when
+# this stack reads them (platform -> cloudflare -> app-gcp). The cert/key are
+# read from Secret Manager, never published across the link (still sensitive).
+upstream_input "cloudflare" {
+  type   = "stack"
+  source = "app.terraform.io/papou-work/yourown-chat/cloudflare"
+}
+
 # --- eu: the GCP delivery layer in one deployment -------------------------------
 deployment "eu" {
   inputs = {
@@ -64,6 +78,17 @@ deployment "eu" {
     cmek_key_id                     = upstream_input.platform.cmek_key_id
     workload_identity_members       = upstream_input.platform.workload_identity_members
     ingress_ip_address              = upstream_input.platform.ingress_ip_address
+
+    # Create the mattermost-origin-tls Secret only when the cloudflare stack
+    # provisioned the origin material (public_ingress on -> non-empty map). This
+    # reference also establishes the cloudflare -> app-gcp ordering above.
+    manage_ingress_origin_tls = length(upstream_input.cloudflare.origin_secret_ids) > 0
+
+    # Authenticated Origin Pulls (per-hostname mTLS). Committed toggle that MUST
+    # match the cloudflare stack's cloudflare_aop_enabled (same rationale as
+    # public_ingress -- an operational toggle, not a secret). false = Full
+    # (Strict) TLS only; the ingress skips client-cert verification.
+    aop_enabled = false
 
     # --- Cluster bootstrap (Terraform-managed Helm releases) ------------------
     # mattermost-operator + ingress-nginx install automatically once the
