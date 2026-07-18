@@ -57,6 +57,23 @@ variable "grant_secretmanager" {
   default     = true
 }
 
+variable "grant_gke" {
+  type        = bool
+  description = "Grant the GKE service agent (service-<num>@container-engine-robot) encrypterDecrypter on the key, so the cluster can use it for application-layer Secrets encryption of etcd. The key must be in the cluster's region."
+  default     = false
+}
+
+variable "project_number" {
+  type        = string
+  description = "Numeric project number, used to build the GKE service-agent email for grant_gke. Only required when grant_gke = true."
+  default     = ""
+
+  validation {
+    condition     = !var.grant_gke || can(regex("^[0-9]+$", var.project_number))
+    error_message = "project_number must be the numeric project number when grant_gke = true."
+  }
+}
+
 variable "labels" {
   type        = map(string)
   description = "Labels applied to the crypto key."

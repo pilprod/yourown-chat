@@ -35,9 +35,10 @@ locals {
   # Least-privilege SA impersonated after the exchange (never Owner/Editor).
   gcp_apply_sa = "terraform-apply@yourown-chat.iam.gserviceaccount.com"
 
-  gcp_project = "yourown-chat"
-  gcp_region  = "europe-west3" # Frankfurt, Germany
-  gcp_zone    = "europe-west3-b"
+  gcp_project        = "yourown-chat"
+  gcp_project_number = "1086706391144" # matches the WIF audience above
+  gcp_region         = "europe-west3"  # Frankfurt, Germany
+  gcp_zone           = "europe-west3-b"
 
   # CIDRs allowed to reach the GKE control-plane endpoint. The endpoint is public
   # but node-private (enable_private_endpoint = false); an EMPTY list omits the
@@ -76,9 +77,10 @@ deployment "eu" {
     audience              = local.gcp_wif_audience
     service_account_email = local.gcp_apply_sa
 
-    project_id  = local.gcp_project
-    environment = "prod"
-    region      = local.gcp_region
+    project_id     = local.gcp_project
+    project_number = local.gcp_project_number
+    environment    = "prod"
+    region         = local.gcp_region
     zone        = local.gcp_zone
 
     # --- GKE: ONE zonal cluster, TWO node pools sharing it -------------------

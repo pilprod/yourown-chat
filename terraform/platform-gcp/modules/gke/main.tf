@@ -3,7 +3,7 @@ locals {
   # Name after the ACTUAL footprint (var.location) so it self-documents: a zonal
   # cluster reads europe-west3-b, a regional one europe-west3. No "-gke" qualifier
   # (it is THE cluster) and collision-free for a second location.
-  cluster_name  = var.location
+  cluster_name = var.location
   # The node SA is the cluster's node identity; it drops the type/role suffix and
   # is named after the location alone. Its own IAM namespace keeps it distinct from
   # the clouddeploy/releaser SAs, and from the cluster (a different resource type).
@@ -88,6 +88,20 @@ resource "google_container_cluster" "this" {
 
   secret_manager_config {
     enabled = var.enable_secret_manager_csi
+  }
+
+  # Application-layer Secrets encryption: envelope-encrypt every Kubernetes
+  # Secret in etcd with the shared CMEK key BEFORE it is written (KEK wraps the
+  # DEK, DEK is cached). Null key -> block omitted -> Google-managed at-rest only.
+  # In-place update (not ForceNew); enabling on a live cluster re-encrypts
+  # existing Secrets in the background. The GKE service agent needs
+  # cryptoKeyEncrypterDecrypter on the key (granted by the kms component).
+  dynamic "database_encryption" {
+    for_each = var.database_encryption_key == null ? [] : [var.database_encryption_key]
+    content {
+      state    = "ENCRYPTED"
+      key_name = database_encryption.value
+    }
   }
 
   logging_config {

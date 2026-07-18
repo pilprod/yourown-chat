@@ -46,7 +46,7 @@ holds the VPC, the cluster and the database — and the Cloudflare API token
 | CI | Cloud Build builds the Mattermost image on a `v*-patched` git tag |
 | CD | Cloud Deploy dev → prod pipeline; a semver tag on this repo cuts a release automatically |
 | Secrets | Everything in Secret Manager, mounted via the CSI add-on + Workload Identity |
-| Encryption | One shared Cloud KMS **HSM** key (CMEK, 90-day rotation) over Cloud SQL, GCS and Secret Manager |
+| Encryption | One shared Cloud KMS **HSM** key (CMEK, 90-day rotation) over Cloud SQL, GCS, Secret Manager and **GKE etcd** (application-layer Kubernetes Secrets encryption) |
 | Edge | Cloudflare proxy: Full (Strict) TLS, DNSSEC, HSTS, www→apex redirect, Origin CA cert issued by Terraform |
 
 > GCP has no "S3" — its equivalent is a Cloud Storage (GCS) bucket, which is
@@ -65,6 +65,7 @@ graph TD
   NET --> GKE[gke<br/>1 cluster, 2 pools]
   KMS[kms<br/>shared CMEK key] -->|encrypts| SQL
   KMS -->|encrypts| STO
+  KMS -->|encrypts etcd| GKE
   WI[workload identity SAs] -->|read own secrets| SQL
   WI --> STO
   NET -->|ingress IP| CF[cloudflare stack<br/>DNS + TLS + Origin CA]

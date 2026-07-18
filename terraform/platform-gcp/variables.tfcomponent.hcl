@@ -20,6 +20,11 @@ variable "project_id" {
   description = "Existing GCP project ID for this environment."
 }
 
+variable "project_number" {
+  type        = string
+  description = "Numeric project number (from the WIF audience). Used to build the GKE service-agent email for the etcd Secrets-encryption KMS grant."
+}
+
 variable "environment" {
   type        = string
   description = "Environment name (drives labels only; resource names are role-based or regional, never environment-scoped). The single-cluster budget default uses 'prod' as the platform cluster; dev workloads run as a tenant namespace on the dev node pool."

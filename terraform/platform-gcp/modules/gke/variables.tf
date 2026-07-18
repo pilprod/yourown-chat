@@ -106,6 +106,12 @@ variable "node_pools" {
   }
 }
 
+variable "database_encryption_key" {
+  type        = string
+  description = "Cloud KMS key (projects/<p>/locations/<l>/keyRings/<r>/cryptoKeys/<k>) for GKE application-layer Secrets encryption of etcd. null = Google-managed at-rest only. The key must be in the cluster's region and the GKE service agent needs cryptoKeyEncrypterDecrypter on it. Updatable in place (not a cluster replacement)."
+  default     = null
+}
+
 variable "enable_secret_manager_csi" {
   type        = bool
   description = "Enable the GKE Secret Manager add-on (CSI) so pods can mount Secret Manager secrets via Workload Identity."

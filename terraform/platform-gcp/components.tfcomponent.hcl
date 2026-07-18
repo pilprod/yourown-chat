@@ -197,6 +197,11 @@ component "kms" {
     # The public registry is not CMEK-encrypted, so the Artifact Registry
     # service agent never wraps a DEK with this key.
     grant_artifact_registry = false
+
+    # Let the GKE service agent use this key for application-layer Secrets
+    # encryption of etcd (the gke component's database_encryption_key below).
+    grant_gke      = true
+    project_number = var.project_number
   }
 
   providers = {
@@ -245,6 +250,12 @@ component "gke" {
     enable_secret_manager_csi  = true
     deletion_protection        = var.gke_deletion_protection
     resource_labels            = local.common_labels
+
+    # Application-layer Secrets encryption (etcd) with the shared CMEK key. Null
+    # when cmek_enabled = false (component.kms is empty), which omits the block
+    # -> Google-managed at-rest only. Referencing the kms output makes gke wait
+    # for the key AND its GKE-agent encrypterDecrypter grant (grant_gke above).
+    database_encryption_key = one([for k in component.kms : k.crypto_key_id])
   }
 
   providers = {

@@ -48,7 +48,7 @@ graph LR
 | CI | Cloud Build собирает образ Mattermost по git-тегу `v*-patched` |
 | CD | Пайплайн Cloud Deploy dev → prod; semver-тег на этом репо режет релиз автоматически |
 | Секреты | Всё в Secret Manager, монтируется через CSI-аддон + Workload Identity |
-| Шифрование | Один общий Cloud KMS **HSM**-ключ (CMEK, ротация 90 дней) на Cloud SQL, GCS и Secret Manager |
+| Шифрование | Один общий Cloud KMS **HSM**-ключ (CMEK, ротация 90 дней) на Cloud SQL, GCS, Secret Manager и **etcd GKE** (application-layer шифрование Kubernetes Secrets) |
 | Edge | Cloudflare-прокси: Full (Strict) TLS, DNSSEC, HSTS, редирект www→apex, Origin CA cert из Terraform |
 
 > В GCP нет «S3» — эквивалент это Cloud Storage (GCS) бакет, он и создаётся, в
@@ -67,6 +67,7 @@ graph TD
   NET --> GKE[gke<br/>1 кластер, 2 пула]
   KMS[kms<br/>общий CMEK-ключ] -->|шифрует| SQL
   KMS -->|шифрует| STO
+  KMS -->|шифрует etcd| GKE
   WI[workload identity SA] -->|читают свои секреты| SQL
   WI --> STO
   NET -->|ingress-IP| CF[стек cloudflare<br/>DNS + TLS + Origin CA]

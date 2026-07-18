@@ -4,6 +4,7 @@
 #   - Cloud SQL (Postgres)     -- database component
 #   - Cloud Storage (filestore)-- storage component
 #   - Secret Manager (secrets) -- secrets component
+#   - GKE etcd (K8s Secrets)   -- gke component (application-layer encryption)
 # The container registry is PUBLIC and is NOT CMEK-encrypted, so this key has no
 # image-CI consumer (grant_artifact_registry defaults on but is disabled by the
 # kms component). The key is regional (must match every consumer's region).
@@ -139,4 +140,17 @@ resource "google_kms_crypto_key_iam_member" "secretmanager" {
   crypto_key_id = google_kms_crypto_key.this.id
   role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
   member        = "serviceAccount:${google_project_service_identity.secretmanager[0].email}"
+}
+
+# The GKE service agent (service-<num>@container-engine-robot) is auto-created
+# when the container API is enabled (project_services, upstream of this
+# component), so the grant below never races a missing principal. Its email is
+# built from the project number (threaded in, not a data source, to avoid a
+# resourcemanager.projects.get dependency on the apply SA).
+resource "google_kms_crypto_key_iam_member" "gke" {
+  count = var.grant_gke ? 1 : 0
+
+  crypto_key_id = google_kms_crypto_key.this.id
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+  member        = "serviceAccount:service-${var.project_number}@container-engine-robot.iam.gserviceaccount.com"
 }
