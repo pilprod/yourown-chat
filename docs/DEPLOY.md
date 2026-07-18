@@ -245,8 +245,12 @@ No credential is committed or placed in a ConfigMap. Two delivery paths:
 > `secret-sync` Deployment. The Secrets:
 > - `dev-postgres` (generated password);
 > - `mattermost-db`, `mattermost-filestore` (read back from Secret Manager);
-> - `mattermost-origin-tls` (Origin CA cert/key, read from the values the
->   **cloudflare** stack writes — app-gcp links cloudflare for ordering);
+> - `mattermost-origin-tls` (Origin CA cert/key), **only when
+>   `manage_ingress_origin_tls`** — the cert/key are read from the values the
+>   **cloudflare** stack writes, so apply cloudflare FIRST, then flip
+>   `manage_ingress_origin_tls = true` and re-apply app-gcp (default false so a
+>   first apply never 404s on a not-yet-created secret; the two stacks are not
+>   linked — order them by hand);
 > - `cloudflare-origin-pull-ca` (AOP client-cert CA), **only when `aop_enabled`**.
 >
 > All values live only in Terraform state (HCP, encrypted) and etcd, and **etcd

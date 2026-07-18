@@ -74,11 +74,12 @@ deployment "eu" {
     ingress_ip_address              = upstream_input.platform.ingress_ip_address
 
     # Create the mattermost-origin-tls Secret from the cloudflare-written origin
-    # cert/key. Committed toggle that MUST match the cloudflare stack's
-    # public_ingress_enabled (same manual-sync pattern as aop_enabled below).
-    # Requires the cloudflare stack to be applied first (see note above). Set
-    # false for an environment with no public ingress.
-    manage_ingress_origin_tls = true
+    # cert/key. FALSE by default so a first apply never fails reading a Secret
+    # Manager secret that does not exist yet. Enable AFTER the cloudflare stack
+    # has been applied and populated mattermost-origin-tls-cert/-key (apply
+    # cloudflare first, then flip this to true and re-apply app-gcp). Keep in
+    # sync with the cloudflare stack's public_ingress_enabled.
+    manage_ingress_origin_tls = false
 
     # Authenticated Origin Pulls (per-hostname mTLS). Committed toggle that MUST
     # match the cloudflare stack's cloudflare_aop_enabled (same rationale as

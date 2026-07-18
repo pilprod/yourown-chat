@@ -3,10 +3,6 @@ output "namespace_names" {
   value       = [for ns in kubernetes_namespace.this : ns.metadata[0].name]
 }
 
-output "secret_names" {
-  description = "Map of logical key => created Secret name. Secret names are not secret; unwrap the sensitivity inherited from the (sensitive) secrets input."
-  value = try(
-    nonsensitive({ for k, s in kubernetes_secret.this : k => s.metadata[0].name }),
-    { for k, s in kubernetes_secret.this : k => s.metadata[0].name },
-  )
-}
+# NOTE: no secret_names output. The Secret names derive from the (sensitive)
+# secrets input, so exporting them as a root-module output trips Terraform's
+# "output refers to sensitive values" check, and the output has no consumer.
