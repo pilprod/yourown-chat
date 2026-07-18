@@ -129,6 +129,13 @@ resource "google_container_cluster" "this" {
     ignore_changes = [
       # The initial node pool is removed right after creation.
       initial_node_count,
+      # GKE reports database_encryption.state as the RUNTIME CurrentState (e.g.
+      # ALL_OBJECTS_ENCRYPTION_ENABLED once encryption has fully applied), which
+      # never textually equals the config's "ENCRYPTED" -> a cosmetic perpetual
+      # diff on every plan (the apply is a GKE no-op). Ignore the reported state;
+      # key_name stays managed, so a key change is still detected, and the block
+      # is still created with state=ENCRYPTED on a fresh cluster.
+      database_encryption[0].state,
     ]
   }
 }
