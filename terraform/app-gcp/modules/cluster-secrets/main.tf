@@ -15,18 +15,26 @@ resource "kubernetes_namespace" "this" {
   }
 }
 
+locals {
+  # var.secrets is sensitive (its `data` values are), and for_each cannot take a
+  # sensitive collection. The KEYS (logical secret names) are NOT secret, so
+  # unwrap just the key set for for_each and read each secret's fields back by
+  # key. try() falls back when nothing is sensitive (e.g. an empty map).
+  secret_keys = try(nonsensitive(toset(keys(var.secrets))), toset(keys(var.secrets)))
+}
+
 resource "kubernetes_secret" "this" {
-  for_each = var.secrets
+  for_each = local.secret_keys
 
   metadata {
-    name      = each.value.name
-    namespace = each.value.namespace
-    labels    = each.value.labels
+    name      = var.secrets[each.value].name
+    namespace = var.secrets[each.value].namespace
+    labels    = var.secrets[each.value].labels
   }
 
   # Plaintext in; the provider stores it base64-encoded. Marked sensitive.
-  data = each.value.data
-  type = each.value.type
+  data = var.secrets[each.value].data
+  type = var.secrets[each.value].type
 
   # The namespace must exist first (secret.namespace is a plain string, so add
   # the dependency explicitly).

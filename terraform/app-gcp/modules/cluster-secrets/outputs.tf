@@ -4,6 +4,9 @@ output "namespace_names" {
 }
 
 output "secret_names" {
-  description = "Map of logical key => created Secret name."
-  value       = { for k, s in kubernetes_secret.this : k => s.metadata[0].name }
+  description = "Map of logical key => created Secret name. Secret names are not secret; unwrap the sensitivity inherited from the (sensitive) secrets input."
+  value = try(
+    nonsensitive({ for k, s in kubernetes_secret.this : k => s.metadata[0].name }),
+    { for k, s in kubernetes_secret.this : k => s.metadata[0].name },
+  )
 }
