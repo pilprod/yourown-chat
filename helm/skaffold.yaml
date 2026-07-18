@@ -68,10 +68,10 @@ profiles:
   # --- prod stage: operator-managed Mattermost ------------------------------
   - name: prod
     manifests:
-      # Namespace + the mattermost-db / mattermost-filestore Secrets are created
-      # by Terraform (app-gcp cluster_secrets), not here.
+      # Namespace + ALL Mattermost Secrets (mattermost-db, mattermost-filestore,
+      # mattermost-origin-tls, and cloudflare-origin-pull-ca when AOP is on) are
+      # created by Terraform (app-gcp cluster_secrets), not here -- so nothing
+      # here mounts the CSI volume and there is no SecretProviderClass/secret-sync.
       rawYaml:
         - mattermost/serviceaccount.yaml
-        - mattermost/secretproviderclass.yaml
-        - mattermost/secret-sync.yaml
         - mattermost/mattermost.yaml

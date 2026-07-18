@@ -31,6 +31,7 @@ Stacks** — у каждого свой стейт и свой blast radius:
 graph LR
   P[platform-gcp<br/>фундамент] -->|ingress IP, CMEK, WI| CF[cloudflare<br/>edge]
   P -->|кластер, реестр, CMEK, WI| A[app-gcp<br/>доставка]
+  CF -->|origin-TLS secret IDs| A
 ```
 
 Зачем резать? Ошибка в edge-правилах или CI теперь физически не может задеть

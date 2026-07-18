@@ -152,3 +152,15 @@ variable "adopt_existing_cluster_bootstrap_releases" {
   description = "Import pre-existing cluster bootstrap Helm releases (mattermost-operator and ingress-nginx) that were installed by an interrupted/previous apply but are not yet in Terraform state."
   default     = false
 }
+
+variable "manage_ingress_origin_tls" {
+  type        = bool
+  description = "Materialise the mattermost-origin-tls Kubernetes Secret (Cloudflare Origin CA cert/key, for the ingress Full (Strict) TLS) from the Secret Manager values the cloudflare stack writes. Set from the cloudflare stack's origin_secret_ids in the deployment; false skips it (no public ingress)."
+  default     = false
+}
+
+variable "aop_enabled" {
+  type        = bool
+  description = "Authenticated Origin Pulls (per-hostname mTLS) for the ingress. MUST match the cloudflare stack's cloudflare_aop_enabled. When true, the cloudflare-origin-pull-ca Kubernetes Secret is materialised (value read from Secret Manager, loaded out-of-band) and the ingress enforces client-cert verification; when false, the ingress skips auth-tls (Full (Strict) TLS only)."
+  default     = false
+}
