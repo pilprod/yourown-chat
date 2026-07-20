@@ -147,26 +147,34 @@ resource "google_cloudbuild_trigger" "release" {
       name       = "gcr.io/google.com/cloudsdktool/cloud-sdk:slim"
       entrypoint = "bash"
       dir        = var.source_subdir
+      # Release name reads version-first so the pipeline UI shows
+      # "rel-1-2-3-<sha>-<build>" instead of an opaque SHA. Components:
+      #   safe_tag  -- the semver git tag ($TAG_NAME, e.g. 1.2.3) with `.`
+      #                sanitised to `-` (1.2.3 -> 1-2-3), because release names
+      #                DISALLOW dots (^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$).
+      #   SHORT_SHA -- the source commit, for at-a-glance traceability.
+      #   short_build -- an 8-char BUILD_ID fragment guaranteeing uniqueness if
+      #                the same tag is re-cut/retried (a duplicate name 409s).
+      #
       # Cloud Deploy derives the rollout ID as "<release>-to-<target>-NNNN" and
-      # caps it at 63 chars. BUILD_ID is a 36-char UUID, so rel-$SHORT_SHA-$BUILD_ID
-      # (48) plus the "-to-prod-europe-west3-0001" suffix (26) overflows the cap;
-      # keep only the first 8 chars of BUILD_ID -- still unique per build, ~20-char
-      # release name. The name avoids dots (semver tags contain them, which release
-      # names disallow); the full tag is kept as an annotation.
+      # caps it at 63 chars. rel-<tag>-<sha>-<build> (~26 chars) stays well under
+      # the cap even after the "-to-prod-europe-west3-0001" suffix (26); the
+      # full, unsanitised tag is also kept as an annotation.
       #
       # Escaping: static values are inlined by Terraform. Cloud Build built-ins
-      # ($SHORT_SHA/$BUILD_ID/$TAG_NAME) keep a SINGLE `$` so Cloud Build
+      # ($BUILD_ID/$SHORT_SHA/$TAG_NAME) keep a SINGLE `$` so Cloud Build
       # substitutes them before bash runs -- HCL leaves `$NAME` (no brace)
       # untouched. Genuine bash constructs use the escaped `$$` form (HCL passes
       # `$$` through, Cloud Build unescapes `$$` -> `$`): `$$( … )` for command
-      # substitution, `$$short_build` for the bash var. Braced `$${VAR}` must NOT
-      # appear (HCL would collapse it to `${VAR}`, which Cloud Build then rejects
-      # as an unknown substitution).
+      # substitution, `$$safe_tag`/`$$short_build` for the bash vars. Braced
+      # `$${VAR}` must NOT appear (HCL would collapse it to `${VAR}`, which Cloud
+      # Build then rejects as an unknown substitution).
       args = [
         "-ceu",
         <<-EOT
+          safe_tag="$$(printf '%s' '$TAG_NAME' | tr '.' '-')"
           short_build="$$(printf '%s' '$BUILD_ID' | cut -c1-8)"
-          gcloud deploy releases create "rel-$SHORT_SHA-$$short_build" \
+          gcloud deploy releases create "rel-$$safe_tag-$SHORT_SHA-$$short_build" \
             --project "${var.project_id}" \
             --region "${var.region}" \
             --delivery-pipeline "${var.delivery_pipeline_name}" \
