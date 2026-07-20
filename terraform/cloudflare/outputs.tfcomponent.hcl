@@ -35,9 +35,25 @@ output "cloudflare_dnssec" {
 # --- Origin-protection secrets ------------------------------------------------
 output "origin_secret_ids" {
   type        = map(string)
-  description = "Logical name => Secret Manager secret ID for the origin-protection secrets (mattermost-origin-tls-cert/-key + cloudflare-origin-pull-ca). Empty map when public_ingress_enabled = false, so a downstream stack can derive an on/off toggle from length() without a null guard."
-  # An empty map (not null) when origin_secrets is absent: app-gcp keys its
-  # manage_ingress_origin_tls off length(this) once linked, and length(null)
-  # would error.
+  description = "Logical name => Secret Manager secret ID for the origin-protection secret CONTAINERS (mattermost-origin-tls-cert/-key + cloudflare-origin-pull-ca). Informational; empty map when public_ingress_enabled = false. Do NOT derive an on/off toggle from its length -- the pull-ca container is always present even without a value; use origin_tls_ready for that."
+  # Empty map (not null) when origin_secrets is absent, so length()/keys() on a
+  # downstream consumer never hit a null.
   value = length(component.origin_secrets) > 0 ? one([for s in component.origin_secrets : s.secret_ids]) : {}
+}
+
+# Precise readiness signal for the origin-TLS material, so a downstream stack can
+# turn its origin-TLS Secret ON exactly when the cert/key EXIST -- no hand-kept
+# mirror toggle. Keyed off secret_version_ids (versions are created only for
+# value-bearing secrets), NOT the always-present containers, so a cert-less
+# public edge (manage_origin_cert = false) does not falsely enable it. True iff
+# public_ingress_enabled AND manage_origin_cert. Non-sensitive: it inspects a
+# key NAME, never the cert bytes. app-gcp links this stack and derives
+# manage_ingress_origin_tls = this.
+output "origin_tls_ready" {
+  type        = bool
+  description = "True when the Cloudflare Origin CA cert/key Secret Manager versions exist (public_ingress_enabled AND manage_origin_cert). app-gcp derives manage_ingress_origin_tls from it."
+  value = length(component.origin_secrets) > 0 ? contains(
+    keys(one([for s in component.origin_secrets : s.secret_version_ids])),
+    "mattermost-origin-tls-cert"
+  ) : false
 }

@@ -72,9 +72,12 @@ deployment "yourown-chat" {
     cmek_key_id               = upstream_input.platform.cmek_key_id
     workload_identity_members = upstream_input.platform.workload_identity_members
 
-    # MUST match the platform-gcp deployment's public_ingress_enabled (which
-    # reserves the static IP this edge points at).
-    public_ingress_enabled = true
+    # Derived, not hand-mirrored: the public edge exists exactly when platform-gcp
+    # reserved the static ingress IP this edge points at. platform publishes a
+    # null ingress_ip_address when ITS public_ingress_enabled = false, so this
+    # follows the single root toggle (platform.public_ingress_enabled) with no
+    # second boolean to keep in sync.
+    public_ingress_enabled = upstream_input.platform.ingress_ip_address != null
 
     # Token from the varset; the zone and edge policy below.
     cloudflare_api_token          = store.varset.cloudflare.cloudflare_api_token
