@@ -47,9 +47,9 @@ upstream_input "platform" {
 # app-gcp materialises the mattermost-origin-tls Kubernetes Secret from the
 # origin cert/key the CLOUDFLARE stack writes to Secret Manager, and LINKS that
 # stack so manage_ingress_origin_tls is DERIVED from its origin_tls_ready output
-# (no hand-kept mirror toggle). The link makes app-gcp plan only after cloudflare
-# has published at least once -- which is exactly the ordering we want, since the
-# origin cert must exist before app-gcp reads it. Source format:
+# (no hand-kept mirror toggle). The cloudflare stack must PUBLISH that value with a
+# publish_output block (a bare component output is not consumable cross-stack), and
+# apply once so the value propagates. Source format:
 # app.terraform.io/<organization>/<hcp project>/<stack name>.
 upstream_input "cloudflare" {
   type   = "stack"
@@ -79,10 +79,10 @@ deployment "eu" {
     ingress_ip_address              = upstream_input.platform.ingress_ip_address
 
     # Create the mattermost-origin-tls Secret from the cloudflare-written origin
-    # cert/key. DERIVED from the cloudflare stack's origin_tls_ready output: true
-    # exactly when the Origin CA cert/key Secret Manager versions exist (cloudflare
-    # public_ingress_enabled AND manage_origin_cert), so app-gcp reads those
-    # secrets only once they are populated and the toggle needs no hand-syncing.
+    # cert/key. DERIVED from the cloudflare stack's published origin_tls_ready:
+    # true exactly when the Origin CA cert/key Secret Manager versions exist
+    # (cloudflare public_ingress_enabled AND manage_origin_cert), so app-gcp reads
+    # those secrets only once they are populated and the toggle needs no hand-sync.
     manage_ingress_origin_tls = upstream_input.cloudflare.origin_tls_ready
 
     # Authenticated Origin Pulls (per-hostname mTLS). Committed toggle that MUST

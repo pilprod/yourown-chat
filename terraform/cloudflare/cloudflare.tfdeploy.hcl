@@ -90,3 +90,14 @@ deployment "yourown-chat" {
     cloudflare_manage_origin_cert = true
   }
 }
+
+# --- Downstream contract: published to the app-gcp stack ----------------------
+# app-gcp links this stack (upstream_input.cloudflare) and derives its
+# manage_ingress_origin_tls from origin_tls_ready. A bare component output
+# (outputs.tfcomponent.hcl) is NOT consumable cross-stack -- only a publish_output
+# is -- so this block is what actually feeds the downstream link. Applying this
+# stack propagates the value and auto-triggers an app-gcp run.
+publish_output "origin_tls_ready" {
+  description = "True once the Cloudflare Origin CA cert/key Secret Manager versions exist (public_ingress_enabled AND manage_origin_cert). app-gcp derives manage_ingress_origin_tls from it."
+  value       = deployment.yourown-chat.origin_tls_ready
+}
