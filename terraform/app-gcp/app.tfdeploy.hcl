@@ -44,12 +44,17 @@ upstream_input "platform" {
   source = "app.terraform.io/papou-work/yourown-chat/platform-gcp"
 }
 
-# NOTE: app-gcp materialises the mattermost-origin-tls Kubernetes Secret from
-# the origin cert/key the CLOUDFLARE stack writes to Secret Manager. The two are
-# NOT linked (a linked upstream_input made the plan fail whenever cloudflare had
-# not published yet). Instead this is operator-ordered: apply cloudflare BEFORE
-# app-gcp so the Secret Manager versions exist when app-gcp reads them, and keep
-# manage_ingress_origin_tls below in sync with the cloudflare public ingress.
+# app-gcp materialises the mattermost-origin-tls Kubernetes Secret from the
+# origin cert/key the CLOUDFLARE stack writes to Secret Manager, and LINKS that
+# stack so manage_ingress_origin_tls is DERIVED from its origin_tls_ready output
+# (no hand-kept mirror toggle). The link makes app-gcp plan only after cloudflare
+# has published at least once -- which is exactly the ordering we want, since the
+# origin cert must exist before app-gcp reads it. Source format:
+# app.terraform.io/<organization>/<hcp project>/<stack name>.
+upstream_input "cloudflare" {
+  type   = "stack"
+  source = "app.terraform.io/papou-work/yourown-chat/cloudflare"
+}
 
 # --- eu: the GCP delivery layer in one deployment -------------------------------
 deployment "eu" {
@@ -74,12 +79,11 @@ deployment "eu" {
     ingress_ip_address              = upstream_input.platform.ingress_ip_address
 
     # Create the mattermost-origin-tls Secret from the cloudflare-written origin
-    # cert/key. FALSE by default so a first apply never fails reading a Secret
-    # Manager secret that does not exist yet. Enable AFTER the cloudflare stack
-    # has been applied and populated mattermost-origin-tls-cert/-key (apply
-    # cloudflare first, then flip this to true and re-apply app-gcp). Keep in
-    # sync with the cloudflare stack's public_ingress_enabled.
-    manage_ingress_origin_tls = false
+    # cert/key. DERIVED from the cloudflare stack's origin_tls_ready output: true
+    # exactly when the Origin CA cert/key Secret Manager versions exist (cloudflare
+    # public_ingress_enabled AND manage_origin_cert), so app-gcp reads those
+    # secrets only once they are populated and the toggle needs no hand-syncing.
+    manage_ingress_origin_tls = upstream_input.cloudflare.origin_tls_ready
 
     # Authenticated Origin Pulls (per-hostname mTLS). Committed toggle that MUST
     # match the cloudflare stack's cloudflare_aop_enabled (same rationale as
