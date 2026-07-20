@@ -34,9 +34,15 @@ required_providers {
   }
   # Namespaces + credential Secrets created directly in the cluster, so the DB /
   # filestore secrets never pass through Cloud Deploy; configured from gke_auth.
+  # Pinned below 2.38.0: that release introduced Terraform managed resource
+  # identity, and updating an already-created kubernetes_secret triggers a
+  # provider "Unexpected Identity Change" abort (the stored identity is null,
+  # the provider returns a populated one). 2.37.x predates the identity feature
+  # entirely, so the DB-connection-string rotation on mattermost-db applies
+  # cleanly. Bump deliberately once the provider ships a fix (>= 2.38.x).
   kubernetes = {
     source  = "hashicorp/kubernetes"
-    version = "~> 2.30"
+    version = "~> 2.37.0"
   }
 }
 
