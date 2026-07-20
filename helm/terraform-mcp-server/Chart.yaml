@@ -3,4 +3,4 @@ name: terraform-mcp-server
 description: A Helm chart for HashiCorp Terraform MCP server
 type: application
 version: 0.1.0
-appVersion: "latest"
+appVersion: "0.5.2"

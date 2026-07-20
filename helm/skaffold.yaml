@@ -1,44 +1,18 @@
 # Skaffold config consumed by Cloud Deploy to render and apply the platform's
-# Kubernetes workloads. Delivered as a dev -> prod pipeline by the `clouddeploy`
-# component (terraform/app-gcp/modules/clouddeploy); each pipeline stage binds
-# one profile below via its `profiles` field:
-#
-#   dev  -> the dev tenant (in-cluster Postgres + dev Mattermost) plus
-#           matterbridge, followed by an on-cluster `verify` smoke test.
-#   prod -> the operator-managed prod Mattermost (promotion gated by manual
-#           approval in Cloud Deploy).
-#
-# NO build artifacts are declared on purpose. The container image tag is the
-# source of truth INSIDE the manifests (build-once, promote-the-same-tag): the
-# prod Mattermost is an Operator CR that splits the ref into `spec.image` +
-# `spec.version`, which defeats Skaffold's image substitution. Cloud Deploy
-# therefore provides the promotion workflow (verify -> approval -> rollback),
-# not tag templating. The Mattermost image is built once by the stack's image-CI
-# components (terraform/) on tags matching ^v.*-patched$; matterbridge uses the
-# upstream 42wim/matterbridge image.
-#
-# Each profile REPLACES the (empty) base manifest list -- a non-empty profile
-# slice overlays by replacement in Skaffold -- so a profile renders exactly its
-# own workload set and nothing else. Namespaces and the credential Secrets are
-# NOT rendered here: Terraform (app-gcp cluster_secrets) creates them, so no
-# secret ever passes through a Cloud Deploy deploy parameter or release render.
+# Kubernetes workloads. The app-gcp Terraform stack binds the dev and prod
+# targets to the profiles below.
 apiVersion: skaffold/v4beta11
 kind: Config
 metadata:
   name: yourown-chat
+
 deploy:
   kubectl: {}
+
 profiles:
-  # --- dev stage: dev tenant (matterbridge is a separate, toggleable profile) -
+  # Dev tenant. Namespaces, Secrets, and RBAC are owned by Terraform.
   - name: dev
     manifests:
-      # Namespaces and the credential Secrets (dev-postgres, mattermost-db,
-      # mattermost-filestore) are created by Terraform (app-gcp cluster_secrets
-      # component), not here -- so no secret ever passes through Cloud Deploy.
-      # developing/rbac.yaml is NOT here: the dev-team Role/RoleBinding is created
-      # by Terraform (app-gcp dev_rbac component), because Cloud Deploy's
-      # execution SA (roles/container.developer) is forbidden by GKE from
-      # creating RBAC objects.
       rawYaml:
         - developing/serviceaccount.yaml
         - developing/networkpolicy.yaml
@@ -54,24 +28,11 @@ profiles:
             - >-
               curl -sSf --retry 30 --retry-connrefused --retry-delay 5
               http://dev-mattermost.dev.svc.cluster.local:8065/api/v4/system/ping
-        # Run the probe ON the target cluster (GKE only) as a Job pinned to the
-        # `dev` namespace via jobManifestPath. It MUST run in `dev`: that
-        # namespace's NetworkPolicy is default-deny and only admits
-        # intra-namespace traffic, so a verify pod anywhere else could neither
-        # resolve nor reach dev-mattermost. Without kubernetesCluster mode Cloud
-        # Deploy would run verify in its Cloud Build execution environment, which
-        # cannot resolve in-cluster DNS at all.
         executionMode:
           kubernetesCluster:
             jobManifestPath: developing/verify/job.yaml
-  # --- matterbridge: OPTIONAL, appended to the dev stage when enabled --------
-  # A profile REPLACES manifests.rawYaml rather than merging, so this profile
-  # PATCHES (appends) the matterbridge manifests onto the dev profile instead of
-  # redefining the list. The dev Cloud Deploy target activates it as a SECOND
-  # profile (["dev", "matterbridge"]) only when var.matterbridge_enabled is true
-  # (terraform/app-gcp clouddeploy component); when false the target renders just
-  # ["dev"] and matterbridge is not deployed. Must be listed AFTER dev so the
-  # rawYaml list already exists when these patches append to it.
+
+  # Optional bridge appended by the app-gcp clouddeploy component when enabled.
   - name: matterbridge
     patches:
       - op: add
@@ -86,13 +47,19 @@ profiles:
       - op: add
         path: /manifests/rawYaml/-
         value: matterbridge/deployment.yaml
-  # --- prod stage: operator-managed Mattermost ------------------------------
+
+  # Production workloads promoted after the Cloud Deploy approval gate.
+  # Helm is used only as a renderer; Cloud Deploy applies the hydrated YAML.
   - name: prod
     manifests:
-      # Namespace + ALL Mattermost Secrets (mattermost-db, mattermost-filestore,
-      # mattermost-origin-tls, and cloudflare-origin-pull-ca when AOP is on) are
-      # created by Terraform (app-gcp cluster_secrets), not here -- so nothing
-      # here mounts the CSI volume and there is no SecretProviderClass/secret-sync.
       rawYaml:
         - mattermost/serviceaccount.yaml
         - mattermost/mattermost.yaml
+      helm:
+        releases:
+          - name: terraform-mcp-server
+            chartPath: terraform-mcp-server
+            namespace: mattermost
+            createNamespace: false
+            valuesFiles:
+              - terraform-mcp-server/values.yaml

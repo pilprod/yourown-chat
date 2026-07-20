@@ -16,13 +16,15 @@ spec:
         - namespaceSelector:
             matchLabels:
               {{- range $key, $value := .Values.networkPolicy.allowedNamespaces }}
-              {{ $key }}: {{ $value }}
+              {{ $key }}: {{ $value | quote }}
               {{- end }}
+          {{- with .Values.networkPolicy.allowedPods }}
           podSelector:
             matchLabels:
-              {{- range $key, $value := .Values.networkPolicy.allowedPods }}
-              {{ $key }}: {{ $value }}
+              {{- range $key, $value := . }}
+              {{ $key }}: {{ $value | quote }}
               {{- end }}
+          {{- end }}
       ports:
         - protocol: TCP
           port: {{ .Values.service.port }}
