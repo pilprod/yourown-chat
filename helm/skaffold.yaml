@@ -1,6 +1,6 @@
 # Skaffold config consumed by Cloud Deploy to render and apply the platform's
 # Kubernetes workloads. The app-gcp Terraform stack binds the dev and prod
-# targets to the profiles below.
+# targets to the profiles below and appends terraform-mcp-server to prod.
 apiVersion: skaffold/v4beta11
 kind: Config
 metadata:
@@ -48,18 +48,24 @@ profiles:
         path: /manifests/rawYaml/-
         value: matterbridge/deployment.yaml
 
-  # Production workloads promoted after the Cloud Deploy approval gate.
-  # Helm is used only as a renderer; Cloud Deploy applies the hydrated YAML.
+  # Production Mattermost workload promoted after the approval gate.
   - name: prod
     manifests:
       rawYaml:
         - mattermost/serviceaccount.yaml
         - mattermost/mattermost.yaml
-      helm:
-        releases:
-          - name: terraform-mcp-server
-            chartPath: terraform-mcp-server
-            namespace: mattermost
-            createNamespace: false
-            valuesFiles:
-              - terraform-mcp-server/values.yaml
+
+  # Appended to prod by terraform/app-gcp/modules/clouddeploy when enabled.
+  # Helm is used only to render manifests; Cloud Deploy applies hydrated YAML.
+  - name: terraform-mcp-server
+    patches:
+      - op: add
+        path: /manifests/helm
+        value:
+          releases:
+            - name: terraform-mcp-server
+              chartPath: terraform-mcp-server
+              namespace: mattermost
+              createNamespace: false
+              valuesFiles:
+                - terraform-mcp-server/values.yaml
