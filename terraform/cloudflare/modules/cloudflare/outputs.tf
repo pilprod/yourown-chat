@@ -40,3 +40,8 @@ output "origin_private_key_pem" {
   value       = var.manage_origin_cert ? tls_private_key.origin[0].private_key_pem : null
   sensitive   = true
 }
+
+output "aop_origin_pull_ca_pem" {
+  description = "Self-signed AOP client certificate (PEM). Written to the cloudflare-origin-pull-ca Secret as the CA ingress-nginx verifies Cloudflare's authenticated origin pulls against. Always present so the CA Secret is populated even when AOP enforcement is off. Not sensitive (public certificate; the private key stays in state and is uploaded to Cloudflare)."
+  value       = tls_self_signed_cert.aop.cert_pem
+}

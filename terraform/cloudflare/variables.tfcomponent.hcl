@@ -184,19 +184,6 @@ variable "cloudflare_manage_origin_cert" {
 
 variable "cloudflare_aop_enabled" {
   type        = bool
-  description = "Enable per-hostname Authenticated Origin Pulls. Requires cloudflare_aop_certificate/cloudflare_aop_private_key. Off by default."
+  description = "Enforce per-hostname Authenticated Origin Pulls. The self-signed client cert/CA is generated automatically (no material to supply); this only gates whether the edge presents it AND is the single root AOP toggle -- app-gcp derives its ingress verify-client from the published aop_enabled output. Off by default (Full (Strict) TLS only). MUST be applied before app-gcp."
   default     = false
-}
-
-variable "cloudflare_aop_certificate" {
-  type        = string
-  description = "PEM client cert the edge presents to the origin (per-hostname AOP)."
-  default     = ""
-}
-
-variable "cloudflare_aop_private_key" {
-  type        = string
-  sensitive   = true
-  description = "PEM private key for the AOP client certificate."
-  default     = ""
 }

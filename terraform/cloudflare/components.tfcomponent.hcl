@@ -55,8 +55,6 @@ component "cloudflare" {
 
     manage_origin_cert = var.cloudflare_manage_origin_cert
     aop_enabled        = var.cloudflare_aop_enabled
-    aop_certificate    = var.cloudflare_aop_certificate
-    aop_private_key    = var.cloudflare_aop_private_key
   }
 
   providers = {
@@ -96,9 +94,12 @@ component "origin_secrets" {
         accessors = [var.workload_identity_members.mattermost]
       }
       "cloudflare-origin-pull-ca" = {
-        # Explicit null (empty container) so all three entries share one object
-        # type.
-        value     = null
+        # The self-signed AOP client certificate (public) that ingress-nginx
+        # verifies Cloudflare's authenticated origin pulls against. Populated
+        # whenever the edge exists so the origin's auth-tls-secret always
+        # resolves (a missing CA there fails nginx annotation parsing -> 403);
+        # enforcement is toggled separately by aop_enabled.
+        value     = one([for c in component.cloudflare : c.aop_origin_pull_ca_pem])
         accessors = [var.workload_identity_members.mattermost]
       }
     }

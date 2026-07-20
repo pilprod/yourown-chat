@@ -85,11 +85,12 @@ deployment "eu" {
     # those secrets only once they are populated and the toggle needs no hand-sync.
     manage_ingress_origin_tls = upstream_input.cloudflare.origin_tls_ready
 
-    # Authenticated Origin Pulls (per-hostname mTLS). Committed toggle that MUST
-    # match the cloudflare stack's cloudflare_aop_enabled (same rationale as
-    # public_ingress -- an operational toggle, not a secret). false = Full
-    # (Strict) TLS only; the ingress skips client-cert verification.
-    aop_enabled = false
+    # Authenticated Origin Pulls (per-hostname mTLS). DERIVED from the cloudflare
+    # stack's published aop_enabled -- a single root toggle (cloudflare_aop_enabled)
+    # drives both the edge (present the self-generated client cert) and this
+    # (ingress verify-client "on"). The cloudflare-origin-pull-ca Secret is created
+    # regardless (so annotation parsing never 403s); this only flips enforcement.
+    aop_enabled = upstream_input.cloudflare.aop_enabled
 
     # --- Cluster bootstrap (Terraform-managed Helm releases) ------------------
     # mattermost-operator + ingress-nginx install automatically once the
