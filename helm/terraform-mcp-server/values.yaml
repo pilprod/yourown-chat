@@ -12,7 +12,7 @@ service:
 networkPolicy:
   enabled: true
   allowedNamespaces:
-    kubernetes.io/metadata.name: "mattermost-prod"
+    kubernetes.io/metadata.name: "mattermost"
   allowedPods:
     app: mattermost
 
