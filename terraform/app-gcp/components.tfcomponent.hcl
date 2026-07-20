@@ -202,11 +202,17 @@ component "cluster_secrets" {
   source = "./modules/cluster-secrets"
 
   inputs = {
-    namespaces = {
-      dev          = { labels = { tier = "dev", "part-of" = "yourown-chat" } }
-      matterbridge = { labels = { tier = "dev", "part-of" = "yourown-chat" } }
-      mattermost   = { labels = { tier = "prod", "part-of" = "yourown-chat" } }
-    }
+    # The matterbridge namespace only exists while matterbridge is enabled --
+    # disabling it removes the (now empty) namespace on the next apply.
+    namespaces = merge(
+      {
+        dev        = { labels = { tier = "dev", "part-of" = "yourown-chat" } }
+        mattermost = { labels = { tier = "prod", "part-of" = "yourown-chat" } }
+      },
+      var.matterbridge_enabled ? {
+        matterbridge = { labels = { tier = "dev", "part-of" = "yourown-chat" } }
+      } : {},
+    )
     adopt_existing_namespaces = var.adopt_existing_namespaces
 
     secrets = merge(
