@@ -101,3 +101,8 @@ publish_output "origin_tls_ready" {
   description = "True once the Cloudflare Origin CA cert/key Secret Manager versions exist (public_ingress_enabled AND manage_origin_cert). app-gcp derives manage_ingress_origin_tls from it."
   value       = deployment.yourown-chat.origin_tls_ready
 }
+
+publish_output "aop_enabled" {
+  description = "Per-hostname Authenticated Origin Pulls enforcement toggle. app-gcp derives its ingress verify-client from it (single root AOP toggle)."
+  value       = deployment.yourown-chat.aop_enabled
+}

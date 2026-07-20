@@ -258,19 +258,6 @@ variable "origin_cert_validity_days" {
 
 variable "aop_enabled" {
   type        = bool
-  description = "Enable per-hostname Authenticated Origin Pulls (edge presents a client cert to the origin). Requires aop_certificate/aop_private_key. Off by default."
+  description = "Enforce per-hostname Authenticated Origin Pulls (the edge presents the self-generated client cert to the origin). The client cert is created here regardless; this only gates whether the edge uploads + presents it. Off by default."
   default     = false
-}
-
-variable "aop_certificate" {
-  type        = string
-  description = "PEM client certificate the Cloudflare edge presents to the origin (per-hostname AOP)."
-  default     = ""
-}
-
-variable "aop_private_key" {
-  type        = string
-  sensitive   = true
-  description = "PEM private key for the AOP client certificate."
-  default     = ""
 }

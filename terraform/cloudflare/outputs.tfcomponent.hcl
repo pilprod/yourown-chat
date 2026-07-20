@@ -57,3 +57,12 @@ output "origin_tls_ready" {
     "mattermost-origin-tls-cert"
   ) : false
 }
+
+# The single root AOP toggle. app-gcp links this stack and sets its ingress
+# verify-client from it, so Authenticated Origin Pulls is enabled/disabled in
+# one place (cloudflare_aop_enabled) rather than a hand-matched pair.
+output "aop_enabled" {
+  type        = bool
+  description = "Whether per-hostname Authenticated Origin Pulls enforcement is on. app-gcp derives its ingress aop_enabled (verify-client) from this."
+  value       = var.cloudflare_aop_enabled
+}
