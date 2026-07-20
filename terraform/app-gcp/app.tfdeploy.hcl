@@ -101,12 +101,12 @@ deployment "eu" {
     # importing a missing Helm release fails.
     adopt_existing_cluster_bootstrap_releases = false
 
-    # ONE-TIME MIGRATION: the tenant namespaces already exist (created by the old
-    # Cloud Deploy helm/namespaces.yaml, since removed), so import them into
-    # state instead of failing with "already exists". Revert to false after the
-    # first successful apply -- importing a missing namespace on a fresh cluster
-    # fails.
-    adopt_existing_namespaces = true
+    # Namespace adoption is a one-time migration: it imported the tenant
+    # namespaces (created by the old Cloud Deploy helm/namespaces.yaml) into
+    # state. Now that they are in state, keep this false -- a fresh cluster
+    # creates them normally, and importing a missing namespace would fail. Flip
+    # back to true only if the namespaces ever exist out-of-band again.
+    adopt_existing_namespaces = false
 
     # --- Image-build CI ------------------------------------------------------
     # The Cloud Build 2nd-gen GitHub connection is authorized once out-of-band in
