@@ -29,7 +29,7 @@ metadata:
 deploy:
   kubectl: {}
 profiles:
-  # --- dev stage: dev tenant + matterbridge ---------------------------------
+  # --- dev stage: dev tenant (matterbridge is a separate, toggleable profile) -
   - name: dev
     manifests:
       # Namespaces and the credential Secrets (dev-postgres, mattermost-db,
@@ -41,10 +41,6 @@ profiles:
         - developing/networkpolicy.yaml
         - developing/postgres.yaml
         - developing/mattermost-dev.yaml
-        - matterbridge/serviceaccount.yaml
-        - matterbridge/secretproviderclass.yaml
-        - matterbridge/networkpolicy.yaml
-        - matterbridge/deployment.yaml
     verify:
       - name: smoke-test
         container:
@@ -65,6 +61,28 @@ profiles:
         executionMode:
           kubernetesCluster:
             jobManifestPath: developing/verify/job.yaml
+  # --- matterbridge: OPTIONAL, appended to the dev stage when enabled --------
+  # A profile REPLACES manifests.rawYaml rather than merging, so this profile
+  # PATCHES (appends) the matterbridge manifests onto the dev profile instead of
+  # redefining the list. The dev Cloud Deploy target activates it as a SECOND
+  # profile (["dev", "matterbridge"]) only when var.matterbridge_enabled is true
+  # (terraform/app-gcp clouddeploy component); when false the target renders just
+  # ["dev"] and matterbridge is not deployed. Must be listed AFTER dev so the
+  # rawYaml list already exists when these patches append to it.
+  - name: matterbridge
+    patches:
+      - op: add
+        path: /manifests/rawYaml/-
+        value: matterbridge/serviceaccount.yaml
+      - op: add
+        path: /manifests/rawYaml/-
+        value: matterbridge/secretproviderclass.yaml
+      - op: add
+        path: /manifests/rawYaml/-
+        value: matterbridge/networkpolicy.yaml
+      - op: add
+        path: /manifests/rawYaml/-
+        value: matterbridge/deployment.yaml
   # --- prod stage: operator-managed Mattermost ------------------------------
   - name: prod
     manifests:

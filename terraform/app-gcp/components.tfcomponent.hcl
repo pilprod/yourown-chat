@@ -40,8 +40,16 @@ component "clouddeploy" {
     region         = var.region
     gke_cluster_id = var.gke_cluster_id
 
+    # matterbridge is an OPTIONAL second Skaffold profile appended to the dev
+    # stage (see helm/skaffold.yaml). Toggle it with var.matterbridge_enabled:
+    # true -> ["dev", "matterbridge"] (bridge deployed), false -> ["dev"] (not).
     stages = [
-      { name = "dev", profiles = ["dev"], require_approval = false, verify = true },
+      {
+        name             = "dev"
+        profiles         = var.matterbridge_enabled ? ["dev", "matterbridge"] : ["dev"]
+        require_approval = false
+        verify           = true
+      },
       { name = "prod", profiles = ["prod"], require_approval = true, verify = false },
     ]
 

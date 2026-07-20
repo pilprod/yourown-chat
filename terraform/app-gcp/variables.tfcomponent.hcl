@@ -170,3 +170,9 @@ variable "adopt_existing_namespaces" {
   description = "Import the tenant namespaces (dev/matterbridge/mattermost) if they already exist in the cluster (e.g. created by a previous Cloud Deploy namespaces.yaml) instead of failing with 'already exists'. Set true for the one-time adoption apply, then back to false."
   default     = false
 }
+
+variable "matterbridge_enabled" {
+  type        = bool
+  description = "Deploy matterbridge (the chat bridge) as part of the dev Cloud Deploy stage. true -> the 'matterbridge' Skaffold profile is appended to the dev target (SA + NetworkPolicy + SecretProviderClass + Deployment rendered); false -> the dev target renders only the dev tenant and matterbridge is not deployed. The matterbridge namespace and matterbridge-tokens secret are left in place either way (harmless when idle, and preserves an operator-supplied token across a toggle)."
+  default     = true
+}
