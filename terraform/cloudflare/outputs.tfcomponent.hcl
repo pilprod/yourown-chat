@@ -35,6 +35,9 @@ output "cloudflare_dnssec" {
 # --- Origin-protection secrets ------------------------------------------------
 output "origin_secret_ids" {
   type        = map(string)
-  description = "Logical name => Secret Manager secret ID for the origin-protection secrets (mattermost-origin-tls-cert/-key + cloudflare-origin-pull-ca). Empty when public_ingress_enabled = false."
-  value       = one([for s in component.origin_secrets : s.secret_ids])
+  description = "Logical name => Secret Manager secret ID for the origin-protection secrets (mattermost-origin-tls-cert/-key + cloudflare-origin-pull-ca). Empty map when public_ingress_enabled = false, so a downstream stack can derive an on/off toggle from length() without a null guard."
+  # An empty map (not null) when origin_secrets is absent: app-gcp keys its
+  # manage_ingress_origin_tls off length(this) once linked, and length(null)
+  # would error.
+  value = length(component.origin_secrets) > 0 ? one([for s in component.origin_secrets : s.secret_ids]) : {}
 }
