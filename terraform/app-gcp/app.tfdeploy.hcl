@@ -108,9 +108,9 @@ deployment "eu" {
     # back to true only if the namespaces ever exist out-of-band again.
     adopt_existing_namespaces = false
 
-    # Deploy the matterbridge chat bridge with the dev stage. Set false to skip
-    # it (the dev target then renders only the dev tenant).
-    matterbridge_enabled = true
+    # Deploy the matterbridge chat bridge with the dev stage. false = the dev
+    # target renders only the dev tenant, matterbridge is not deployed.
+    matterbridge_enabled = false
 
     # --- Image-build CI ------------------------------------------------------
     # The Cloud Build 2nd-gen GitHub connection is authorized once out-of-band in
