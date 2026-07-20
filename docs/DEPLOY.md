@@ -178,8 +178,10 @@ kubectl apply -f helm/mattermost/     # operator CRDs must already be installed
 
 3. **The one deliberate manual value** (everything else is injected by deploy
    parameters at render time):
-   - the dev-team RBAC principal in `helm/developing/rbac.yaml`
-     (organizational, not a Terraform value).
+   - the dev-team RBAC subjects: set `dev_team_rbac_subjects` in the app-gcp
+     deployment (e.g. `[{ kind = "Group", name = "dev-team@example.com" }]`).
+     Terraform creates the `dev-tenant` Role/RoleBinding in the `dev` namespace
+     (Cloud Deploy's execution SA can't manage RBAC). Empty = no dev-team RBAC.
 
    (`loadBalancerIP` in `helm/ingress-nginx/values.yaml` only matters on the
    manual-fallback path above — the Terraform-managed release gets it from the

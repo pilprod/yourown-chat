@@ -35,9 +35,12 @@ profiles:
       # Namespaces and the credential Secrets (dev-postgres, mattermost-db,
       # mattermost-filestore) are created by Terraform (app-gcp cluster_secrets
       # component), not here -- so no secret ever passes through Cloud Deploy.
+      # developing/rbac.yaml is NOT here: the dev-team Role/RoleBinding is created
+      # by Terraform (app-gcp dev_rbac component), because Cloud Deploy's
+      # execution SA (roles/container.developer) is forbidden by GKE from
+      # creating RBAC objects.
       rawYaml:
         - developing/serviceaccount.yaml
-        - developing/rbac.yaml
         - developing/networkpolicy.yaml
         - developing/postgres.yaml
         - developing/mattermost-dev.yaml

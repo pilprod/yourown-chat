@@ -176,3 +176,12 @@ variable "matterbridge_enabled" {
   description = "Deploy matterbridge (the chat bridge) as part of the dev Cloud Deploy stage. true -> the 'matterbridge' Skaffold profile is appended to the dev target (SA + NetworkPolicy + SecretProviderClass + Deployment rendered); false -> the dev target renders only the dev tenant and matterbridge is not deployed. The matterbridge namespace and matterbridge-tokens secret are left in place either way (harmless when idle, and preserves an operator-supplied token across a toggle)."
   default     = true
 }
+
+variable "dev_team_rbac_subjects" {
+  type = list(object({
+    kind = string
+    name = string
+  }))
+  description = "Dev-team RBAC subjects granted edit rights in the `dev` namespace (Google Group or Users). Empty (default) creates no RBAC. Created by Terraform, NOT Cloud Deploy (whose execution SA cannot manage RBAC). A Group subject requires 'Google Groups for GKE RBAC' on the cluster."
+  default     = []
+}

@@ -272,6 +272,24 @@ component "cluster_secrets" {
   }
 }
 
+# --- dev-tenant RBAC (Terraform-owned, not Cloud Deploy) ---------------------
+# The dev team's namespace-scoped Role/RoleBinding. Created by Terraform because
+# Cloud Deploy's execution SA is roles/container.developer, which GKE forbids
+# from creating RBAC objects (privilege-escalation prevention); the apply SA has
+# container.admin and can. No subjects (default) => nothing is created.
+component "dev_rbac" {
+  source = "./modules/dev-rbac"
+
+  inputs = {
+    namespace = "dev"
+    subjects  = var.dev_team_rbac_subjects
+  }
+
+  providers = {
+    kubernetes = provider.kubernetes.this
+  }
+}
+
 # --- Mattermost image CI (Cloud Build 2nd-gen) ------------------------------
 # Links the source repo (pilprod/mattermost) to the shared, out-of-band GitHub
 # connection (console OAuth), plus one least-privilege build SA (repo-scoped
