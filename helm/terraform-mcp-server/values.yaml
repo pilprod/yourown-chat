@@ -1,0 +1,25 @@
+replicaCount: 1
+
+image:
+  repository: hashicorp/terraform-mcp-server
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+service:
+  type: ClusterIP
+  port: 8080
+
+networkPolicy:
+  enabled: true
+  allowedNamespaces:
+    kubernetes.io/metadata.name: "mattermost-prod"
+  allowedPods:
+    app: mattermost
+
+resources:
+  limits:
+    cpu: 100m
+    memory: 128Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
