@@ -25,9 +25,16 @@ resource "random_id" "suffix" {
 }
 
 resource "random_password" "user" {
-  length           = 32
-  special          = true
-  override_special = "!#%*_-+="
+  length  = 32
+  special = true
+  # URL-safe symbols ONLY. This password is embedded raw into connection_uri
+  # (postgres://user:PASSWORD@host/db). The default special set contains URL
+  # delimiters -- `#` starts a fragment and `%` a percent-escape -- so a
+  # generated password containing one truncates the DSN, and the client fails
+  # with "invalid port after host". `-_.~` are RFC 3986 unreserved characters:
+  # they never need encoding in any URL component, so the DSN always parses
+  # while the value still carries symbol entropy (32 chars is plenty strong).
+  override_special = "-_.~"
 
   # Deliberate, on-demand rotation: bump var.password_rotation (a committed
   # literal -- varset values are ephemeral in Stacks and cannot feed keepers)
