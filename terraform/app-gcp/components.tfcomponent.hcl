@@ -157,6 +157,15 @@ component "secrets" {
       # Secret Manager versions, see docs/MCP.md) and restart the pod:
       #   printf '%s' "<id>"     | gcloud secrets versions add mcp-google-workspace-client-id --data-file=-
       #   printf '%s' "<secret>" | gcloud secrets versions add mcp-google-workspace-client-secret --data-file=-
+      # HCP Terraform API token for the terraform MCP server (workspaces/runs/
+      # stacks on app.terraform.io). Seeded with a placeholder so the pod always
+      # starts (registry tools work tokenless); load a real TEAM token scoped to
+      # the yourown-chat HCP project out-of-band and restart:
+      #   printf '%s' "<token>" | gcloud secrets versions add mcp-terraform-hcp-token --data-file=-
+      "mcp-terraform-hcp-token" = {
+        value     = "REPLACE_ME_HCP_TEAM_TOKEN"
+        accessors = [for m in [lookup(var.workload_identity_members, "mcp", "")] : m if m != ""]
+      }
       "mcp-google-workspace-client-id" = {
         value     = "REPLACE_ME_CLIENT_ID"
         accessors = [for m in [lookup(var.workload_identity_members, "mcp", "")] : m if m != ""]
@@ -213,6 +222,7 @@ component "prod_secret_values" {
       # Google Workspace OAuth client for the google-workspace MCP server
       # (seeded by the secrets component above, so a version always exists).
       var.mcp_servers_enabled ? {
+        mcp_terraform_hcp_token            = "mcp-terraform-hcp-token"
         mcp_google_workspace_client_id     = "mcp-google-workspace-client-id"
         mcp_google_workspace_client_secret = "mcp-google-workspace-client-secret"
       } : {},
@@ -310,6 +320,16 @@ component "cluster_secrets" {
       # rest: Secret Manager value -> Secret straight in etcd, never through
       # Cloud Deploy.
       var.mcp_servers_enabled ? {
+        # HCP Terraform token for the terraform MCP server (TFE_TOKEN enables
+        # the app.terraform.io workspace/run/stack tools).
+        mcp-terraform-hcp = {
+          name      = "mcp-terraform-hcp"
+          namespace = "mattermost"
+          labels    = { "app.kubernetes.io/part-of" = "mcp-servers" }
+          data = {
+            TFE_TOKEN = component.prod_secret_values.values["mcp_terraform_hcp_token"]
+          }
+        }
         mcp-google-workspace-oauth = {
           name      = "mcp-google-workspace-oauth"
           namespace = "mattermost"

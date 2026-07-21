@@ -27,9 +27,24 @@ constraints (especially for consumer services without a public API).
 
 | Service | Server | Credentials |
 |---|---|---|
-| Terraform | `hashicorp/terraform-mcp-server` (official) — registry/provider/module docs | none (public data) |
+| Terraform (Registry + **HCP Terraform**) | `hashicorp/terraform-mcp-server` (official) — registry docs tokenless; workspaces/runs/stacks on app.terraform.io once `TFE_TOKEN` is loaded | HCP team token in Secret Manager (`mcp-terraform-hcp-token`, placeholder seeded) |
 | Google Cloud (Logging, Monitoring, Trace) | `@krzko/google-cloud-mcp` (community) via supergateway | **none — keyless**: Workload Identity (`mcp-servers` KSA → `mcp` GSA, viewer roles) |
 | Google Workspace (Gmail, Calendar) | `google_workspace_mcp` (community, native streamable-http) | OAuth client in Secret Manager + one-time user consent (below) |
+
+#### HCP Terraform token
+
+Create a **team token** in HCP Terraform scoped to the `yourown-chat` project
+(least privilege — the token is a shared identity for every chat user of this
+server), then:
+
+```bash
+printf '%s' "<team-token>" | gcloud secrets versions add mcp-terraform-hcp-token --data-file=-
+# re-apply app-gcp, then: kubectl -n mattermost rollout restart deploy/mcp-terraform
+```
+
+The server reads the target address only from its own `TFE_ADDRESS` env
+(`https://app.terraform.io`); attempts to override it per-request are rejected,
+so chat input cannot repoint the server at another Terraform instance.
 
 Rollout order for the Google Cloud server: apply **platform-gcp first** (creates
 the `mcp` GSA + Workload Identity binding and publishes it in

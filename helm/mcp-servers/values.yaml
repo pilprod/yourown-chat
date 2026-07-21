@@ -68,8 +68,17 @@ defaults:
     allowedPods: {}
 
 servers:
-  # --- HashiCorp Terraform MCP server (registry/provider docs lookups) -------
-  # Official image; no credentials required (public registry data only).
+  # --- HashiCorp Terraform MCP server ----------------------------------------
+  # Official image. Two capability tiers in one server:
+  #   * public Terraform Registry lookups (providers/modules) -- no credentials;
+  #   * HCP Terraform (app.terraform.io) -- workspaces/runs/stacks data and
+  #     operations, enabled by TFE_TOKEN from the mcp-terraform-hcp Secret
+  #     (Terraform-created; seeded placeholder until a real HCP team token is
+  #     loaded out-of-band, see docs/MCP.md). One shared token = one shared
+  #     identity: scope it to the yourown-chat HCP project, least privilege.
+  # In streamable-http mode the server takes the target address ONLY from the
+  # server-side TFE_ADDRESS env (header/query overrides are rejected with 403),
+  # so chat input cannot repoint it at a different Terraform instance.
   terraform:
     enabled: true
     image:
@@ -83,6 +92,8 @@ servers:
       TRANSPORT_PORT: "8080"
       MCP_ENDPOINT: /mcp
       MCP_ALLOWED_ORIGINS: "https://yourown.chat"
+      TFE_ADDRESS: "https://app.terraform.io"
+    secretEnvFrom: mcp-terraform-hcp
     health:
       path: /health
 
