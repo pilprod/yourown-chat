@@ -34,10 +34,14 @@ locals {
   gke_location = var.gke_regional ? var.region : var.zone
 
   # Kubernetes tenants (namespace / service account) that consume GCP secrets.
+  # mcp = the in-cluster MCP servers (helm/mcp-servers); they live in the
+  # mattermost namespace under their own KSA so their GCP access (read-only
+  # observability) is scoped independently of the Mattermost workload.
   ns = {
     mattermost   = { namespace = "mattermost", ksa = "mattermost" }
     matterbridge = { namespace = "matterbridge", ksa = "matterbridge" }
     dev          = { namespace = "dev", ksa = "dev-app" }
+    mcp          = { namespace = "mattermost", ksa = "mcp-servers" }
   }
 
   common_labels = merge({
@@ -138,6 +142,34 @@ component "workload_identity_dev" {
     display_name = "Dev tenant workload identity"
     namespace    = local.ns.dev.namespace
     ksa_name     = local.ns.dev.ksa
+  }
+
+  providers = {
+    google = provider.google.this
+  }
+
+  # Needs the PROJECT.svc.id.goog pool created by the GKE cluster (see
+  # workload_identity_mattermost).
+  depends_on = [component.gke]
+}
+
+component "workload_identity_mcp" {
+  source = "./modules/workload-identity"
+
+  inputs = {
+    project_id   = component.project_services.project_id
+    account_id   = "mcp-servers"
+    display_name = "In-cluster MCP servers workload identity"
+    namespace    = local.ns.mcp.namespace
+    ksa_name     = local.ns.mcp.ksa
+    # Keyless read-only observability for the google-cloud MCP server (Cloud
+    # Logging / Monitoring / Trace queries from chat). ADC inside the pod
+    # resolves to this GSA via Workload Identity -- no key, no secret.
+    project_roles = [
+      "roles/logging.viewer",
+      "roles/monitoring.viewer",
+      "roles/cloudtrace.user",
+    ]
   }
 
   providers = {

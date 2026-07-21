@@ -28,6 +28,34 @@ constraints (especially for consumer services without a public API).
 | Service | Server | Credentials |
 |---|---|---|
 | Terraform | `hashicorp/terraform-mcp-server` (official) — registry/provider/module docs | none (public data) |
+| Google Cloud (Logging, Monitoring, Trace) | `@krzko/google-cloud-mcp` (community) via supergateway | **none — keyless**: Workload Identity (`mcp-servers` KSA → `mcp` GSA, viewer roles) |
+| Google Workspace (Gmail, Calendar) | `google_workspace_mcp` (community, native streamable-http) | OAuth client in Secret Manager + one-time user consent (below) |
+
+Rollout order for the Google Cloud server: apply **platform-gcp first** (creates
+the `mcp` GSA + Workload Identity binding and publishes it in
+`workload_identity_emails`), then app-gcp (injects the GSA into the KSA
+annotation via the `mcp_gsa` deploy parameter), then a release.
+
+#### Google Workspace one-time setup
+
+1. In Google Cloud console create an **OAuth client ID** (type: Web
+   application, redirect URI `http://localhost:8000/oauth2callback`) under a
+   project with the Gmail and Calendar APIs enabled.
+2. Load the real values over the seeded placeholders and restart:
+
+   ```bash
+   printf '%s' "<client-id>"     | gcloud secrets versions add mcp-google-workspace-client-id --data-file=-
+   printf '%s' "<client-secret>" | gcloud secrets versions add mcp-google-workspace-client-secret --data-file=-
+   # re-apply app-gcp (cluster_secrets picks up the new versions), then:
+   kubectl -n mattermost rollout restart deploy/mcp-google-workspace
+   ```
+
+3. First use triggers the consent flow; run it through a port-forward so the
+   localhost callback resolves:
+   `kubectl -n mattermost port-forward deploy/mcp-google-workspace 8000:8000`.
+
+Image pins: both new servers currently ride upstream rolling tags (`latest`)
+— pin to a digest after the first successful rollout.
 
 ### Official vendor-hosted remote — connect, nothing to deploy
 
@@ -42,8 +70,6 @@ constraints (especially for consumer services without a public API).
 
 | Service | Candidate server | Credentials needed | Notes |
 |---|---|---|---|
-| Google Cloud | community `gcloud`/GCP MCP servers | GCP SA or Workload Identity | scope carefully; WI would need a dedicated tenant GSA |
-| Google Workspace (Gmail, Calendar) | community Workspace MCP (OAuth) | Google OAuth client + refresh token | per-user consent flow |
 | Google Maps | reference `server-google-maps` (stdio) | Maps API key | stdio → needs a streamable-http gateway wrapper |
 | Telegram | community MTProto/Bot-API MCP | bot token or MTProto session | Bot API variant is the safer path |
 | WhatsApp Business | community MCP over WhatsApp Cloud API | Meta Business token | official API — viable |

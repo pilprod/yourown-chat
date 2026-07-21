@@ -20,6 +20,13 @@
 #     ...) are NOT deployed here -- agents connect to the vendor URL with
 #     OAuth. See docs/MCP.md for the full integration matrix.
 
+serviceAccount:
+  # Shared KSA bound (via Workload Identity) to the platform stack's `mcp` GSA
+  # -- keyless, read-only observability access. Servers opt in with
+  # servers.<name>.serviceAccountName; the rest run under the namespace default.
+  create: true
+  name: mcp-servers
+
 defaults:
   # Prod node pool + taint toleration: MCP servers serve the prod Mattermost.
   nodeSelector:
@@ -78,3 +85,84 @@ servers:
       MCP_ALLOWED_ORIGINS: "https://yourown.chat"
     health:
       path: /health
+
+  # --- Google Cloud observability (Cloud Logging / Monitoring / Trace) -------
+  # Community server @krzko/google-cloud-mcp (stdio-only), wrapped by
+  # supergateway into streamable-http. AUTH IS KEYLESS: the pod runs under the
+  # mcp-servers KSA -> Workload Identity -> `mcp` GSA with logging.viewer /
+  # monitoring.viewer / cloudtrace.user (platform stack workload_identity_mcp);
+  # ADC inside the container resolves via the GKE metadata server -- no key,
+  # no secret. readOnlyRootFilesystem is off for this server only: npx
+  # materialises the package into $HOME at start.
+  google-cloud:
+    enabled: true
+    serviceAccountName: mcp-servers
+    image:
+      repository: supercorp/supergateway
+      # TODO pin after first rollout (docker pull + digest); upstream publishes
+      # rolling tags only.
+      tag: "latest"
+    port: 8080
+    args:
+      - "--stdio"
+      - "npx -y @krzko/google-cloud-mcp"
+      - "--outputTransport"
+      - "streamableHttp"
+      - "--port"
+      - "8080"
+      - "--healthEndpoint"
+      - "/healthz"
+    env:
+      GOOGLE_CLOUD_PROJECT: "yourown-chat"
+      HOME: /tmp
+      NPM_CONFIG_CACHE: /tmp/.npm
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: false
+      capabilities:
+        drop:
+          - ALL
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    health:
+      path: /healthz
+
+  # --- Google Workspace (Gmail + Calendar) -----------------------------------
+  # Community server (taylorwilsdon/google_workspace_mcp), native
+  # streamable-http. OAuth client credentials arrive from the Terraform-created
+  # mcp-google-workspace-oauth Secret (Secret Manager -> etcd; placeholders
+  # seeded -- load the real client id/secret out-of-band, see docs/MCP.md,
+  # then restart the pod). The one-time user consent flow runs through a
+  # kubectl port-forward to the pod (callback on localhost).
+  google-workspace:
+    enabled: true
+    image:
+      repository: ghcr.io/taylorwilsdon/google_workspace_mcp
+      # TODO pin after first rollout (rolling upstream tag).
+      tag: "latest"
+    port: 8000
+    args:
+      - "--transport"
+      - "streamable-http"
+      - "--tools"
+      - "gmail"
+      - "calendar"
+    env:
+      WORKSPACE_MCP_PORT: "8000"
+      HOME: /tmp
+      # The consent callback goes through kubectl port-forward (plain http on
+      # localhost), which oauthlib would otherwise reject.
+      OAUTHLIB_INSECURE_TRANSPORT: "1"
+    secretEnvFrom: mcp-google-workspace-oauth
+    securityContext:
+      allowPrivilegeEscalation: false
+      # The server persists OAuth tokens under $HOME.
+      readOnlyRootFilesystem: false
+      capabilities:
+        drop:
+          - ALL

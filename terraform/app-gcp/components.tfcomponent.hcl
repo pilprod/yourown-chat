@@ -74,6 +74,12 @@ component "clouddeploy" {
       # AOP toggle for the ingress (non-secret): "on" enforces client-cert mTLS
       # against cloudflare-origin-pull-ca, "off" is Full (Strict) TLS only.
       aop_verify_client = var.aop_enabled ? "on" : "off"
+      # GSA behind the mcp-servers KSA (Workload Identity, keyless GCP reads
+      # for the google-cloud MCP server). lookup(): the `mcp` key appears in
+      # the platform-published map only after the platform stack applies the
+      # workload_identity_mcp component -- empty until then, so this stack
+      # still plans (the annotation just stays blank until platform is applied).
+      mcp_gsa = lookup(var.workload_identity_emails, "mcp", "")
     }
 
     labels = local.common_labels
@@ -145,6 +151,20 @@ component "secrets" {
         TOML
         accessors = [var.workload_identity_members.matterbridge]
       }
+      # Google Workspace OAuth client for the google-workspace MCP server.
+      # Seeded with placeholders so the Kubernetes Secret always materialises
+      # and the pod starts; load the REAL client id/secret out-of-band (add new
+      # Secret Manager versions, see docs/MCP.md) and restart the pod:
+      #   printf '%s' "<id>"     | gcloud secrets versions add mcp-google-workspace-client-id --data-file=-
+      #   printf '%s' "<secret>" | gcloud secrets versions add mcp-google-workspace-client-secret --data-file=-
+      "mcp-google-workspace-client-id" = {
+        value     = "REPLACE_ME_CLIENT_ID"
+        accessors = [for m in [lookup(var.workload_identity_members, "mcp", "")] : m if m != ""]
+      }
+      "mcp-google-workspace-client-secret" = {
+        value     = "REPLACE_ME_CLIENT_SECRET"
+        accessors = [for m in [lookup(var.workload_identity_members, "mcp", "")] : m if m != ""]
+      }
       # The Cloudflare origin-protection secrets (mattermost-origin-tls-* +
       # cloudflare-origin-pull-ca) live in the CLOUDFLARE stack: linked stacks
       # cannot publish sensitive values, so the Origin CA private key is
@@ -189,6 +209,12 @@ component "prod_secret_values" {
       # always resolves; aop_enabled only toggles verify-client enforcement.
       var.manage_ingress_origin_tls ? {
         cloudflare_origin_pull_ca = "cloudflare-origin-pull-ca"
+      } : {},
+      # Google Workspace OAuth client for the google-workspace MCP server
+      # (seeded by the secrets component above, so a version always exists).
+      var.mcp_servers_enabled ? {
+        mcp_google_workspace_client_id     = "mcp-google-workspace-client-id"
+        mcp_google_workspace_client_secret = "mcp-google-workspace-client-secret"
       } : {},
     )
   }
@@ -277,6 +303,21 @@ component "cluster_secrets" {
           namespace = "mattermost"
           labels    = { app = "mattermost" }
           data      = { "ca.crt" = component.prod_secret_values.values["cloudflare_origin_pull_ca"] }
+        }
+      } : {},
+      # OAuth client for the google-workspace MCP server, consumed via
+      # secretEnvFrom in helm/mcp-servers/values.yaml. Same secure path as the
+      # rest: Secret Manager value -> Secret straight in etcd, never through
+      # Cloud Deploy.
+      var.mcp_servers_enabled ? {
+        mcp-google-workspace-oauth = {
+          name      = "mcp-google-workspace-oauth"
+          namespace = "mattermost"
+          labels    = { "app.kubernetes.io/part-of" = "mcp-servers" }
+          data = {
+            GOOGLE_OAUTH_CLIENT_ID     = component.prod_secret_values.values["mcp_google_workspace_client_id"]
+            GOOGLE_OAUTH_CLIENT_SECRET = component.prod_secret_values.values["mcp_google_workspace_client_secret"]
+          }
         }
       } : {},
     )
