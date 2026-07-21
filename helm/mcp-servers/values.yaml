@@ -60,12 +60,11 @@ defaults:
 
   networkPolicy:
     enabled: true
-    # Only pods from the mattermost namespace may reach any MCP server. Empty
-    # allowedPods = every pod in that namespace, avoiding coupling to
-    # operator-generated pod labels.
+    # Namespaces whose pods may reach an MCP server (one from-entry each).
+    # Default: only the mattermost namespace (the Agents plugin is the
+    # consumer). Servers with a public OAuth ingress add "ingress-nginx".
     allowedNamespaces:
-      kubernetes.io/metadata.name: "mattermost"
-    allowedPods: {}
+      - mattermost
 
 servers:
   # --- HashiCorp Terraform MCP server ----------------------------------------
@@ -145,11 +144,18 @@ servers:
 
   # --- Google Workspace (Gmail + Calendar) -----------------------------------
   # Community server (taylorwilsdon/google_workspace_mcp), native
-  # streamable-http. OAuth client credentials arrive from the Terraform-created
-  # mcp-google-workspace-oauth Secret (Secret Manager -> etcd; placeholders
-  # seeded -- load the real client id/secret out-of-band, see docs/MCP.md,
-  # then restart the pod). The one-time user consent flow runs through a
-  # kubectl port-forward to the pod (callback on localhost).
+  # streamable-http, running in OAuth 2.1 MULTI-USER mode: each Mattermost user
+  # clicks Connect in Agents, passes the Google consent under their OWN account,
+  # and every tool call runs with that user's token -- users only ever see
+  # their own mail/calendar. No port-forward, no shared mailbox identity.
+  #
+  # The user's browser must reach the server's OAuth endpoints, so this entry
+  # carries an ingress (https://mcp-workspace.yourown.chat via the same
+  # Cloudflare edge; wildcard Origin CA cert) and admits ingress-nginx in its
+  # NetworkPolicy. The MCP endpoint stays OAuth-protected (401 without a
+  # bearer token). The OAuth CLIENT id/secret arrive from the Terraform-created
+  # mcp-google-workspace-oauth Secret (placeholders seeded; load real values
+  # out-of-band, see docs/MCP.md).
   google-workspace:
     enabled: true
     image:
@@ -166,13 +172,26 @@ servers:
     env:
       WORKSPACE_MCP_PORT: "8000"
       HOME: /tmp
-      # The consent callback goes through kubectl port-forward (plain http on
-      # localhost), which oauthlib would otherwise reject.
+      # OAuth 2.1 multi-user: the server issues/validates per-user bearer
+      # tokens (MCP spec authorization) instead of one process-wide account.
+      MCP_ENABLE_OAUTH21: "true"
+      # Public base for the advertised OAuth endpoints (authorize/callback URLs
+      # the browser hits). TLS terminates at ingress-nginx; the pod itself
+      # speaks plain http, hence OAUTHLIB_INSECURE_TRANSPORT.
+      WORKSPACE_EXTERNAL_URL: "https://mcp-workspace.yourown.chat"
       OAUTHLIB_INSECURE_TRANSPORT: "1"
     secretEnvFrom: mcp-google-workspace-oauth
+    ingress:
+      host: mcp-workspace.yourown.chat
+      tlsSecret: mattermost-origin-tls
+    networkPolicy:
+      enabled: true
+      allowedNamespaces:
+        - mattermost
+        - ingress-nginx
     securityContext:
       allowPrivilegeEscalation: false
-      # The server persists OAuth tokens under $HOME.
+      # The server persists OAuth grants under $HOME.
       readOnlyRootFilesystem: false
       capabilities:
         drop:

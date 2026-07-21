@@ -80,8 +80,22 @@ deployment "yourown-chat" {
     public_ingress_enabled = upstream_input.platform.ingress_ip_address != null
 
     # Token from the varset; the zone and edge policy below.
-    cloudflare_api_token          = store.varset.cloudflare.cloudflare_api_token
-    domain                        = "yourown.chat"
+    cloudflare_api_token = store.varset.cloudflare.cloudflare_api_token
+    domain               = "yourown.chat"
+
+    # MCP OAuth endpoints: the google-workspace MCP server's OAuth 2.1 flow
+    # (Mattermost Agents per-user Connect) needs its authorize/callback URLs
+    # reachable by the user's browser. Proxied subdomain -> same origin ingress;
+    # the wildcard Origin CA cert (*.yourown.chat) already covers it.
+    cloudflare_extra_records = {
+      mcp-workspace = {
+        name    = "mcp-workspace"
+        type    = "CNAME"
+        content = "yourown.chat"
+        proxied = true
+        comment = "google-workspace MCP server OAuth + MCP endpoint (Managed by Terraform)."
+      }
+    }
     cloudflare_proxied            = true
     cloudflare_ssl_mode           = "strict"
     cloudflare_always_use_https   = "on"

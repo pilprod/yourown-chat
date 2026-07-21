@@ -51,12 +51,18 @@ the `mcp` GSA + Workload Identity binding and publishes it in
 `workload_identity_emails`), then app-gcp (injects the GSA into the KSA
 annotation via the `mcp_gsa` deploy parameter), then a release.
 
-#### Google Workspace one-time setup
+#### Google Workspace: per-user OAuth (no manual consent plumbing)
+
+The server runs in OAuth 2.1 **multi-user** mode: Mattermost Agents shows each
+user a **Connect** button, the user passes the Google consent under their own
+account in the browser, and every tool call then runs with that user's token —
+each user sees only their own Gmail/Calendar. Operator setup is one-time:
 
 1. In Google Cloud console create an **OAuth client ID** (type: Web
-   application, redirect URI `http://localhost:8000/oauth2callback`) under a
-   project with the Gmail and Calendar APIs enabled.
-2. Load the real values over the seeded placeholders and restart:
+   application, redirect URI
+   `https://mcp-workspace.yourown.chat/oauth2callback`) under a project with
+   the Gmail and Calendar APIs enabled.
+2. Load the real values over the seeded placeholders:
 
    ```bash
    printf '%s' "<client-id>"     | gcloud secrets versions add mcp-google-workspace-client-id --data-file=-
@@ -65,9 +71,15 @@ annotation via the `mcp_gsa` deploy parameter), then a release.
    kubectl -n mattermost rollout restart deploy/mcp-google-workspace
    ```
 
-3. First use triggers the consent flow; run it through a port-forward so the
-   localhost callback resolves:
-   `kubectl -n mattermost port-forward deploy/mcp-google-workspace 8000:8000`.
+3. Users click **Connect** on the server in Agents — that's it. (Mobile apps
+   can't start the OAuth flow yet; connect once from web/desktop.)
+
+Plumbing behind it: the server's OAuth endpoints are published at
+`https://mcp-workspace.yourown.chat` (proxied Cloudflare subdomain → the same
+ingress-nginx; the wildcard Origin CA cert covers it; the cloudflare stack owns
+the DNS record). The MCP endpoint itself stays OAuth-protected — an
+unauthenticated request gets 401, which is exactly what triggers the Connect
+flow.
 
 Image pins: both new servers currently ride upstream rolling tags (`latest`)
 — pin to a digest after the first successful rollout.
