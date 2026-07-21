@@ -118,6 +118,57 @@ Image pins: both new servers currently ride upstream rolling tags (`latest`)
 | RedotPay | no public API |
 | Apple Music | MusicKit requires Apple Developer program + user tokens; no maintained MCP server |
 
+## Zero Trust: personal Claude → internal MCP servers (flagged off)
+
+The internal servers (terraform, google-cloud) have no auth of their own —
+they trust the network perimeter. The Zero Trust layer moves that perimeter to
+the Cloudflare edge so a personal MCP client (Claude) can reach them without
+making them public:
+
+```
+Claude (custom connector) → MCP Server Portal (beta, dashboard)
+  → Access policy (allowed emails, Google SSO / one-time PIN)
+  → Cloudflare Tunnel (outbound-only cloudflared pod, mattermost ns)
+  → mcp-terraform / mcp-google-cloud ClusterIP  (no public exposure at all)
+```
+
+Everything fits the Zero Trust **Free** plan: 50 seats (only personal-Claude
+users consume one; Mattermost chat users go in-cluster and consume none),
+tunnel and Access apps are free.
+
+**Why it is flagged off** (`zero_trust_mcp_enabled = false` in both stacks +
+`tunnel.enabled: false` in the chart): the claude.ai web/mobile connector has
+a KNOWN OAuth interop issue against Access-fronted MCP portals (Claude Code
+works against the same URL) — see the smoke test below. The code is ready;
+the flags flip once the test passes.
+
+### Enabling (in order)
+
+1. Re-issue the Cloudflare API token with ACCOUNT permissions:
+   `Cloudflare Tunnel:Edit` + `Access: Apps and Policies:Edit` (keep the
+   existing zone permissions). Update the varset.
+2. `cloudflare.tfdeploy.hcl`: fill `cloudflare_account_id` and
+   `zero_trust_allowed_emails`, set `zero_trust_mcp_enabled = true` → apply.
+   Creates the tunnel (+ token in Secret Manager `mcp-tunnel-token`), DNS,
+   Access apps for `mcp-terraform.yourown.chat` / `mcp-google-cloud.yourown.chat`.
+3. `app.tfdeploy.hcl`: `zero_trust_mcp_enabled = true` → apply. Materialises
+   the in-cluster `mcp-tunnel` Secret.
+4. `helm/mcp-servers/values.yaml`: `tunnel.enabled: true` → release. The
+   cloudflared pod connects outbound; hostnames go live behind Access.
+5. Zero Trust dashboard (beta, no Terraform resource yet): create an **MCP
+   Server Portal**, register both hostnames as upstream servers, attach the
+   Access policy. The portal URL is what personal Claude connects to.
+
+### Smoke test (the reason for the flag)
+
+1. Add the portal URL as a custom connector in claude.ai from **web and
+   phone**; Claude Code / desktop from macOS as the control group.
+2. Expected: OAuth → Access login (allowed email) → tools listed.
+3. Claude Code works but claude.ai web/phone fails at OAuth → the known
+   interop gap is still open: keep the flags off for claude.ai use, use
+   Claude Code/desktop and the Mattermost app meanwhile, and re-test later —
+   both sides are in active beta.
+
 ## Adding an in-cluster server
 
 1. Add an entry under `servers:` in `helm/mcp-servers/values.yaml` (image,

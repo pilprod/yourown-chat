@@ -110,3 +110,56 @@ component "origin_secrets" {
     random = provider.random.this
   }
 }
+
+# --- Zero Trust access to in-cluster MCP servers (FLAGGED, default off) ------
+# Personal MCP clients (Claude) -> Access policy (allowed emails) -> Cloudflare
+# Tunnel -> in-cluster MCP Services. The servers get zero public exposure; the
+# perimeter moves to the Cloudflare edge. OFF by default: enabling requires an
+# ACCOUNT-scoped API token (Cloudflare Tunnel:Edit + Access:Edit) and the
+# claude.ai <-> MCP-portal interop is still beta -- see docs/MCP.md for the
+# smoke test this gate exists for.
+component "zero_trust_mcp" {
+  for_each = var.zero_trust_mcp_enabled ? toset(["default"]) : toset([])
+
+  source = "./modules/zero-trust-mcp"
+
+  inputs = {
+    account_id     = var.cloudflare_account_id
+    zone_id        = one([for c in component.cloudflare : c.zone_id])
+    domain         = var.domain
+    upstreams      = var.zero_trust_mcp_upstreams
+    allowed_emails = var.zero_trust_allowed_emails
+  }
+
+  providers = {
+    cloudflare = provider.cloudflare.this
+    random     = provider.random.this
+  }
+}
+
+# The cloudflared run token, written straight into Secret Manager HERE (same
+# rationale as origin_secrets: sensitive values cannot cross a stack boundary).
+# app-gcp reads it back and creates the in-cluster mcp-tunnel Secret.
+component "zero_trust_secrets" {
+  for_each = var.zero_trust_mcp_enabled ? toset(["default"]) : toset([])
+
+  source = "./modules/secrets"
+
+  inputs = {
+    project_id        = var.project_id
+    replica_locations = [var.region]
+    labels            = local.common_labels
+    kms_key_name      = var.cmek_key_id
+
+    secrets = {
+      "mcp-tunnel-token" = {
+        value = one([for m in component.zero_trust_mcp : m.tunnel_token])
+      }
+    }
+  }
+
+  providers = {
+    google = provider.google.this
+    random = provider.random.this
+  }
+}

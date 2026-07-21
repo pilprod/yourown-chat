@@ -1,0 +1,57 @@
+{{- if .Values.tunnel.enabled }}
+---
+# Cloudflare Tunnel connector: outbound-only link from the cluster to the
+# Cloudflare edge, so Access-authenticated personal MCP clients reach the
+# internal MCP Services with ZERO public exposure of the servers themselves.
+# Remotely managed: ingress rules (hostname -> service) live in the cloudflare
+# stack's zero-trust-mcp module; the pod just runs with its token (TUNNEL_TOKEN
+# from the Terraform-created mcp-tunnel Secret). Runs in the mattermost
+# namespace, so the servers' NetworkPolicies admit it without extra rules.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-tunnel
+  labels:
+    app: mcp-tunnel
+    app.kubernetes.io/part-of: mcp-servers
+spec:
+  replicas: {{ .Values.tunnel.replicaCount | default 1 }}
+  selector:
+    matchLabels:
+      app: mcp-tunnel
+  template:
+    metadata:
+      labels:
+        app: mcp-tunnel
+        app.kubernetes.io/part-of: mcp-servers
+    spec:
+      securityContext:
+        {{- toYaml .Values.defaults.podSecurityContext | nindent 8 }}
+      containers:
+        - name: cloudflared
+          image: "{{ .Values.tunnel.image.repository }}:{{ .Values.tunnel.image.tag }}"
+          imagePullPolicy: {{ .Values.tunnel.image.pullPolicy | default "IfNotPresent" }}
+          securityContext:
+            {{- toYaml .Values.defaults.securityContext | nindent 12 }}
+          args:
+            - tunnel
+            - --no-autoupdate
+            - --metrics
+            - 0.0.0.0:2000
+            - run
+          envFrom:
+            - secretRef:
+                name: {{ .Values.tunnel.secretEnvFrom }}
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: 2000
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.defaults.resources | nindent 12 }}
+      nodeSelector:
+        {{- toYaml .Values.defaults.nodeSelector | nindent 8 }}
+      tolerations:
+        {{- toYaml .Values.defaults.tolerations | nindent 8 }}
+{{- end }}

@@ -226,6 +226,12 @@ component "prod_secret_values" {
         mcp_google_workspace_client_id     = "mcp-google-workspace-client-id"
         mcp_google_workspace_client_secret = "mcp-google-workspace-client-secret"
       } : {},
+      # cloudflared run token, written to Secret Manager by the cloudflare
+      # stack's zero_trust_mcp component -- so the flag here must only be
+      # enabled AFTER the cloudflare stack applied with its flag on.
+      var.zero_trust_mcp_enabled ? {
+        mcp_tunnel_token = "mcp-tunnel-token"
+      } : {},
     )
   }
 
@@ -337,6 +343,17 @@ component "cluster_secrets" {
           data = {
             GOOGLE_OAUTH_CLIENT_ID     = component.prod_secret_values.values["mcp_google_workspace_client_id"]
             GOOGLE_OAUTH_CLIENT_SECRET = component.prod_secret_values.values["mcp_google_workspace_client_secret"]
+          }
+        }
+      } : {},
+      # cloudflared run token for the Zero Trust tunnel pod (chart tunnel.enabled).
+      var.zero_trust_mcp_enabled ? {
+        mcp-tunnel = {
+          name      = "mcp-tunnel"
+          namespace = "mattermost"
+          labels    = { "app.kubernetes.io/part-of" = "mcp-servers" }
+          data = {
+            TUNNEL_TOKEN = component.prod_secret_values.values["mcp_tunnel_token"]
           }
         }
       } : {},

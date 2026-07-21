@@ -104,6 +104,20 @@ deployment "yourown-chat" {
     cloudflare_min_tls_version    = "1.3"
     cloudflare_dnssec_enabled     = true
     cloudflare_manage_origin_cert = true
+
+    # --- Zero Trust MCP: FLAGGED OFF until the claude.ai <-> portal smoke test
+    # passes (docs/MCP.md). To enable: (1) re-issue the API token with ACCOUNT
+    # permissions Cloudflare Tunnel:Edit + Access: Apps and Policies:Edit,
+    # (2) fill cloudflare_account_id + zero_trust_allowed_emails, (3) flip the
+    # flag here and zero_trust_mcp_enabled in app.tfdeploy.hcl, plus
+    # tunnel.enabled in helm/mcp-servers/values.yaml.
+    zero_trust_mcp_enabled    = false
+    cloudflare_account_id     = "" # account ID from the Cloudflare dashboard
+    zero_trust_allowed_emails = [] # e.g. ["ilya@papou.email"]
+    zero_trust_mcp_upstreams = {
+      mcp-terraform    = "http://mcp-terraform.mattermost.svc.cluster.local:8080"
+      mcp-google-cloud = "http://mcp-google-cloud.mattermost.svc.cluster.local:8080"
+    }
   }
 }
 
