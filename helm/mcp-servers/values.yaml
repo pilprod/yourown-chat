@@ -150,7 +150,7 @@ servers:
   # their own mail/calendar. No port-forward, no shared mailbox identity.
   #
   # The user's browser must reach the server's OAuth endpoints, so this entry
-  # carries an ingress (https://mcp-workspace.yourown.chat via the same
+  # carries an ingress (https://mcp-google-workspace.yourown.chat via the same
   # Cloudflare edge; wildcard Origin CA cert) and admits ingress-nginx in its
   # NetworkPolicy. The MCP endpoint stays OAuth-protected (401 without a
   # bearer token). The OAuth CLIENT id/secret arrive from the Terraform-created
@@ -178,11 +178,11 @@ servers:
       # Public base for the advertised OAuth endpoints (authorize/callback URLs
       # the browser hits). TLS terminates at ingress-nginx; the pod itself
       # speaks plain http, hence OAUTHLIB_INSECURE_TRANSPORT.
-      WORKSPACE_EXTERNAL_URL: "https://mcp-workspace.yourown.chat"
+      WORKSPACE_EXTERNAL_URL: "https://mcp-google-workspace.yourown.chat"
       OAUTHLIB_INSECURE_TRANSPORT: "1"
     secretEnvFrom: mcp-google-workspace-oauth
     ingress:
-      host: mcp-workspace.yourown.chat
+      host: mcp-google-workspace.yourown.chat
       tlsSecret: mattermost-origin-tls
     networkPolicy:
       enabled: true

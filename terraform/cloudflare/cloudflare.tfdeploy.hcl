@@ -87,9 +87,11 @@ deployment "yourown-chat" {
     # (Mattermost Agents per-user Connect) needs its authorize/callback URLs
     # reachable by the user's browser. Proxied subdomain -> same origin ingress;
     # the wildcard Origin CA cert (*.yourown.chat) already covers it.
+    # Host name mirrors the in-cluster Deployment (mcp-google-workspace), so
+    # DNS record, Ingress host, K8s objects and logs all read the same.
     cloudflare_extra_records = {
-      mcp-workspace = {
-        name    = "mcp-workspace"
+      mcp-google-workspace = {
+        name    = "mcp-google-workspace"
         type    = "CNAME"
         content = "yourown.chat"
         proxied = true
