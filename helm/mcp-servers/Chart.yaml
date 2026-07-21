@@ -1,0 +1,12 @@
+apiVersion: v2
+name: mcp-servers
+description: >-
+  Self-hosted MCP (Model Context Protocol) servers for the yourown-chat
+  platform. One values-driven chart renders every in-cluster MCP server as its
+  own Deployment/Service/NetworkPolicy; enable or disable individual servers in
+  values.yaml (servers.<name>.enabled). Rendered by Cloud Deploy via the
+  mcp-servers Skaffold profile (helm/skaffold.yaml), gated by the app-gcp
+  stack's mcp_servers_enabled variable.
+type: application
+version: 0.2.0
+appVersion: "multi"

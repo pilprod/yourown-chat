@@ -79,9 +79,12 @@ resource "google_clouddeploy_delivery_pipeline" "this" {
 
       content {
         target_id = google_clouddeploy_target.stage[stage.value.name].name
+        # The in-cluster MCP servers ride the prod stage as an extra Skaffold
+        # profile (one values-driven chart renders every enabled server), same
+        # pattern as matterbridge on dev.
         profiles = (
-          stage.value.name == "prod" && var.terraform_mcp_server_enabled
-          ? concat(stage.value.profiles, ["terraform-mcp-server"])
+          stage.value.name == "prod" && var.mcp_servers_enabled
+          ? concat(stage.value.profiles, ["mcp-servers"])
           : stage.value.profiles
         )
 

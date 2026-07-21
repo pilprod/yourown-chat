@@ -53,6 +53,10 @@ component "clouddeploy" {
       { name = "prod", profiles = ["prod"], require_approval = true, verify = false },
     ]
 
+    # In-cluster MCP servers (helm/mcp-servers) ride the prod stage as an extra
+    # profile when enabled; per-server on/off lives in the chart's values.yaml.
+    mcp_servers_enabled = var.mcp_servers_enabled
+
     # Rendered into the manifests' `# from-param: ${...}` placeholders on every
     # release, so the platform-published values (bucket, WI emails) flow from
     # Terraform into Kubernetes without hand-edited markers.

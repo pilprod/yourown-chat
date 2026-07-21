@@ -117,6 +117,11 @@ deployment "eu" {
     # target renders only the dev tenant, matterbridge is not deployed.
     matterbridge_enabled = false
 
+    # In-cluster MCP servers (helm/mcp-servers) on the prod stage. Which
+    # individual servers render is controlled in helm/mcp-servers/values.yaml
+    # (servers.<name>.enabled); this only gates the profile as a whole.
+    mcp_servers_enabled = true
+
     # --- Image-build CI ------------------------------------------------------
     # The Cloud Build 2nd-gen GitHub connection is authorized once out-of-band in
     # the console (OAuth) and named here; both the image and deploy repos are

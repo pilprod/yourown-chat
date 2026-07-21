@@ -1,0 +1,80 @@
+# In-cluster MCP servers, one entry per server under `servers:`. Each enabled
+# entry renders a Deployment + ClusterIP Service (+ NetworkPolicy) named
+# mcp-<key>. This file is the per-server switchboard; the whole set is gated by
+# the app-gcp stack's mcp_servers_enabled (appends the mcp-servers Skaffold
+# profile to the prod stage).
+#
+# CONVENTIONS
+#   * Servers run in the `mattermost` namespace and are reachable ONLY from
+#     that namespace (NetworkPolicy below): the consumer is the Mattermost
+#     agent runtime, never the public internet. In-cluster URL:
+#     http://mcp-<key>.mattermost.svc.cluster.local:<port><endpoint>.
+#   * Transport must be HTTP-based (streamable-http or SSE). stdio-only
+#     community servers need a gateway wrapper image (e.g. supergateway) --
+#     wrap first, then add an entry.
+#   * CREDENTIALS never live here. Following the platform's secret path
+#     (Terraform -> Secret Manager -> K8s Secret directly in etcd), set
+#     `secretEnvFrom: <secret-name>` and create the Secret via the app-gcp
+#     cluster_secrets component. No secret ever passes through Cloud Deploy.
+#   * Vendor-HOSTED remote MCP endpoints (Figma, Miro, Cloudflare, Atlassian,
+#     ...) are NOT deployed here -- agents connect to the vendor URL with
+#     OAuth. See docs/MCP.md for the full integration matrix.
+
+defaults:
+  # Prod node pool + taint toleration: MCP servers serve the prod Mattermost.
+  nodeSelector:
+    tier: prod
+  tolerations:
+    - key: dedicated
+      operator: Equal
+      value: prod
+      effect: NoSchedule
+
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    fsGroup: 65532
+
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+  networkPolicy:
+    enabled: true
+    # Only pods from the mattermost namespace may reach any MCP server. Empty
+    # allowedPods = every pod in that namespace, avoiding coupling to
+    # operator-generated pod labels.
+    allowedNamespaces:
+      kubernetes.io/metadata.name: "mattermost"
+    allowedPods: {}
+
+servers:
+  # --- HashiCorp Terraform MCP server (registry/provider docs lookups) -------
+  # Official image; no credentials required (public registry data only).
+  terraform:
+    enabled: true
+    image:
+      repository: hashicorp/terraform-mcp-server
+      tag: "0.5.2"
+      pullPolicy: IfNotPresent
+    port: 8080
+    env:
+      TRANSPORT_MODE: streamable-http
+      TRANSPORT_HOST: 0.0.0.0
+      TRANSPORT_PORT: "8080"
+      MCP_ENDPOINT: /mcp
+      MCP_ALLOWED_ORIGINS: "https://yourown.chat"
+    health:
+      path: /health
