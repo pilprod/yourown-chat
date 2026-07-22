@@ -182,6 +182,25 @@ variable "cloudflare_manage_origin_cert" {
   default     = true
 }
 
+# --- Zero Trust (flagged) ------------------------------------------------------
+variable "zero_trust_enabled" {
+  type        = bool
+  description = "Expose private in-cluster services (internal MCP servers, dev Mattermost) through Cloudflare Zero Trust: Access email allow-list -> Tunnel -> ClusterIP, no public origin exposure. Requires zero_trust_upstreams, zero_trust_allowed_emails and an ACCOUNT-scoped API token (Cloudflare Tunnel:Edit + Access: Apps and Policies:Edit) -- the account ID itself is derived from the zone. The flag is the kill switch if the beta claude.ai <-> MCP-portal interop misbehaves (docs/MCP.md smoke test); the dev Mattermost browser path has no beta dependency."
+  default     = false
+}
+
+variable "zero_trust_upstreams" {
+  type        = map(string)
+  description = "Hostname label => in-cluster service URL routed through the tunnel (one DNS record + Access app each). Only used when zero_trust_enabled = true."
+  default     = {}
+}
+
+variable "zero_trust_allowed_emails" {
+  type        = list(string)
+  description = "Emails admitted by the Access policy on every MCP hostname (Zero Trust Free covers 50 users). Only used when zero_trust_enabled = true."
+  default     = []
+}
+
 variable "cloudflare_aop_enabled" {
   type        = bool
   description = "Enforce per-hostname Authenticated Origin Pulls. The self-signed client cert/CA is generated automatically (no material to supply); this only gates whether the edge presents it AND is the single root AOP toggle -- app-gcp derives its ingress verify-client from the published aop_enabled output. Off by default (Full (Strict) TLS only). MUST be applied before app-gcp."

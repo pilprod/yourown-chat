@@ -66,3 +66,9 @@ variable "deploy_parameters" {
   description = "Key => value map injected into every stage's Skaffold render. A manifest field annotated `# from-param: $${key}` has its value replaced on each release -- the Terraform-owned values (bucket, Workload Identity emails) flow into Kubernetes without hand-edited markers. Note: substitution replaces the WHOLE field value; partial interpolation inside a string is not supported."
   default     = {}
 }
+
+variable "mcp_servers_enabled" {
+  type        = bool
+  description = "Append the mcp-servers Skaffold profile to the prod stage, deploying the in-cluster MCP servers (helm/mcp-servers; per-server switchboard in its values.yaml)."
+  default     = false
+}

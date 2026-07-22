@@ -1,12 +1,6 @@
 locals {
-  # Location-based names, project prefix dropped (project is already yourown-chat).
-  # Name after the ACTUAL footprint (var.location) so it self-documents: a zonal
-  # cluster reads europe-west3-b, a regional one europe-west3. No "-gke" qualifier
-  # (it is THE cluster) and collision-free for a second location.
-  cluster_name = var.location
-  # The node SA is the cluster's node identity; it drops the type/role suffix and
-  # is named after the location alone. Its own IAM namespace keeps it distinct from
-  # the clouddeploy/releaser SAs, and from the cluster (a different resource type).
+  # Named after var.location (zonal -> europe-west3-b, regional -> europe-west3).
+  cluster_name  = var.location
   node_sa_id    = var.location
   workload_pool = "${var.project_id}.svc.id.goog"
 }

@@ -1,17 +1,7 @@
-# ---------------------------------------------------------------------------
-# CLOUDFLARE stack: provider requirements + configuration.
-#
-# Auth is mixed by necessity:
-#   - Cloudflare carries the ONE static secret the whole setup needs -- a
-#     zone-scoped API token supplied as an EPHEMERAL input from an HCP variable
-#     set (store "varset" in cloudflare.tfdeploy.hcl). It never touches git or
-#     state.
-#   - GCP (google) is fully KEYLESS (WIF): needed only for the origin-TLS
-#     Secret Manager containers this stack fills. Linked stacks cannot publish
-#     SENSITIVE values, so the Origin CA private key never crosses a stack
-#     boundary -- this stack writes it into Secret Manager itself.
-#   - tls is only exercised when manage_origin_cert = true (Origin CA CSR/key).
-# ---------------------------------------------------------------------------
+# CLOUDFLARE providers. Cloudflare uses a static API token (ephemeral varset
+# input; Zero Trust needs it account-scoped). GCP is keyless (WIF), used only
+# for the Secret Manager containers this stack writes. tls issues the origin/AOP
+# certs.
 
 required_providers {
   cloudflare = {

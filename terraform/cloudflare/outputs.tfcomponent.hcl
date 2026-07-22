@@ -66,3 +66,15 @@ output "aop_enabled" {
   description = "Whether per-hostname Authenticated Origin Pulls enforcement is on. app-gcp derives its ingress aop_enabled (verify-client) from this."
   value       = var.cloudflare_aop_enabled
 }
+
+# Precise readiness signal for the Zero Trust mcp-tunnel-token secret, so downstream
+# stack (app-gcp) can turn its zero_trust_enabled ON exactly when the secret version exists.
+output "zero_trust_ready" {
+  type        = bool
+  description = "True when the Cloudflare Zero Trust mcp-tunnel-token Secret Manager version exists."
+  value = length(component.zero_trust_secrets) > 0 ? contains(
+    keys(one([for s in component.zero_trust_secrets : s.secret_version_ids])),
+    "mcp-tunnel-token"
+  ) : false
+}
+

@@ -1,11 +1,5 @@
 locals {
-  # Named by FUNCTION + footprint: this is Mattermost's database, so it carries the
-  # mattermost- prefix (future databases for other functions of the shared
-  # yourown-chat project get their own prefix). The footprint mirrors the GKE
-  # cluster: a ZONAL instance lives in one zone -> mattermost-europe-west3-b; a
-  # REGIONAL (HA) instance spans the region -> mattermost-europe-west3. No "-pg"
-  # type suffix (it is THE Postgres instance). The API 'region' field always stays
-  # the region; only the name (and the pinned zone below) reflect the footprint.
+  # ZONAL instance -> mattermost-<zone>; REGIONAL (HA) -> mattermost-<region>.
   instance_location = upper(var.availability_type) == "REGIONAL" ? var.region : var.zone
   instance_name     = var.instance_name_random_suffix ? "mattermost-${local.instance_location}-${random_id.suffix[0].hex}" : "mattermost-${local.instance_location}"
   secret_id         = "cloudsql-${var.db_user_name}-password"
@@ -14,11 +8,8 @@ locals {
   connection_uri = "postgres://${var.db_user_name}:${random_password.user.result}@${google_sql_database_instance.this.private_ip_address}:5432/${var.database_name}?sslmode=require&connect_timeout=10"
 }
 
-# Deterministic instance name by default. Cloud SQL blocks reuse of an instance
-# name for ~1 week after deletion, so if you destroy and immediately re-create,
-# set instance_name_random_suffix = true to get a fresh, non-colliding name.
-# (Terraform can't "try the plain name, then fall back on conflict" -- the name
-# is fixed at plan time -- so this is an explicit opt-in rather than automatic.)
+# Cloud SQL blocks name reuse for ~1 week after deletion; opt into a random
+# suffix for a destroy-then-recreate.
 resource "random_id" "suffix" {
   count       = var.instance_name_random_suffix ? 1 : 0
   byte_length = 2
@@ -27,30 +18,19 @@ resource "random_id" "suffix" {
 resource "random_password" "user" {
   length  = 32
   special = true
-  # URL-safe symbols ONLY. This password is embedded raw into connection_uri
-  # (postgres://user:PASSWORD@host/db). The default special set contains URL
-  # delimiters -- `#` starts a fragment and `%` a percent-escape -- so a
-  # generated password containing one truncates the DSN, and the client fails
-  # with "invalid port after host". `-_.~` are RFC 3986 unreserved characters:
-  # they never need encoding in any URL component, so the DSN always parses
-  # while the value still carries symbol entropy (32 chars is plenty strong).
+  # URL-safe symbols only: this password is embedded raw into connection_uri,
+  # and the default special set's `#`/`%` would truncate the DSN. `-_.~` are
+  # RFC 3986 unreserved and never need encoding.
   override_special = "-_.~"
 
-  # Deliberate, on-demand rotation: bump var.password_rotation (a committed
-  # literal -- varset values are ephemeral in Stacks and cannot feed keepers)
-  # and apply. The new password flows to the SQL user and both secrets in the
-  # same apply; then restart the consumers (kubectl rollout restart) since the
-  # CSI mount only refreshes on pod start. NOT time-based on purpose: a
-  # time_rotating keeper would rotate as a side effect of an unrelated apply.
+  # On-demand rotation: bump var.password_rotation and apply, then restart the
+  # consumers. Not time-based (a time keeper would rotate on unrelated applies).
   keepers = {
     rotation = var.password_rotation
   }
 }
 
-# Adopt an instance orphaned by a create-wait timeout instead of re-creating it.
-# Gated by a flag (default off) so a genuinely fresh deployment still creates
-# normally; when on, Terraform imports the same-named instance into state on the
-# next apply. Config-driven import (id known at plan time) is accepted by Stacks.
+# Adopt an instance orphaned by a create-wait timeout rather than re-creating.
 import {
   for_each = var.adopt_existing_instance ? toset([local.instance_name]) : toset([])
   to       = google_sql_database_instance.this
@@ -65,9 +45,8 @@ resource "google_sql_database_instance" "this" {
 
   deletion_protection = var.deletion_protection
 
-  # CMEK: null keeps Google-managed encryption. When set, the Cloud SQL service
-  # agent must already hold encrypterDecrypter on the key (wired via the kms
-  # component's dependency edge). ForceNew -- the key cannot be changed in place.
+  # CMEK (null = Google-managed). ForceNew; the agent's encrypterDecrypter grant
+  # is ordered first via the kms component dependency.
   encryption_key_name = var.encryption_key_name
 
   settings {
@@ -124,12 +103,8 @@ resource "google_sql_database_instance" "this" {
     }
   }
 
-  # A private-IP instance is provisioned through the Service Networking peering
-  # and routinely takes 15-25 min to become RUNNABLE. The provider's default
-  # create wait can expire first, surfacing an empty "Error waiting for Create
-  # Instance:" while GCP finishes in the background -- the instance then exists
-  # but is absent from state, so the next apply collides with a 409. Wait long
-  # enough for the operation to complete and be recorded.
+  # Private-IP provisioning takes 15-25 min; the default wait can expire and
+  # leave the instance created-but-unrecorded (next apply 409s). Wait longer.
   timeouts {
     create = "60m"
     update = "45m"

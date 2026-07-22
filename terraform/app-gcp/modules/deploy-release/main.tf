@@ -1,20 +1,10 @@
 locals {
-  # The Cloud Build 2nd-gen GitHub connection is created out-of-band via the
-  # console OAuth flow (see README.md) and shared across the stack; the deploy
-  # repository is linked to it by its deterministic resource ID.
-  connection_id = "projects/${var.project_id}/locations/${var.region}/connections/${var.connection_name}"
-
-  # Platform-utility names read ROLE-then-SCOPE (releaser-europe-west3),
-  # mirroring the workload class (mattermost-europe-west3): the role/function
-  # leads, the footprint disambiguates. The project is already yourown-chat,
-  # so no project prefix. The GCS bucket must be free in the GLOBAL namespace.
+  # Shared out-of-band Cloud Build 2nd-gen connection (console OAuth, README.md).
+  connection_id      = "projects/${var.project_id}/locations/${var.region}/connections/${var.connection_name}"
   releaser_sa_id     = "releaser-${var.region}"
   source_bucket_name = "deploy-source-${var.region}"
 }
 
-# --- 2nd-gen repository on the shared, out-of-band GitHub connection ---------
-# The connection is authorized once in the Cloud Build console (OAuth) and lives
-# outside Terraform; here we only link the deploy repo (holds helm/) to it.
 resource "google_cloudbuildv2_repository" "this" {
   project           = var.project_id
   location          = var.region
@@ -23,18 +13,14 @@ resource "google_cloudbuildv2_repository" "this" {
   remote_uri        = var.github_remote_uri
 }
 
-# --- Private source-staging bucket ------------------------------------------
-# `gcloud deploy releases create --source=.` tars the render root and uploads it
-# here; Cloud Deploy then reads it back to render. A dedicated bucket (rather than
-# gcloud's default) keeps the location deterministic and the grant least-privilege.
+# Private staging bucket for the release source tarball (gcloud deploy releases
+# create --source uploads here; Cloud Deploy reads it back to render).
 resource "google_storage_bucket" "source" {
   project                     = var.project_id
   name                        = local.source_bucket_name
   location                    = var.region
   uniform_bucket_level_access = true
-  # Disposable release-staging content (30-day expiry tarballs): allow rename/
-  # destroy without manual emptying.
-  force_destroy = true
+  force_destroy               = true # disposable, 30-day-expiry tarballs
   labels                      = var.labels
 
   dynamic "encryption" {
@@ -71,12 +57,8 @@ resource "google_clouddeploy_delivery_pipeline_iam_member" "releaser" {
   member   = "serviceAccount:${google_service_account.releaser.email}"
 }
 
-# `gcloud deploy releases create` starts a long-running operation, then polls it.
-# roles/clouddeploy.releaser is scoped to the pipeline and can start the release,
-# but the operation is a regional project child, so polling needs this separate
-# project-level read permission. Using the predefined viewer role avoids forcing
-# the Terraform apply SA to hold iam.roleAdmin just to manage a one-permission
-# custom role.
+# The release create call polls a regional project-child operation, which needs
+# a project-level read grant on top of the pipeline-scoped releaser role.
 resource "google_project_iam_member" "releaser_clouddeploy_viewer" {
   project = var.project_id
   role    = "roles/clouddeploy.viewer"
@@ -122,11 +104,8 @@ resource "google_service_account_iam_member" "apply_acts_as_releaser" {
   member             = "serviceAccount:${var.apply_service_account_email}"
 }
 
-# --- Tag-triggered release cut ----------------------------------------------
-# On a semver tag (release_tag_regex) in the deploy repo, cut one Cloud Deploy
-# release from source_subdir/. The release auto-deploys to the first stage and is
-# promoted onward per the pipeline (prod gated by approval). The image itself is
-# built separately (image CI) and only promoted here — this cuts the K8s release.
+# On a semver tag in the deploy repo, cut one Cloud Deploy release from
+# source_subdir/ (auto-deploys to dev, promoted onward per the pipeline).
 resource "google_cloudbuild_trigger" "release" {
   project         = var.project_id
   location        = var.region
@@ -147,28 +126,11 @@ resource "google_cloudbuild_trigger" "release" {
       name       = "gcr.io/google.com/cloudsdktool/cloud-sdk:slim"
       entrypoint = "bash"
       dir        = var.source_subdir
-      # Release name reads version-first so the pipeline UI shows
-      # "rel-1-2-3-<sha>-<build>" instead of an opaque SHA. Components:
-      #   safe_tag  -- the semver git tag ($TAG_NAME, e.g. 1.2.3) with `.`
-      #                sanitised to `-` (1.2.3 -> 1-2-3), because release names
-      #                DISALLOW dots (^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$).
-      #   SHORT_SHA -- the source commit, for at-a-glance traceability.
-      #   short_build -- an 8-char BUILD_ID fragment guaranteeing uniqueness if
-      #                the same tag is re-cut/retried (a duplicate name 409s).
-      #
-      # Cloud Deploy derives the rollout ID as "<release>-to-<target>-NNNN" and
-      # caps it at 63 chars. rel-<tag>-<sha>-<build> (~26 chars) stays well under
-      # the cap even after the "-to-prod-europe-west3-0001" suffix (26); the
-      # full, unsanitised tag is also kept as an annotation.
-      #
-      # Escaping: static values are inlined by Terraform. Cloud Build built-ins
-      # ($BUILD_ID/$SHORT_SHA/$TAG_NAME) keep a SINGLE `$` so Cloud Build
-      # substitutes them before bash runs -- HCL leaves `$NAME` (no brace)
-      # untouched. Genuine bash constructs use the escaped `$$` form (HCL passes
-      # `$$` through, Cloud Build unescapes `$$` -> `$`): `$$( … )` for command
-      # substitution, `$$safe_tag`/`$$short_build` for the bash vars. Braced
-      # `$${VAR}` must NOT appear (HCL would collapse it to `${VAR}`, which Cloud
-      # Build then rejects as an unknown substitution).
+      # Release name "rel-<tag>-<sha>-<build>": dots in the tag are sanitised to
+      # `-` (release names disallow dots); the build fragment keeps it unique on
+      # re-cuts. Escaping: Cloud Build built-ins ($TAG_NAME/$SHORT_SHA/$BUILD_ID)
+      # keep a single `$`; bash constructs use `$$` (HCL passes it through, Cloud
+      # Build unescapes to `$`). Braced `$${VAR}` must not appear.
       args = [
         "-ceu",
         <<-EOT

@@ -1,23 +1,6 @@
-# ---------------------------------------------------------------------------
-# APP-GCP stack: the fast-moving GCP delivery layer. Everything here is cheap
-# to recreate and changes often: application secrets, the Cloud Deploy
-# pipeline, the image-build CI and the tag-triggered release cutting.
-#
-# This stack is LINKED to platform-gcp (see app.tfdeploy.hcl): the stateful
-# foundation (cluster ID, CMEK, registry coordinates, Workload Identity
-# members) arrives as last-APPLIED upstream outputs, so the platform always
-# settles first and a mistake here can never touch its state (separate state,
-# separate blast radius). The Cloudflare edge and its origin-TLS secrets live
-# in the sibling cloudflare stack.
-#
-# Graph (this stack; <upstream> = linked values passed in as plain vars):
-#   clouddeploy (targets on <gke_cluster_id>) ── deploy_release
-#   mattermost_image  -> pushes to <artifact_registry_*>
-#   secrets (dev-postgres-password + matterbridge-tokens,
-#            accessors = <workload_identity_members>)
-#   gke_auth (lookup on <gke_cluster_id>) ─ helm provider ─ cluster_bootstrap
-#            (mattermost-operator + ingress-nginx on <ingress_ip_address>)
-# ---------------------------------------------------------------------------
+# APP-GCP stack: the GCP delivery layer (secrets, Cloud Deploy, image CI,
+# release cutting). Linked to platform-gcp via last-applied upstream outputs;
+# the Cloudflare edge and origin-TLS secrets live in the cloudflare stack.
 
 locals {
   common_labels = merge({
@@ -27,11 +10,6 @@ locals {
   }, var.extra_labels)
 }
 
-# --- Continuous delivery ----------------------------------------------------
-# Cloud Deploy governs promotion of the Kubernetes workloads (helm/) as a
-# managed dev -> prod pipeline: two targets on the ONE platform cluster, each
-# rendering a Skaffold profile from helm/skaffold.yaml. The Mattermost image is
-# built once by the mattermost_image component (below) and promoted by tag.
 component "clouddeploy" {
   source = "./modules/clouddeploy"
 
@@ -40,9 +18,6 @@ component "clouddeploy" {
     region         = var.region
     gke_cluster_id = var.gke_cluster_id
 
-    # matterbridge is an OPTIONAL second Skaffold profile appended to the dev
-    # stage (see helm/skaffold.yaml). Toggle it with var.matterbridge_enabled:
-    # true -> ["dev", "matterbridge"] (bridge deployed), false -> ["dev"] (not).
     stages = [
       {
         name             = "dev"
@@ -53,23 +28,21 @@ component "clouddeploy" {
       { name = "prod", profiles = ["prod"], require_approval = true, verify = false },
     ]
 
-    # Rendered into the manifests' `# from-param: ${...}` placeholders on every
-    # release, so the platform-published values (bucket, WI emails) flow from
-    # Terraform into Kubernetes without hand-edited markers.
+    mcp_servers_enabled = var.mcp_servers_enabled
+
+    # Substituted into `# from-param: ${...}` manifest markers on each release.
+    # Credentials are deliberately NOT deploy parameters (they would land in
+    # pipeline config and release renders) -- cluster_secrets writes those
+    # straight to etcd.
     deploy_parameters = {
       filestore_bucket   = var.gcs_bucket_name
       mattermost_gsa     = var.workload_identity_emails.mattermost
       mattermost_dev_gsa = var.workload_identity_emails.dev
       matterbridge_gsa   = var.workload_identity_emails.matterbridge
-      # NOTE: credential values (dev Postgres password, DB connection string,
-      # filestore HMAC keys) are deliberately NOT deploy parameters -- they would
-      # land in the Cloud Deploy pipeline config and release renders. The
-      # cluster_secrets component creates those Kubernetes Secrets directly in
-      # etcd instead. Only non-secret wiring flows here.
-      #
-      # AOP toggle for the ingress (non-secret): "on" enforces client-cert mTLS
-      # against cloudflare-origin-pull-ca, "off" is Full (Strict) TLS only.
-      aop_verify_client = var.aop_enabled ? "on" : "off"
+      aop_verify_client  = var.aop_enabled ? "on" : "off"
+      # lookup(): the `mcp` key exists only after the platform stack applies
+      # its workload_identity_mcp component; empty keeps this stack planning.
+      mcp_gsa = lookup(var.workload_identity_emails, "mcp", "")
     }
 
     labels = local.common_labels
@@ -81,7 +54,6 @@ component "clouddeploy" {
   }
 }
 
-# --- Additional application secrets (all credentials live in Secret Manager) -
 component "secrets" {
   source = "./modules/secrets"
 
@@ -89,34 +61,18 @@ component "secrets" {
     project_id        = var.project_id
     replica_locations = [var.region]
     labels            = local.common_labels
-
-    # CMEK: the platform's shared key encrypts every secret replica (null when
-    # the platform runs with cmek_enabled = false).
-    kms_key_name = var.cmek_key_id
+    kms_key_name      = var.cmek_key_id
 
     secrets = {
-      # In-cluster dev Postgres password (generated, read by the dev tenant).
-      # special = false keeps it alphanumeric: dev Mattermost embeds it in a
-      # postgres://mmuser:PW@dev-postgres/... DSN, where @ : / would corrupt the
-      # URL. The value feeds the dev-postgres Kubernetes Secret via the
-      # cluster_secrets component (created directly in etcd, not via Cloud
-      # Deploy); the managed GKE add-on cannot sync secretObjects, so dev does
-      # not use the CSI mount for it.
+      # special = false: the value is embedded in a postgres:// DSN, where
+      # @ : / would corrupt the URL.
       "dev-postgres-password" = {
         generate  = true
         special   = false
         accessors = [var.workload_identity_members.dev]
       }
-      # matterbridge bridge config. Seed a DEFAULT matterbridge.toml so a secret
-      # version always exists and the pod leaves ContainerCreating on init (the
-      # CSI mount needs >=1 version -- an empty secret would wedge the pod). The
-      # default points at the IN-CLUSTER prod Mattermost Service on 8065
-      # (matterbridge bridges in-cluster; the public yourown.chat path is closed
-      # to it by Cloudflare + Authenticated Origin Pulls -- see
-      # helm/matterbridge/networkpolicy.yaml). The gateway ships DISABLED with
-      # placeholder creds, so matterbridge starts and idles without a failing
-      # login. To go live, add a NEW version out-of-band with a real bot Token,
-      # Team and enable=true (versions/latest is what the pod mounts):
+      # Seeded default so the CSI mount has >=1 version and the pod starts;
+      # gateway ships disabled. Go live by adding a new version out-of-band:
       #   gcloud secrets versions add matterbridge-tokens --data-file=matterbridge.toml
       "matterbridge-tokens" = {
         value     = <<-TOML
@@ -141,10 +97,20 @@ component "secrets" {
         TOML
         accessors = [var.workload_identity_members.matterbridge]
       }
-      # The Cloudflare origin-protection secrets (mattermost-origin-tls-* +
-      # cloudflare-origin-pull-ca) live in the CLOUDFLARE stack: linked stacks
-      # cannot publish sensitive values, so the Origin CA private key is
-      # written into Secret Manager there and never crosses a stack boundary.
+      # MCP credentials, seeded with placeholders so pods always start; load
+      # real values out-of-band (docs/MCP.md) and restart the pods.
+      "mcp-terraform-hcp-token" = {
+        value     = "REPLACE_ME_HCP_TEAM_TOKEN"
+        accessors = [for m in [lookup(var.workload_identity_members, "mcp", "")] : m if m != ""]
+      }
+      "mcp-google-workspace-client-id" = {
+        value     = "REPLACE_ME_CLIENT_ID"
+        accessors = [for m in [lookup(var.workload_identity_members, "mcp", "")] : m if m != ""]
+      }
+      "mcp-google-workspace-client-secret" = {
+        value     = "REPLACE_ME_CLIENT_SECRET"
+        accessors = [for m in [lookup(var.workload_identity_members, "mcp", "")] : m if m != ""]
+      }
     }
   }
 
@@ -154,14 +120,9 @@ component "secrets" {
   }
 }
 
-# --- Prod operator secret values (read back from Secret Manager) -------------
-# The platform stack writes the Cloud SQL connection string and the GCS HMAC
-# keys to Secret Manager at init. They are sensitive, so the platform can't
-# publish them as linked outputs; this stack reads them back and hands them to
-# the clouddeploy component as deploy parameters, which render the mattermost-db
-# / mattermost-filestore Kubernetes Secrets the operator consumes. (The managed
-# GKE Secret Manager add-on cannot sync secretObjects into Kubernetes Secrets,
-# so the operator secrets are materialised this way instead of via CSI.)
+# Reads sensitive values back from Secret Manager (linked stacks cannot publish
+# sensitive outputs). Ordering: the cloudflare stack must have applied first
+# for the origin-TLS / tunnel entries to exist.
 component "prod_secret_values" {
   source = "./modules/secret-lookup"
 
@@ -173,18 +134,20 @@ component "prod_secret_values" {
         mattermost_storage_access_key = "mattermost-storage-access-key"
         mattermost_storage_secret_key = "mattermost-storage-secret-key"
       },
-      # Origin CA cert/key written by the cloudflare stack; read only when a
-      # public ingress exists (else the containers are empty/absent).
       var.manage_ingress_origin_tls ? {
         mattermost_origin_tls_cert = "mattermost-origin-tls-cert"
         mattermost_origin_tls_key  = "mattermost-origin-tls-key"
-      } : {},
-      # AOP client-cert CA (self-generated by the cloudflare stack, always
-      # populated when a public ingress exists). Read whenever origin TLS is
-      # managed -- NOT gated on aop_enabled -- so the ingress auth-tls-secret
-      # always resolves; aop_enabled only toggles verify-client enforcement.
-      var.manage_ingress_origin_tls ? {
+        # Not gated on aop_enabled: ingress-nginx loads auth-tls-secret even
+        # with verify-client off, and a missing Secret 403s the whole host.
         cloudflare_origin_pull_ca = "cloudflare-origin-pull-ca"
+      } : {},
+      var.mcp_servers_enabled ? {
+        mcp_terraform_hcp_token            = "mcp-terraform-hcp-token"
+        mcp_google_workspace_client_id     = "mcp-google-workspace-client-id"
+        mcp_google_workspace_client_secret = "mcp-google-workspace-client-secret"
+      } : {},
+      var.zero_trust_enabled ? {
+        mcp_tunnel_token = "mcp-tunnel-token"
       } : {},
     )
   }
@@ -192,20 +155,16 @@ component "prod_secret_values" {
   providers = {
     google = provider.google.this
   }
+
+  depends_on = [component.secrets]
 }
 
-# --- Tenant namespaces + credential Secrets (created directly, not via CD) ----
-# The secure path for every credential the workloads consume as a Kubernetes
-# Secret: Terraform writes them straight to etcd from Secret Manager / a
-# generated password, so they never touch a Cloud Deploy deploy parameter or a
-# rendered release. Terraform owns the namespaces so the Secrets exist before
-# Cloud Deploy deploys the workloads into them (replacing helm/namespaces.yaml).
+# Namespaces + credential Secrets written straight to etcd, so no secret ever
+# passes through Cloud Deploy.
 component "cluster_secrets" {
   source = "./modules/cluster-secrets"
 
   inputs = {
-    # The matterbridge namespace only exists while matterbridge is enabled --
-    # disabling it removes the (now empty) namespace on the next apply.
     namespaces = merge(
       {
         dev        = { labels = { tier = "dev", "part-of" = "yourown-chat" } }
@@ -219,24 +178,18 @@ component "cluster_secrets" {
 
     secrets = merge(
       {
-        # dev in-cluster Postgres password (generated). Read by dev Postgres
-        # (POSTGRES_PASSWORD) and dev Mattermost (secretKeyRef -> datasource).
         dev-postgres = {
           name      = "dev-postgres"
           namespace = "dev"
           labels    = { app = "dev-postgres" }
           data      = { POSTGRES_PASSWORD = component.secrets.generated_values["dev-postgres-password"] }
         }
-        # prod external DB connection string (Cloud SQL), consumed by the operator
-        # CR as spec.database.external.secret: mattermost-db.
         mattermost-db = {
           name      = "mattermost-db"
           namespace = "mattermost"
           labels    = { app = "mattermost" }
           data      = { DB_CONNECTION_STRING = component.prod_secret_values.values["mattermost_db_connection"] }
         }
-        # prod external filestore (GCS S3-compatible HMAC keys), consumed by the
-        # operator CR as spec.fileStore.external.secret: mattermost-filestore.
         mattermost-filestore = {
           name      = "mattermost-filestore"
           namespace = "mattermost"
@@ -247,10 +200,6 @@ component "cluster_secrets" {
           }
         }
       },
-      # prod ingress Origin CA keypair (Cloudflare Full (Strict) TLS), served by
-      # the Mattermost Ingress via spec.ingress.tlsSecret: mattermost-origin-tls.
-      # Values are read from the cloudflare-written Secret Manager secrets (this
-      # stack runs after cloudflare); type must be kubernetes.io/tls.
       var.manage_ingress_origin_tls ? {
         mattermost-origin-tls = {
           name      = "mattermost-origin-tls"
@@ -263,16 +212,45 @@ component "cluster_secrets" {
           }
         }
       } : {},
-      # AOP client-cert CA (ingress auth-tls-secret). Created whenever origin TLS
-      # is managed, NOT only when aop_enabled: ingress-nginx loads auth-tls-secret
-      # regardless of verify-client, so a missing Secret fails annotation parsing
-      # (HTTP 403). The CA is inert until aop_enabled flips verify-client to "on".
+      # Separate ternary (shape differs from mattermost-origin-tls, which has
+      # `type`): merging two differently-typed objects in one map breaks the
+      # cond ? {...} : {} type unification. Created whenever origin TLS is
+      # managed, not only when AOP is on -- a missing auth-tls-secret 403s nginx.
       var.manage_ingress_origin_tls ? {
         cloudflare-origin-pull-ca = {
           name      = "cloudflare-origin-pull-ca"
           namespace = "mattermost"
           labels    = { app = "mattermost" }
           data      = { "ca.crt" = component.prod_secret_values.values["cloudflare_origin_pull_ca"] }
+        }
+      } : {},
+      var.mcp_servers_enabled ? {
+        mcp-terraform-hcp = {
+          name      = "mcp-terraform-hcp"
+          namespace = "mattermost"
+          labels    = { "app.kubernetes.io/part-of" = "mcp-servers" }
+          data = {
+            TFE_TOKEN = component.prod_secret_values.values["mcp_terraform_hcp_token"]
+          }
+        }
+        mcp-google-workspace-oauth = {
+          name      = "mcp-google-workspace-oauth"
+          namespace = "mattermost"
+          labels    = { "app.kubernetes.io/part-of" = "mcp-servers" }
+          data = {
+            GOOGLE_OAUTH_CLIENT_ID     = component.prod_secret_values.values["mcp_google_workspace_client_id"]
+            GOOGLE_OAUTH_CLIENT_SECRET = component.prod_secret_values.values["mcp_google_workspace_client_secret"]
+          }
+        }
+      } : {},
+      var.zero_trust_enabled ? {
+        mcp-tunnel = {
+          name      = "mcp-tunnel"
+          namespace = "mattermost"
+          labels    = { "app.kubernetes.io/part-of" = "mcp-servers" }
+          data = {
+            TUNNEL_TOKEN = component.prod_secret_values.values["mcp_tunnel_token"]
+          }
         }
       } : {},
     )
@@ -283,11 +261,8 @@ component "cluster_secrets" {
   }
 }
 
-# --- dev-tenant RBAC (Terraform-owned, not Cloud Deploy) ---------------------
-# The dev team's namespace-scoped Role/RoleBinding. Created by Terraform because
-# Cloud Deploy's execution SA is roles/container.developer, which GKE forbids
-# from creating RBAC objects (privilege-escalation prevention); the apply SA has
-# container.admin and can. No subjects (default) => nothing is created.
+# Terraform-owned because Cloud Deploy's execution SA (container.developer) is
+# forbidden by GKE from creating RBAC objects.
 component "dev_rbac" {
   source = "./modules/dev-rbac"
 
@@ -301,12 +276,6 @@ component "dev_rbac" {
   }
 }
 
-# --- Mattermost image CI (Cloud Build 2nd-gen) ------------------------------
-# Links the source repo (pilprod/mattermost) to the shared, out-of-band GitHub
-# connection (console OAuth), plus one least-privilege build SA (repo-scoped
-# writer on the platform registry) and a tag-triggered build that pushes ONE
-# image on a single tag pattern (^v.*-patched$), promoted dev -> prod by Cloud
-# Deploy.
 component "mattermost_image" {
   source = "./modules/cloudbuild-image"
 
@@ -316,12 +285,9 @@ component "mattermost_image" {
 
     apply_service_account_email = var.service_account_email
 
-    # Existing, out-of-band Cloud Build connection (console OAuth) shared by the
-    # image and deploy repos; Terraform only links repositories/triggers to it.
     connection_name   = var.github_connection_name
     github_remote_uri = var.github_remote_uri
 
-    # Push every build to the ONE unified repository the platform stack owns.
     artifact_registry_location      = var.artifact_registry_location
     artifact_registry_repository_id = var.artifact_registry_repository_id
 
@@ -335,13 +301,7 @@ component "mattermost_image" {
   }
 }
 
-# --- Automated release cutting (Cloud Build 2nd-gen on git tags) -------------
-# Makes deployment hands-off: links the DEPLOY repo (this one, holds helm/) to the
-# shared out-of-band GitHub connection, plus a least-privilege releaser SA and a
-# tag trigger. On a semver tag (release_tag_regex, i.e. *.*.*) it runs `gcloud
-# deploy releases create` against the clouddeploy pipeline, so a tag — not a human
-# — cuts the release. The releaser can create releases on that pipeline only and
-# actAs the execution SA; it never touches the image build.
+# Semver tag on the deploy repo -> `gcloud deploy releases create`.
 component "deploy_release" {
   source = "./modules/deploy-release"
 
@@ -351,20 +311,14 @@ component "deploy_release" {
 
     apply_service_account_email = var.service_account_email
 
-    # Same shared, out-of-band Cloud Build connection as the image CI (both repos
-    # live under the pilprod account it authorizes).
     connection_name   = var.github_connection_name
     github_remote_uri = var.github_deploy_remote_uri
 
-    # Cut releases against the pipeline the clouddeploy component owns.
     delivery_pipeline_name          = component.clouddeploy.delivery_pipeline_name
     execution_service_account_email = component.clouddeploy.execution_service_account_email
 
     release_tag_regex = var.release_tag_regex
 
-    # CMEK the private source-staging bucket with the platform's shared key
-    # (null when the platform runs cmek_enabled = false), mirroring the other
-    # data buckets.
     source_bucket_kms_key_name = var.cmek_key_id
 
     labels = local.common_labels
@@ -375,12 +329,8 @@ component "deploy_release" {
   }
 }
 
-# --- Cluster bootstrap (auth lookup) -----------------------------------------
-# Data-only: resolves the platform cluster's endpoint/CA from the published
-# cluster ID and mints a short-lived apply-SA token. Its outputs configure the
-# stack-level helm provider (providers.tfcomponent.hcl) -- a separate component
-# from cluster_bootstrap because a component cannot both feed a provider's
-# configuration and consume that provider.
+# Data-only cluster auth; separate from cluster_bootstrap because a component
+# cannot both feed a provider's configuration and consume that provider.
 component "gke_auth" {
   source = "./modules/gke-auth"
 
@@ -393,13 +343,7 @@ component "gke_auth" {
   }
 }
 
-# --- Cluster bootstrap (releases) --------------------------------------------
-# The cluster-scoped prerequisites for the helm/ workloads (docs/DEPLOY.md
-# "One-time setup" step 2), installed automatically right after the platform
-# cluster exists instead of a manual `helm upgrade --install`:
-#   - Mattermost Operator + CRDs (prod Mattermost is an operator CR)
-#   - ingress-nginx, pinned to the platform-published ingress IP and admitting
-#     only Cloudflare source ranges (skipped when the IP is null)
+# Mattermost Operator + ingress-nginx Helm releases, installed at apply.
 component "cluster_bootstrap" {
   source = "./modules/cluster-bootstrap"
 
@@ -408,8 +352,6 @@ component "cluster_bootstrap" {
     ingress_nginx_chart_version       = var.ingress_nginx_chart_version
     adopt_existing_releases           = var.adopt_existing_cluster_bootstrap_releases
 
-    # Platform-published "white address"; replaces the manual loadBalancerIP
-    # step in helm/ingress-nginx/values.yaml (kept as the manual fallback).
     ingress_load_balancer_ip = var.ingress_ip_address
   }
 

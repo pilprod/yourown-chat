@@ -2,6 +2,7 @@ locals {
   # Platform-utility names read ROLE-then-SCOPE (clouddeploy-europe-west3),
   # mirroring the workload class (mattermost-europe-west3).
   exec_sa_id = "clouddeploy-${var.region}"
+
   # No "-pipeline" type suffix: it is THE delivery pipeline, named after the
   # region alone (mirroring the GKE cluster / Cloud SQL instance).
   pipeline_name = var.region
@@ -11,15 +12,11 @@ locals {
   targets = { for s in var.stages : s.name => s }
 }
 
-# The Cloud Deploy service agent is created lazily on first API use, so a fresh
-# project has none when the IAM binding below runs -> "service-...@gcp-sa-
-# clouddeploy... does not exist". Force it into existence up front and reference
-# its email so the act-as binding is ordered strictly after the agent exists.
+# The Cloud Deploy service agent is created lazily on first API use.
 resource "google_project_service_identity" "clouddeploy" {
   provider = google-beta
-
-  project = var.project_id
-  service = "clouddeploy.googleapis.com"
+  project  = var.project_id
+  service  = "clouddeploy.googleapis.com"
 }
 
 # Execution identity Cloud Deploy uses to render and deploy.
@@ -31,10 +28,9 @@ resource "google_service_account" "exec" {
 
 resource "google_project_iam_member" "exec" {
   for_each = toset(var.execution_sa_roles)
-
-  project = var.project_id
-  role    = each.value
-  member  = "serviceAccount:${google_service_account.exec.email}"
+  project  = var.project_id
+  role     = each.value
+  member   = "serviceAccount:${google_service_account.exec.email}"
 }
 
 # The Cloud Deploy service agent must be able to impersonate the execution SA.
@@ -44,17 +40,14 @@ resource "google_service_account_iam_member" "agent_act_as_exec" {
   member             = "serviceAccount:${google_project_service_identity.clouddeploy.email}"
 }
 
-# One target per stage. Every target points at the SAME cluster; the deploy
-# namespace and per-env config diverge via the Skaffold profile bound to the
-# stage in the pipeline below. `require_approval` and the post-deploy VERIFY
-# execution usage are per stage.
+# One target per stage. Every target points at the same cluster; Skaffold
+# profiles select the workload set for each stage.
 resource "google_clouddeploy_target" "stage" {
   for_each = local.targets
 
-  project  = var.project_id
-  location = var.region
-  name     = "${each.value.name}-${var.region}"
-
+  project          = var.project_id
+  location         = var.region
+  name             = "${each.value.name}-${var.region}"
   require_approval = each.value.require_approval
 
   gke {
@@ -66,20 +59,18 @@ resource "google_clouddeploy_target" "stage" {
     service_account = google_service_account.exec.email
   }
 
-  labels = var.labels
-
+  labels     = var.labels
   depends_on = [google_project_iam_member.exec]
 }
 
-# Serial promotion pipeline. var.stages is ORDER-SENSITIVE -- the first stage is
-# the release entrypoint and each subsequent stage is a promotion target; the
-# dynamic block iterates the list in order to preserve the dev -> prod flow.
+# Serial promotion pipeline. The Terraform MCP server is an app-gcp workload:
+# when enabled, Terraform appends its renderer profile to the prod stage rather
+# than relying on an implicit, hand-maintained Helm deployment outside the stack.
 resource "google_clouddeploy_delivery_pipeline" "this" {
   project  = var.project_id
   location = var.region
   name     = local.pipeline_name
-
-  labels = var.labels
+  labels   = var.labels
 
   serial_pipeline {
     dynamic "stages" {
@@ -88,31 +79,28 @@ resource "google_clouddeploy_delivery_pipeline" "this" {
 
       content {
         target_id = google_clouddeploy_target.stage[stage.value.name].name
-        profiles  = stage.value.profiles
+        # The in-cluster MCP servers ride the prod stage as an extra Skaffold
+        # profile (one values-driven chart renders every enabled server), same
+        # pattern as matterbridge on dev.
+        profiles = (
+          stage.value.name == "prod" && var.mcp_servers_enabled
+          ? concat(stage.value.profiles, ["mcp-servers"])
+          : stage.value.profiles
+        )
 
-        # Injected into the Skaffold render: any manifest field carrying a
-        # `# from-param: ${key}` comment gets the value below substituted on
-        # every release. Same map on both stages -- each profile's manifests
-        # pick the keys they use.
         dynamic "deploy_parameters" {
           for_each = length(var.deploy_parameters) > 0 ? [1] : []
-
           content {
             values = var.deploy_parameters
           }
         }
 
-        # Emit a strategy only when it differs from the API default. `standard
-        # { verify = false }` IS the default: the API normalizes it away and
-        # never stores the block, so always sending it re-plans a phantom
-        # "create strategy" forever (same class of drift as tls_1_3 = zrt).
+        # Emit a strategy only when verify is enabled; sending the API default
+        # explicitly causes perpetual normalization drift.
         dynamic "strategy" {
           for_each = stage.value.verify ? [1] : []
-
           content {
             standard {
-              # Run the Skaffold `verify` tests after deploy on stages that opt
-              # in (the target also carries the VERIFY execution usage).
               verify = true
             }
           }

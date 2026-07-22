@@ -1,65 +1,31 @@
-# ---------------------------------------------------------------------------
-# APP-GCP deployments. ONE deployment (`eu`) provisions the GCP delivery layer
-# in the single GCP project `yourown-chat`, europe-west3: application secrets,
-# the Cloud Deploy pipeline, the image-build CI and the tag-triggered release
-# cutting.
-#
-# LINKED STACK: platform-gcp -> app-gcp. The stateful foundation's values
-# (cluster ID, registry coordinates, CMEK key, Workload Identity members) are
-# the LAST APPLIED publish_output of the platform-gcp stack -- HCP triggers a
-# plan here whenever one changes, and this stack can never run ahead of a
-# platform that hasn't settled. The cloudflare stack is NOT linked (see the note
-# by the deployment): app-gcp reads cloudflare-written origin-TLS values from
-# Secret Manager, so cloudflare must be applied first, operator-ordered.
-#
-# AUTH: keyless HCP Terraform Dynamic Provider Credentials -> Workload Identity
-# Federation (identity_token block; no static keys, no TFC_GCP_*). No
-# third-party secrets here -- the Cloudflare token lives in the cloudflare
-# stack. Bootstrap: README.md.
-# ---------------------------------------------------------------------------
+# APP-GCP deployment `eu` (project yourown-chat, europe-west3). Linked to
+# platform-gcp and cloudflare via upstream_input; keyless GCP auth via HCP
+# Dynamic Provider Credentials -> WIF (no static keys).
 
 locals {
-  # --- Keyless GCP auth wiring (project `yourown-chat`) ----------------------
-  # STS token-exchange audience = full WIF provider resource name (leading //).
   gcp_wif_audience = "//iam.googleapis.com/projects/1086706391144/locations/global/workloadIdentityPools/hcp-terraform/providers/hcp-terraform"
-  # Least-privilege SA impersonated after the exchange (never Owner/Editor).
-  gcp_apply_sa = "terraform-apply@yourown-chat.iam.gserviceaccount.com"
+  gcp_apply_sa     = "terraform-apply@yourown-chat.iam.gserviceaccount.com"
 
   gcp_project = "yourown-chat"
-  gcp_region  = "europe-west3" # Frankfurt, Germany
+  gcp_region  = "europe-west3"
 }
 
-# HCP mints this OIDC JWT once per run. Its `aud` claim must match the WIF
-# provider's allowed-audiences, which is the full https://iam.googleapis.com/...
-# provider URL (see README.md, gcloud ... --allowed-audiences=...).
 identity_token "gcp" {
   audience = ["https://iam.googleapis.com/projects/1086706391144/locations/global/workloadIdentityPools/hcp-terraform/providers/hcp-terraform"]
 }
 
-# --- Linked platform-gcp stack --------------------------------------------------
-# Source format: app.terraform.io/<organization>/<hcp project>/<stack name> --
-# it must match the upstream stack's name in HCP Terraform exactly.
 upstream_input "platform" {
   type   = "stack"
   source = "app.terraform.io/papou-work/yourown-chat/platform-gcp"
 }
 
-# app-gcp materialises the mattermost-origin-tls Kubernetes Secret from the
-# origin cert/key the CLOUDFLARE stack writes to Secret Manager, and LINKS that
-# stack so manage_ingress_origin_tls is DERIVED from its origin_tls_ready output
-# (no hand-kept mirror toggle). The cloudflare stack must PUBLISH that value with a
-# publish_output block (a bare component output is not consumable cross-stack), and
-# apply once so the value propagates. Source format:
-# app.terraform.io/<organization>/<hcp project>/<stack name>.
 upstream_input "cloudflare" {
   type   = "stack"
   source = "app.terraform.io/papou-work/yourown-chat/cloudflare"
 }
 
-# --- eu: the GCP delivery layer in one deployment -------------------------------
 deployment "eu" {
   inputs = {
-    # --- Keyless GCP auth: OIDC JWT exchanged via WIF to impersonate apply SA --
     identity_token        = identity_token.gcp.jwt
     audience              = local.gcp_wif_audience
     service_account_email = local.gcp_apply_sa
@@ -78,65 +44,44 @@ deployment "eu" {
     workload_identity_members       = upstream_input.platform.workload_identity_members
     ingress_ip_address              = upstream_input.platform.ingress_ip_address
 
-    # Create the mattermost-origin-tls Secret from the cloudflare-written origin
-    # cert/key. DERIVED from the cloudflare stack's published origin_tls_ready:
-    # true exactly when the Origin CA cert/key Secret Manager versions exist
-    # (cloudflare public_ingress_enabled AND manage_origin_cert), so app-gcp reads
-    # those secrets only once they are populated and the toggle needs no hand-sync.
+    # Derived from the cloudflare stack's published outputs -- no hand-kept
+    # mirror toggles. origin_tls_ready is true exactly when the Origin CA
+    # cert/key Secret Manager versions exist; aop_enabled only flips the
+    # ingress verify-client (the CA Secret is created regardless).
     # Protected with try(..., false) so app-gcp can plan/apply before cloudflare is applied.
     manage_ingress_origin_tls = try(upstream_input.cloudflare.origin_tls_ready, false)
+    aop_enabled               = try(upstream_input.cloudflare.aop_enabled, false)
 
-    # Authenticated Origin Pulls (per-hostname mTLS). DERIVED from the cloudflare
-    # stack's published aop_enabled -- a single root toggle (cloudflare_aop_enabled)
-    # drives both the edge (present the self-generated client cert) and this
-    # (ingress verify-client "on"). The cloudflare-origin-pull-ca Secret is created
-    # regardless (so annotation parsing never 403s); this only flips enforcement.
-    # Protected with try(..., false) so app-gcp can plan/apply before cloudflare is applied.
-    aop_enabled = try(upstream_input.cloudflare.aop_enabled, false)
-
-    # --- Cluster bootstrap (Terraform-managed Helm releases) ------------------
-    # mattermost-operator + ingress-nginx install automatically once the
-    # platform cluster exists (docs/DEPLOY.md step 2 is the manual fallback).
-    # Chart pins -- bump deliberately, never track "latest" implicitly:
-    #   helm search repo mattermost/mattermost-operator --versions | head
-    #   helm search repo ingress-nginx/ingress-nginx --versions | head
+    # Chart pins -- bump deliberately.
     mattermost_operator_chart_version = "1.0.5"
     ingress_nginx_chart_version       = "4.15.1"
-    # Emergency recovery only: set true for one apply if an interrupted bootstrap
-    # installed the Helm releases but did not record them in Terraform state, then
-    # switch it back to false. Keep false for a genuinely fresh cluster, because
-    # importing a missing Helm release fails.
+    # One-shot recovery toggles: flip true for a single adoption apply only.
     adopt_existing_cluster_bootstrap_releases = false
+    adopt_existing_namespaces                 = false
 
-    # Namespace adoption is a one-time migration: it imported the tenant
-    # namespaces (created by the old Cloud Deploy helm/namespaces.yaml) into
-    # state. Now that they are in state, keep this false -- a fresh cluster
-    # creates them normally, and importing a missing namespace would fail. Flip
-    # back to true only if the namespaces ever exist out-of-band again.
-    adopt_existing_namespaces = false
-
-    # Deploy the matterbridge chat bridge with the dev stage. false = the dev
-    # target renders only the dev tenant, matterbridge is not deployed.
     matterbridge_enabled = false
 
-    # --- Image-build CI ------------------------------------------------------
-    # The Cloud Build 2nd-gen GitHub connection is authorized once out-of-band in
-    # the console (OAuth) and named here; both the image and deploy repos are
-    # linked to it (see README.md).
+    # Per-server on/off lives in helm/mcp-servers/values.yaml.
+    mcp_servers_enabled = true
+
+    # Derived from the cloudflare stack's published outputs -- origin_tls_ready
+    # and zero_trust_ready are true when Secret Manager versions exist.
+    # try() guards against a not-yet-reapplied cloudflare stack missing the output.
+    zero_trust_enabled = try(upstream_input.cloudflare.zero_trust_ready, false)
+
+
+
+    # Cloud Build 2nd-gen GitHub connection, authorized once out-of-band in the
+    # console (README.md); both repos are linked to it.
     github_connection_name = "pilprod-github"
     github_remote_uri      = "https://github.com/pilprod/mattermost.git"
     image_name             = "mattermost"
-    # One source repo, ONE unified registry, ONE image built on a single tag
-    # pattern. The same artifact is promoted dev -> prod (Cloud Deploy):
-    #   v9.11.3-patched  -> docker/mattermost:v9.11.3-patched
+    # Build once on the tag pattern, promote the same artifact dev -> prod.
     builds = {
       mattermost = { tag_regex = "^v.*-patched$" }
     }
 
-    # --- Automated release cutting ------------------------------------------
-    # THIS repo (holds helm/) is linked to the SAME shared connection: a semver
-    # tag (MAJOR.MINOR.PATCH) cuts a Cloud Deploy release automatically — no
-    # manual `gcloud deploy releases create`. The connection must cover this repo.
+    # Semver tag on THIS repo cuts a Cloud Deploy release automatically.
     github_deploy_remote_uri = "https://github.com/pilprod/yourown-chat.git"
     release_tag_regex        = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
 

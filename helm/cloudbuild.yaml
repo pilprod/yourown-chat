@@ -1,34 +1,13 @@
-# The Cloud Build config that cuts a Cloud Deploy release delivering the helm/
-# Kubernetes workloads through the dev -> prod pipeline: the release enters at the
-# first stage (dev), runs the post-deploy verify smoke test, then is promoted to
-# prod after the manual-approval gate.
-#
-# This is now IMPLEMENTED by the stack's `deploy_release` component
-# (terraform/app-gcp/modules/deploy-release): a Cloud Build 2nd-gen trigger on THIS repo
-# fires on semver tags (MAJOR.MINOR.PATCH) and runs exactly the `gcloud deploy
-# releases create` step below as the least-privilege `releaser-europe-west3` SA
-# (roles/clouddeploy.releaser on the pipeline + actAs on the execution SA
-# clouddeploy-europe-west3@ + object admin on its own source-staging bucket). This
-# file is kept as documentation of that command and as a manual fallback you can
-# run from any checkout.
-#
-# Unlike a typical app pipeline it does NOT build an image: the Mattermost image
-# is built by the stack's image-CI components (terraform/ -> artifact_registry +
-# mattermost_image) on git tags matching ^v.*-patched$, and matterbridge runs the
-# upstream 42wim/matterbridge image. The image tag is the source of truth INSIDE
-# the manifests (helm/mattermost/mattermost.yaml spec.image + spec.version, and
-# helm/developing/mattermost-dev.yaml), so there is nothing to substitute here --
-# the release just promotes the manifests.
-#
-# The component adds --gcs-source-staging-dir (its dedicated bucket) and an
-# --annotations git-tag=... for traceability; both are omitted here for a manual
-# run (gcloud then uses the project default staging bucket).
+# MANUAL FALLBACK for cutting a Cloud Deploy release of the helm/ workloads.
+# The stack's deploy_release component runs the same `gcloud deploy releases
+# create` automatically on semver tags; this file documents that command for a
+# manual run from any checkout. No image is built here (the image tag is the
+# source of truth inside the manifests).
 
 substitutions:
   _REGION: europe-west3
   _PIPELINE: europe-west3
-  # The stack's dedicated releaser SA. For a manual run, use any SA that has
-  # roles/clouddeploy.releaser on the pipeline + actAs on the execution SA.
+  # Any SA with roles/clouddeploy.releaser on the pipeline + actAs on the exec SA.
   _RELEASE_SA_EMAIL: releaser-europe-west3@${PROJECT_ID}.iam.gserviceaccount.com
 
 serviceAccount: projects/${PROJECT_ID}/serviceAccounts/${_RELEASE_SA_EMAIL}
