@@ -48,8 +48,9 @@ deployment "eu" {
     # mirror toggles. origin_tls_ready is true exactly when the Origin CA
     # cert/key Secret Manager versions exist; aop_enabled only flips the
     # ingress verify-client (the CA Secret is created regardless).
-    manage_ingress_origin_tls = upstream_input.cloudflare.origin_tls_ready
-    aop_enabled               = upstream_input.cloudflare.aop_enabled
+    # Protected with try(..., false) so app-gcp can plan/apply before cloudflare is applied.
+    manage_ingress_origin_tls = try(upstream_input.cloudflare.origin_tls_ready, false)
+    aop_enabled               = try(upstream_input.cloudflare.aop_enabled, false)
 
     # Chart pins -- bump deliberately.
     mattermost_operator_chart_version = "1.0.5"
