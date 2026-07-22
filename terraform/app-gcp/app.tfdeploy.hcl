@@ -65,7 +65,9 @@ deployment "eu" {
 
     # Derived from the cloudflare stack's published outputs -- origin_tls_ready
     # and zero_trust_ready are true when Secret Manager versions exist.
-    zero_trust_enabled = upstream_input.cloudflare.zero_trust_ready
+    # try() guards against a not-yet-reapplied cloudflare stack missing the output.
+    zero_trust_enabled = try(upstream_input.cloudflare.zero_trust_ready, false)
+
 
 
     # Cloud Build 2nd-gen GitHub connection, authorized once out-of-band in the
