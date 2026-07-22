@@ -155,6 +155,10 @@ component "prod_secret_values" {
   providers = {
     google = provider.google.this
   }
+
+  # The mcp-* secrets are created by component.secrets in THIS stack; the
+  # data-source reads must run after they exist (cross-stack ones already do).
+  depends_on = [component.secrets]
 }
 
 # Namespaces + credential Secrets written straight to etcd, so no secret ever
