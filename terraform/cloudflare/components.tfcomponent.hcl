@@ -1,18 +1,7 @@
-# ---------------------------------------------------------------------------
-# CLOUDFLARE stack: the public edge for yourown.chat plus its origin-protection
-# secrets, isolated in their own stack. It is the only place the Cloudflare API
-# token is ever exercised.
-#
-# LINKED to platform-gcp (upstream_input "platform" in cloudflare.tfdeploy.hcl):
-#   - consumes the reserved static ingress IP for the proxied apex A record;
-#   - consumes the CMEK key + the mattermost Workload Identity member for the
-#     origin-TLS Secret Manager containers.
-#
-# The origin_secrets component lives HERE (not in app-gcp) because linked
-# stacks cannot publish SENSITIVE values: the Origin CA private key therefore
-# never crosses a stack boundary -- this stack issues the cert AND writes the
-# cert/key into Secret Manager itself.
-# ---------------------------------------------------------------------------
+# CLOUDFLARE stack: the public edge plus its origin-protection / tunnel secrets.
+# The only place the Cloudflare API token is exercised. Linked to platform-gcp
+# (ingress IP, CMEK, WI member). Secrets are written to Secret Manager HERE
+# because linked stacks cannot publish sensitive values across a boundary.
 
 locals {
   common_labels = {
@@ -21,22 +10,15 @@ locals {
   }
 }
 
-# --- Cloudflare edge (public ingress only) ----------------------------------
-# Drives the whole zone: DNS (proxied apex A wired to the platform ingress IP
-# via upstream_input), www, extra records, CAA, edge TLS/security settings,
-# DNSSEC, WAF rules and optional origin TLS (Origin CA cert + Authenticated
-# Origin Pulls). Gated on public_ingress_enabled so dev/private deployments
-# skip Cloudflare entirely.
+# The whole zone: DNS, edge TLS/security, DNSSEC, WAF, origin TLS + AOP. Gated
+# on public_ingress_enabled so private deployments skip Cloudflare entirely.
 component "cloudflare" {
   for_each = var.public_ingress_enabled ? toset(["default"]) : toset([])
 
   source = "./modules/cloudflare"
 
   inputs = {
-    domain = var.domain
-    # The reserved static IP the PLATFORM-GCP stack allocates is the address
-    # the proxied apex A record points at. It arrives as a last-applied
-    # upstream value, so DNS can only ever point at an IP that already exists.
+    domain        = var.domain
     origin_ip     = var.ingress_ip_address
     proxied       = var.cloudflare_proxied
     manage_www    = var.cloudflare_manage_www
@@ -63,14 +45,8 @@ component "cloudflare" {
   }
 }
 
-# --- Origin-protection secrets (Secret Manager) ------------------------------
-# The Origin CA cert/key flow straight from the cloudflare component into these
-# containers, so ingress-nginx can serve Full (Strict) TLS with zero manual
-# steps. When manage_origin_cert = false the values are null and the module
-# creates empty containers to be filled out-of-band. The AOP CA stays an empty
-# container (Cloudflare-supplied, not issued here). Only the mattermost
-# workload (platform-published IAM member) may read them; replicas are
-# CMEK-encrypted with the platform's shared key.
+# Origin CA cert/key + the AOP verification CA, written to Secret Manager
+# (CMEK-encrypted, readable only by the mattermost workload) for ingress-nginx.
 component "origin_secrets" {
   for_each = var.public_ingress_enabled ? toset(["default"]) : toset([])
 
@@ -80,9 +56,7 @@ component "origin_secrets" {
     project_id        = var.project_id
     replica_locations = [var.region]
     labels            = local.common_labels
-
-    # CMEK: the platform's shared key (null when it runs cmek_enabled = false).
-    kms_key_name = var.cmek_key_id
+    kms_key_name      = var.cmek_key_id
 
     secrets = {
       "mattermost-origin-tls-cert" = {
@@ -93,12 +67,9 @@ component "origin_secrets" {
         value     = one([for c in component.cloudflare : c.origin_private_key_pem])
         accessors = [var.workload_identity_members.mattermost]
       }
+      # Populated whenever the edge exists so the origin's auth-tls-secret always
+      # resolves (a missing CA 403s nginx); enforcement is gated by aop_enabled.
       "cloudflare-origin-pull-ca" = {
-        # The self-signed AOP client certificate (public) that ingress-nginx
-        # verifies Cloudflare's authenticated origin pulls against. Populated
-        # whenever the edge exists so the origin's auth-tls-secret always
-        # resolves (a missing CA there fails nginx annotation parsing -> 403);
-        # enforcement is toggled separately by aop_enabled.
         value     = one([for c in component.cloudflare : c.aop_origin_pull_ca_pem])
         accessors = [var.workload_identity_members.mattermost]
       }
@@ -111,24 +82,17 @@ component "origin_secrets" {
   }
 }
 
-# --- Zero Trust access to private in-cluster services (FLAGGED, default off) -
-# Client -> Access policy (allowed emails) -> Cloudflare Tunnel -> ClusterIP.
-# One tunnel serves both consumer kinds: personal MCP clients (Claude) reaching
-# the internal MCP servers, and BROWSERS reaching dev Mattermost (plain Access
-# login, replacing a would-be tailscale operator). The services get zero public
-# exposure; the perimeter moves to the Cloudflare edge. OFF by default:
-# enabling requires an ACCOUNT-scoped API token (Cloudflare Tunnel:Edit +
-# Access:Edit) and the claude.ai <-> MCP-portal interop is still beta -- see
-# docs/MCP.md for the smoke test this gate exists for (the dev Mattermost
-# browser path has no beta dependency).
+# Zero Trust access to private services: Access allow-list -> Tunnel ->
+# ClusterIP, for both personal MCP clients and dev Mattermost browser access.
+# Requires an ACCOUNT-scoped API token; the flag is the kill switch for the
+# beta claude.ai <-> MCP-portal interop (docs/MCP.md).
 component "zero_trust" {
   for_each = var.zero_trust_enabled ? toset(["default"]) : toset([])
 
   source = "./modules/zero-trust"
 
   inputs = {
-    # Account ID is DERIVED from the zone lookup (the zone knows its owning
-    # account) -- no hand-copied dashboard value.
+    # Derived from the zone lookup -- no hand-copied dashboard value.
     account_id     = one([for c in component.cloudflare : c.account_id])
     zone_id        = one([for c in component.cloudflare : c.zone_id])
     domain         = var.domain
@@ -142,9 +106,8 @@ component "zero_trust" {
   }
 }
 
-# The cloudflared run token, written straight into Secret Manager HERE (same
-# rationale as origin_secrets: sensitive values cannot cross a stack boundary).
-# app-gcp reads it back and creates the in-cluster mcp-tunnel Secret.
+# cloudflared run token -> Secret Manager (sensitive, cannot cross stacks);
+# app-gcp reads it back into the in-cluster mcp-tunnel Secret.
 component "zero_trust_secrets" {
   for_each = var.zero_trust_enabled ? toset(["default"]) : toset([])
 

@@ -1,65 +1,33 @@
-# ---------------------------------------------------------------------------
-# CLOUDFLARE deployments. ONE deployment (`yourown-chat`) provisions the public
-# edge for the zone. Named after the ZONE, not a region: a Cloudflare zone is a
-# GLOBAL object (the edge network has no "eu"), so the deployment unit here is
-# one domain -- a second deployment of this stack would be a second zone, not a
-# second region (unlike the GCP stacks, whose `eu` deployments are regional).
-#
-# LINKED to platform-gcp via upstream_input "platform" (last-APPLIED outputs):
-# the reserved static ingress IP for the apex A record, plus the CMEK key and
-# the mattermost Workload Identity member for the secret containers. Linked
-# stacks cannot publish SENSITIVE values, so the Origin CA private key is
-# written into Secret Manager HERE and never crosses a stack boundary -- this
-# stack publishes nothing downstream.
-#
-# AUTH is mixed by necessity:
-#   - Cloudflare: the one zone-scoped API token, pulled from an HCP variable
-#     set (store "varset") and passed as an EPHEMERAL input -- never in git or
-#     state.
-#   - GCP: keyless HCP Terraform Dynamic Provider Credentials -> Workload
-#     Identity Federation (identity_token block), needed only for the
-#     origin-TLS secrets. Bootstrap: README.md.
-# ---------------------------------------------------------------------------
+# CLOUDFLARE deployment `yourown-chat`: the zone's public edge. Linked to
+# platform-gcp (ingress IP, CMEK, WI member). The API token (varset, ephemeral)
+# is the one static secret; GCP auth is keyless (WIF), used only for the
+# origin-TLS/tunnel Secret Manager containers this stack writes.
 
 locals {
-  # --- Keyless GCP auth wiring (project `yourown-chat`) ----------------------
-  # STS token-exchange audience = full WIF provider resource name (leading //).
   gcp_wif_audience = "//iam.googleapis.com/projects/1086706391144/locations/global/workloadIdentityPools/hcp-terraform/providers/hcp-terraform"
-  # Least-privilege SA impersonated after the exchange (never Owner/Editor).
-  gcp_apply_sa = "terraform-apply@yourown-chat.iam.gserviceaccount.com"
+  gcp_apply_sa     = "terraform-apply@yourown-chat.iam.gserviceaccount.com"
 
   gcp_project = "yourown-chat"
-  gcp_region  = "europe-west3" # Frankfurt, Germany
+  gcp_region  = "europe-west3"
 }
 
-# HCP mints this OIDC JWT once per run. Its `aud` claim must match the WIF
-# provider's allowed-audiences, which is the full https://iam.googleapis.com/...
-# provider URL (see README.md, gcloud ... --allowed-audiences=...).
 identity_token "gcp" {
   audience = ["https://iam.googleapis.com/projects/1086706391144/locations/global/workloadIdentityPools/hcp-terraform/providers/hcp-terraform"]
 }
 
-# Cloudflare zone-scoped API token, injected from an HCP variable set so it never
-# touches git or state. Replace the id with your workspace's variable set ID and
-# store the token under the key `cloudflare_api_token`. See README.md.
+# Cloudflare API token, injected from an HCP variable set (never in git/state).
 store "varset" "cloudflare" {
   id       = "varset-wrrdzyQKCP2no9U6"
   category = "terraform"
 }
 
-# --- Linked platform-gcp stack ------------------------------------------------
-# Consumes the publish_output values of the platform-gcp stack (same HCP
-# project). Source format: app.terraform.io/<organization>/<hcp project>/<stack
-# name> -- it must match the platform stack's name in HCP Terraform exactly.
 upstream_input "platform" {
   type   = "stack"
   source = "app.terraform.io/papou-work/yourown-chat/platform-gcp"
 }
 
-# --- yourown-chat: the zone's public edge in one deployment --------------------
 deployment "yourown-chat" {
   inputs = {
-    # --- Keyless GCP auth: OIDC JWT exchanged via WIF to impersonate apply SA --
     identity_token        = identity_token.gcp.jwt
     audience              = local.gcp_wif_audience
     service_account_email = local.gcp_apply_sa
@@ -72,23 +40,16 @@ deployment "yourown-chat" {
     cmek_key_id               = upstream_input.platform.cmek_key_id
     workload_identity_members = upstream_input.platform.workload_identity_members
 
-    # Derived, not hand-mirrored: the public edge exists exactly when platform-gcp
-    # reserved the static ingress IP this edge points at. platform publishes a
-    # null ingress_ip_address when ITS public_ingress_enabled = false, so this
-    # follows the single root toggle (platform.public_ingress_enabled) with no
-    # second boolean to keep in sync.
+    # Derived from the single root toggle: platform publishes a null ingress IP
+    # when its public_ingress_enabled is false.
     public_ingress_enabled = upstream_input.platform.ingress_ip_address != null
 
-    # Token from the varset; the zone and edge policy below.
     cloudflare_api_token = store.varset.cloudflare.cloudflare_api_token
     domain               = "yourown.chat"
 
-    # MCP OAuth endpoints: the google-workspace MCP server's OAuth 2.1 flow
-    # (Mattermost Agents per-user Connect) needs its authorize/callback URLs
-    # reachable by the user's browser. Proxied subdomain -> same origin ingress;
-    # the wildcard Origin CA cert (*.yourown.chat) already covers it.
-    # Host name mirrors the in-cluster Deployment (mcp-google-workspace), so
-    # DNS record, Ingress host, K8s objects and logs all read the same.
+    # Proxied subdomain for the google-workspace MCP server's OAuth 2.1 flow
+    # (browser must reach its authorize/callback URLs). Wildcard Origin CA
+    # cert covers it.
     cloudflare_extra_records = {
       mcp-google-workspace = {
         name    = "mcp-google-workspace"
@@ -105,18 +66,11 @@ deployment "yourown-chat" {
     cloudflare_dnssec_enabled     = true
     cloudflare_manage_origin_cert = true
 
-    # --- Zero Trust (Access + Tunnel): ENABLED. The one prerequisite Terraform
-    # cannot do for you: the API token in the varset must carry ACCOUNT
-    # permissions (Cloudflare Tunnel:Edit + Access: Apps and Policies:Edit) on
-    # top of the existing zone ones -- re-issue it BEFORE applying, or this
-    # apply fails with an authorization error. The account ID is derived from
-    # the zone lookup automatically.
-    #
-    # Upstreams carry BOTH consumer kinds: the internal MCP servers (for
-    # personal Claude via the beta MCP portal -- smoke test in docs/MCP.md; the
-    # flag is the kill switch if the interop misbehaves) AND dev Mattermost
-    # (plain browser Access login -- the mature path, replacing a would-be
-    # tailscale operator; works regardless of the portal beta outcome).
+    # Zero Trust (Access + Tunnel) for private services. PREREQUISITE Terraform
+    # cannot do: the varset API token must carry ACCOUNT permissions (Cloudflare
+    # Tunnel:Edit + Access: Apps and Policies:Edit) before applying. The flag is
+    # the kill switch for the beta claude.ai <-> MCP-portal interop (docs/MCP.md);
+    # the dev Mattermost browser path has no beta dependency.
     zero_trust_enabled        = true
     zero_trust_allowed_emails = ["ilya@papou.email", "popov.pilprod@gmail.com"]
     zero_trust_upstreams = {
@@ -127,18 +81,14 @@ deployment "yourown-chat" {
   }
 }
 
-# --- Downstream contract: published to the app-gcp stack ----------------------
-# app-gcp links this stack (upstream_input.cloudflare) and derives its
-# manage_ingress_origin_tls from origin_tls_ready. A bare component output
-# (outputs.tfcomponent.hcl) is NOT consumable cross-stack -- only a publish_output
-# is -- so this block is what actually feeds the downstream link. Applying this
-# stack propagates the value and auto-triggers an app-gcp run.
+# Downstream contract for app-gcp (a bare component output is not consumable
+# cross-stack -- only publish_output is).
 publish_output "origin_tls_ready" {
-  description = "True once the Cloudflare Origin CA cert/key Secret Manager versions exist (public_ingress_enabled AND manage_origin_cert). app-gcp derives manage_ingress_origin_tls from it."
+  description = "True once the Cloudflare Origin CA cert/key Secret Manager versions exist. app-gcp derives manage_ingress_origin_tls from it."
   value       = deployment.yourown-chat.origin_tls_ready
 }
 
 publish_output "aop_enabled" {
-  description = "Per-hostname Authenticated Origin Pulls enforcement toggle. app-gcp derives its ingress verify-client from it (single root AOP toggle)."
+  description = "Per-hostname Authenticated Origin Pulls toggle. app-gcp derives its ingress verify-client from it."
   value       = deployment.yourown-chat.aop_enabled
 }

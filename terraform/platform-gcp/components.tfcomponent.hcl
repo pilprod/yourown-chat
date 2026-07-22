@@ -1,42 +1,14 @@
-# ---------------------------------------------------------------------------
-# PLATFORM stack: the long-lived, stateful foundation. Everything here is slow
-# to (re)create and expensive to lose: enabled APIs, the VPC, the CMEK key, the
-# GKE cluster, the managed Postgres, the object-storage bucket, the container
-# registry and the Workload Identity SAs.
-#
-# The fast-moving delivery layer (secrets, Cloud Deploy, image CI, release
-# cutting, Cloudflare edge) lives in the sibling APP-GCP and CLOUDFLARE stacks, which
-# consumes this stack's published outputs as a LINKED STACK (upstream_input).
-# The contract is the publish_output blocks in platform.tfdeploy.hcl: the app
-# stack only ever sees last-applied values, so the platform always settles
-# first and an app-side mistake can never touch platform state.
-#
-# Graph (this stack):
-#   project_services  (enables ALL APIs the product needs, in one place)
-#     ├── network ── cloudsql
-#     │        └── gke ── workload_identity_{mattermost,matterbridge,dev}
-#     ├── kms ── {storage, cloudsql}   (CMEK)
-#     ├── storage
-#     └── artifact_registry
-#
-# Workload Identity SAs are platform (not app) on purpose: their iam_member
-# strings gate access to the platform-owned secrets (cloudsql connection,
-# storage HMAC keys) AND to the app-owned ones — keeping them here makes every
-# cross-stack edge point the same way (app -> platform), so the graph stays
-# acyclic.
-# ---------------------------------------------------------------------------
+# PLATFORM stack: the long-lived foundation (APIs, VPC, CMEK, GKE, Cloud SQL,
+# storage, registry, Workload Identity SAs). The delivery layer consumes its
+# publish_output values from the sibling app-gcp/cloudflare stacks. WI SAs live
+# here (not app) so every cross-stack edge points app -> platform, keeping the
+# graph acyclic.
 
 locals {
-  # Workload Identity service accounts are named by ROLE (mattermost = prod
-  # Mattermost, mattermost-dev = dev copy, matterbridge = bridge), not by project:
-  # the project is already yourown-chat, so a yourown-chat-* prefix would just
-  # repeat it. Every other resource is named regionally (europe-west3-*).
   gke_location = var.gke_regional ? var.region : var.zone
 
-  # Kubernetes tenants (namespace / service account) that consume GCP secrets.
-  # mcp = the in-cluster MCP servers (helm/mcp-servers); they live in the
-  # mattermost namespace under their own KSA so their GCP access (read-only
-  # observability) is scoped independently of the Mattermost workload.
+  # Kubernetes tenants (namespace / KSA) that consume GCP secrets. mcp = the
+  # in-cluster MCP servers, scoped independently of the Mattermost workload.
   ns = {
     mattermost   = { namespace = "mattermost", ksa = "mattermost" }
     matterbridge = { namespace = "matterbridge", ksa = "matterbridge" }
@@ -50,11 +22,9 @@ locals {
     stack       = "yourown-chat-platform-gcp"
   }, var.extra_labels)
 
-  # ALL APIs the product needs (platform AND app), enabled in ONE place: the app
-  # stack owns no project_services so the two stacks can never fight over the
-  # same google_project_service resources. The bootstrap set
-  # (cloudresourcemanager, iam, iamcredentials, serviceusage, sts,
-  # secretmanager) is enabled by hand in README.md before Terraform runs.
+  # ALL APIs (platform AND app) enabled here, so the two stacks never contend
+  # over google_project_service. The bootstrap set is enabled by hand first
+  # (README.md).
   activate_apis = concat([
     "compute.googleapis.com",
     "container.googleapis.com",
@@ -68,9 +38,6 @@ locals {
     "cloudbuild.googleapis.com",
     "artifactregistry.googleapis.com",
     ],
-    # Artifact Analysis (vulnerability scanning) is a paid opt-in: the API is
-    # only enabled when the registry actually scans, so a default deployment
-    # carries no scanning surface (or cost) at all.
     var.artifact_registry_vulnerability_scanning ? ["containerscanning.googleapis.com"] : []
   )
 }
@@ -88,14 +55,14 @@ component "project_services" {
   }
 }
 
-# --- Workload Identity service accounts (per tenant) ------------------------
+# Workload Identity SAs. depends_on component.gke: the PROJECT.svc.id.goog pool
+# the workloadIdentityUser binding references only exists once a WI-enabled
+# cluster is created.
 component "workload_identity_mattermost" {
   source = "./modules/workload-identity"
 
   inputs = {
-    project_id = component.project_services.project_id
-    # Named by role: the prod Mattermost is the product, so its identity is
-    # `mattermost`; the dev copy is `mattermost-dev`, the bridge `matterbridge`.
+    project_id   = component.project_services.project_id
     account_id   = "mattermost"
     display_name = "Mattermost (prod) workload identity"
     namespace    = local.ns.mattermost.namespace
@@ -106,10 +73,6 @@ component "workload_identity_mattermost" {
     google = provider.google.this
   }
 
-  # The workloadIdentityUser binding member references PROJECT.svc.id.goog, the
-  # fixed Workload Identity pool that only comes into existence once a
-  # WI-enabled GKE cluster is created. Without this ordering a fresh apply races
-  # the cluster and 400s with "Identity Pool does not exist".
   depends_on = [component.gke]
 }
 
@@ -128,8 +91,6 @@ component "workload_identity_matterbridge" {
     google = provider.google.this
   }
 
-  # Needs the PROJECT.svc.id.goog pool created by the GKE cluster (see
-  # workload_identity_mattermost).
   depends_on = [component.gke]
 }
 
@@ -148,11 +109,11 @@ component "workload_identity_dev" {
     google = provider.google.this
   }
 
-  # Needs the PROJECT.svc.id.goog pool created by the GKE cluster (see
-  # workload_identity_mattermost).
   depends_on = [component.gke]
 }
 
+# Keyless read-only observability for the google-cloud MCP server (ADC resolves
+# to this GSA via Workload Identity -- no key, no secret).
 component "workload_identity_mcp" {
   source = "./modules/workload-identity"
 
@@ -162,9 +123,6 @@ component "workload_identity_mcp" {
     display_name = "In-cluster MCP servers workload identity"
     namespace    = local.ns.mcp.namespace
     ksa_name     = local.ns.mcp.ksa
-    # Keyless read-only observability for the google-cloud MCP server (Cloud
-    # Logging / Monitoring / Trace queries from chat). ADC inside the pod
-    # resolves to this GSA via Workload Identity -- no key, no secret.
     project_roles = [
       "roles/logging.viewer",
       "roles/monitoring.viewer",
@@ -176,12 +134,9 @@ component "workload_identity_mcp" {
     google = provider.google.this
   }
 
-  # Needs the PROJECT.svc.id.goog pool created by the GKE cluster (see
-  # workload_identity_mattermost).
   depends_on = [component.gke]
 }
 
-# --- Networking -------------------------------------------------------------
 component "network" {
   source = "./modules/network"
 
@@ -191,7 +146,6 @@ component "network" {
     labels     = local.common_labels
 
     # Reserve the Cloudflare-facing static IP only where a public ingress exists.
-    # The cloudflare stack's apex A record consumes it via upstream_input.
     ingress_static_ip = var.public_ingress_enabled
   }
 
@@ -200,40 +154,28 @@ component "network" {
   }
 }
 
-# --- Shared CMEK key (Cloud SQL + GCS + Secret Manager) ---------------------
-# One customer-managed Cloud KMS key wraps the data-encryption keys of every
-# at-rest store that supports CMEK. Gated by cmek_enabled; when false the
-# component is skipped and each store falls back to Google-managed keys. The
-# PUBLIC Artifact Registry does NOT use CMEK, so the service agent is not granted.
-# The app-gcp stack's secrets + release-source bucket reuse this key via
-# upstream_input (cmek_key_id).
+# One shared CMEK key for Cloud SQL + GCS + Secret Manager (skipped when
+# cmek_enabled = false -> Google-managed keys). grant_gke lets the GKE agent
+# use it for etcd application-layer Secrets encryption. The public registry
+# does not use CMEK.
 component "kms" {
   for_each = var.cmek_enabled ? toset(["default"]) : toset([])
 
   source = "./modules/kms"
 
   inputs = {
-    project_id = component.project_services.project_id
-    # Regional name (europe-west3); the project prefix is dropped since the
-    # project is already yourown-chat. Shared by Cloud SQL, GCS and Secret
-    # Manager, all in the one region.
+    project_id       = component.project_services.project_id
     location         = var.region
     protection_level = var.kms_protection_level
     rotation_period  = var.kms_rotation_period
     labels           = local.common_labels
 
-    # KMS objects are never deletable in GCP: adopt the pre-existing ring/key
-    # when re-bootstrapping this project (see kms_adopt_existing).
+    # KMS objects are never deletable in GCP: adopt the pre-existing ring/key.
     adopt_existing = var.kms_adopt_existing
 
-    # The public registry is not CMEK-encrypted, so the Artifact Registry
-    # service agent never wraps a DEK with this key.
     grant_artifact_registry = false
-
-    # Let the GKE service agent use this key for application-layer Secrets
-    # encryption of etcd (the gke component's database_encryption_key below).
-    grant_gke      = true
-    project_number = var.project_number
+    grant_gke               = true
+    project_number          = var.project_number
   }
 
   providers = {
@@ -242,7 +184,6 @@ component "kms" {
   }
 }
 
-# --- Object storage + Mattermost S3-compatible filestore credentials --------
 component "storage" {
   source = "./modules/storage"
 
@@ -252,7 +193,6 @@ component "storage" {
     force_destroy = var.storage_force_destroy
     labels        = local.common_labels
 
-    # CMEK: shared key (null when cmek_enabled = false).
     kms_key_name = one([for k in component.kms : k.crypto_key_id])
 
     create_filestore_hmac      = true
@@ -266,7 +206,6 @@ component "storage" {
   }
 }
 
-# --- GKE: one zonal cluster, two node pools (prod tainted + dev) ------------
 component "gke" {
   source = "./modules/gke"
 
@@ -283,10 +222,8 @@ component "gke" {
     deletion_protection        = var.gke_deletion_protection
     resource_labels            = local.common_labels
 
-    # Application-layer Secrets encryption (etcd) with the shared CMEK key. Null
-    # when cmek_enabled = false (component.kms is empty), which omits the block
-    # -> Google-managed at-rest only. Referencing the kms output makes gke wait
-    # for the key AND its GKE-agent encrypterDecrypter grant (grant_gke above).
+    # etcd Secrets encryption with the shared CMEK key (null omits the block ->
+    # Google-managed); referencing kms orders the key + its GKE-agent grant first.
     database_encryption_key = one([for k in component.kms : k.crypto_key_id])
   }
 
@@ -295,11 +232,8 @@ component "gke" {
   }
 }
 
-# --- Managed Postgres (prod) + connection secret ----------------------------
+# Prod-only (dev uses an in-cluster StatefulSet).
 component "cloudsql" {
-  # Skipped entirely when cloudsql_enabled = false (e.g. dev, which uses the
-  # in-cluster Postgres StatefulSet). Only the stack outputs consume this
-  # component, so gating it here has no cross-component ripple.
   for_each = var.cloudsql_enabled ? toset(["default"]) : toset([])
 
   source = "./modules/cloudsql"
@@ -316,9 +250,6 @@ component "cloudsql" {
     deletion_protection           = var.cloudsql_deletion_protection
     adopt_existing_instance       = var.cloudsql_adopt_existing_instance
 
-    # CMEK: shared key (null when cmek_enabled = false). The key's
-    # encrypterDecrypter grant for the Cloud SQL service agent is created by the
-    # kms component; referencing it here orders that grant before this instance.
     encryption_key_name = one([for k in component.kms : k.crypto_key_id])
 
     database_name = "mattermost"
@@ -329,12 +260,9 @@ component "cloudsql" {
     backup_retained_count          = var.cloudsql_backup_retained_count
     transaction_log_retention_days = var.cloudsql_txlog_retention_days
 
-    # Publish a ready-to-use connection URI to Secret Manager and let only the
-    # Mattermost workload read it.
     create_connection_secret    = true
     connection_secret_accessors = [component.workload_identity_mattermost.iam_member]
 
-    # Deliberate password rotation: bump cloudsql_password_rotation to rotate.
     password_rotation = var.cloudsql_password_rotation
 
     user_labels = local.common_labels
@@ -346,10 +274,6 @@ component "cloudsql" {
   }
 }
 
-# --- Unified container registry (one repo for all environments) -------------
-# Platform, not app: the repository is a stateful store of released images —
-# losing it would orphan every promoted tag. The app-gcp stack's image CI pushes to
-# it via upstream_input (artifact_registry_location / _repository_id).
 component "artifact_registry" {
   source = "./modules/artifact-registry"
 
@@ -361,7 +285,6 @@ component "artifact_registry" {
     kms_key_name  = var.artifact_registry_kms_key_name
     labels        = local.common_labels
 
-    # Scan pushed images for vulnerabilities (paid; API gated in activate_apis).
     vulnerability_scanning = var.artifact_registry_vulnerability_scanning
   }
 
