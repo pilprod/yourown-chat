@@ -35,22 +35,21 @@ deployment "eu" {
     region      = local.gcp_region
 
     # --- platform-gcp published values (linked stack, last-applied) -----------
-    gke_cluster_id                  = try(upstream_input.platform["gke_cluster_id"], null)
-    gcs_bucket_name                 = try(upstream_input.platform["gcs_bucket_name"], null)
-    workload_identity_emails        = try(upstream_input.platform["workload_identity_emails"], {})
-    artifact_registry_location      = try(upstream_input.platform["artifact_registry_location"], null)
-    artifact_registry_repository_id = try(upstream_input.platform["artifact_registry_repository_id"], null)
-    cmek_key_id                     = try(upstream_input.platform["cmek_key_id"], null)
-    workload_identity_members       = try(upstream_input.platform["workload_identity_members"], {})
-    ingress_ip_address              = try(upstream_input.platform["ingress_ip_address"], null)
+    gke_cluster_id                  = upstream_input.platform.gke_cluster_id
+    gcs_bucket_name                 = upstream_input.platform.gcs_bucket_name
+    workload_identity_emails        = upstream_input.platform.workload_identity_emails
+    artifact_registry_location      = upstream_input.platform.artifact_registry_location
+    artifact_registry_repository_id = upstream_input.platform.artifact_registry_repository_id
+    cmek_key_id                     = upstream_input.platform.cmek_key_id
+    workload_identity_members       = upstream_input.platform.workload_identity_members
+    ingress_ip_address              = upstream_input.platform.ingress_ip_address
 
     # Derived from the cloudflare stack's published outputs -- no hand-kept
     # mirror toggles. origin_tls_ready is true exactly when the Origin CA
     # cert/key Secret Manager versions exist; aop_enabled only flips the
     # ingress verify-client (the CA Secret is created regardless).
-    # Protected with try(..., false) so app-gcp can plan/apply before cloudflare is applied.
-    manage_ingress_origin_tls = try(upstream_input.cloudflare["origin_tls_ready"], false)
-    aop_enabled               = try(upstream_input.cloudflare["aop_enabled"], false)
+    manage_ingress_origin_tls = try(upstream_input.cloudflare.origin_tls_ready, false)
+    aop_enabled               = try(upstream_input.cloudflare.aop_enabled, false)
 
     # Chart pins -- bump deliberately.
     mattermost_operator_chart_version = "1.0.5"
@@ -67,7 +66,7 @@ deployment "eu" {
     # Derived from the cloudflare stack's published outputs -- origin_tls_ready
     # and zero_trust_ready are true when Secret Manager versions exist.
     # try() guards against a not-yet-reapplied cloudflare stack missing the output.
-    zero_trust_enabled = try(upstream_input.cloudflare["zero_trust_ready"], false)
+    zero_trust_enabled = try(upstream_input.cloudflare.zero_trust_ready, false)
 
 
 
