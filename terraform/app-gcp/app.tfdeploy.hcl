@@ -48,8 +48,9 @@ deployment "eu" {
     # mirror toggles. origin_tls_ready is true exactly when the Origin CA
     # cert/key Secret Manager versions exist; aop_enabled only flips the
     # ingress verify-client (the CA Secret is created regardless).
-    manage_ingress_origin_tls = upstream_input.cloudflare.origin_tls_ready
-    aop_enabled               = upstream_input.cloudflare.aop_enabled
+    # Protected with try(..., false) so app-gcp can plan/apply before cloudflare is applied.
+    manage_ingress_origin_tls = try(upstream_input.cloudflare.origin_tls_ready, false)
+    aop_enabled               = try(upstream_input.cloudflare.aop_enabled, false)
 
     # Chart pins -- bump deliberately.
     mattermost_operator_chart_version = "1.0.5"
@@ -63,10 +64,12 @@ deployment "eu" {
     # Per-server on/off lives in helm/mcp-servers/values.yaml.
     mcp_servers_enabled = true
 
-    # Ordering: the cloudflare stack must apply with its zero_trust_enabled
-    # first (it writes the mcp-tunnel-token Secret Manager secret this reads);
-    # a run racing ahead fails on the missing secret and simply re-runs.
-    zero_trust_enabled = true
+    # Derived from the cloudflare stack's published outputs -- origin_tls_ready
+    # and zero_trust_ready are true when Secret Manager versions exist.
+    # try() guards against a not-yet-reapplied cloudflare stack missing the output.
+    zero_trust_enabled = try(upstream_input.cloudflare.zero_trust_ready, false)
+
+
 
     # Cloud Build 2nd-gen GitHub connection, authorized once out-of-band in the
     # console (README.md); both repos are linked to it.
