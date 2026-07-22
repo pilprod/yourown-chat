@@ -24,7 +24,7 @@ tunnel:
   # Cloudflare Tunnel connector for Zero Trust access from personal MCP
   # clients (Claude) to the INTERNAL servers -- see docs/MCP.md. FLAGGED OFF
   # until the claude.ai <-> MCP-portal smoke test passes; enable together with
-  # zero_trust_mcp_enabled in BOTH stacks (cloudflare first: it creates the
+  # zero_trust_enabled in BOTH stacks (cloudflare first: it creates the
   # Secret Manager tunnel token this pod's mcp-tunnel Secret is built from).
   enabled: false
   image:

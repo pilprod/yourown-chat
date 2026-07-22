@@ -183,9 +183,9 @@ variable "mcp_servers_enabled" {
   default     = false
 }
 
-variable "zero_trust_mcp_enabled" {
+variable "zero_trust_enabled" {
   type        = bool
-  description = "Materialise the mcp-tunnel Kubernetes Secret (cloudflared run token, written to Secret Manager by the cloudflare stack's zero_trust_mcp component) so the tunnel pod in helm/mcp-servers can start. MUST follow the cloudflare stack's zero_trust_mcp_enabled: enabling it here first would 404 on the missing Secret Manager secret. The chart-side switch is tunnel.enabled in helm/mcp-servers/values.yaml."
+  description = "Materialise the mcp-tunnel Kubernetes Secret (cloudflared run token, written to Secret Manager by the cloudflare stack's zero_trust component) so the tunnel pod in helm/mcp-servers can start. MUST follow the cloudflare stack's zero_trust_enabled: enabling it here first would 404 on the missing Secret Manager secret. The chart-side switch is tunnel.enabled in helm/mcp-servers/values.yaml."
   default     = false
 }
 

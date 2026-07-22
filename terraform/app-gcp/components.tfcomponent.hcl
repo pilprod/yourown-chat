@@ -227,9 +227,9 @@ component "prod_secret_values" {
         mcp_google_workspace_client_secret = "mcp-google-workspace-client-secret"
       } : {},
       # cloudflared run token, written to Secret Manager by the cloudflare
-      # stack's zero_trust_mcp component -- so the flag here must only be
+      # stack's zero_trust component -- so the flag here must only be
       # enabled AFTER the cloudflare stack applied with its flag on.
-      var.zero_trust_mcp_enabled ? {
+      var.zero_trust_enabled ? {
         mcp_tunnel_token = "mcp-tunnel-token"
       } : {},
     )
@@ -347,7 +347,7 @@ component "cluster_secrets" {
         }
       } : {},
       # cloudflared run token for the Zero Trust tunnel pod (chart tunnel.enabled).
-      var.zero_trust_mcp_enabled ? {
+      var.zero_trust_enabled ? {
         mcp-tunnel = {
           name      = "mcp-tunnel"
           namespace = "mattermost"

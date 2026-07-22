@@ -111,23 +111,26 @@ component "origin_secrets" {
   }
 }
 
-# --- Zero Trust access to in-cluster MCP servers (FLAGGED, default off) ------
-# Personal MCP clients (Claude) -> Access policy (allowed emails) -> Cloudflare
-# Tunnel -> in-cluster MCP Services. The servers get zero public exposure; the
-# perimeter moves to the Cloudflare edge. OFF by default: enabling requires an
-# ACCOUNT-scoped API token (Cloudflare Tunnel:Edit + Access:Edit) and the
-# claude.ai <-> MCP-portal interop is still beta -- see docs/MCP.md for the
-# smoke test this gate exists for.
-component "zero_trust_mcp" {
-  for_each = var.zero_trust_mcp_enabled ? toset(["default"]) : toset([])
+# --- Zero Trust access to private in-cluster services (FLAGGED, default off) -
+# Client -> Access policy (allowed emails) -> Cloudflare Tunnel -> ClusterIP.
+# One tunnel serves both consumer kinds: personal MCP clients (Claude) reaching
+# the internal MCP servers, and BROWSERS reaching dev Mattermost (plain Access
+# login, replacing a would-be tailscale operator). The services get zero public
+# exposure; the perimeter moves to the Cloudflare edge. OFF by default:
+# enabling requires an ACCOUNT-scoped API token (Cloudflare Tunnel:Edit +
+# Access:Edit) and the claude.ai <-> MCP-portal interop is still beta -- see
+# docs/MCP.md for the smoke test this gate exists for (the dev Mattermost
+# browser path has no beta dependency).
+component "zero_trust" {
+  for_each = var.zero_trust_enabled ? toset(["default"]) : toset([])
 
-  source = "./modules/zero-trust-mcp"
+  source = "./modules/zero-trust"
 
   inputs = {
     account_id     = var.cloudflare_account_id
     zone_id        = one([for c in component.cloudflare : c.zone_id])
     domain         = var.domain
-    upstreams      = var.zero_trust_mcp_upstreams
+    upstreams      = var.zero_trust_upstreams
     allowed_emails = var.zero_trust_allowed_emails
   }
 
@@ -141,7 +144,7 @@ component "zero_trust_mcp" {
 # rationale as origin_secrets: sensitive values cannot cross a stack boundary).
 # app-gcp reads it back and creates the in-cluster mcp-tunnel Secret.
 component "zero_trust_secrets" {
-  for_each = var.zero_trust_mcp_enabled ? toset(["default"]) : toset([])
+  for_each = var.zero_trust_enabled ? toset(["default"]) : toset([])
 
   source = "./modules/secrets"
 
@@ -153,7 +156,7 @@ component "zero_trust_secrets" {
 
     secrets = {
       "mcp-tunnel-token" = {
-        value = one([for m in component.zero_trust_mcp : m.tunnel_token])
+        value = one([for m in component.zero_trust : m.tunnel_token])
       }
     }
   }

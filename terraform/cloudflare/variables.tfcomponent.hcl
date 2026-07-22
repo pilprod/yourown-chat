@@ -183,27 +183,27 @@ variable "cloudflare_manage_origin_cert" {
 }
 
 # --- Zero Trust MCP (flagged, default off) -----------------------------------
-variable "zero_trust_mcp_enabled" {
+variable "zero_trust_enabled" {
   type        = bool
-  description = "Expose the in-cluster MCP servers to personal MCP clients through Cloudflare Zero Trust (Access allow-list -> Tunnel -> ClusterIP; no public origin exposure). Requires cloudflare_account_id, zero_trust_mcp_upstreams and zero_trust_allowed_emails, and an ACCOUNT-scoped API token (Cloudflare Tunnel:Edit + Access: Apps and Policies:Edit). Default off: the claude.ai <-> MCP-portal OAuth interop is beta -- run the smoke test in docs/MCP.md before relying on it."
+  description = "Expose the in-cluster MCP servers to personal MCP clients through Cloudflare Zero Trust (Access allow-list -> Tunnel -> ClusterIP; no public origin exposure). Requires cloudflare_account_id, zero_trust_upstreams and zero_trust_allowed_emails, and an ACCOUNT-scoped API token (Cloudflare Tunnel:Edit + Access: Apps and Policies:Edit). Default off: the claude.ai <-> MCP-portal OAuth interop is beta -- run the smoke test in docs/MCP.md before relying on it."
   default     = false
 }
 
 variable "cloudflare_account_id" {
   type        = string
-  description = "Cloudflare ACCOUNT ID (Zero Trust org owner). Only needed when zero_trust_mcp_enabled = true."
+  description = "Cloudflare ACCOUNT ID (Zero Trust org owner). Only needed when zero_trust_enabled = true."
   default     = ""
 }
 
-variable "zero_trust_mcp_upstreams" {
+variable "zero_trust_upstreams" {
   type        = map(string)
-  description = "Hostname label => in-cluster service URL routed through the tunnel (one DNS record + Access app each). Only used when zero_trust_mcp_enabled = true."
+  description = "Hostname label => in-cluster service URL routed through the tunnel (one DNS record + Access app each). Only used when zero_trust_enabled = true."
   default     = {}
 }
 
 variable "zero_trust_allowed_emails" {
   type        = list(string)
-  description = "Emails admitted by the Access policy on every MCP hostname (Zero Trust Free covers 50 users). Only used when zero_trust_mcp_enabled = true."
+  description = "Emails admitted by the Access policy on every MCP hostname (Zero Trust Free covers 50 users). Only used when zero_trust_enabled = true."
   default     = []
 }
 

@@ -124,9 +124,9 @@ deployment "eu" {
 
     # Zero Trust tunnel Secret for personal-Claude access to the internal MCP
     # servers. FLAGGED OFF until the cloudflare stack applies with ITS
-    # zero_trust_mcp_enabled = true (the Secret Manager secret must exist
+    # zero_trust_enabled = true (the Secret Manager secret must exist
     # first) and the claude.ai <-> portal smoke test passes -- docs/MCP.md.
-    zero_trust_mcp_enabled = false
+    zero_trust_enabled = false
 
     # --- Image-build CI ------------------------------------------------------
     # The Cloud Build 2nd-gen GitHub connection is authorized once out-of-band in

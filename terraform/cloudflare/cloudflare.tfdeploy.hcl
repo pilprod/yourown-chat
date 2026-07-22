@@ -105,18 +105,24 @@ deployment "yourown-chat" {
     cloudflare_dnssec_enabled     = true
     cloudflare_manage_origin_cert = true
 
-    # --- Zero Trust MCP: FLAGGED OFF until the claude.ai <-> portal smoke test
-    # passes (docs/MCP.md). To enable: (1) re-issue the API token with ACCOUNT
-    # permissions Cloudflare Tunnel:Edit + Access: Apps and Policies:Edit,
-    # (2) fill cloudflare_account_id + zero_trust_allowed_emails, (3) flip the
-    # flag here and zero_trust_mcp_enabled in app.tfdeploy.hcl, plus
+    # --- Zero Trust (Access + Tunnel): FLAGGED OFF until the claude.ai <->
+    # portal smoke test passes (docs/MCP.md). To enable: (1) re-issue the API
+    # token with ACCOUNT permissions Cloudflare Tunnel:Edit + Access: Apps and
+    # Policies:Edit, (2) fill cloudflare_account_id + zero_trust_allowed_emails,
+    # (3) flip the flag here and zero_trust_enabled in app.tfdeploy.hcl, plus
     # tunnel.enabled in helm/mcp-servers/values.yaml.
-    zero_trust_mcp_enabled    = false
+    #
+    # Upstreams carry BOTH consumer kinds: the internal MCP servers (for
+    # personal Claude via the beta MCP portal) AND dev Mattermost (plain
+    # browser Access login -- the mature path, replacing a would-be tailscale
+    # operator; works regardless of the portal beta outcome).
+    zero_trust_enabled        = false
     cloudflare_account_id     = "" # account ID from the Cloudflare dashboard
     zero_trust_allowed_emails = [] # e.g. ["ilya@papou.email"]
-    zero_trust_mcp_upstreams = {
+    zero_trust_upstreams = {
       mcp-terraform    = "http://mcp-terraform.mattermost.svc.cluster.local:8080"
       mcp-google-cloud = "http://mcp-google-cloud.mattermost.svc.cluster.local:8080"
+      dev-mattermost   = "http://dev-mattermost.dev.svc.cluster.local:8065"
     }
   }
 }

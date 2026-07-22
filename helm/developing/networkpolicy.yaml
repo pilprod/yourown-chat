@@ -58,6 +58,36 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
+  # Zero Trust developer access to the dev Mattermost: the ONLY cross-namespace
+  # ingress admitted into dev, and it is pinpoint -- just the cloudflared
+  # tunnel pod (mattermost ns, app=mcp-tunnel), just dev-mattermost, just 8065.
+  # The pod carries traffic that already passed the Cloudflare Access email
+  # allow-list (see terraform/cloudflare/modules/zero-trust); nothing else in
+  # the mattermost namespace (prod Mattermost included) can use this opening.
+  # Inert until the tunnel pod exists (helm/mcp-servers tunnel.enabled).
+  name: allow-zero-trust-tunnel
+  namespace: dev
+spec:
+  podSelector:
+    matchLabels:
+      app: dev-mattermost
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: mattermost
+          podSelector:
+            matchLabels:
+              app: mcp-tunnel
+      ports:
+        - protocol: TCP
+          port: 8065
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
   name: allow-dns
   namespace: dev
 spec:

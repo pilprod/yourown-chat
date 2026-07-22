@@ -118,25 +118,33 @@ Image pins: both new servers currently ride upstream rolling tags (`latest`)
 | RedotPay | no public API |
 | Apple Music | MusicKit requires Apple Developer program + user tokens; no maintained MCP server |
 
-## Zero Trust: personal Claude → internal MCP servers (flagged off)
+## Zero Trust: private services for people, not the public (flagged off)
 
-The internal servers (terraform, google-cloud) have no auth of their own —
-they trust the network perimeter. The Zero Trust layer moves that perimeter to
-the Cloudflare edge so a personal MCP client (Claude) can reach them without
-making them public:
+The internal MCP servers (terraform, google-cloud) have no auth of their own,
+and dev Mattermost is deliberately unreachable from outside the cluster. The
+Zero Trust layer moves the perimeter to the Cloudflare edge so authorised
+people reach them without making anything public — and without deploying a
+tailscale operator for dev access:
 
 ```
-Claude (custom connector) → MCP Server Portal (beta, dashboard)
-  → Access policy (allowed emails, Google SSO / one-time PIN)
+Claude (custom connector) → MCP Server Portal (beta, dashboard) ┐
+Browser → https://dev-mattermost.yourown.chat (no beta involved) ┤
+  → Access policy (allowed emails, Google SSO / one-time PIN)    ┘
   → Cloudflare Tunnel (outbound-only cloudflared pod, mattermost ns)
-  → mcp-terraform / mcp-google-cloud ClusterIP  (no public exposure at all)
+  → mcp-terraform / mcp-google-cloud / dev-mattermost ClusterIP
 ```
 
-Everything fits the Zero Trust **Free** plan: 50 seats (only personal-Claude
-users consume one; Mattermost chat users go in-cluster and consume none),
-tunnel and Access apps are free.
+Everything fits the Zero Trust **Free** plan: 50 seats (only Zero Trust users
+consume one; Mattermost chat users go in-cluster and consume none), tunnel and
+Access apps are free.
 
-**Why it is flagged off** (`zero_trust_mcp_enabled = false` in both stacks +
+The dev Mattermost path is plain browser Access — the mature, non-beta part of
+Cloudflare: open the URL, pass the email allow-list, use dev. Only the
+cloudflared pod is admitted into the dev namespace (allow-zero-trust-tunnel
+NetworkPolicy: pod-exact, port 8065), so this opens nothing else. It works
+regardless of how the MCP-portal smoke test below turns out.
+
+**Why it is flagged off** (`zero_trust_enabled = false` in both stacks +
 `tunnel.enabled: false` in the chart): the claude.ai web/mobile connector has
 a KNOWN OAuth interop issue against Access-fronted MCP portals (Claude Code
 works against the same URL) — see the smoke test below. The code is ready;
@@ -148,10 +156,11 @@ the flags flip once the test passes.
    `Cloudflare Tunnel:Edit` + `Access: Apps and Policies:Edit` (keep the
    existing zone permissions). Update the varset.
 2. `cloudflare.tfdeploy.hcl`: fill `cloudflare_account_id` and
-   `zero_trust_allowed_emails`, set `zero_trust_mcp_enabled = true` → apply.
+   `zero_trust_allowed_emails`, set `zero_trust_enabled = true` → apply.
    Creates the tunnel (+ token in Secret Manager `mcp-tunnel-token`), DNS,
-   Access apps for `mcp-terraform.yourown.chat` / `mcp-google-cloud.yourown.chat`.
-3. `app.tfdeploy.hcl`: `zero_trust_mcp_enabled = true` → apply. Materialises
+   Access apps for `mcp-terraform.yourown.chat` /
+   `mcp-google-cloud.yourown.chat` / `dev-mattermost.yourown.chat`.
+3. `app.tfdeploy.hcl`: `zero_trust_enabled = true` → apply. Materialises
    the in-cluster `mcp-tunnel` Secret.
 4. `helm/mcp-servers/values.yaml`: `tunnel.enabled: true` → release. The
    cloudflared pod connects outbound; hostnames go live behind Access.
