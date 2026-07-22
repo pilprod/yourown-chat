@@ -83,14 +83,16 @@ deployment "eu" {
     # true exactly when the Origin CA cert/key Secret Manager versions exist
     # (cloudflare public_ingress_enabled AND manage_origin_cert), so app-gcp reads
     # those secrets only once they are populated and the toggle needs no hand-sync.
-    manage_ingress_origin_tls = upstream_input.cloudflare.origin_tls_ready
+    # Protected with try(..., false) so app-gcp can plan/apply before cloudflare is applied.
+    manage_ingress_origin_tls = try(upstream_input.cloudflare.origin_tls_ready, false)
 
     # Authenticated Origin Pulls (per-hostname mTLS). DERIVED from the cloudflare
     # stack's published aop_enabled -- a single root toggle (cloudflare_aop_enabled)
     # drives both the edge (present the self-generated client cert) and this
     # (ingress verify-client "on"). The cloudflare-origin-pull-ca Secret is created
     # regardless (so annotation parsing never 403s); this only flips enforcement.
-    aop_enabled = upstream_input.cloudflare.aop_enabled
+    # Protected with try(..., false) so app-gcp can plan/apply before cloudflare is applied.
+    aop_enabled = try(upstream_input.cloudflare.aop_enabled, false)
 
     # --- Cluster bootstrap (Terraform-managed Helm releases) ------------------
     # mattermost-operator + ingress-nginx install automatically once the
