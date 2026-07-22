@@ -36,13 +36,13 @@ deployment "yourown-chat" {
     region     = local.gcp_region
 
     # --- platform-gcp published values (linked stack, last-applied) -----------
-    ingress_ip_address        = upstream_input.platform.ingress_ip_address
-    cmek_key_id               = upstream_input.platform.cmek_key_id
-    workload_identity_members = upstream_input.platform.workload_identity_members
+    ingress_ip_address        = try(upstream_input.platform.ingress_ip_address, null)
+    cmek_key_id               = try(upstream_input.platform.cmek_key_id, null)
+    workload_identity_members = try(upstream_input.platform.workload_identity_members, {})
 
     # Derived from the single root toggle: platform publishes a null ingress IP
     # when its public_ingress_enabled is false.
-    public_ingress_enabled = upstream_input.platform.ingress_ip_address != null
+    public_ingress_enabled = try(upstream_input.platform.ingress_ip_address, null) != null
 
     cloudflare_api_token = store.varset.cloudflare.cloudflare_api_token
     domain               = "yourown.chat"
