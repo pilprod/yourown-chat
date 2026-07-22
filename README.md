@@ -577,8 +577,14 @@ Custom Token**, scoped to the `yourown.chat` zone only:
 | Zone → Single Redirect | Edit | the www→apex redirect (default on) |
 | Zone → SSL and Certificates | Edit | issuing the Origin CA cert (default on) |
 | Zone → Zone WAF | Edit | only if you enable WAF/rate-limit rules |
+| Account → Cloudflare Tunnel | Edit | only if `zero_trust_enabled = true` (the tunnel) |
+| Account → Access: Apps and Policies | Edit | only if `zero_trust_enabled = true` (Access apps/policies) |
 
 **Zone Resources**: `Include → Specific zone → yourown.chat`.
+**Account Resources** (only for the two Zero Trust rows above): `Include →
+Specific account → your account`. Without these two ACCOUNT-scoped permissions
+the Zero Trust resources fail with **error 10000 (Authentication error)** —
+tunnels and Access apps are account-level, not zone-level.
 
 **Do not IP-filter the token** for HCP-managed runs: plan/apply execute from
 dynamic AWS egress IPs that are *not* in HCP's published ranges, so an
