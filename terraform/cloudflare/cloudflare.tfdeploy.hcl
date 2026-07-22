@@ -105,20 +105,20 @@ deployment "yourown-chat" {
     cloudflare_dnssec_enabled     = true
     cloudflare_manage_origin_cert = true
 
-    # --- Zero Trust (Access + Tunnel): FLAGGED OFF until the claude.ai <->
-    # portal smoke test passes (docs/MCP.md). To enable: (1) re-issue the API
-    # token with ACCOUNT permissions Cloudflare Tunnel:Edit + Access: Apps and
-    # Policies:Edit, (2) fill cloudflare_account_id + zero_trust_allowed_emails,
-    # (3) flip the flag here and zero_trust_enabled in app.tfdeploy.hcl, plus
-    # tunnel.enabled in helm/mcp-servers/values.yaml.
+    # --- Zero Trust (Access + Tunnel): ENABLED. The one prerequisite Terraform
+    # cannot do for you: the API token in the varset must carry ACCOUNT
+    # permissions (Cloudflare Tunnel:Edit + Access: Apps and Policies:Edit) on
+    # top of the existing zone ones -- re-issue it BEFORE applying, or this
+    # apply fails with an authorization error. The account ID is derived from
+    # the zone lookup automatically.
     #
     # Upstreams carry BOTH consumer kinds: the internal MCP servers (for
-    # personal Claude via the beta MCP portal) AND dev Mattermost (plain
-    # browser Access login -- the mature path, replacing a would-be tailscale
-    # operator; works regardless of the portal beta outcome).
-    zero_trust_enabled        = false
-    cloudflare_account_id     = "" # account ID from the Cloudflare dashboard
-    zero_trust_allowed_emails = [] # e.g. ["ilya@papou.email"]
+    # personal Claude via the beta MCP portal -- smoke test in docs/MCP.md; the
+    # flag is the kill switch if the interop misbehaves) AND dev Mattermost
+    # (plain browser Access login -- the mature path, replacing a would-be
+    # tailscale operator; works regardless of the portal beta outcome).
+    zero_trust_enabled        = true
+    zero_trust_allowed_emails = ["ilya@papou.email", "popov.pilprod@gmail.com"]
     zero_trust_upstreams = {
       mcp-terraform    = "http://mcp-terraform.mattermost.svc.cluster.local:8080"
       mcp-google-cloud = "http://mcp-google-cloud.mattermost.svc.cluster.local:8080"

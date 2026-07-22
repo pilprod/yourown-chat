@@ -122,11 +122,12 @@ deployment "eu" {
     # (servers.<name>.enabled); this only gates the profile as a whole.
     mcp_servers_enabled = true
 
-    # Zero Trust tunnel Secret for personal-Claude access to the internal MCP
-    # servers. FLAGGED OFF until the cloudflare stack applies with ITS
-    # zero_trust_enabled = true (the Secret Manager secret must exist
-    # first) and the claude.ai <-> portal smoke test passes -- docs/MCP.md.
-    zero_trust_enabled = false
+    # Zero Trust tunnel Secret (cloudflared token) for the private-service
+    # tunnel (internal MCP servers + dev Mattermost). ORDERING: the cloudflare
+    # stack must apply with its zero_trust_enabled = true FIRST (it writes the
+    # Secret Manager mcp-tunnel-token this reads); an app run racing ahead of
+    # that fails on the missing secret and simply re-runs after cloudflare.
+    zero_trust_enabled = true
 
     # --- Image-build CI ------------------------------------------------------
     # The Cloud Build 2nd-gen GitHub connection is authorized once out-of-band in

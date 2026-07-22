@@ -144,39 +144,44 @@ cloudflared pod is admitted into the dev namespace (allow-zero-trust-tunnel
 NetworkPolicy: pod-exact, port 8065), so this opens nothing else. It works
 regardless of how the MCP-portal smoke test below turns out.
 
-**Why it is flagged off** (`zero_trust_enabled = false` in both stacks +
-`tunnel.enabled: false` in the chart): the claude.ai web/mobile connector has
-a KNOWN OAuth interop issue against Access-fronted MCP portals (Claude Code
-works against the same URL) — see the smoke test below. The code is ready;
-the flags flip once the test passes.
+The layer ships **enabled** (`zero_trust_enabled = true` in both stacks,
+`tunnel.enabled: true` in the chart, allowed emails committed); the account ID
+is derived from the zone lookup. The flags are the **kill switch**: the
+claude.ai web/mobile connector has a KNOWN OAuth interop issue against
+Access-fronted MCP portals (Claude Code works against the same URL) — if the
+smoke test below fails, that path simply stays unused (or flip the flags off);
+nothing else depends on it.
 
-### Enabling (in order)
+### Rollout (in order)
 
-1. Re-issue the Cloudflare API token with ACCOUNT permissions:
-   `Cloudflare Tunnel:Edit` + `Access: Apps and Policies:Edit` (keep the
-   existing zone permissions). Update the varset.
-2. `cloudflare.tfdeploy.hcl`: fill `cloudflare_account_id` and
-   `zero_trust_allowed_emails`, set `zero_trust_enabled = true` → apply.
-   Creates the tunnel (+ token in Secret Manager `mcp-tunnel-token`), DNS,
-   Access apps for `mcp-terraform.yourown.chat` /
+1. **Prerequisite Terraform cannot do**: re-issue the Cloudflare API token
+   with ACCOUNT permissions `Cloudflare Tunnel:Edit` + `Access: Apps and
+   Policies:Edit` (keep the existing zone permissions), update the varset —
+   BEFORE applying, or the cloudflare apply fails on authorization.
+2. Apply **cloudflare**: tunnel (+ token in Secret Manager
+   `mcp-tunnel-token`), DNS, Access apps for `mcp-terraform.yourown.chat` /
    `mcp-google-cloud.yourown.chat` / `dev-mattermost.yourown.chat`.
-3. `app.tfdeploy.hcl`: `zero_trust_enabled = true` → apply. Materialises
-   the in-cluster `mcp-tunnel` Secret.
-4. `helm/mcp-servers/values.yaml`: `tunnel.enabled: true` → release. The
-   cloudflared pod connects outbound; hostnames go live behind Access.
+3. Apply **app-gcp**: materialises the in-cluster `mcp-tunnel` Secret. (A run
+   racing ahead of step 2 fails on the missing secret — just re-run.)
+4. Release: the cloudflared pod connects outbound; hostnames go live behind
+   Access. Until step 3 lands the pod waits in CreateContainerConfigError and
+   recovers on its own.
 5. Zero Trust dashboard (beta, no Terraform resource yet): create an **MCP
-   Server Portal**, register both hostnames as upstream servers, attach the
-   Access policy. The portal URL is what personal Claude connects to.
+   Server Portal**, register the two MCP hostnames as upstream servers, attach
+   the Access policy. The portal URL is what personal Claude connects to.
+   (dev Mattermost needs no portal — plain browser Access.)
 
-### Smoke test (the reason for the flag)
+### Smoke test (the reason the kill switch exists)
 
+0. Browser check first: `https://dev-mattermost.yourown.chat` → Access login →
+   dev Mattermost. No beta involved; validates tunnel + Access end-to-end.
 1. Add the portal URL as a custom connector in claude.ai from **web and
    phone**; Claude Code / desktop from macOS as the control group.
 2. Expected: OAuth → Access login (allowed email) → tools listed.
 3. Claude Code works but claude.ai web/phone fails at OAuth → the known
-   interop gap is still open: keep the flags off for claude.ai use, use
-   Claude Code/desktop and the Mattermost app meanwhile, and re-test later —
-   both sides are in active beta.
+   interop gap is still open: use Claude Code/desktop and the Mattermost app
+   meanwhile and re-test later — both sides are in active beta. The tunnel
+   stays useful regardless (dev Mattermost, Claude Code).
 
 ## Adding an in-cluster server
 

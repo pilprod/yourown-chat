@@ -127,7 +127,9 @@ component "zero_trust" {
   source = "./modules/zero-trust"
 
   inputs = {
-    account_id     = var.cloudflare_account_id
+    # Account ID is DERIVED from the zone lookup (the zone knows its owning
+    # account) -- no hand-copied dashboard value.
+    account_id     = one([for c in component.cloudflare : c.account_id])
     zone_id        = one([for c in component.cloudflare : c.zone_id])
     domain         = var.domain
     upstreams      = var.zero_trust_upstreams

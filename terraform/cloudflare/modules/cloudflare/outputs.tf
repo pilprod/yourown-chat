@@ -3,6 +3,11 @@ output "zone_id" {
   value       = data.cloudflare_zone.this.id
 }
 
+output "account_id" {
+  description = "Cloudflare account ID owning the zone. Feeds the zero-trust module (tunnels and Access apps are account-level), so no hand-copied account ID input is needed."
+  value       = data.cloudflare_zone.this.account_id
+}
+
 output "record_hostname" {
   description = "Fully-qualified hostname of the managed apex A record."
   value       = cloudflare_record.apex.hostname

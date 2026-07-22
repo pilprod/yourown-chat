@@ -21,12 +21,13 @@
 #     OAuth. See docs/MCP.md for the full integration matrix.
 
 tunnel:
-  # Cloudflare Tunnel connector for Zero Trust access from personal MCP
-  # clients (Claude) to the INTERNAL servers -- see docs/MCP.md. FLAGGED OFF
-  # until the claude.ai <-> MCP-portal smoke test passes; enable together with
-  # zero_trust_enabled in BOTH stacks (cloudflare first: it creates the
-  # Secret Manager tunnel token this pod's mcp-tunnel Secret is built from).
-  enabled: false
+  # Cloudflare Tunnel connector for Zero Trust access to the private services
+  # (internal MCP servers + dev Mattermost) -- see docs/MCP.md. Enabled
+  # together with zero_trust_enabled in both stacks; until the app-gcp apply
+  # materialises the mcp-tunnel Secret the pod waits in
+  # CreateContainerConfigError, then starts on its own. Disable here (and the
+  # stack flags) to kill the tunnel entirely.
+  enabled: true
   image:
     repository: cloudflare/cloudflared
     # TODO pin after first rollout (rolling upstream tag).
