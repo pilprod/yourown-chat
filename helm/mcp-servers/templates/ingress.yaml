@@ -1,11 +1,9 @@
 {{- range $name, $server := .Values.servers }}
 {{- if and $server.enabled $server.ingress }}
 ---
-# Public HTTPS route for servers whose OAuth 2.1 endpoints the user's BROWSER
-# must reach (the MCP endpoint itself stays protected: without a bearer token
-# the server answers 401, which is what triggers the per-user Connect flow in
-# Mattermost Agents). Served through the same Cloudflare -> ingress-nginx edge
-# as the product; the wildcard Origin CA cert covers *.yourown.chat subdomains.
+# Public HTTPS route for servers whose OAuth 2.1 endpoints the browser must
+# reach (the MCP endpoint stays 401-protected). Same Cloudflare -> ingress-nginx
+# edge as the product; the wildcard Origin CA cert covers *.yourown.chat.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
