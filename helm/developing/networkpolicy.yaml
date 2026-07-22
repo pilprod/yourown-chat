@@ -1,32 +1,8 @@
-# ---------------------------------------------------------------------------
-# Network isolation for the dev tenant namespace.
-#
-# The dev tenant shares ONE GKE cluster with prod (the mattermost/matterbridge
-# namespaces). These NetworkPolicies keep dev logically isolated from prod on
-# the pod network, enforced by GKE Dataplane V2 (no Calico add-on, no extra
-# cost). The posture is default-deny, then a small allow-list:
-#
-#   1. default-deny-all       - drop every ingress and egress not allowed below.
-#   2. allow-intra-namespace  - dev pods may talk to each other (dev Mattermost
-#                               <-> in-cluster Postgres, etc.).
-#   3. allow-dns              - egress to CoreDNS (kube-system) so name
-#                               resolution works.
-#   4. allow-egress-internet  - egress to public IPs only. The `except` blocks
-#                               cover the cluster's RFC1918 pod/service/node and
-#                               control-plane ranges, so dev can reach external
-#                               services BUT NOT any other in-cluster namespace
-#                               (prod Mattermost, matterbridge, kube-system pods
-#                               other than DNS). This is what isolates dev from
-#                               prod without having to add policy to prod.
-#
-# Ingress into dev is denied from every other namespace, so prod can never be
-# reached FROM dev and dev can never be reached FROM prod on the pod network.
-# NetworkPolicies are additive (a packet is allowed if ANY policy allows it).
-#
-# NOTE: the `except` list below must cover this cluster's Pod, Service and node
-# subnets plus the control-plane /28. They are RFC1918 in this platform; adjust
-# if the network module's ranges ever move outside RFC1918.
-# ---------------------------------------------------------------------------
+# Dev tenant network isolation (GKE Dataplane V2). Default-deny, then allow:
+# intra-namespace, DNS to kube-system, and egress to public IPs only. The
+# allow-egress-internet `except` list must cover this cluster's Pod/Service/node
+# subnets + control-plane /28 (RFC1918 here) -- that is what keeps dev from
+# reaching any other namespace. Policies are additive.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
