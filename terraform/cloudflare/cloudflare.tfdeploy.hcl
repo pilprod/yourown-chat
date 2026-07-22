@@ -97,4 +97,3 @@ publish_output "zero_trust_ready" {
   description = "True once the Cloudflare Zero Trust tunnel token Secret Manager version exists. app-gcp derives zero_trust_enabled from it."
   value       = deployment.yourown-chat.zero_trust_ready
 }
-
