@@ -155,6 +155,8 @@ component "prod_secret_values" {
   providers = {
     google = provider.google.this
   }
+
+  depends_on = [component.secrets]
 }
 
 # Namespaces + credential Secrets written straight to etcd, so no secret ever

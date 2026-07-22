@@ -92,3 +92,9 @@ publish_output "aop_enabled" {
   description = "Per-hostname Authenticated Origin Pulls toggle. app-gcp derives its ingress verify-client from it."
   value       = deployment.yourown-chat.aop_enabled
 }
+
+publish_output "zero_trust_ready" {
+  description = "True once the Cloudflare Zero Trust tunnel token Secret Manager version exists. app-gcp derives zero_trust_enabled from it."
+  value       = deployment.yourown-chat.zero_trust_ready
+}
+
