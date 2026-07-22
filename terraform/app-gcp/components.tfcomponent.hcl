@@ -209,8 +209,12 @@ component "cluster_secrets" {
             "tls.key" = component.prod_secret_values.values["mattermost_origin_tls_key"]
           }
         }
-        # Created whenever origin TLS is managed, not only when AOP is on:
-        # a missing auth-tls-secret fails nginx annotation parsing (403).
+      } : {},
+      # Separate ternary (shape differs from mattermost-origin-tls, which has
+      # `type`): merging two differently-typed objects in one map breaks the
+      # cond ? {...} : {} type unification. Created whenever origin TLS is
+      # managed, not only when AOP is on -- a missing auth-tls-secret 403s nginx.
+      var.manage_ingress_origin_tls ? {
         cloudflare-origin-pull-ca = {
           name      = "cloudflare-origin-pull-ca"
           namespace = "mattermost"
