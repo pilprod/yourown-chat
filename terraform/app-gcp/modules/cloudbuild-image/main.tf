@@ -1,18 +1,9 @@
 locals {
-  # The Cloud Build 2nd-gen GitHub connection is created out-of-band via the
-  # console OAuth flow (see README.md) and shared by every repository/trigger in
-  # the stack; here we only reference it by its deterministic resource ID.
-  connection_id = "projects/${var.project_id}/locations/${var.region}/connections/${var.connection_name}"
-
-  # Single unified image path (no tag) shared by every build, e.g.
-  # europe-west3-docker.pkg.dev/yourown-chat/docker/mattermost
-  # Each trigger pushes :$TAG_NAME (the git tag), :latest and :buildcache.
+  # Shared out-of-band Cloud Build 2nd-gen connection (console OAuth, README.md).
+  connection_id   = "projects/${var.project_id}/locations/${var.region}/connections/${var.connection_name}"
   image_repo_path = "${var.artifact_registry_location}-docker.pkg.dev/${var.project_id}/${var.artifact_registry_repository_id}/${var.image_name}"
 }
 
-# --- 2nd-gen repository on the shared, out-of-band GitHub connection --------
-# The connection itself is authorized once in the Cloud Build console (OAuth) and
-# lives outside Terraform; we only link the source repo to it here.
 resource "google_cloudbuildv2_repository" "this" {
   project           = var.project_id
   location          = var.region
@@ -70,15 +61,13 @@ resource "google_cloudbuild_trigger" "this" {
   }
 
   build {
-    # NOTE: no `images` block -- buildx pushes from inside the step (--push),
-    # including the :buildcache ref; listing images here would make Cloud Build
-    # try a second, redundant push after the step.
+    # No `images` block: buildx pushes from inside the step (--push); listing
+    # images would trigger a second redundant push.
 
     step {
       id   = "docker-build"
       name = "gcr.io/cloud-builders/docker"
-      # BuildKit/buildx is REQUIRED: the Mattermost Dockerfile uses RUN
-      # --mount=type=cache, which the legacy builder rejects.
+      # buildx required: the Dockerfile uses RUN --mount=type=cache.
       env = [
         "DOCKER_BUILDKIT=1",
         "PIPELINE_TAG=$TAG_NAME",
@@ -86,18 +75,8 @@ resource "google_cloudbuild_trigger" "this" {
         "PIPELINE_BUILD_ID=$BUILD_ID",
       ]
       entrypoint = "bash"
-      # Ported from the original upstream build script, minus the CICD_REPORT/
-      # notify plumbing: buildx with a registry cache (:buildcache ref) and the
-      # Mattermost version build-args, pushing :<tag> and :latest.
-      #
-      # ESCAPING (three interpolation layers): Terraform renders this heredoc,
-      # then Cloud Build scans the result for ITS $-substitutions, then bash
-      # runs it. Static values (image path, dockerfile) are inlined by
-      # Terraform. Bash variables use the BRACELESS $$VAR form only: HCL
-      # passes `$$` through untouched (it only escapes `$${`), Cloud Build
-      # unescapes `$$` -> `$`, bash expands. Braced `$${VAR}` must NOT be used
-      # here -- HCL would collapse it to `${VAR}`, which Cloud Build then
-      # rejects as an unknown substitution.
+      # Escaping: bash vars use the braceless $$VAR form (HCL passes `$$`
+      # through, Cloud Build unescapes to `$`). Braced `$${VAR}` must not appear.
       args = [
         "-ceu",
         <<-EOT

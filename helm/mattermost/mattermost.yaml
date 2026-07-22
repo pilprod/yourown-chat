@@ -1,34 +1,18 @@
-# Prod Mattermost, managed by the Mattermost Operator (installation.mattermost.com/v1beta1).
-# Requires the operator + CRDs to be installed first (see docs/DEPLOY.md).
-#
-# Scheduling: pinned to the dedicated prod node pool (nodeSelector tier=prod +
-# toleration for the dedicated=prod taint) so dev/bridge workloads can never
-# contend with prod for CPU/memory.
-#
-# Database  : external Cloud SQL (secret mattermost-db, created directly in etcd
-#             by Terraform (app-gcp cluster_secrets) from the Secret Manager
-#             value -- never through Cloud Deploy).
-# Filestore : external GCS via the S3-compatible interoperability endpoint
-#             (secret mattermost-filestore, created the same way).
-# Ingress   : public host yourown.chat, fronted by Cloudflare. ingress-nginx
-#             admits only Cloudflare source ranges (helm/ingress-nginx) and
-#             enforces Authenticated Origin Pulls (mTLS) + Full (Strict) TLS via
-#             the mattermost-origin-tls / cloudflare-origin-pull-ca Secrets.
-#
-# The bucket is injected by Cloud Deploy deploy parameters (from-param) on each
-# release. The image below is built and
-# pushed by the stack's image-CI components (terraform/) on git tags matching ^v.*-patched$.
+# Prod Mattermost (Mattermost Operator CR; operator + CRDs installed first).
+# Pinned to the prod node pool. DB (Cloud SQL) and filestore (GCS) are external
+# Secrets created directly in etcd by Terraform (app-gcp cluster_secrets), never
+# through Cloud Deploy. Ingress: public yourown.chat behind Cloudflare, with
+# Full (Strict) TLS + optional AOP mTLS. Image built by the image-CI on
+# ^v.*-patched$ tags; bucket injected via Cloud Deploy from-param.
 apiVersion: installation.mattermost.com/v1beta1
 kind: Mattermost
 metadata:
   name: mattermost
   namespace: mattermost
 spec:
-  # Custom (patched) image built by the image-CI components and pushed to the
-  # unified registry (docker). The operator assembles the full ref as
-  # "<image>:<version>", so `version` is the git tag Cloud Build produced.
+  # The operator assembles the ref as "<image>:<version>"; version is the
+  # pushed git tag (^v.*-patched$).
   image: "europe-west3-docker.pkg.dev/yourown-chat/docker/mattermost"
-  # Must match a pushed git tag matching ^v.*-patched$ (see docs/BUILD.md).
   version: "v11.8.3-patched"
   replicas: 1
 
@@ -36,19 +20,11 @@ spec:
     enabled: true
     host: "yourown.chat"
     ingressClass: nginx
-    # Full (Strict): serve the Cloudflare Origin CA keypair so the Cloudflare
-    # edge validates the origin over HTTPS. The mattermost-origin-tls Secret is
-    # created directly in etcd by Terraform (app-gcp cluster_secrets) from the
-    # cloudflare stack's Origin CA cert/key -- not via CSI.
     tlsSecret: mattermost-origin-tls
     annotations:
-      # Authenticated Origin Pulls (mTLS): the origin only completes the TLS
-      # handshake when the caller presents the client cert from OUR Cloudflare
-      # zone (closes the shared-Cloudflare-IP gap). auth-tls-verify-client is
-      # toggled by the aop_verify_client deploy parameter -- "on" only when the
-      # cloudflare stack has AOP enabled AND the cloudflare-origin-pull-ca Secret
-      # exists (Terraform-created when aop_enabled). "off" = Full (Strict) TLS
-      # only; nginx then ignores auth-tls-secret, so the CA need not exist.
+      # AOP mTLS toggle. verify-client "on" requires the cloudflare-origin-pull-ca
+      # Secret; "off" = Full (Strict) TLS only. The auth-tls-secret is loaded by
+      # nginx regardless of verify-client, so the CA Secret must always exist.
       nginx.ingress.kubernetes.io/auth-tls-verify-client: "off" # from-param: ${aop_verify_client}
       nginx.ingress.kubernetes.io/auth-tls-secret: "mattermost/cloudflare-origin-pull-ca"
       nginx.ingress.kubernetes.io/auth-tls-verify-depth: "1"

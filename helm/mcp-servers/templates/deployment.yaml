@@ -1,0 +1,80 @@
+{{- range $name, $server := .Values.servers }}
+{{- if $server.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-{{ $name }}
+  labels:
+    app: mcp-{{ $name }}
+    app.kubernetes.io/part-of: mcp-servers
+spec:
+  replicas: {{ $server.replicaCount | default 1 }}
+  selector:
+    matchLabels:
+      app: mcp-{{ $name }}
+  template:
+    metadata:
+      labels:
+        app: mcp-{{ $name }}
+        app.kubernetes.io/part-of: mcp-servers
+    spec:
+      {{- with $server.serviceAccountName }}
+      serviceAccountName: {{ . }}
+      {{- end }}
+      securityContext:
+        {{- include "mcp-servers.valueOrDefault" (dict "server" $server "defaults" $.Values.defaults "key" "podSecurityContext") | nindent 8 }}
+      containers:
+        - name: {{ $name }}
+          image: "{{ $server.image.repository }}:{{ $server.image.tag }}"
+          imagePullPolicy: {{ $server.image.pullPolicy | default "IfNotPresent" }}
+          securityContext:
+            {{- include "mcp-servers.valueOrDefault" (dict "server" $server "defaults" $.Values.defaults "key" "securityContext") | nindent 12 }}
+          {{- with $server.command }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $server.args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $server.env }}
+          env:
+            {{- range $k, $v := . }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          {{- end }}
+          {{- with $server.secretEnvFrom }}
+          # Credentials arrive via a Terraform-created Kubernetes Secret (the
+          # platform's Secret Manager -> etcd path); never from chart values.
+          envFrom:
+            - secretRef:
+                name: {{ . }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ $server.port }}
+              protocol: TCP
+          {{- with $server.health }}
+          readinessProbe:
+            httpGet:
+              path: {{ .path }}
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: {{ .path }}
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          {{- end }}
+          resources:
+            {{- include "mcp-servers.valueOrDefault" (dict "server" $server "defaults" $.Values.defaults "key" "resources") | nindent 12 }}
+      nodeSelector:
+        {{- include "mcp-servers.valueOrDefault" (dict "server" $server "defaults" $.Values.defaults "key" "nodeSelector") | nindent 8 }}
+      tolerations:
+        {{- include "mcp-servers.valueOrDefault" (dict "server" $server "defaults" $.Values.defaults "key" "tolerations") | nindent 8 }}
+{{- end }}
+{{- end }}

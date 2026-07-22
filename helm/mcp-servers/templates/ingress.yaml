@@ -1,0 +1,34 @@
+{{- range $name, $server := .Values.servers }}
+{{- if and $server.enabled $server.ingress }}
+---
+# Public HTTPS route for servers whose OAuth 2.1 endpoints the browser must
+# reach (the MCP endpoint stays 401-protected). Same Cloudflare -> ingress-nginx
+# edge as the product; the wildcard Origin CA cert covers *.yourown.chat.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mcp-{{ $name }}
+  labels:
+    app: mcp-{{ $name }}
+    app.kubernetes.io/part-of: mcp-servers
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - {{ $server.ingress.host }}
+      secretName: {{ $server.ingress.tlsSecret }}
+  rules:
+    - host: {{ $server.ingress.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: mcp-{{ $name }}
+                port:
+                  name: http
+{{- end }}
+{{- end }}

@@ -177,6 +177,18 @@ variable "matterbridge_enabled" {
   default     = true
 }
 
+variable "mcp_servers_enabled" {
+  type        = bool
+  description = "Deploy the in-cluster MCP (Model Context Protocol) servers with the prod Cloud Deploy stage. true -> the 'mcp-servers' Skaffold profile is appended to the prod target and helm/mcp-servers renders every server enabled in its values.yaml (the per-server switchboard); false -> no MCP servers are deployed. Vendor-hosted remote MCP endpoints (Figma, Miro, Cloudflare, Atlassian, ...) need no deployment and are unaffected -- see docs/MCP.md."
+  default     = false
+}
+
+variable "zero_trust_enabled" {
+  type        = bool
+  description = "Materialise the mcp-tunnel Kubernetes Secret (cloudflared run token, written to Secret Manager by the cloudflare stack's zero_trust component) so the tunnel pod in helm/mcp-servers can start. MUST follow the cloudflare stack's zero_trust_enabled: enabling it here first would 404 on the missing Secret Manager secret. The chart-side switch is tunnel.enabled in helm/mcp-servers/values.yaml."
+  default     = false
+}
+
 variable "dev_team_rbac_subjects" {
   type = list(object({
     kind = string

@@ -83,6 +83,7 @@ output "workload_identity_emails" {
     mattermost   = component.workload_identity_mattermost.email
     matterbridge = component.workload_identity_matterbridge.email
     dev          = component.workload_identity_dev.email
+    mcp          = component.workload_identity_mcp.email
   }
 }
 
@@ -93,6 +94,7 @@ output "workload_identity_members" {
     mattermost   = component.workload_identity_mattermost.iam_member
     matterbridge = component.workload_identity_matterbridge.iam_member
     dev          = component.workload_identity_dev.iam_member
+    mcp          = component.workload_identity_mcp.iam_member
   }
 }
 

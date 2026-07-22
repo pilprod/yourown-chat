@@ -1,0 +1,161 @@
+# In-cluster MCP servers, one entry per server under `servers:` (renders
+# Deployment + Service + NetworkPolicy named mcp-<key>). Per-server switchboard;
+# the whole set is gated by the app-gcp mcp_servers_enabled flag. Servers are
+# reachable only from the mattermost namespace unless an entry adds an ingress.
+# Credentials never live here -- set secretEnvFrom and create the Secret via the
+# app-gcp cluster_secrets component. See docs/MCP.md.
+
+tunnel:
+  # Cloudflare Tunnel connector for Zero Trust access to the private services
+  # (internal MCP servers + dev Mattermost). Enabled with zero_trust_enabled in
+  # both stacks; waits in CreateContainerConfigError until app-gcp materialises
+  # the mcp-tunnel Secret, then starts. See docs/MCP.md.
+  enabled: true
+  image:
+    repository: cloudflare/cloudflared
+    tag: "latest" # TODO pin after first rollout
+  secretEnvFrom: mcp-tunnel
+
+serviceAccount:
+  # Shared KSA bound (Workload Identity) to the platform `mcp` GSA -- keyless
+  # read-only observability. Servers opt in via servers.<name>.serviceAccountName.
+  create: true
+  name: mcp-servers
+
+defaults:
+  nodeSelector:
+    tier: prod
+  tolerations:
+    - key: dedicated
+      operator: Equal
+      value: prod
+      effect: NoSchedule
+
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    fsGroup: 65532
+
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+  networkPolicy:
+    enabled: true
+    # Namespaces whose pods may reach a server (one from-entry each). Servers
+    # with a public OAuth ingress add "ingress-nginx".
+    allowedNamespaces:
+      - mattermost
+
+servers:
+  # Official image. Registry lookups are tokenless; HCP Terraform
+  # (workspaces/runs/stacks) needs TFE_TOKEN from mcp-terraform-hcp. TFE_ADDRESS
+  # is fixed server-side (per-request overrides are rejected 403).
+  terraform:
+    enabled: true
+    image:
+      repository: hashicorp/terraform-mcp-server
+      tag: "0.5.2"
+      pullPolicy: IfNotPresent
+    port: 8080
+    env:
+      TRANSPORT_MODE: streamable-http
+      TRANSPORT_HOST: 0.0.0.0
+      TRANSPORT_PORT: "8080"
+      MCP_ENDPOINT: /mcp
+      MCP_ALLOWED_ORIGINS: "https://yourown.chat"
+      TFE_ADDRESS: "https://app.terraform.io"
+    secretEnvFrom: mcp-terraform-hcp
+    health:
+      path: /health
+
+  # Community @krzko/google-cloud-mcp (stdio) wrapped by supergateway. Keyless:
+  # runs under the mcp-servers KSA -> `mcp` GSA (viewer roles), ADC via the GKE
+  # metadata server. readOnlyRootFilesystem off: npx writes to $HOME.
+  google-cloud:
+    enabled: true
+    serviceAccountName: mcp-servers
+    image:
+      repository: supercorp/supergateway
+      tag: "latest" # TODO pin after first rollout
+    port: 8080
+    args:
+      - "--stdio"
+      - "npx -y @krzko/google-cloud-mcp"
+      - "--outputTransport"
+      - "streamableHttp"
+      - "--port"
+      - "8080"
+      - "--healthEndpoint"
+      - "/healthz"
+    env:
+      GOOGLE_CLOUD_PROJECT: "yourown-chat"
+      HOME: /tmp
+      NPM_CONFIG_CACHE: /tmp/.npm
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: false
+      capabilities:
+        drop:
+          - ALL
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    health:
+      path: /healthz
+
+  # Community taylorwilsdon/google_workspace_mcp in OAuth 2.1 multi-user mode:
+  # each user Connects under their own Google account (per-user tokens, own
+  # mail/calendar only). Needs a public ingress so the browser reaches its OAuth
+  # endpoints; the MCP endpoint stays 401-protected. OAuth client id/secret come
+  # from mcp-google-workspace-oauth. See docs/MCP.md.
+  google-workspace:
+    enabled: true
+    image:
+      repository: ghcr.io/taylorwilsdon/google_workspace_mcp
+      tag: "latest" # TODO pin after first rollout
+    port: 8000
+    args:
+      - "--transport"
+      - "streamable-http"
+      - "--tools"
+      - "gmail"
+      - "calendar"
+    env:
+      WORKSPACE_MCP_PORT: "8000"
+      HOME: /tmp
+      MCP_ENABLE_OAUTH21: "true"
+      WORKSPACE_EXTERNAL_URL: "https://mcp-google-workspace.yourown.chat"
+      # TLS terminates at ingress-nginx; the pod speaks plain http.
+      OAUTHLIB_INSECURE_TRANSPORT: "1"
+    secretEnvFrom: mcp-google-workspace-oauth
+    ingress:
+      host: mcp-google-workspace.yourown.chat
+      tlsSecret: mattermost-origin-tls
+    networkPolicy:
+      enabled: true
+      allowedNamespaces:
+        - mattermost
+        - ingress-nginx
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: false # persists OAuth grants under $HOME
+      capabilities:
+        drop:
+          - ALL

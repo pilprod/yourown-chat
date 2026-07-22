@@ -1,0 +1,55 @@
+{{- if .Values.tunnel.enabled }}
+---
+# Cloudflare Tunnel connector: outbound-only link carrying Access-authenticated
+# traffic to private services (internal MCP servers + dev Mattermost) with zero
+# public exposure. Ingress rules live in the cloudflare zero-trust module; the
+# pod runs with TUNNEL_TOKEN from the mcp-tunnel Secret. In the mattermost
+# namespace (dev admits it via allow-zero-trust-tunnel).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-tunnel
+  labels:
+    app: mcp-tunnel
+    app.kubernetes.io/part-of: mcp-servers
+spec:
+  replicas: {{ .Values.tunnel.replicaCount | default 1 }}
+  selector:
+    matchLabels:
+      app: mcp-tunnel
+  template:
+    metadata:
+      labels:
+        app: mcp-tunnel
+        app.kubernetes.io/part-of: mcp-servers
+    spec:
+      securityContext:
+        {{- toYaml .Values.defaults.podSecurityContext | nindent 8 }}
+      containers:
+        - name: cloudflared
+          image: "{{ .Values.tunnel.image.repository }}:{{ .Values.tunnel.image.tag }}"
+          imagePullPolicy: {{ .Values.tunnel.image.pullPolicy | default "IfNotPresent" }}
+          securityContext:
+            {{- toYaml .Values.defaults.securityContext | nindent 12 }}
+          args:
+            - tunnel
+            - --no-autoupdate
+            - --metrics
+            - 0.0.0.0:2000
+            - run
+          envFrom:
+            - secretRef:
+                name: {{ .Values.tunnel.secretEnvFrom }}
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: 2000
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.defaults.resources | nindent 12 }}
+      nodeSelector:
+        {{- toYaml .Values.defaults.nodeSelector | nindent 8 }}
+      tolerations:
+        {{- toYaml .Values.defaults.tolerations | nindent 8 }}
+{{- end }}

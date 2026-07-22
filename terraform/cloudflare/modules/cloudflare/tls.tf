@@ -1,23 +1,5 @@
-# ---------------------------------------------------------------------------
-# Origin TLS hardening.
-#
-#   * Origin CA certificate (ON by default) — issue a Cloudflare Origin CA cert
-#     (served by the GKE ingress) straight from Terraform, so Full (Strict) TLS
-#     has a matching origin cert. Needs the token to carry SSL and Certificates:
-#     Edit; the PEM + key are exposed as (sensitive) outputs to load into the
-#     platform mattermost-origin-tls-cert / -key secrets.
-#
-#   * Authenticated Origin Pulls (per-hostname mTLS, enforcement OFF by default)
-#     — make the edge present a client cert to the origin so only our Cloudflare
-#     zone can reach it. The client cert is SELF-GENERATED here (self-signed,
-#     client_auth): we own both ends, so the same PEM is Cloudflare's client cert
-#     AND the origin's verification CA. It is generated whenever the edge exists
-#     (not only when aop_enabled) so the cloudflare-origin-pull-ca Secret is
-#     always populated -- ingress-nginx loads auth-tls-secret regardless of
-#     verify-client, and a missing CA there fails annotation parsing (HTTP 403).
-#     Enforcement is gated by aop_enabled (edge presents the cert + origin
-#     verify-client on); when off the CA is loaded but inert.
-# ---------------------------------------------------------------------------
+# Origin TLS hardening: the Cloudflare Origin CA cert (served by the ingress for
+# Full (Strict) TLS) and the AOP client cert (below).
 
 resource "tls_private_key" "origin" {
   count = var.manage_origin_cert ? 1 : 0
@@ -47,11 +29,10 @@ resource "cloudflare_origin_ca_certificate" "origin" {
   requested_validity = var.origin_cert_validity_days
 }
 
-# Self-signed client keypair for AOP. Generated UNCONDITIONALLY (whenever this
-# module exists, i.e. public_ingress_enabled) so the origin's verification CA is
-# always available; enforcement is toggled separately by aop_enabled. The private
-# key is uploaded to Cloudflare (below) and kept in state; only the certificate
-# (public) is exported for the origin's cloudflare-origin-pull-ca Secret.
+# Self-signed AOP client keypair. Generated unconditionally so the origin's
+# verification CA is always populated (a missing one 403s nginx); enforcement is
+# gated separately by aop_enabled. Same self-signed PEM serves as both the edge
+# client cert and the origin CA (we own both ends).
 resource "tls_private_key" "aop" {
   algorithm = "RSA"
   rsa_bits  = 2048
