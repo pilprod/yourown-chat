@@ -132,6 +132,13 @@ servers:
       repository: ghcr.io/taylorwilsdon/google_workspace_mcp
       tag: "latest" # TODO pin after first rollout
     port: 8000
+    # The image entrypoint is `/bin/sh -c`. Supplying only Kubernetes args
+    # replaces its CMD and makes the shell interpret `--transport` as a shell
+    # option, so bypass the image entrypoint with the upstream launch command.
+    command:
+      - "uv"
+      - "run"
+      - "main.py"
     args:
       - "--transport"
       - "streamable-http"
