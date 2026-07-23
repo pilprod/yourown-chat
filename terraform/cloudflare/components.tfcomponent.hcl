@@ -106,6 +106,24 @@ component "zero_trust" {
   }
 }
 
+# Adopt the account's existing Zero Trust organization and keep its human-facing
+# team name/domain under Terraform control. Kept as a separate component so the
+# module-level import block is evaluated at a component root.
+component "zero_trust_organization" {
+  for_each = var.zero_trust_enabled ? toset(["default"]) : toset([])
+
+  source = "./modules/zero-trust-organization"
+
+  inputs = {
+    account_id = one([for c in component.cloudflare : c.account_id])
+    team_name  = var.zero_trust_team_name
+  }
+
+  providers = {
+    cloudflare = provider.cloudflare.this
+  }
+}
+
 # cloudflared run token -> Secret Manager (sensitive, cannot cross stacks);
 # app-gcp reads it back into the in-cluster mcp-tunnel Secret.
 component "zero_trust_secrets" {

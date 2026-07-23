@@ -159,8 +159,12 @@ nothing else depends on it.
 
 1. **Prerequisite Terraform cannot do**: re-issue the Cloudflare API token
    with ACCOUNT permissions `Cloudflare Tunnel:Edit` + `Access: Apps and
-   Policies:Edit` (keep the existing zone permissions), update the varset —
-   BEFORE applying, or the cloudflare apply fails on authorization.
+   Policies:Edit` + `Access: Organizations, Identity Providers, and
+   Groups:Edit` (keep the existing zone permissions), update the varset —
+   BEFORE applying, or the cloudflare apply fails on authorization. The stack
+   adopts the existing Zero Trust organization and renames its team/domain to
+   `yourown-chat` / `yourown-chat.cloudflareaccess.com`; clients using the old
+   `yellow-sunset-672e.cloudflareaccess.com` domain must be updated.
 2. Apply **cloudflare**: tunnel (+ token in Secret Manager
    `mcp-tunnel-token`), DNS, Access apps for `mcp-terraform.yourown.chat` /
    `mcp-google-cloud.yourown.chat` / `mcp-google-workspace.yourown.chat`.

@@ -201,6 +201,17 @@ variable "zero_trust_allowed_emails" {
   default     = []
 }
 
+variable "zero_trust_team_name" {
+  type        = string
+  description = "Cloudflare Zero Trust team name; also determines <team-name>.cloudflareaccess.com. The existing organization is adopted into Terraform state before it is updated."
+  default     = "yourown-chat"
+
+  validation {
+    condition     = can(regex("^[a-z0-9][a-z0-9-]*[a-z0-9]$", var.zero_trust_team_name))
+    error_message = "zero_trust_team_name must contain lowercase letters, digits, or hyphens and must start and end with a letter or digit."
+  }
+}
+
 variable "cloudflare_aop_enabled" {
   type        = bool
   description = "Enforce per-hostname Authenticated Origin Pulls. The self-signed client cert/CA is generated automatically (no material to supply); this only gates whether the edge presents it AND is the single root AOP toggle -- app-gcp derives its ingress verify-client from the published aop_enabled output. Off by default (Full (Strict) TLS only). MUST be applied before app-gcp."
