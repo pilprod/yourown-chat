@@ -141,10 +141,13 @@ component "prod_secret_values" {
         # with verify-client off, and a missing Secret 403s the whole host.
         cloudflare_origin_pull_ca = "cloudflare-origin-pull-ca"
       } : {},
+      # Created by component.secrets in THIS stack -- pass the computed full
+      # resource path (not a literal id) so the read defers to apply time and
+      # does not 404 before the secret exists.
       var.mcp_servers_enabled ? {
-        mcp_terraform_hcp_token            = "mcp-terraform-hcp-token"
-        mcp_google_workspace_client_id     = "mcp-google-workspace-client-id"
-        mcp_google_workspace_client_secret = "mcp-google-workspace-client-secret"
+        mcp_terraform_hcp_token            = component.secrets.secret_resource_ids["mcp-terraform-hcp-token"]
+        mcp_google_workspace_client_id     = component.secrets.secret_resource_ids["mcp-google-workspace-client-id"]
+        mcp_google_workspace_client_secret = component.secrets.secret_resource_ids["mcp-google-workspace-client-secret"]
       } : {},
       var.zero_trust_enabled ? {
         mcp_tunnel_token = "mcp-tunnel-token"
@@ -155,10 +158,6 @@ component "prod_secret_values" {
   providers = {
     google = provider.google.this
   }
-
-  # The mcp-* secrets are created by component.secrets in THIS stack; the
-  # data-source reads must run after they exist (cross-stack ones already do).
-  depends_on = [component.secrets]
 }
 
 # Namespaces + credential Secrets written straight to etcd, so no secret ever

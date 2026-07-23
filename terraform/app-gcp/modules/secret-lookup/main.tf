@@ -9,6 +9,10 @@
 data "google_secret_manager_secret_version" "this" {
   for_each = var.secret_ids
 
-  project = var.project_id
+  # A full resource path ("projects/.../secrets/NAME") carries its own project
+  # AND is a computed attribute of a secret created in THIS stack, which defers
+  # the read to apply time (so a same-stack secret exists before it is read).
+  # A short id is a plan-time literal for a secret another stack already made.
+  project = can(regex("^projects/", each.value)) ? null : var.project_id
   secret  = each.value
 }
