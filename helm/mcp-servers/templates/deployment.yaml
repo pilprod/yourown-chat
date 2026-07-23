@@ -58,18 +58,27 @@ spec:
               containerPort: {{ $server.port }}
               protocol: TCP
           {{- with $server.health }}
+          startupProbe:
+            httpGet:
+              path: {{ .path }}
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 30
           readinessProbe:
             httpGet:
               path: {{ .path }}
               port: http
             initialDelaySeconds: 3
             periodSeconds: 10
+            timeoutSeconds: 3
           livenessProbe:
             httpGet:
               path: {{ .path }}
               port: http
             initialDelaySeconds: 10
             periodSeconds: 20
+            timeoutSeconds: 3
           {{- end }}
           resources:
             {{- include "mcp-servers.valueOrDefault" (dict "server" $server "defaults" $.Values.defaults "key" "resources") | nindent 12 }}
