@@ -1,7 +1,8 @@
 # In-cluster MCP servers, one entry per server under `servers:` (renders
 # Deployment + Service + NetworkPolicy named mcp-<key>). Per-server switchboard;
 # the whole set is gated by the app-gcp mcp_servers_enabled flag. Servers are
-# reachable only from the mattermost namespace unless an entry adds an ingress.
+# reachable only from the mattermost namespace or the dedicated mcp-tunnel
+# namespace. Skaffold renders one release per server namespace.
 # Credentials never live here -- set secretEnvFrom and create the Secret via the
 # app-gcp cluster_secrets component. See docs/MCP.md.
 
@@ -54,10 +55,11 @@ defaults:
 
   networkPolicy:
     enabled: true
-    # Namespaces whose pods may reach a server (one from-entry each). Servers
-    # with a public OAuth ingress add "ingress-nginx".
+    # Mattermost is the only cross-namespace caller. The chart additionally
+    # permits the dedicated cloudflared connector for Zero Trust traffic.
     allowedNamespaces:
       - mattermost
+    tunnelNamespace: mcp-tunnel
 
 servers:
   # Official image. Registry lookups are tokenless; HCP Terraform
@@ -122,9 +124,8 @@ servers:
 
   # Community taylorwilsdon/google_workspace_mcp in OAuth 2.1 multi-user mode:
   # each user Connects under their own Google account (per-user tokens, own
-  # mail/calendar only). Needs a public ingress so the browser reaches its OAuth
-  # endpoints; the MCP endpoint stays 401-protected. OAuth client id/secret come
-  # from mcp-google-workspace-oauth. See docs/MCP.md.
+  # mail/calendar only). Its OAuth endpoints are reached through the
+  # Access-protected Cloudflare Tunnel, never a public Kubernetes Ingress.
   google-workspace:
     enabled: true
     image:
@@ -145,14 +146,6 @@ servers:
       # TLS terminates at ingress-nginx; the pod speaks plain http.
       OAUTHLIB_INSECURE_TRANSPORT: "1"
     secretEnvFrom: mcp-google-workspace-oauth
-    ingress:
-      host: mcp-google-workspace.yourown.chat
-      tlsSecret: mattermost-origin-tls
-    networkPolicy:
-      enabled: true
-      allowedNamespaces:
-        - mattermost
-        - ingress-nginx
     securityContext:
       allowPrivilegeEscalation: false
       readOnlyRootFilesystem: false # persists OAuth grants under $HOME

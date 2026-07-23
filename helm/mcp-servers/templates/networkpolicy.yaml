@@ -19,6 +19,14 @@ spec:
     - Ingress
   ingress:
     - from:
+        # cloudflared is isolated in its own namespace and reaches the
+        # ClusterIP only after Cloudflare Access has authenticated the request.
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $np.tunnelNamespace | quote }}
+          podSelector:
+            matchLabels:
+              app: mcp-tunnel
         {{- range $ns := $np.allowedNamespaces }}
         - namespaceSelector:
             matchLabels:
@@ -29,4 +37,81 @@ spec:
           port: {{ $server.port }}
 {{- end }}
 {{- end }}
+{{- end }}
+---
+# Namespace-wide isolation. Per-server policies above selectively reopen
+# ingress; egress permits DNS and encrypted calls to external APIs only.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  labels:
+    app.kubernetes.io/part-of: mcp-servers
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  labels:
+    app.kubernetes.io/part-of: mcp-servers
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-encrypted-external-egress
+  labels:
+    app.kubernetes.io/part-of: mcp-servers
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
+      ports:
+        - { protocol: TCP, port: 443 }
+        - { protocol: TCP, port: 7844 }
+        - { protocol: UDP, port: 7844 }
+{{- if .Values.tunnel.enabled }}
+---
+# cloudflared is the sole cross-namespace caller. Its namespace is isolated by
+# default-deny too, so explicitly allow it to reach MCP Service backends. The
+# namespace label deliberately excludes Mattermost and every other tenant.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-tunnel-to-mcp-upstreams
+  labels:
+    app.kubernetes.io/part-of: mcp-servers
+spec:
+  podSelector:
+    matchLabels:
+      app: mcp-tunnel
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              part-of: yourown-chat
+            matchExpressions:
+              - key: mcp-server
+                operator: Exists
+      ports:
+        - { protocol: TCP, port: 8080 }
+        - { protocol: TCP, port: 8000 }
 {{- end }}

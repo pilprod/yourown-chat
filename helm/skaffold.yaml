@@ -56,20 +56,42 @@ profiles:
         - mattermost/mattermost.yaml
 
   # In-cluster MCP servers, appended to prod by the app-gcp clouddeploy
-  # component when mcp_servers_enabled = true. ONE values-driven chart renders
-  # every enabled server (helm/mcp-servers/values.yaml is the per-server
-  # switchboard). Helm is used only to render; Cloud Deploy applies hydrated
-  # YAML. Must be listed AFTER prod: the patch targets /manifests, which exists
-  # only once the prod profile has populated it.
+  # component when mcp_servers_enabled = true. Each server is rendered into its
+  # own namespace; the Tunnel is a fourth, connector-only namespace. Helm is
+  # used only to render; Cloud Deploy applies hydrated YAML. Must be listed
+  # AFTER prod: the patch targets /manifests, which exists only once the prod
+  # profile has populated it.
   - name: mcp-servers
     patches:
       - op: add
         path: /manifests/helm
         value:
           releases:
-            - name: mcp-servers
+            - name: mcp-tunnel
               chartPath: mcp-servers
-              namespace: mattermost
+              namespace: mcp-tunnel
               createNamespace: false
               valuesFiles:
                 - mcp-servers/values.yaml
+                - mcp-servers/values-tunnel.yaml
+            - name: mcp-terraform
+              chartPath: mcp-servers
+              namespace: mcp-terraform
+              createNamespace: false
+              valuesFiles:
+                - mcp-servers/values.yaml
+                - mcp-servers/values-terraform.yaml
+            - name: mcp-google-cloud
+              chartPath: mcp-servers
+              namespace: mcp-google-cloud
+              createNamespace: false
+              valuesFiles:
+                - mcp-servers/values.yaml
+                - mcp-servers/values-google-cloud.yaml
+            - name: mcp-google-workspace
+              chartPath: mcp-servers
+              namespace: mcp-google-workspace
+              createNamespace: false
+              valuesFiles:
+                - mcp-servers/values.yaml
+                - mcp-servers/values-google-workspace.yaml

@@ -179,7 +179,7 @@ variable "matterbridge_enabled" {
 
 variable "mcp_servers_enabled" {
   type        = bool
-  description = "Deploy the in-cluster MCP (Model Context Protocol) servers with the prod Cloud Deploy stage. true -> the 'mcp-servers' Skaffold profile is appended to the prod target and helm/mcp-servers renders every server enabled in its values.yaml (the per-server switchboard); false -> no MCP servers are deployed. Vendor-hosted remote MCP endpoints (Figma, Miro, Cloudflare, Atlassian, ...) need no deployment and are unaffected -- see docs/MCP.md."
+  description = "Deploy the in-cluster MCP (Model Context Protocol) servers with the prod Cloud Deploy stage. true -> the 'mcp-servers' Skaffold profile renders every enabled server into its own namespace plus a dedicated Tunnel namespace; false -> no MCP servers are deployed. Vendor-hosted remote MCP endpoints (Figma, Miro, Cloudflare, Atlassian, ...) need no deployment and are unaffected -- see docs/MCP.md."
   default     = false
 }
 

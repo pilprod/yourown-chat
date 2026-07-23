@@ -7,13 +7,13 @@
 locals {
   gke_location = var.gke_regional ? var.region : var.zone
 
-  # Kubernetes tenants (namespace / KSA) that consume GCP secrets. mcp = the
-  # in-cluster MCP servers, scoped independently of the Mattermost workload.
+  # Kubernetes tenants (namespace / KSA) that consume GCP secrets. The Google
+  # Cloud MCP server alone needs a GCP identity, and gets its own namespace.
   ns = {
     mattermost   = { namespace = "mattermost", ksa = "mattermost" }
     matterbridge = { namespace = "matterbridge", ksa = "matterbridge" }
     dev          = { namespace = "dev", ksa = "dev-app" }
-    mcp          = { namespace = "mattermost", ksa = "mcp-servers" }
+    mcp          = { namespace = "mcp-google-cloud", ksa = "mcp-servers" }
   }
 
   common_labels = merge({
@@ -120,7 +120,7 @@ component "workload_identity_mcp" {
   inputs = {
     project_id   = component.project_services.project_id
     account_id   = "mcp-servers"
-    display_name = "In-cluster MCP servers workload identity"
+    display_name = "Google Cloud MCP workload identity"
     namespace    = local.ns.mcp.namespace
     ksa_name     = local.ns.mcp.ksa
     project_roles = [

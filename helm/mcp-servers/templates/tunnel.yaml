@@ -3,8 +3,9 @@
 # Cloudflare Tunnel connector: outbound-only link carrying Access-authenticated
 # traffic to private services (internal MCP servers + dev Mattermost) with zero
 # public exposure. Ingress rules live in the cloudflare zero-trust module; the
-# pod runs with TUNNEL_TOKEN from the mcp-tunnel Secret. In the mattermost
-# namespace (dev admits it via allow-zero-trust-tunnel).
+# pod runs with TUNNEL_TOKEN from the mcp-tunnel Secret in its dedicated
+# mcp-tunnel namespace; it is the only cross-namespace path admitted to MCP
+# services.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

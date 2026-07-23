@@ -1,0 +1,12 @@
+# terraform-only release in namespace mcp-terraform.
+tunnel:
+  enabled: false
+
+serviceAccount:
+  create: false
+
+servers:
+  google-cloud:
+    enabled: false
+  google-workspace:
+    enabled: false

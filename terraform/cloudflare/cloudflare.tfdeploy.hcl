@@ -47,18 +47,6 @@ deployment "yourown-chat" {
     cloudflare_api_token = store.varset.cloudflare.cloudflare_api_token
     domain               = "yourown.chat"
 
-    # Proxied subdomain for the google-workspace MCP server's OAuth 2.1 flow
-    # (browser must reach its authorize/callback URLs). Wildcard Origin CA
-    # cert covers it.
-    cloudflare_extra_records = {
-      mcp-google-workspace = {
-        name    = "mcp-google-workspace"
-        type    = "CNAME"
-        content = "yourown.chat"
-        proxied = true
-        comment = "google-workspace MCP server OAuth + MCP endpoint (Managed by Terraform)."
-      }
-    }
     cloudflare_proxied            = true
     cloudflare_ssl_mode           = "strict"
     cloudflare_always_use_https   = "on"
@@ -74,9 +62,9 @@ deployment "yourown-chat" {
     zero_trust_enabled        = true
     zero_trust_allowed_emails = ["ilya@papou.email", "popov.pilprod@gmail.com"]
     zero_trust_upstreams = {
-      mcp-terraform    = "http://mcp-terraform.mattermost.svc.cluster.local:8080"
-      mcp-google-cloud = "http://mcp-google-cloud.mattermost.svc.cluster.local:8080"
-      dev-mattermost   = "http://dev-mattermost.dev.svc.cluster.local:8065"
+      mcp-terraform        = "http://mcp-terraform.mcp-terraform.svc.cluster.local:8080"
+      mcp-google-cloud     = "http://mcp-google-cloud.mcp-google-cloud.svc.cluster.local:8080"
+      mcp-google-workspace = "http://mcp-google-workspace.mcp-google-workspace.svc.cluster.local:8000"
     }
   }
 }

@@ -170,6 +170,13 @@ component "cluster_secrets" {
       {
         dev        = { labels = { tier = "dev", "part-of" = "yourown-chat" } }
         mattermost = { labels = { tier = "prod", "part-of" = "yourown-chat" } }
+        # Every MCP server is an independent tenant.  This prevents a
+        # compromised server from reaching another server merely because both
+        # happen to be MCP workloads.  The Tunnel connector is isolated too.
+        mcp-terraform        = { labels = { tier = "prod", "part-of" = "yourown-chat", "mcp-server" = "terraform" } }
+        mcp-google-cloud     = { labels = { tier = "prod", "part-of" = "yourown-chat", "mcp-server" = "google-cloud" } }
+        mcp-google-workspace = { labels = { tier = "prod", "part-of" = "yourown-chat", "mcp-server" = "google-workspace" } }
+        mcp-tunnel           = { labels = { tier = "prod", "part-of" = "yourown-chat", "mcp-component" = "tunnel" } }
       },
       var.matterbridge_enabled ? {
         matterbridge = { labels = { tier = "dev", "part-of" = "yourown-chat" } }
@@ -228,7 +235,7 @@ component "cluster_secrets" {
       var.mcp_servers_enabled ? {
         mcp-terraform-hcp = {
           name      = "mcp-terraform-hcp"
-          namespace = "mattermost"
+          namespace = "mcp-terraform"
           labels    = { "app.kubernetes.io/part-of" = "mcp-servers" }
           data = {
             TFE_TOKEN = component.prod_secret_values.values["mcp_terraform_hcp_token"]
@@ -236,7 +243,7 @@ component "cluster_secrets" {
         }
         mcp-google-workspace-oauth = {
           name      = "mcp-google-workspace-oauth"
-          namespace = "mattermost"
+          namespace = "mcp-google-workspace"
           labels    = { "app.kubernetes.io/part-of" = "mcp-servers" }
           data = {
             GOOGLE_OAUTH_CLIENT_ID     = component.prod_secret_values.values["mcp_google_workspace_client_id"]
@@ -247,7 +254,7 @@ component "cluster_secrets" {
       var.zero_trust_enabled ? {
         mcp-tunnel = {
           name      = "mcp-tunnel"
-          namespace = "mattermost"
+          namespace = "mcp-tunnel"
           labels    = { "app.kubernetes.io/part-of" = "mcp-servers" }
           data = {
             TUNNEL_TOKEN = component.prod_secret_values.values["mcp_tunnel_token"]

@@ -1,0 +1,10 @@
+# google-cloud-only release in namespace mcp-google-cloud. This is the only
+# release that creates the Workload Identity Kubernetes ServiceAccount.
+tunnel:
+  enabled: false
+
+servers:
+  terraform:
+    enabled: false
+  google-workspace:
+    enabled: false

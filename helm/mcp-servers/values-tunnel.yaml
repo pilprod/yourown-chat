@@ -1,0 +1,12 @@
+# Connector-only release. It owns the single outbound Cloudflare Tunnel and no
+# MCP server workload, in a namespace separate from every server.
+serviceAccount:
+  create: false
+
+servers:
+  terraform:
+    enabled: false
+  google-cloud:
+    enabled: false
+  google-workspace:
+    enabled: false

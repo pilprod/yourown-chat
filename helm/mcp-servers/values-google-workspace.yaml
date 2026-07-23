@@ -1,0 +1,12 @@
+# google-workspace-only release in namespace mcp-google-workspace.
+tunnel:
+  enabled: false
+
+serviceAccount:
+  create: false
+
+servers:
+  terraform:
+    enabled: false
+  google-cloud:
+    enabled: false
