@@ -16,6 +16,13 @@ spec:
   version: "v11.8.3-patched"
   replicas: 1
 
+  # Keep the existing replica serving until its replacement is Ready. The
+  # operator renders RollingUpdate with maxSurge=1 and maxUnavailable=0, so a
+  # release temporarily schedules two pods and never tears the old one down
+  # first.
+  deploymentTemplate:
+    deploymentStrategyType: RollingUpdate
+
   ingress:
     enabled: true
     host: "yourown.chat"
@@ -50,7 +57,7 @@ spec:
         effect: NoSchedule
     resources:
       requests:
-        cpu: 250m
+        cpu: 25m
         memory: 512Mi
       limits:
         cpu: "1"
