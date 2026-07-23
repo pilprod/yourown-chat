@@ -50,8 +50,8 @@ defaults:
       cpu: 100m
       memory: 128Mi
     requests:
-      cpu: 100m
-      memory: 128Mi
+      cpu: 10m
+      memory: 32Mi
 
   networkPolicy:
     enabled: true
@@ -114,8 +114,8 @@ servers:
           - ALL
     resources:
       requests:
-        cpu: 100m
-        memory: 256Mi
+        cpu: 25m
+        memory: 64Mi
       limits:
         cpu: 500m
         memory: 512Mi
@@ -162,7 +162,7 @@ servers:
           - ALL
     resources:
       requests:
-        cpu: 100m
+        cpu: 25m
         memory: 128Mi
       limits:
         cpu: 500m
