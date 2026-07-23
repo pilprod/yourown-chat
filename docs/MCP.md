@@ -36,7 +36,7 @@ constraints (especially for consumer services without a public API).
 | Service | Server | Credentials |
 |---|---|---|
 | Terraform (Registry + **HCP Terraform**) | `hashicorp/terraform-mcp-server` (official) — registry docs tokenless; workspaces/runs/stacks on app.terraform.io once `TFE_TOKEN` is loaded | HCP team token in Secret Manager (`mcp-terraform-hcp-token`, placeholder seeded) |
-| Google Cloud (Logging, Monitoring, Trace) | `@krzko/google-cloud-mcp` (community) via supergateway | **none — keyless**: Workload Identity (`mcp-google-cloud/mcp-servers` KSA → `mcp` GSA, viewer roles) |
+| Google Cloud (Logging, Monitoring, Trace, Error Reporting) | `@google-cloud/observability-mcp@0.2.3` (Google, preview) via supergateway | **none — keyless**: Workload Identity (`mcp-google-cloud/mcp-servers` KSA → `mcp` GSA, viewer roles); quota project is `yourown-chat` |
 | Google Workspace (Gmail, Calendar) | `google_workspace_mcp` (community, native streamable-http) | OAuth client in Secret Manager + one-time user consent (below) |
 
 #### HCP Terraform token

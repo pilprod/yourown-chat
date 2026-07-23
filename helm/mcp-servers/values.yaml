@@ -83,9 +83,10 @@ servers:
     health:
       path: /health
 
-  # Community @krzko/google-cloud-mcp (stdio) wrapped by supergateway. Keyless:
-  # runs under the mcp-servers KSA -> `mcp` GSA (viewer roles), ADC via the GKE
-  # metadata server. readOnlyRootFilesystem off: npx writes to $HOME.
+  # Google @google-cloud/observability-mcp (stdio) wrapped by supergateway.
+  # Keyless: runs under the mcp-servers KSA -> `mcp` GSA (viewer roles), with
+  # ADC provided by the GKE metadata server. readOnlyRootFilesystem is disabled
+  # because npx writes the pinned package to its cache under $HOME.
   google-cloud:
     enabled: true
     serviceAccountName: mcp-servers
@@ -95,7 +96,7 @@ servers:
     port: 8080
     args:
       - "--stdio"
-      - "npx -y @krzko/google-cloud-mcp"
+      - "npx -y @google-cloud/observability-mcp@0.2.3"
       - "--outputTransport"
       - "streamableHttp"
       - "--port"
@@ -104,6 +105,7 @@ servers:
       - "/healthz"
     env:
       GOOGLE_CLOUD_PROJECT: "yourown-chat"
+      GOOGLE_CLOUD_QUOTA_PROJECT: "yourown-chat"
       HOME: /tmp
       NPM_CONFIG_CACHE: /tmp/.npm
     securityContext:

@@ -79,19 +79,19 @@ profiles:
               curl -sSf $retry
               http://mcp-google-workspace.mcp-google-workspace.svc.cluster.local:8000/health;
               init='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"cloud-deploy-smoke","version":"1.0"}}}';
-              curl -sSf $retry -X POST
+              terraform_init="$(curl -sSf $retry -X POST
               -H 'Content-Type: application/json'
               -H 'Accept: application/json, text/event-stream'
               -H 'Origin: https://yourown.chat'
               --data "$init"
-              http://mcp-terraform.mcp-terraform.svc.cluster.local:8080/mcp
-              >/dev/null;
-              curl -sSf $retry -X POST
+              http://mcp-terraform.mcp-terraform.svc.cluster.local:8080/mcp)";
+              printf '%s' "$terraform_init" | grep -q '"result"';
+              google_cloud_init="$(curl -sSf $retry -X POST
               -H 'Content-Type: application/json'
               -H 'Accept: application/json, text/event-stream'
               --data "$init"
-              http://mcp-google-cloud.mcp-google-cloud.svc.cluster.local:8080/mcp
-              >/dev/null;
+              http://mcp-google-cloud.mcp-google-cloud.svc.cluster.local:8080/mcp)";
+              printf '%s' "$google_cloud_init" | grep -q '"result"';
               code="$(curl -sS -o /dev/null -w '%{http_code}'
               -X POST
               -H 'Content-Type: application/json'
