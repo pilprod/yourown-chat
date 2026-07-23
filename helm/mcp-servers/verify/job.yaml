@@ -1,0 +1,33 @@
+# On-cluster verify Job template for the production MCP rollout. Skaffold
+# replaces the smoke-test container with the verifier declared in
+# helm/skaffold.yaml. The Job runs from the connector namespace and carries the
+# tunnel label so the existing least-privilege NetworkPolicies admit the same
+# upstream path that cloudflared uses.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: mcp-smoke
+  namespace: mcp-tunnel
+spec:
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 120
+  template:
+    metadata:
+      labels:
+        app: mcp-tunnel
+        app.kubernetes.io/component: verify
+        app.kubernetes.io/part-of: mcp-servers
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      nodeSelector:
+        tier: prod
+      tolerations:
+        - key: dedicated
+          operator: Equal
+          value: prod
+          effect: NoSchedule
+      containers:
+        # Replaced by Skaffold; the name must match the verify container.
+        - name: smoke-test
+          image: curlimages/curl:8.10.1

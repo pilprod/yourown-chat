@@ -25,7 +25,12 @@ component "clouddeploy" {
         require_approval = false
         verify           = true
       },
-      { name = "prod", profiles = ["prod"], require_approval = true, verify = false },
+      {
+        name             = "prod"
+        profiles         = ["prod"]
+        require_approval = true
+        verify           = var.mcp_servers_enabled
+      },
     ]
 
     mcp_servers_enabled = var.mcp_servers_enabled

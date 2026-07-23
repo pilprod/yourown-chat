@@ -177,7 +177,37 @@ nothing else depends on it.
    the Access policy. The portal URL is what personal Claude connects to.
    The portal URL is the address used by compatible personal MCP clients.
 
-### Smoke test (the reason the kill switch exists)
+### Automated rollout verification
+
+When MCP is enabled, the prod Cloud Deploy target runs
+`helm/mcp-servers/verify/job.yaml` after the deployments stabilize. The Job
+runs in `mcp-tunnel`, follows the same NetworkPolicy path as cloudflared, and
+checks:
+
+- each server's health endpoint;
+- an MCP `initialize` exchange with Terraform and Google Cloud;
+- the expected unauthenticated `401` from Google Workspace in OAuth 2.1 mode.
+
+Any failure marks verification and the rollout unsuccessful. Apply the
+`app-gcp` stack before cutting the first release with this check because it
+enables `VERIFY` on the prod Cloud Deploy target.
+
+### Manual smoke test
+
+Port-forward each private Service:
+
+```bash
+kubectl port-forward -n mcp-terraform svc/mcp-terraform 18080:8080
+curl -i http://127.0.0.1:18080/health
+
+kubectl port-forward -n mcp-google-cloud svc/mcp-google-cloud 18081:8080
+curl -i http://127.0.0.1:18081/healthz
+
+kubectl port-forward -n mcp-google-workspace svc/mcp-google-workspace 18082:8000
+curl -i http://127.0.0.1:18082/health
+```
+
+Then validate the external path:
 
 0. Browser check first: `https://mcp-google-workspace.yourown.chat` → Access
    login → Google OAuth Connect flow. This validates Tunnel + Access end-to-end.

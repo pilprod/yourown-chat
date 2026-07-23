@@ -109,7 +109,11 @@ the release is marked failed and prod is never offered.
 
 The `prod` target has `requireApproval = true`. In **Cloud Deploy →
 europe-west3 → releases**, review and **Approve** (or reject) the promotion.
-On approval the operator-managed prod Mattermost rolls out.
+On approval the operator-managed prod Mattermost and enabled MCP workloads
+roll out. When MCP is enabled, an in-cluster verify Job checks all three health
+endpoints, performs MCP initialization against Terraform and Google Cloud, and
+confirms that Google Workspace enforces OAuth. A failed check marks the rollout
+unsuccessful.
 
 ```bash
 # CLI alternative:

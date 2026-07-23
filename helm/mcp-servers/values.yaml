@@ -132,13 +132,13 @@ servers:
       repository: ghcr.io/taylorwilsdon/google_workspace_mcp
       tag: "latest" # TODO pin after first rollout
     port: 8000
-    # The image entrypoint is `/bin/sh -c`. Supplying only Kubernetes args
-    # replaces its CMD and makes the shell interpret `--transport` as a shell
-    # option, so bypass the image entrypoint with the upstream launch command.
+    # The image entrypoint is `/bin/sh -c`, while `uv run` tries to update
+    # /app/uv.lock. The hardened pod UID cannot write to /app, so bypass both
+    # the shell entrypoint and uv's project mutation by using the virtualenv
+    # already created by `uv sync` during the image build.
     command:
-      - "uv"
-      - "run"
-      - "main.py"
+      - "/app/.venv/bin/python"
+      - "/app/main.py"
     args:
       - "--transport"
       - "streamable-http"
@@ -148,6 +148,7 @@ servers:
     env:
       WORKSPACE_MCP_PORT: "8000"
       HOME: /tmp
+      PYTHONDONTWRITEBYTECODE: "1"
       MCP_ENABLE_OAUTH21: "true"
       WORKSPACE_EXTERNAL_URL: "https://mcp-google-workspace.yourown.chat"
       # TLS terminates at ingress-nginx; the pod speaks plain http.
@@ -159,3 +160,5 @@ servers:
       capabilities:
         drop:
           - ALL
+    health:
+      path: /health
