@@ -64,7 +64,7 @@ variable "cloudflare_api_token" {
   type        = string
   ephemeral   = true
   sensitive   = true
-  description = "Cloudflare API token scoped to the yourown.chat zone (Zone:Read, DNS:Edit, Zone Settings:Edit, Single Redirect:Edit; + SSL and Certificates:Edit if managing origin cert/AOP). Ephemeral: never persisted to state. Sourced from an HCP variable set (see README.md)."
+  description = "Cloudflare API token scoped to the yourown.chat zone (Zone:Read, DNS:Edit, Zone Settings:Edit, Single Redirect:Edit; + SSL and Certificates:Edit if managing origin cert/AOP). Zero Trust additionally needs account-level Cloudflare Tunnel:Edit, Access Apps and Policies:Edit, and Access Organizations Identity Providers and Groups:Edit. Ephemeral: never persisted to state. Sourced from an HCP variable set (see README.md)."
 }
 
 variable "domain" {
@@ -185,7 +185,7 @@ variable "cloudflare_manage_origin_cert" {
 # --- Zero Trust (flagged) ------------------------------------------------------
 variable "zero_trust_enabled" {
   type        = bool
-  description = "Expose private in-cluster services (internal MCP servers, dev Mattermost) through Cloudflare Zero Trust: Access email allow-list -> Tunnel -> ClusterIP, no public origin exposure. Requires zero_trust_upstreams, zero_trust_allowed_emails and an ACCOUNT-scoped API token (Cloudflare Tunnel:Edit + Access: Apps and Policies:Edit) -- the account ID itself is derived from the zone. The flag is the kill switch if the beta claude.ai <-> MCP-portal interop misbehaves (docs/MCP.md smoke test); the dev Mattermost browser path has no beta dependency."
+  description = "Expose private in-cluster services (internal MCP servers, dev Mattermost) through Cloudflare Zero Trust: Access email allow-list -> Tunnel -> ClusterIP, no public origin exposure. Requires zero_trust_upstreams, zero_trust_allowed_emails and an ACCOUNT-scoped API token (Cloudflare Tunnel:Edit + Access Apps and Policies:Edit + Access Organizations Identity Providers and Groups:Edit) -- the account ID itself is derived from the zone. The flag is the kill switch if the beta claude.ai <-> MCP-portal interop misbehaves (docs/MCP.md smoke test); the dev Mattermost browser path has no beta dependency."
   default     = false
 }
 

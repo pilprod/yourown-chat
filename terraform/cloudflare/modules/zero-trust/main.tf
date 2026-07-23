@@ -1,7 +1,9 @@
 # Zero Trust access to private in-cluster services: client -> Access policy
 # (allowed emails) -> Cloudflare Tunnel (outbound-only cloudflared pod) ->
 # ClusterIP, no public exposure. Requires an ACCOUNT-scoped API token
-# (Cloudflare Tunnel:Edit + Access: Apps and Policies:Edit).
+# (Cloudflare Tunnel:Edit + Access: Apps and Policies:Edit). The sibling
+# zero-trust-organization component additionally needs Access: Organizations,
+# Identity Providers, and Groups:Edit.
 
 # config_src = "cloudflare": ingress rules are pushed from here; the pod just
 # runs `tunnel run`.

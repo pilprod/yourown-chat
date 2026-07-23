@@ -582,12 +582,19 @@ Custom Token**, scoped to the `yourown.chat` zone only:
 | Zone → Zone WAF | Edit | only if you enable WAF/rate-limit rules |
 | Account → Cloudflare Tunnel | Edit | only if `zero_trust_enabled = true` (the tunnel) |
 | Account → Access: Apps and Policies | Edit | only if `zero_trust_enabled = true` (Access apps/policies) |
+| Account → Access: Organizations, Identity Providers, and Groups | Edit | only if `zero_trust_enabled = true` (read/update the Zero Trust team name and domain) |
 
 **Zone Resources**: `Include → Specific zone → yourown.chat`.
-**Account Resources** (only for the two Zero Trust rows above): `Include →
-Specific account → your account`. Without these two ACCOUNT-scoped permissions
-the Zero Trust resources fail with **error 10000 (Authentication error)** —
-tunnels and Access apps are account-level, not zone-level.
+**Account Resources** (only for the three Zero Trust rows above): `Include →
+Specific account → your account`. Without these ACCOUNT-scoped permissions the
+Zero Trust resources fail with **error 10000 (Authentication error)** or
+**failed to read Access Organization state** — tunnels, Access apps, and the
+organization/team settings are account-level, not zone-level.
+
+If the token predates Zero Trust organization management, re-issue it with all
+three account permissions and replace `cloudflare_api_token` in the HCP
+variable set before retrying the plan. Editing the token in Cloudflare does not
+update the already stored varset value automatically.
 
 **Do not IP-filter the token** for HCP-managed runs: plan/apply execute from
 dynamic AWS egress IPs that are *not* in HCP's published ranges, so an
