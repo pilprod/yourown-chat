@@ -173,7 +173,7 @@ variable "adopt_existing_namespaces" {
 
 variable "matterbridge_enabled" {
   type        = bool
-  description = "Deploy matterbridge (the chat bridge) as part of the dev Cloud Deploy stage. true -> the 'matterbridge' Skaffold profile is appended to the dev target (SA + NetworkPolicy + SecretProviderClass + Deployment rendered) and the matterbridge namespace is created; false -> the dev target renders only the dev tenant, matterbridge is not deployed, and its namespace is removed. The matterbridge-tokens Secret Manager secret is kept either way (preserves an operator-supplied token across a toggle)."
+  description = "Deploy matterbridge (the isolated chat bridge) as part of the dev Cloud Deploy stage. true -> the 'matterbridge' Skaffold profile is appended to the dev target (SA + NetworkPolicy + SecretProviderClass + Deployment rendered) and its dedicated namespace is created; false -> the dev target renders only the shared dev services and databases, and the matterbridge namespace is removed. The matterbridge-tokens Secret Manager secret is kept either way (preserves an operator-supplied token across a toggle)."
   default     = true
 }
 

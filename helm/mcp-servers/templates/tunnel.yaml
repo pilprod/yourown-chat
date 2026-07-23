@@ -10,6 +10,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: mcp-tunnel
+  namespace: {{ .Release.Namespace }}
   labels:
     app: mcp-tunnel
     app.kubernetes.io/part-of: mcp-servers

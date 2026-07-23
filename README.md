@@ -107,8 +107,8 @@ terraform/
 helm/                    # Kubernetes workloads, delivered by Cloud Deploy
   skaffold.yaml          # dev/prod render profiles
   mattermost/            # prod Mattermost (operator CR + SecretProviderClass)
-  matterbridge/          # bridge deployment
-  developing/            # dev tenant: in-cluster Postgres, RBAC, NetworkPolicies
+  matterbridge/          # isolated bridge deployment
+  developing/            # shared dev namespace: Mattermost, Postgres, RBAC, NetworkPolicies
   ingress-nginx/         # Cloudflare-only ingress values + runbook
 docs/BUILD.md            # image build flow in detail
 ```
@@ -212,8 +212,10 @@ and prod share **one cluster** and are isolated in-cluster instead of physically
 - dev shares an untainted `e2-medium` system pool with `kube-system` —
   on-demand, not Spot, because preempting CoreDNS would hurt prod too; it idles
   at one node and may autoscale to three when system pods need headroom;
-- the `dev` namespace is locked down with namespace-scoped RBAC and
-  default-deny NetworkPolicies — no path to prod on the pod network.
+- development services and databases share the `dev` namespace, which is
+  locked down with namespace-scoped RBAC and default-deny NetworkPolicies;
+  integration workloads such as Matterbridge remain isolated in their own
+  namespaces.
 
 | Line item | Config | ≈$/mo |
 |---|---|---|
@@ -286,8 +288,9 @@ These cost real debugging time; the configuration now guards against them:
   secrets each workload owns).
 - **Edge**: Full (Strict) TLS with a Terraform-issued Origin CA cert, DNSSEC,
   HSTS with preload, optional Authenticated Origin Pulls (mTLS).
-- **Dev tenant**: namespace RBAC (no cluster rights), default-deny in/egress
-  NetworkPolicies, `automountServiceAccountToken: false`.
+- **Dev environment**: one namespace for services and databases, namespace
+  RBAC (no cluster rights), default-deny cross-namespace traffic, and
+  `automountServiceAccountToken: false`.
 
 ## Growing it later
 

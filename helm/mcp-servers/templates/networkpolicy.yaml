@@ -8,6 +8,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: mcp-{{ $name }}-ingress
+  namespace: {{ $.Release.Namespace }}
   labels:
     app: mcp-{{ $name }}
     app.kubernetes.io/part-of: mcp-servers
@@ -45,6 +46,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: default-deny-all
+  namespace: {{ .Release.Namespace }}
   labels:
     app.kubernetes.io/part-of: mcp-servers
 spec:
@@ -55,6 +57,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-dns
+  namespace: {{ .Release.Namespace }}
   labels:
     app.kubernetes.io/part-of: mcp-servers
 spec:
@@ -73,6 +76,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-encrypted-external-egress
+  namespace: {{ .Release.Namespace }}
   labels:
     app.kubernetes.io/part-of: mcp-servers
 spec:
@@ -96,6 +100,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-tunnel-to-mcp-upstreams
+  namespace: {{ .Release.Namespace }}
   labels:
     app.kubernetes.io/part-of: mcp-servers
 spec:

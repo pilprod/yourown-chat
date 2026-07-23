@@ -108,8 +108,8 @@ terraform/
 helm/                    # Kubernetes-workloads, доставляются Cloud Deploy
   skaffold.yaml          # профили рендера dev/prod
   mattermost/            # prod Mattermost (operator CR + SecretProviderClass)
-  matterbridge/          # деплой моста
-  developing/            # dev-тенант: in-cluster Postgres, RBAC, NetworkPolicies
+  matterbridge/          # изолированный деплой моста
+  developing/            # общий namespace dev: Mattermost, Postgres, RBAC, NetworkPolicies
   ingress-nginx/         # values только-для-Cloudflare + ранбук
 docs/BUILD.md            # процесс сборки образа подробно
 ```
@@ -213,8 +213,9 @@ kubectl rollout restart -n mattermost deploy  → поды подхватят с
 - dev на untainted `e2-medium` system-пуле вместе с `kube-system` —
   on-demand, не Spot: преемпция CoreDNS ударила бы и по prod; в простое держит
   одну ноду и может autoscale до трёх, когда системным pod'ам нужен запас;
-- namespace `dev` заперт: RBAC только на свой namespace + default-deny
-  NetworkPolicies — пути к prod по pod-сети нет.
+- dev-сервисы и базы находятся в общем namespace `dev`, который заперт
+  namespace-scoped RBAC и default-deny NetworkPolicies; интеграционные
+  workloads, включая Matterbridge, остаются в отдельных namespace.
 
 | Статья | Конфиг | ≈$/мес |
 |---|---|---|
@@ -284,8 +285,9 @@ kubectl rollout restart -n mattermost deploy  → поды подхватят с
   CSI-аддон, доступ по-тенантно (`secretAccessor` ровно на свои секреты).
 - **Edge**: Full (Strict) TLS с Origin CA сертом из Terraform, DNSSEC, HSTS с
   preload, опциональные Authenticated Origin Pulls (mTLS).
-- **Dev-тенант**: namespace RBAC (без кластерных прав), default-deny
-  NetworkPolicies на вход и выход, `automountServiceAccountToken: false`.
+- **Dev-окружение**: один namespace для сервисов и баз, namespace RBAC (без
+  кластерных прав), default-deny для межnamespace-трафика,
+  `automountServiceAccountToken: false`.
 
 ## Куда расти
 

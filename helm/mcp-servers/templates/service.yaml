@@ -5,6 +5,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: mcp-{{ $name }}
+  namespace: {{ $.Release.Namespace }}
   labels:
     app: mcp-{{ $name }}
     app.kubernetes.io/part-of: mcp-servers

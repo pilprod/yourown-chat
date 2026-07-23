@@ -96,9 +96,10 @@ parameter changes after this point affect the *next* release, not this one.
 
 ### 3. dev deploys automatically, then verifies itself
 
-The first stage (`dev` target) auto-deploys the dev tenant (and matterbridge
-when `matterbridge_enabled = true` — a separate Skaffold profile appended to
-the dev target; set it false to skip the bridge),
+The first stage (`dev` target) auto-deploys Mattermost and Postgres into the
+shared `dev` namespace. Matterbridge remains isolated in its own namespace and
+is deployed when `matterbridge_enabled = true` (through a separate Skaffold
+profile; set it false to skip the bridge),
 then runs the post-deploy **verify** job on the cluster — a curl against
 `dev-mattermost.dev.svc:8065/api/v4/system/ping` from inside the `dev`
 namespace (it must run there: the namespace is default-deny). If verify fails,
@@ -145,7 +146,7 @@ skipped). The namespaces and the credential Secrets (`dev-postgres`,
 
 ```bash
 kubectl apply -f helm/developing/     # dev tenant (dev-postgres Secret already exists)
-kubectl apply -f helm/matterbridge/
+kubectl apply -f helm/matterbridge/   # optional bridge in its isolated namespace
 kubectl apply -f helm/mattermost/     # operator CRDs must already be installed
 ```
 

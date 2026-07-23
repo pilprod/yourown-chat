@@ -8,6 +8,7 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: mcp-{{ $name }}
+  namespace: {{ $.Release.Namespace }}
   labels:
     app: mcp-{{ $name }}
     app.kubernetes.io/part-of: mcp-servers
