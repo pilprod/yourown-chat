@@ -12,5 +12,5 @@ spec:
       restartPolicy: Never
       priorityClassName: development
       containers:
-        - name: cleanup
-          image: bitnami/kubectl:1.33
+        - name: cleanup-mattermost-dev
+          image: gcr.io/cloud-builders/kubectl@sha256:3744bfd3765ac2a09133a164fcd74c8468fac192af8accadbdfbccbb20643961
