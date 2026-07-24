@@ -4,11 +4,6 @@ output "host" {
   sensitive   = true
 }
 
-output "private_endpoint" {
-  description = "Private control-plane endpoint reached by the in-cluster kubernetes Service."
-  value       = data.google_container_cluster.this.private_cluster_config[0].private_endpoint
-}
-
 output "cluster_ca_certificate" {
   description = "PEM cluster CA certificate (decoded) for the helm provider."
   value       = base64decode(data.google_container_cluster.this.master_auth[0].cluster_ca_certificate)

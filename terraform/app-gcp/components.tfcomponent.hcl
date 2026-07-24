@@ -416,7 +416,10 @@ component "workload_scheduling" {
   depends_on = [component.cluster_secrets]
 
   inputs = {
-    kubernetes_api_endpoint = component.gke_auth.private_endpoint
+    cleanup_service_account_emails = {
+      mattermost = component.clouddeploy.cleanup_service_account_email
+      mcp        = component.clouddeploy_mcp.cleanup_service_account_email
+    }
   }
 
   providers = {

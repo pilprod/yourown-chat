@@ -69,8 +69,11 @@ gcloud deploy releases list \
 The dev PostgreSQL database is not part of this release. It remains running as
 the Terraform-managed `dev-postgres` StatefulSet so startup validates
 sequential database migrations. After the smoke passes, dev Mattermost remains
-available for review. Approving production starts its predeploy cleanup, which
-scales only dev Mattermost to zero immediately before the production rollout.
+available for review. Approving production starts an external Cloud Deploy
+predeploy hook, which scales only dev Mattermost to zero immediately before the
+production rollout. Its Skaffold custom-action container runs in Cloud Build
+under a dedicated Google service account; it does not create a cleanup pod in
+GKE.
 
 ## Platform tags
 

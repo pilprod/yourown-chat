@@ -1,6 +1,8 @@
 locals {
-  exec_sa_id    = "deploy-${var.pipeline_name}"
-  pipeline_name = var.pipeline_name
+  exec_sa_id      = "deploy-${var.pipeline_name}"
+  cleanup_sa_id   = "cleanup-${var.pipeline_name}"
+  cleanup_enabled = anytrue([for stage in var.stages : length(stage.predeploy_actions) > 0])
+  pipeline_name   = var.pipeline_name
 
   # Targets keyed by stage name (order-independent); the pipeline below drives
   # the promotion order from the ordered var.stages list.
@@ -28,9 +30,33 @@ resource "google_project_iam_member" "exec" {
   member   = "serviceAccount:${google_service_account.exec.email}"
 }
 
+resource "google_service_account" "cleanup" {
+  count = local.cleanup_enabled ? 1 : 0
+
+  project      = var.project_id
+  account_id   = local.cleanup_sa_id
+  display_name = "Cloud Deploy ${var.pipeline_name} cleanup"
+}
+
+resource "google_project_iam_member" "cleanup" {
+  for_each = local.cleanup_enabled ? toset(var.cleanup_sa_roles) : toset([])
+
+  project = var.project_id
+  role    = each.value
+  member  = "serviceAccount:${google_service_account.cleanup[0].email}"
+}
+
 # The Cloud Deploy service agent must be able to impersonate the execution SA.
 resource "google_service_account_iam_member" "agent_act_as_exec" {
   service_account_id = google_service_account.exec.id
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_project_service_identity.clouddeploy.email}"
+}
+
+resource "google_service_account_iam_member" "agent_act_as_cleanup" {
+  count = local.cleanup_enabled ? 1 : 0
+
+  service_account_id = google_service_account.cleanup[0].id
   role               = "roles/iam.serviceAccountUser"
   member             = "serviceAccount:${google_project_service_identity.clouddeploy.email}"
 }
@@ -53,14 +79,25 @@ resource "google_clouddeploy_target" "stage" {
     usages = concat(
       ["RENDER", "DEPLOY"],
       each.value.verify ? ["VERIFY"] : [],
-      length(each.value.predeploy_actions) > 0 ? ["PREDEPLOY"] : [],
       length(each.value.postdeploy_actions) > 0 ? ["POSTDEPLOY"] : [],
     )
     service_account = google_service_account.exec.email
   }
 
-  labels     = var.labels
-  depends_on = [google_project_iam_member.exec]
+  dynamic "execution_configs" {
+    for_each = length(each.value.predeploy_actions) > 0 ? [1] : []
+    content {
+      usages          = ["PREDEPLOY"]
+      service_account = google_service_account.cleanup[0].email
+    }
+  }
+
+  labels = var.labels
+  depends_on = [
+    google_project_iam_member.exec,
+    google_project_iam_member.cleanup,
+    google_service_account_iam_member.agent_act_as_cleanup,
+  ]
 }
 
 # Serial promotion pipeline. Each module instance owns one workload family;
@@ -97,6 +134,9 @@ resource "google_clouddeploy_delivery_pipeline" "this" {
               dynamic "predeploy" {
                 for_each = length(stage.value.predeploy_actions) > 0 ? [1] : []
                 content {
+                  # With no executionMode.kubernetesCluster on this Skaffold
+                  # action, Cloud Deploy runs it in the PREDEPLOY Cloud Build
+                  # execution environment under the dedicated cleanup GSA.
                   actions = stage.value.predeploy_actions
                 }
               }

@@ -17,3 +17,8 @@ output "execution_service_account_email" {
   description = "Email of the Cloud Deploy execution SA."
   value       = google_service_account.exec.email
 }
+
+output "cleanup_service_account_email" {
+  description = "Email of the dedicated PREDEPLOY cleanup SA (null when the pipeline has no predeploy actions)."
+  value       = one(google_service_account.cleanup[*].email)
+}

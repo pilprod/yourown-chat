@@ -74,10 +74,9 @@ resource "kubernetes_limit_range_v1" "dev" {
   }
 }
 
-# Cloud Deploy applies application manifests with a deliberately restricted
-# execution identity. Long-lived RBAC grants are platform policy and therefore
-# belong to Terraform, not to a release that would need permission to grant
-# permissions to itself.
+# Cleanup runs as a Cloud Deploy PREDEPLOY hook outside the cluster.
+# Long-lived RBAC remains platform policy and grants its dedicated Google
+# service accounts permission to scale only the named disposable Deployments.
 resource "kubernetes_role_v1" "mattermost_cleanup" {
   metadata {
     name      = "dev-mattermost-cleanup"
@@ -105,9 +104,9 @@ resource "kubernetes_role_binding_v1" "mattermost_cleanup" {
   }
 
   subject {
-    kind      = "ServiceAccount"
-    name      = "dev-mattermost-cleanup"
-    namespace = var.dev_namespace
+    api_group = "rbac.authorization.k8s.io"
+    kind      = "User"
+    name      = var.cleanup_service_account_emails.mattermost
   }
 }
 
@@ -142,90 +141,8 @@ resource "kubernetes_role_binding_v1" "mcp_cleanup" {
   }
 
   subject {
-    kind      = "ServiceAccount"
-    name      = "mcp-dev-cleanup"
-    namespace = var.mcp_cleanup_service_account_namespace
-  }
-}
-
-data "kubernetes_service_v1" "api" {
-  metadata {
-    name      = "kubernetes"
-    namespace = "default"
-  }
-}
-
-locals {
-  # Dataplane V2 may enforce policy either before or after Service DNAT. Allow
-  # only the kubernetes ClusterIP and its single control-plane backend.
-  kubernetes_api_cidrs = toset([
-    "${data.kubernetes_service_v1.api.spec[0].cluster_ip}/32",
-    "${var.kubernetes_api_endpoint}/32",
-  ])
-}
-
-resource "kubernetes_network_policy_v1" "mattermost_cleanup_api" {
-  metadata {
-    name      = "allow-dev-mattermost-cleanup-api"
-    namespace = var.dev_namespace
-  }
-
-  spec {
-    pod_selector {
-      match_labels = {
-        "app.kubernetes.io/name" = "dev-mattermost-cleanup"
-      }
-    }
-
-    policy_types = ["Egress"]
-
-    egress {
-      dynamic "to" {
-        for_each = local.kubernetes_api_cidrs
-        content {
-          ip_block {
-            cidr = to.value
-          }
-        }
-      }
-
-      ports {
-        port     = "443"
-        protocol = "TCP"
-      }
-    }
-  }
-}
-
-resource "kubernetes_network_policy_v1" "mcp_cleanup_api" {
-  metadata {
-    name      = "allow-mcp-dev-cleanup-api"
-    namespace = var.mcp_cleanup_service_account_namespace
-  }
-
-  spec {
-    pod_selector {
-      match_labels = {
-        "app.kubernetes.io/name" = "mcp-dev-cleanup"
-      }
-    }
-
-    policy_types = ["Egress"]
-
-    egress {
-      dynamic "to" {
-        for_each = local.kubernetes_api_cidrs
-        content {
-          ip_block {
-            cidr = to.value
-          }
-        }
-      }
-
-      ports {
-        port     = "443"
-        protocol = "TCP"
-      }
-    }
+    api_group = "rbac.authorization.k8s.io"
+    kind      = "User"
+    name      = var.cleanup_service_account_emails.mcp
   }
 }

@@ -110,7 +110,7 @@ helm/                    # Kubernetes workloads, delivered by Cloud Deploy
   mattermost/            # prod Mattermost (operator CR + SecretProviderClass)
   matterbridge/          # isolated bridge deployment
   mattermost/            # one chart, promoted with dev/prod values
-  mcp/                   # MCP Helm chart, test/prod values and smoke/cleanup jobs
+  mcp/                   # MCP Helm chart, dev/prod values and protocol smoke jobs
   ingress-nginx/         # Cloudflare-only ingress values + runbook
 docs/BUILD.md            # image build flow in detail
 ```
@@ -217,8 +217,9 @@ and prod share **one cluster and one node pool**:
 - production PriorityClass can preempt disposable dev workloads; accurate
   requests, a dev ResourceQuota and LimitRange bound resource contention;
 - verified dev Mattermost/MCP stays available for review; production approval
-  runs cleanup immediately before the prod rollout. If a rolling update cannot
-  fit, Cluster Autoscaler adds a temporary node and removes it afterward;
+  runs an external Cloud Deploy cleanup hook immediately before the prod
+  rollout; no cleanup pod consumes GKE capacity. If a rolling update cannot fit,
+  Cluster Autoscaler adds a temporary node and removes it afterward;
 - development services and databases share the `dev` namespace, which is
   locked down with namespace-scoped RBAC and default-deny NetworkPolicies;
   integration workloads such as Matterbridge remain isolated in their own

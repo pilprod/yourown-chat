@@ -32,7 +32,7 @@ variable "stages" {
     predeploy_actions  = optional(list(string), [])
     postdeploy_actions = optional(list(string), [])
   }))
-  description = "Ordered promotion stages. Each becomes one Cloud Deploy target on the shared cluster; list order defines the dev -> prod promotion flow. Per stage: `profiles` renders the stage, `require_approval` gates entry, `predeploy_actions` run after approval but before deploy, `verify` runs post-deploy verification, and `postdeploy_actions` run last."
+  description = "Ordered promotion stages. Each becomes one Cloud Deploy target on the shared cluster; list order defines the dev -> prod promotion flow. Per stage: `profiles` renders the stage, `require_approval` gates entry, `predeploy_actions` run in Cloud Build after approval but before deploy, `verify` runs post-deploy verification, and `postdeploy_actions` run last."
 
   default = [
     { name = "dev", profiles = ["dev"], require_approval = false, verify = true },
@@ -48,6 +48,17 @@ variable "stages" {
     condition     = length(distinct([for s in var.stages : s.name])) == length(var.stages)
     error_message = "Stage names must be unique (they key the Cloud Deploy targets)."
   }
+}
+
+variable "cleanup_sa_roles" {
+  type        = list(string)
+  description = "Project roles for the dedicated PREDEPLOY cleanup SA. Kubernetes mutation remains restricted separately by namespace RoleBindings."
+  default = [
+    "roles/clouddeploy.jobRunner",
+    "roles/container.clusterViewer",
+    "roles/logging.logWriter",
+    "roles/storage.objectUser",
+  ]
 }
 
 variable "execution_sa_roles" {

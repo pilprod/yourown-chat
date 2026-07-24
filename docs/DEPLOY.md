@@ -31,11 +31,25 @@ There are two Cloud Deploy pipelines:
 | `mattermost` | `mattermost-dev`; exercises migrations against persistent `dev-postgres` | verified dev stays running for reviewer checks | predeploy scales dev to zero, then the operator performs a rolling rollout |
 | `mcp` | `mcp-dev`; creates `dev-mcp-*` deployments and runs protocol smoke tests | verified dev stays running for reviewer checks | predeploy scales dev to zero, then MCP prod deploys and verifies |
 
+The Mattermost reviewer opens `https://dev.yourown.chat`. Cloudflare Access
+admits only the configured reviewer emails, then the outbound-only Tunnel
+routes the request to `dev-mattermost.dev.svc.cluster.local:8065`. There is no
+public dev LoadBalancer or origin address. The hostname remains available from
+successful verification until the reviewer approves production; that approval
+starts the cleanup predeploy action.
+
+Cleanup does not run as a Kubernetes Job. Cloud Deploy starts a Skaffold
+custom-action container with no `executionMode.kubernetesCluster`, so it runs
+in the Cloud Build execution environment under a dedicated
+`cleanup-mattermost` or `cleanup-mcp` Google service account. Each identity can
+read cluster metadata and is bound inside Kubernetes only to `get`, `patch`,
+and `update` its exact disposable Deployment names. There is no cleanup
+ServiceAccount, API-egress NetworkPolicy, or idle cleanup pod in GKE.
+
 `dev-postgres` consists of Terraform-managed Kubernetes resources. Its PVC
-survives application releases and
-  provides a continuous migration history. The current development database may
-  be imported or replaced during the first Terraform apply; it contains no
-  important data.
+survives application releases and provides a continuous migration history. The
+current development database may be imported or replaced during the first
+Terraform apply; it contains no important data.
 
 ## What starts a release
 
@@ -118,8 +132,8 @@ namespaces. It exposes no dev ingress and checks:
 - the expected unauthenticated `401` from Google Workspace OAuth.
 
 After smoke tests, the three dev deployments remain available for review.
-Production approval runs their cleanup as the prod predeploy action, then
-production deploys and repeats verification.
+Production approval runs their external cleanup hook as the prod predeploy
+step, then production deploys and repeats verification.
 
 ```bash
 gcloud deploy releases promote \
@@ -151,8 +165,8 @@ Apply `platform-gcp`, `cloudflare`, then `app-gcp`. The app stack:
 
 - creates namespaces and Secrets;
 - owns the persistent `dev-postgres` Service and StatefulSet directly;
-- creates the `mattermost` and `mcp` pipelines and their least-privilege
-  execution identities;
+- creates the `mattermost` and `mcp` pipelines, their least-privilege execution
+  identities, and dedicated external predeploy cleanup identities;
 - creates the unified platform-tag trigger and Mattermost image trigger.
 
 The platform now has one shared `general` pool using `e2-standard-2`

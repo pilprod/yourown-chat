@@ -166,8 +166,9 @@ nothing else depends on it.
    `yourown-chat` / `yourown-chat.cloudflareaccess.com`; clients using the old
    `yellow-sunset-672e.cloudflareaccess.com` domain must be updated.
 2. Apply **cloudflare**: tunnel (+ token in Secret Manager
-   `mcp-tunnel-token`), DNS, Access apps for `mcp-terraform.yourown.chat` /
-   `mcp-google-cloud.yourown.chat` / `mcp-google-workspace.yourown.chat`.
+   `mcp-tunnel-token`), DNS, Access apps for `dev.yourown.chat` /
+   `mcp-terraform.yourown.chat` / `mcp-google-cloud.yourown.chat` /
+   `mcp-google-workspace.yourown.chat`.
 3. Apply **platform-gcp**, then **app-gcp**: the former binds Workload Identity
    to `mcp-google-cloud/mcp-servers`; the latter creates one namespace per MCP
    server plus `mcp-tunnel`, and materialises every Secret in its consuming
@@ -183,12 +184,13 @@ nothing else depends on it.
 
 ### Automated rollout verification
 
-The `mcp` pipeline first creates temporary `dev-mcp-*` instances and runs
-`helm/mcp/verify/job.yaml`. Successful dev instances stay available for review.
-Production approval starts a predeploy cleanup that scales them to zero, then
-the prod target deploys and repeats the same verification. Each Job
-runs in `mcp-tunnel`, follows the same NetworkPolicy path as cloudflared, and
-checks:
+The `mcp` pipeline first creates temporary `dev-mcp-*` instances and runs the
+dev protocol verifier. Successful dev instances stay available for review.
+Production approval starts an external Cloud Deploy predeploy hook that scales
+them to zero, then the prod target deploys and repeats verification. Its
+Skaffold custom-action container runs in Cloud Build under a dedicated Google
+service account, so it creates no pod in GKE. Each verifier Job runs in
+`mcp-tunnel`, follows the same NetworkPolicy path as cloudflared, and checks:
 
 - each server's health endpoint;
 - an MCP `initialize` exchange with Terraform and Google Cloud;

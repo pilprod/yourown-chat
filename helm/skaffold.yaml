@@ -60,11 +60,9 @@ profiles:
 
   # Dev MCP Deployments coexist with prod under a dev- prefix, reuse the
   # namespace-scoped credentials, expose no public ingress, and are scaled to
-  # zero by the postdeploy hook after verification.
+  # zero by the prod PREDEPLOY hook after approval.
   - name: mcp-dev
     manifests:
-      rawYaml:
-        - mcp/cleanup-rbac.yaml
       helm:
         releases:
           - name: dev-mcp-terraform
@@ -205,29 +203,42 @@ profiles:
           kubernetesCluster:
             jobManifestPath: mcp/verify/prod-job.yaml
 
+# executionMode is intentionally omitted for cleanup actions. Cloud Deploy
+# therefore runs these containers in its Cloud Build execution environment
+# under the target's dedicated PREDEPLOY service account, not as pods in GKE.
 customActions:
   - name: cleanup-mattermost-dev
     containers:
       - name: cleanup-mattermost-dev
         image: gcr.io/cloud-builders/kubectl@sha256:3744bfd3765ac2a09133a164fcd74c8468fac192af8accadbdfbccbb20643961
-        command: ["/bin/sh", "-c"]
+        command: ["/bin/sh", "-ceu"]
         args:
-          - kubectl -n dev scale deployment/dev-mattermost --replicas=0
-    executionMode:
-      kubernetesCluster:
-        jobManifestPath: mattermost/cleanup/job.yaml
+          - |
+            cluster_name="${GKE_CLUSTER##*/}"
+            cluster_parent="${GKE_CLUSTER%/clusters/*}"
+            cluster_location="${cluster_parent##*/}"
+            cluster_project_path="${cluster_parent%/locations/*}"
+            cluster_project="${cluster_project_path##*/}"
+            gcloud container clusters get-credentials "${cluster_name}" \
+              --project "${cluster_project}" \
+              --location "${cluster_location}"
+            kubectl --namespace dev scale deployment/dev-mattermost --replicas=0
 
   - name: cleanup-mcp-dev
     containers:
       - name: cleanup-mcp-dev
         image: gcr.io/cloud-builders/kubectl@sha256:3744bfd3765ac2a09133a164fcd74c8468fac192af8accadbdfbccbb20643961
-        command: ["/bin/sh", "-c"]
+        command: ["/bin/sh", "-ceu"]
         args:
-          - >-
-            set -eu;
-            kubectl -n mcp-terraform scale deployment/dev-mcp-terraform --replicas=0;
-            kubectl -n mcp-google-cloud scale deployment/dev-mcp-google-cloud --replicas=0;
-            kubectl -n mcp-google-workspace scale deployment/dev-mcp-google-workspace --replicas=0
-    executionMode:
-      kubernetesCluster:
-        jobManifestPath: mcp/cleanup/job.yaml
+          - |
+            cluster_name="${GKE_CLUSTER##*/}"
+            cluster_parent="${GKE_CLUSTER%/clusters/*}"
+            cluster_location="${cluster_parent##*/}"
+            cluster_project_path="${cluster_parent%/locations/*}"
+            cluster_project="${cluster_project_path##*/}"
+            gcloud container clusters get-credentials "${cluster_name}" \
+              --project "${cluster_project}" \
+              --location "${cluster_location}"
+            kubectl --namespace mcp-terraform scale deployment/dev-mcp-terraform --replicas=0
+            kubectl --namespace mcp-google-cloud scale deployment/dev-mcp-google-cloud --replicas=0
+            kubectl --namespace mcp-google-workspace scale deployment/dev-mcp-google-workspace --replicas=0

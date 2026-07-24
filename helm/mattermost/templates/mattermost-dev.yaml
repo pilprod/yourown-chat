@@ -74,6 +74,8 @@ spec:
               value: local
             - name: MM_FILESETTINGS_DIRECTORY
               value: /mattermost/data
+            - name: MM_SERVICESETTINGS_SITEURL
+              value: https://dev.yourown.chat
             # Mattermost blocks RFC1918 destinations for user-controlled
             # integrations by default. Allow only our three exact in-cluster
             # MCP service names, never the cluster CIDR.
