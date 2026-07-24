@@ -29,9 +29,10 @@ variable "stages" {
     profiles           = optional(list(string), [])
     require_approval   = optional(bool, false)
     verify             = optional(bool, false)
+    predeploy_actions  = optional(list(string), [])
     postdeploy_actions = optional(list(string), [])
   }))
-  description = "Ordered promotion stages. Each becomes one Cloud Deploy target on the shared cluster; list order defines the dev -> prod promotion flow. Per stage: `profiles` = Skaffold profile(s) that render this stage's namespace/env; `require_approval` gates promotion into the stage; `verify` runs the Skaffold verify tests post-deploy (and adds the VERIFY execution usage to the target)."
+  description = "Ordered promotion stages. Each becomes one Cloud Deploy target on the shared cluster; list order defines the dev -> prod promotion flow. Per stage: `profiles` renders the stage, `require_approval` gates entry, `predeploy_actions` run after approval but before deploy, `verify` runs post-deploy verification, and `postdeploy_actions` run last."
 
   default = [
     { name = "dev", profiles = ["dev"], require_approval = false, verify = true },

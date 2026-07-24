@@ -9,8 +9,8 @@ pilprod/mattermost v*.*-patched
   -> Artifact Registry docker/mattermost:<tag>
   -> Cloud Deploy mattermost/dev
   -> migration + ping smoke
-  -> dev Mattermost scaled to 0
   -> approval
+  -> dev Mattermost scaled to 0
   -> mattermost/prod rolling rollout
 ```
 
@@ -68,8 +68,9 @@ gcloud deploy releases list \
 
 The dev PostgreSQL database is not part of this release. It remains running as
 the Terraform-managed `dev-postgres` StatefulSet so startup validates
-sequential database migrations. After the smoke passes, only dev Mattermost is
-scaled to zero.
+sequential database migrations. After the smoke passes, dev Mattermost remains
+available for review. Approving production starts its predeploy cleanup, which
+scales only dev Mattermost to zero immediately before the production rollout.
 
 ## Platform tags
 

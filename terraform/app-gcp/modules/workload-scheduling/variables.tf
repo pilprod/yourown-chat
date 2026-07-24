@@ -19,3 +19,13 @@ variable "mcp_cleanup_service_account_namespace" {
   description = "Namespace containing the cross-namespace MCP cleanup ServiceAccount."
   default     = "mcp-tunnel"
 }
+
+variable "kubernetes_api_endpoint" {
+  type        = string
+  description = "Private GKE control-plane IPv4 address used as the backend of the in-cluster kubernetes Service."
+
+  validation {
+    condition     = can(cidrhost("${var.kubernetes_api_endpoint}/32", 0))
+    error_message = "kubernetes_api_endpoint must be an IPv4 address."
+  }
+}

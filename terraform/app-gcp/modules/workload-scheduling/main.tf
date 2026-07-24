@@ -147,3 +147,85 @@ resource "kubernetes_role_binding_v1" "mcp_cleanup" {
     namespace = var.mcp_cleanup_service_account_namespace
   }
 }
+
+data "kubernetes_service_v1" "api" {
+  metadata {
+    name      = "kubernetes"
+    namespace = "default"
+  }
+}
+
+locals {
+  # Dataplane V2 may enforce policy either before or after Service DNAT. Allow
+  # only the kubernetes ClusterIP and its single control-plane backend.
+  kubernetes_api_cidrs = toset([
+    "${data.kubernetes_service_v1.api.spec[0].cluster_ip}/32",
+    "${var.kubernetes_api_endpoint}/32",
+  ])
+}
+
+resource "kubernetes_network_policy_v1" "mattermost_cleanup_api" {
+  metadata {
+    name      = "allow-dev-mattermost-cleanup-api"
+    namespace = var.dev_namespace
+  }
+
+  spec {
+    pod_selector {
+      match_labels = {
+        "app.kubernetes.io/name" = "dev-mattermost-cleanup"
+      }
+    }
+
+    policy_types = ["Egress"]
+
+    egress {
+      dynamic "to" {
+        for_each = local.kubernetes_api_cidrs
+        content {
+          ip_block {
+            cidr = to.value
+          }
+        }
+      }
+
+      ports {
+        port     = "443"
+        protocol = "TCP"
+      }
+    }
+  }
+}
+
+resource "kubernetes_network_policy_v1" "mcp_cleanup_api" {
+  metadata {
+    name      = "allow-mcp-dev-cleanup-api"
+    namespace = var.mcp_cleanup_service_account_namespace
+  }
+
+  spec {
+    pod_selector {
+      match_labels = {
+        "app.kubernetes.io/name" = "mcp-dev-cleanup"
+      }
+    }
+
+    policy_types = ["Egress"]
+
+    egress {
+      dynamic "to" {
+        for_each = local.kubernetes_api_cidrs
+        content {
+          ip_block {
+            cidr = to.value
+          }
+        }
+      }
+
+      ports {
+        port     = "443"
+        protocol = "TCP"
+      }
+    }
+  }
+}

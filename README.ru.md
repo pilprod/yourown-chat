@@ -190,6 +190,7 @@ git tag 1.2.3  (на pilprod/yourown-chat)
   → Cloud Build триггер "release" запускает gcloud deploy releases create
   → dev-таргет деплоится + smoke-тест verify
   → промоушен в prod ждёт апрува
+  → после апрува dev масштабируется в ноль и начинается prod rollout
 ```
 
 **Ротировать пароль БД** — бампни одно закоммиченное значение, без
@@ -218,7 +219,8 @@ kubectl rollout restart -n mattermost deploy  → поды подхватят с
 - один on-demand pool `general` (`e2-standard-2`), autoscaling от одной до трёх нод;
 - production PriorityClass может вытеснить временные dev-workloads; requests,
   ResourceQuota и LimitRange ограничивают потребление dev;
-- после smoke Cloud Deploy масштабирует dev Mattermost/MCP в ноль, а временная
+- после smoke dev Mattermost/MCP остаются доступны ревьюеру; после апрува
+  predeploy масштабирует их в ноль и запускает prod rollout, а временная
   rollout-нода автоматически удаляется Cluster Autoscaler;
 - dev-сервисы и базы находятся в общем namespace `dev`, который заперт
   namespace-scoped RBAC и default-deny NetworkPolicies; интеграционные

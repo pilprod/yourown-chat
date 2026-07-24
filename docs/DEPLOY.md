@@ -10,26 +10,26 @@ or unrelated component from being reapplied during every release.
 flowchart TD
   MT["pilprod/mattermost tag<br/>v*.*-patched"] --> BUILD["Build and push image"]
   BUILD --> MMTEST["mattermost / dev<br/>migration + smoke"]
-  MMTEST --> MMCLEAN["scale dev Mattermost to 0"]
-  MMCLEAN --> MMAPPROVE["approval"]
-  MMAPPROVE --> MMPROD["mattermost / prod<br/>rolling rollout"]
+  MMTEST --> MMAPPROVE["approval"]
+  MMAPPROVE --> MMCLEAN["predeploy: scale dev Mattermost to 0"]
+  MMCLEAN --> MMPROD["mattermost / prod<br/>rolling rollout"]
 
   PT["yourown-chat tag<br/>MAJOR.MINOR.PATCH"] --> DIFF["diff from previous semver tag"]
   DIFF -->|"Mattermost paths"| MMTEST
   DIFF -->|"MCP paths"| MCPDEV["mcp / dev<br/>health + initialize smoke"]
-  MCPDEV --> MCPCLEAN["scale dev MCP to 0"]
-  MCPCLEAN --> MCPAPPROVE["approval"]
-  MCPAPPROVE --> MCPPROD["mcp / prod<br/>rollout + verify"]
+  MCPDEV --> MCPAPPROVE["approval"]
+  MCPAPPROVE --> MCPCLEAN["predeploy: scale dev MCP to 0"]
+  MCPCLEAN --> MCPPROD["mcp / prod<br/>rollout + verify"]
 
   PG["Terraform Helm release<br/>dev-postgres"] --> MMTEST
 ```
 
 There are two Cloud Deploy pipelines:
 
-| Pipeline | Automatic stage | After verification | Production |
+| Pipeline | Automatic stage | Review gate | After approval |
 |---|---|---|---|
-| `mattermost` | `mattermost-dev`; exercises migrations against persistent `dev-postgres` | `dev-mattermost` is scaled to zero | approval, then the operator performs a rolling rollout |
-| `mcp` | `mcp-dev`; creates `dev-mcp-*` deployments and runs protocol smoke tests | dev deployments are scaled to zero | approval, then MCP prod deploys and verifies |
+| `mattermost` | `mattermost-dev`; exercises migrations against persistent `dev-postgres` | verified dev stays running for reviewer checks | predeploy scales dev to zero, then the operator performs a rolling rollout |
+| `mcp` | `mcp-dev`; creates `dev-mcp-*` deployments and runs protocol smoke tests | verified dev stays running for reviewer checks | predeploy scales dev to zero, then MCP prod deploys and verifies |
 
 `dev-postgres` consists of Terraform-managed Kubernetes resources. Its PVC
 survives application releases and
@@ -81,8 +81,9 @@ reviewed repository state while the router avoids rolling unchanged workloads.
 
 The dev stage deploys one Mattermost instance and waits for
 `/api/v4/system/ping`. Application startup therefore has to complete any
-database migrations before verification succeeds. A postdeploy action then
-scales dev Mattermost to zero, leaving PostgreSQL running.
+database migrations before verification succeeds. Dev stays running for
+review; after production approval, the prod rollout's predeploy action scales
+dev Mattermost to zero, leaving PostgreSQL running.
 
 Production has one replica and must not delete the old pod first. The
 Mattermost operator's rolling behavior starts the replacement and waits for it
@@ -116,8 +117,9 @@ namespaces. It exposes no dev ingress and checks:
 - MCP `initialize` for Terraform and Google Cloud;
 - the expected unauthenticated `401` from Google Workspace OAuth.
 
-After smoke tests, the three dev deployments are scaled to zero. Production
-is promoted separately and repeats its verification after rollout.
+After smoke tests, the three dev deployments remain available for review.
+Production approval runs their cleanup as the prod predeploy action, then
+production deploys and repeats verification.
 
 ```bash
 gcloud deploy releases promote \

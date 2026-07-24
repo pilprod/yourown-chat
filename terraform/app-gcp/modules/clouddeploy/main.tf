@@ -53,6 +53,7 @@ resource "google_clouddeploy_target" "stage" {
     usages = concat(
       ["RENDER", "DEPLOY"],
       each.value.verify ? ["VERIFY"] : [],
+      length(each.value.predeploy_actions) > 0 ? ["PREDEPLOY"] : [],
       length(each.value.postdeploy_actions) > 0 ? ["POSTDEPLOY"] : [],
     )
     service_account = google_service_account.exec.email
@@ -88,10 +89,17 @@ resource "google_clouddeploy_delivery_pipeline" "this" {
         }
 
         dynamic "strategy" {
-          for_each = stage.value.verify || length(stage.value.postdeploy_actions) > 0 ? [1] : []
+          for_each = stage.value.verify || length(stage.value.predeploy_actions) > 0 || length(stage.value.postdeploy_actions) > 0 ? [1] : []
           content {
             standard {
               verify = stage.value.verify
+
+              dynamic "predeploy" {
+                for_each = length(stage.value.predeploy_actions) > 0 ? [1] : []
+                content {
+                  actions = stage.value.predeploy_actions
+                }
+              }
 
               dynamic "postdeploy" {
                 for_each = length(stage.value.postdeploy_actions) > 0 ? [1] : []

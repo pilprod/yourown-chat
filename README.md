@@ -176,8 +176,8 @@ for production approval:
 ```
 git tag v9.11.3-patched  (on pilprod/mattermost)
   → Cloud Build builds & pushes docker/mattermost:v9.11.3-patched
-  → Mattermost dev rollout + migration smoke → dev scaled to 0
-  → production approval → rolling prod rollout
+  → Mattermost dev rollout + migration smoke → reviewer validation
+  → production approval → dev scaled to 0 → rolling prod rollout
 ```
 
 **Cut a platform release** — use one semver tag, without component tags:
@@ -216,9 +216,9 @@ and prod share **one cluster and one node pool**:
 - one on-demand `general` pool (`e2-standard-2`) autoscaling from one to three nodes;
 - production PriorityClass can preempt disposable dev workloads; accurate
   requests, a dev ResourceQuota and LimitRange bound resource contention;
-- Cloud Deploy scales dev Mattermost/MCP back to zero after smoke tests. If a
-  rolling prod update cannot fit, Cluster Autoscaler adds a temporary node and
-  removes it after the rollout;
+- verified dev Mattermost/MCP stays available for review; production approval
+  runs cleanup immediately before the prod rollout. If a rolling update cannot
+  fit, Cluster Autoscaler adds a temporary node and removes it afterward;
 - development services and databases share the `dev` namespace, which is
   locked down with namespace-scoped RBAC and default-deny NetworkPolicies;
   integration workloads such as Matterbridge remain isolated in their own

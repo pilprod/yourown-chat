@@ -25,13 +25,13 @@ component "clouddeploy" {
         profiles         = var.matterbridge_enabled ? ["mattermost-dev", "matterbridge"] : ["mattermost-dev"]
         require_approval = false
         verify           = true
-        postdeploy_actions = ["cleanup-mattermost-dev"]
       },
       {
-        name             = "prod"
-        profiles         = ["mattermost-prod"]
-        require_approval = true
-        verify           = false
+        name              = "prod"
+        profiles          = ["mattermost-prod"]
+        require_approval  = true
+        verify            = false
+        predeploy_actions = ["cleanup-mattermost-dev"]
       },
     ]
 
@@ -67,13 +67,13 @@ component "clouddeploy_mcp" {
         profiles           = ["mcp-dev"]
         require_approval   = false
         verify             = true
-        postdeploy_actions = ["cleanup-mcp-dev"]
       },
       {
-        name             = "prod"
-        profiles         = ["mcp-prod"]
-        require_approval = true
-        verify           = true
+        name              = "prod"
+        profiles          = ["mcp-prod"]
+        require_approval  = true
+        verify            = true
+        predeploy_actions = ["cleanup-mcp-dev"]
       },
     ]
 
@@ -414,6 +414,10 @@ component "workload_scheduling" {
   source = "./modules/workload-scheduling"
 
   depends_on = [component.cluster_secrets]
+
+  inputs = {
+    kubernetes_api_endpoint = component.gke_auth.private_endpoint
+  }
 
   providers = {
     kubernetes = provider.kubernetes.this

@@ -184,9 +184,9 @@ nothing else depends on it.
 ### Automated rollout verification
 
 The `mcp` pipeline first creates temporary `dev-mcp-*` instances and runs
-`helm/mcp/verify/job.yaml`. Successful dev instances are scaled to zero before
-production approval. The prod target repeats the same verification after its
-deploy. Each Job
+`helm/mcp/verify/job.yaml`. Successful dev instances stay available for review.
+Production approval starts a predeploy cleanup that scales them to zero, then
+the prod target deploys and repeats the same verification. Each Job
 runs in `mcp-tunnel`, follows the same NetworkPolicy path as cloudflared, and
 checks:
 
