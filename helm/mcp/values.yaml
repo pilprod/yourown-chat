@@ -9,11 +9,6 @@
 # Ephemeral development releases use `dev-`; production keeps this empty.
 namePrefix: ""
 
-devCleanup:
-  enabled: false
-  serviceAccountName: mcp-dev-cleanup
-  serviceAccountNamespace: mcp-tunnel
-
 tunnel:
   # Cloudflare Tunnel connector for Zero Trust access to the private services
   # (internal MCP servers + dev Mattermost). Enabled with zero_trust_enabled in
