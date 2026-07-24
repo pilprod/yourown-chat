@@ -123,6 +123,12 @@ component "workload_identity_mcp" {
     display_name = "Google Cloud MCP workload identity"
     namespace    = local.ns.mcp.namespace
     ksa_name     = local.ns.mcp.ksa
+    additional_ksa_bindings = [
+      {
+        namespace = local.ns.dev.namespace
+        ksa_name  = "mcp-servers"
+      },
+    ]
     project_roles = [
       "roles/logging.viewer",
       "roles/monitoring.viewer",

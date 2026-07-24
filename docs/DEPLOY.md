@@ -16,7 +16,7 @@ flowchart TD
 
   PT["yourown-chat tag<br/>MAJOR.MINOR.PATCH"] --> DIFF["diff from previous semver tag"]
   DIFF -->|"Mattermost paths"| MMTEST
-  DIFF -->|"MCP paths"| MCPDEV["mcp / dev<br/>health + initialize smoke"]
+  DIFF -->|"MCP paths"| MCPDEV["mcp / dev namespace<br/>readiness-gated rollout"]
   MCPDEV --> MCPAPPROVE["approval"]
   MCPAPPROVE --> MCPCLEAN["predeploy: scale dev MCP to 0"]
   MCPCLEAN --> MCPPROD["mcp / prod<br/>rollout + verify"]
@@ -29,7 +29,7 @@ There are two Cloud Deploy pipelines:
 | Pipeline | Automatic stage | Review gate | After approval |
 |---|---|---|---|
 | `mattermost` | `mattermost-dev`; exercises migrations against persistent `dev-postgres` | verified dev stays running for reviewer checks | predeploy scales dev to zero, then the operator performs a rolling rollout |
-| `mcp` | `mcp-dev`; creates `dev-mcp-*` deployments and runs protocol smoke tests | verified dev stays running for reviewer checks | predeploy scales dev to zero, then MCP prod deploys and verifies |
+| `mcp` | `mcp-dev`; creates readiness-gated `dev-mcp-*` deployments in the shared `dev` namespace | ready dev stays running for reviewer checks | predeploy scales dev to zero, then MCP prod deploys and executes read-only credential/API verification |
 
 The Mattermost reviewer opens `https://dev.yourown.chat`. Cloudflare Access
 admits only the configured reviewer emails, then the outbound-only Tunnel
@@ -125,16 +125,19 @@ gcloud deploy targets rollback mattermost-prod \
 
 ## MCP verification
 
-The dev stage deploys prefixed instances in the existing credential
-namespaces. It exposes no dev ingress and checks:
+The dev stage deploys all four prefixed instances into the shared `dev`
+namespace. Cloud Deploy waits for their Kubernetes rollout; startup, readiness,
+and liveness probes check the health endpoints. There is intentionally no dev
+credential smoke: a process-level check with placeholder credentials would
+give false confidence.
 
-- all health endpoints;
-- MCP `initialize` for Terraform and Google Cloud;
-- the expected unauthenticated `401` from Google Workspace OAuth.
-
-After smoke tests, the three dev deployments remain available for review.
-Production approval runs their external cleanup hook as the prod predeploy
-step, then production deploys and repeats verification.
+The ready dev deployments remain available for review. Production approval
+runs their external cleanup hook as the prod predeploy step. The production
+stage then deploys into the isolated MCP namespaces and performs real,
+read-only upstream API calls through Terraform, Google Cloud, and WhatsApp
+Business MCP. Google Workspace verifies its OAuth configuration and anonymous
+authentication boundary; Gmail/Calendar requires a separately consented test
+user before CI can make a real Workspace API call.
 
 ```bash
 gcloud deploy releases promote \

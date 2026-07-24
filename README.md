@@ -109,7 +109,7 @@ helm/                    # Kubernetes workloads, delivered by Cloud Deploy
   skaffold.yaml          # component-specific test/prod render profiles
   matterbridge/          # isolated bridge deployment
   mattermost/            # one chart, promoted with dev/prod values
-  mcp/                   # MCP Helm chart, dev/prod values and protocol smoke jobs
+  mcp/                   # MCP Helm chart, dev probes and prod credential/API smoke
   ingress-nginx/         # Cloudflare-only ingress values + runbook
 docker/
   images.tsv             # declarative build/mirror/audit/deploy catalog

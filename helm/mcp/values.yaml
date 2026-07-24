@@ -25,9 +25,6 @@ tunnel:
   # both stacks; waits in CreateContainerConfigError until app-gcp materialises
   # the mcp-tunnel Secret, then starts. See docs/MCP.md.
   enabled: true
-  # Dev delivery renders the shared egress policy before its smoke test but
-  # must not create or restart the long-lived connector workload.
-  workloadEnabled: true
   image:
     deployParameter: mcp_tunnel_image
     pullPolicy: IfNotPresent
@@ -68,6 +65,7 @@ defaults:
   networkPolicy:
     enabled: true
     namespaceDefaults: true
+    allowTunnel: true
     # Mattermost is the only cross-namespace caller. The chart additionally
     # permits the dedicated cloudflared connector for Zero Trust traffic.
     allowedNamespaces:
@@ -84,11 +82,17 @@ servers:
       deployParameter: mcp_terraform_image
       pullPolicy: IfNotPresent
     port: 8080
+    args:
+      - "streamable-http"
+      - "--transport-host"
+      - "0.0.0.0"
+      - "--transport-port"
+      - "8080"
+      - "--mcp-endpoint"
+      - "/mcp"
+      - "--toolsets"
+      - "registry,terraform"
     env:
-      TRANSPORT_MODE: streamable-http
-      TRANSPORT_HOST: 0.0.0.0
-      TRANSPORT_PORT: "8080"
-      MCP_ENDPOINT: /mcp
       MCP_ALLOWED_ORIGINS: "https://yourown.chat"
       TFE_ADDRESS: "https://app.terraform.io"
     secretEnvFrom: mcp-terraform-hcp
@@ -124,7 +128,7 @@ servers:
     resources:
       requests:
         cpu: 25m
-        memory: 64Mi
+        memory: 256Mi
       limits:
         cpu: 500m
         memory: 512Mi
@@ -146,16 +150,24 @@ servers:
     # the shell entrypoint and uv's project mutation by using the virtualenv
     # already created by `uv sync` during the image build.
     command:
-      - "/app/.venv/bin/python"
-      - "/app/main.py"
+      - "/bin/sh"
+      - "-ceu"
     args:
-      - "--transport"
-      - "streamable-http"
-      - "--tools"
-      - "gmail"
-      - "calendar"
+      - |
+        if [ "${MCP_VALIDATE_OAUTH_CONFIG:-false}" = "true" ]; then
+          case "${GOOGLE_OAUTH_CLIENT_ID:-}" in
+            ""|REPLACE_ME_*) echo "GOOGLE_OAUTH_CLIENT_ID is not configured" >&2; exit 1 ;;
+          esac
+          case "${GOOGLE_OAUTH_CLIENT_SECRET:-}" in
+            ""|REPLACE_ME_*) echo "GOOGLE_OAUTH_CLIENT_SECRET is not configured" >&2; exit 1 ;;
+          esac
+        fi
+        exec /app/.venv/bin/python /app/main.py \
+          --transport streamable-http \
+          --tools gmail calendar
     env:
       WORKSPACE_MCP_PORT: "8000"
+      MCP_VALIDATE_OAUTH_CONFIG: "false"
       HOME: /tmp
       PYTHONDONTWRITEBYTECODE: "1"
       MCP_ENABLE_OAUTH21: "true"

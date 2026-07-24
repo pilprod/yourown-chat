@@ -5,14 +5,14 @@ variable "dev_namespace" {
 }
 
 variable "mcp_dev_deployments" {
-  type        = map(string)
-  description = "Namespace => ephemeral MCP Deployment that the Cloud Deploy cleanup identity may scale to zero."
-  default = {
-    mcp-terraform         = "dev-mcp-terraform"
-    mcp-google-cloud      = "dev-mcp-google-cloud"
-    mcp-google-workspace  = "dev-mcp-google-workspace"
-    mcp-whatsapp-business = "dev-mcp-whatsapp-business"
-  }
+  type        = set(string)
+  description = "Ephemeral MCP Deployments in the dev namespace that the Cloud Deploy cleanup identity may scale to zero."
+  default = [
+    "dev-mcp-terraform",
+    "dev-mcp-google-cloud",
+    "dev-mcp-google-workspace",
+    "dev-mcp-whatsapp-business",
+  ]
 }
 
 variable "cleanup_service_account_emails" {

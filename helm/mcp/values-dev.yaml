@@ -1,5 +1,6 @@
-# Ephemeral development instances coexist with prod in the same namespaces,
-# reusing the namespace-scoped Secrets and Workload Identity KSA.
+# Ephemeral MCP instances share the isolated dev tenant with dev Mattermost
+# and its persistent migration-test database. Production MCP servers retain
+# one namespace per server.
 namePrefix: "dev-"
 
 serviceAccount:
@@ -10,8 +11,8 @@ defaults:
   networkPolicy:
     enabled: true
     namespaceDefaults: false
-    allowedNamespaces:
-      - mcp-tunnel
+    allowTunnel: false
+    allowedNamespaces: []
     tunnelNamespace: mcp-tunnel
 
 tunnel:

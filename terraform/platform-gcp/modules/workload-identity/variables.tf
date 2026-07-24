@@ -34,6 +34,15 @@ variable "ksa_name" {
   description = "Kubernetes service account name to bind via Workload Identity."
 }
 
+variable "additional_ksa_bindings" {
+  type = set(object({
+    namespace = string
+    ksa_name  = string
+  }))
+  description = "Additional Kubernetes service accounts allowed to impersonate the same GSA."
+  default     = []
+}
+
 variable "project_roles" {
   type        = list(string)
   description = "Optional project-level IAM roles to grant the GSA (least privilege — keep short)."

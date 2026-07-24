@@ -5,7 +5,7 @@ The platform consumes MCP (Model Context Protocol) servers in two ways:
 1. **In-cluster (self-hosted)** — deployed by the `mcp` Helm chart
    (`helm/mcp`), rendered onto the prod stage by Cloud Deploy when the
    app-gcp stack sets `mcp_servers_enabled = true`. Each server is an entry in
-   `helm/mcp/values.yaml` (`servers.<name>.enabled`) and is reachable
+   `helm/mcp/values.yaml` (`servers.<name>.enabled`). Production is reachable
    across namespaces only from `mattermost`, at
    `http://mcp-<name>.mcp-<name>.svc.cluster.local:<port>/mcp`. Every server
    has its own default-deny namespace (`mcp-terraform`, `mcp-google-cloud`,
@@ -20,6 +20,11 @@ The platform consumes MCP (Model Context Protocol) servers in two ways:
    use the same regional CMEK (`cmek_key_id`) and least-privilege Workload
    Identity accessor as the production Mattermost database secrets; only the
    resulting Kubernetes Secrets are materialised in etcd.
+   Disposable `dev-mcp-*` instances instead share the quota-bound `dev`
+   namespace with dev Mattermost and dev Postgres. They use the `development`
+   PriorityClass, the tenant's default-deny/intra-namespace policies, duplicate
+   namespace-scoped credential Secrets, and a `dev/mcp-servers` KSA bound to
+   the same read-only Google Cloud MCP GSA.
 
 2. **Vendor-hosted (remote)** — the vendor runs the MCP endpoint; agents
    connect to its URL with OAuth. Nothing to deploy or operate on our side.
@@ -36,7 +41,7 @@ constraints (especially for consumer services without a public API).
 | Service | Server | Credentials |
 |---|---|---|
 | Terraform (Registry + **HCP Terraform**) | internally mirrored `hashicorp/terraform-mcp-server@sha256:67b4…` (official) — registry docs tokenless; workspaces/runs/stacks on app.terraform.io once `TFE_TOKEN` is loaded | HCP team token in Secret Manager (`mcp-terraform-hcp-token`, placeholder seeded) |
-| Google Cloud (Logging, Monitoring, Trace, Error Reporting) | internally built `mcp-google-cloud` image: `@google-cloud/observability-mcp@0.2.3` (Google, preview) + `supergateway@3.4.3` | **none — keyless**: Workload Identity (`mcp-google-cloud/mcp-servers` KSA → `mcp` GSA, viewer roles); quota project is `yourown-chat` |
+| Google Cloud (Logging, Monitoring, Trace, Error Reporting) | internally built `mcp-google-cloud` image: `@google-cloud/observability-mcp@0.2.3` (Google, preview) + `supergateway@3.4.3` | **none — keyless**: Workload Identity (`mcp-google-cloud/mcp-servers` in prod and `dev/mcp-servers` in dev → `mcp` GSA, viewer roles); quota project is `yourown-chat` |
 | Google Workspace (Gmail, Calendar) | internally built `google_workspace_mcp` v1.22.1 at commit `da3c708…` (community, native streamable-http) | OAuth client in Secret Manager + one-time user consent (below) |
 | WhatsApp Business | internally built adapter over the official Meta WhatsApp Cloud API | Meta system-user token, WABA ID and phone-number ID in Secret Manager |
 
@@ -309,10 +314,11 @@ nothing else depends on it.
    `mcp-terraform.yourown.chat` / `mcp-google-cloud.yourown.chat` /
    `mcp-google-workspace.yourown.chat`.
 3. Apply **platform-gcp**, then **app-gcp**: the former binds Workload Identity
-   to `mcp-google-cloud/mcp-servers`; the latter creates one namespace per MCP
-   server plus `mcp-tunnel`, and materialises every Secret in its consuming
-   namespace before Cloud Deploy runs. (A release racing ahead of this step
-   fails on a missing Secret — apply and re-run the release.)
+   to both `mcp-google-cloud/mcp-servers` and `dev/mcp-servers`; the latter
+   creates one namespace per production MCP server plus `mcp-tunnel`, and
+   materialises credentials in both each production namespace and `dev`
+   before Cloud Deploy runs. (A release racing ahead of this step fails on a
+   missing Secret — apply and re-run the release.)
 4. Release: the cloudflared pod connects outbound; hostnames go live behind
    Access. Until step 3 lands the pod waits in CreateContainerConfigError and
    recovers on its own.
@@ -323,18 +329,25 @@ nothing else depends on it.
 
 ### Automated rollout verification
 
-The `mcp` pipeline first creates temporary `dev-mcp-*` instances and runs the
-dev protocol verifier. Successful dev instances stay available for review.
-Production approval starts an external Cloud Deploy predeploy hook that scales
-them to zero, then the prod target deploys and repeats verification. Its
+The `mcp` pipeline first creates temporary `dev-mcp-*` instances in `dev`.
+Kubernetes startup/readiness/liveness probes gate this stage; it does not use
+production credentials as a release test. Ready dev instances stay available
+for review. Production approval starts an external Cloud Deploy predeploy hook
+that scales them to zero, then the prod target deploys and performs credential
+verification. Its
 Skaffold custom-action container runs in Cloud Build under a dedicated Google
 service account, so it creates no pod in GKE. Each verifier Job runs in
 `mcp-tunnel`, follows the same NetworkPolicy path as cloudflared, and checks:
 
 - each server's health endpoint;
-- an MCP `initialize` exchange with Terraform, Google Cloud, and WhatsApp
-  Business;
-- the expected unauthenticated `401` from Google Workspace in OAuth 2.1 mode.
+- a real read-only `list_terraform_orgs` HCP Terraform API call;
+- a real read-only `list_log_names` Google Cloud API call through Workload
+  Identity;
+- a real read-only `whatsapp_get_phone_number` Meta API call;
+- non-placeholder Google Workspace OAuth application configuration at startup
+  and the expected unauthenticated `401` in OAuth 2.1 mode. A Gmail/Calendar
+  API smoke requires a separately provisioned test user's OAuth grant and is
+  intentionally not impersonated by CI.
 
 Any failure marks verification and the rollout unsuccessful. Apply the
 `app-gcp` stack before cutting the first MCP release.

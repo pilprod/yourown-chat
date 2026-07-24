@@ -111,33 +111,29 @@ resource "kubernetes_role_binding_v1" "mattermost_cleanup" {
 }
 
 resource "kubernetes_role_v1" "mcp_cleanup" {
-  for_each = var.mcp_dev_deployments
-
   metadata {
     name      = "mcp-dev-cleanup"
-    namespace = each.key
+    namespace = var.dev_namespace
   }
 
   rule {
     api_groups     = ["apps"]
     resources      = ["deployments", "deployments/scale"]
-    resource_names = [each.value]
+    resource_names = var.mcp_dev_deployments
     verbs          = ["get", "patch", "update"]
   }
 }
 
 resource "kubernetes_role_binding_v1" "mcp_cleanup" {
-  for_each = var.mcp_dev_deployments
-
   metadata {
     name      = "mcp-dev-cleanup"
-    namespace = each.key
+    namespace = var.dev_namespace
   }
 
   role_ref {
     api_group = "rbac.authorization.k8s.io"
     kind      = "Role"
-    name      = kubernetes_role_v1.mcp_cleanup[each.key].metadata[0].name
+    name      = kubernetes_role_v1.mcp_cleanup.metadata[0].name
   }
 
   subject {

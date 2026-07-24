@@ -19,8 +19,10 @@ spec:
       app: {{ $resourceName }}
   policyTypes:
     - Ingress
+  {{- if or $np.allowTunnel (gt (len $np.allowedNamespaces) 0) }}
   ingress:
     - from:
+        {{- if $np.allowTunnel }}
         # cloudflared is isolated in its own namespace and reaches the
         # ClusterIP only after Cloudflare Access has authenticated the request.
         - namespaceSelector:
@@ -29,6 +31,7 @@ spec:
           podSelector:
             matchLabels:
               app: mcp-tunnel
+        {{- end }}
         {{- range $ns := $np.allowedNamespaces }}
         - namespaceSelector:
             matchLabels:
@@ -37,6 +40,11 @@ spec:
       ports:
         - protocol: TCP
           port: {{ $server.port }}
+  {{- else }}
+  # Same-namespace access is supplied by the dev tenant's
+  # allow-intra-namespace policy. This policy opens no cross-namespace path.
+  ingress: []
+  {{- end }}
 {{- end }}
 {{- end }}
 {{- end }}

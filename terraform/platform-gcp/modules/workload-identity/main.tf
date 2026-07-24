@@ -15,6 +15,17 @@ resource "google_service_account_iam_member" "wi_user" {
   member             = local.wi_member
 }
 
+resource "google_service_account_iam_member" "wi_user_additional" {
+  for_each = {
+    for binding in var.additional_ksa_bindings :
+    "${binding.namespace}/${binding.ksa_name}" => binding
+  }
+
+  service_account_id = google_service_account.this.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "serviceAccount:${var.project_id}.svc.id.goog[${each.value.namespace}/${each.value.ksa_name}]"
+}
+
 # Optional least-privilege project roles.
 resource "google_project_iam_member" "roles" {
   for_each = toset(var.project_roles)

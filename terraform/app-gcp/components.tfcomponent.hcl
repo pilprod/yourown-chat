@@ -66,7 +66,7 @@ component "clouddeploy_mcp" {
         name               = "dev"
         profiles           = ["mcp-dev"]
         require_approval   = false
-        verify             = true
+        verify             = false
       },
       {
         name              = "prod"
@@ -285,6 +285,37 @@ component "cluster_secrets" {
         }
       } : {},
       var.mcp_servers_enabled ? {
+        # Dev MCP workloads share one namespace, so namespace-scoped
+        # credentials are duplicated there without changing their Secret
+        # names. Production keeps one credential Secret per isolated server
+        # namespace.
+        dev-mcp-terraform-hcp = {
+          name      = "mcp-terraform-hcp"
+          namespace = "dev"
+          labels    = { "app.kubernetes.io/part-of" = "mcp-servers", tier = "dev" }
+          data = {
+            TFE_TOKEN = component.prod_secret_values.values["mcp_terraform_hcp_token"]
+          }
+        }
+        dev-mcp-google-workspace-oauth = {
+          name      = "mcp-google-workspace-oauth"
+          namespace = "dev"
+          labels    = { "app.kubernetes.io/part-of" = "mcp-servers", tier = "dev" }
+          data = {
+            GOOGLE_OAUTH_CLIENT_ID     = component.prod_secret_values.values["mcp_google_workspace_client_id"]
+            GOOGLE_OAUTH_CLIENT_SECRET = component.prod_secret_values.values["mcp_google_workspace_client_secret"]
+          }
+        }
+        dev-mcp-whatsapp-business = {
+          name      = "mcp-whatsapp-business"
+          namespace = "dev"
+          labels    = { "app.kubernetes.io/part-of" = "mcp-servers", tier = "dev" }
+          data = {
+            WHATSAPP_ACCESS_TOKEN    = component.prod_secret_values.values["mcp_whatsapp_access_token"]
+            WHATSAPP_WABA_ID         = component.prod_secret_values.values["mcp_whatsapp_waba_id"]
+            WHATSAPP_PHONE_NUMBER_ID = component.prod_secret_values.values["mcp_whatsapp_phone_number_id"]
+          }
+        }
         mcp-terraform-hcp = {
           name      = "mcp-terraform-hcp"
           namespace = "mcp-terraform"

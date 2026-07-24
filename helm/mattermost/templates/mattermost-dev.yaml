@@ -81,10 +81,10 @@ spec:
             # MCP service names, never the cluster CIDR.
             - name: MM_SERVICESETTINGS_ALLOWEDUNTRUSTEDINTERNALCONNECTIONS
               value: >-
-                mcp-terraform.mcp-terraform.svc.cluster.local
-                mcp-google-cloud.mcp-google-cloud.svc.cluster.local
-                mcp-google-workspace.mcp-google-workspace.svc.cluster.local
-                mcp-whatsapp-business.mcp-whatsapp-business.svc.cluster.local
+                dev-mcp-terraform.dev.svc.cluster.local
+                dev-mcp-google-cloud.dev.svc.cluster.local
+                dev-mcp-google-workspace.dev.svc.cluster.local
+                dev-mcp-whatsapp-business.dev.svc.cluster.local
           ports:
             - containerPort: 8065
           resources:

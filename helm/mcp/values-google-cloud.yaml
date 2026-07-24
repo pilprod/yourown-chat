@@ -3,6 +3,9 @@
 tunnel:
   enabled: false
 
+serviceAccount:
+  create: true
+
 servers:
   terraform:
     enabled: false

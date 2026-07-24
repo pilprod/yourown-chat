@@ -1,0 +1,6 @@
+# Production verifies that the OAuth application itself is configured. A real
+# Gmail/Calendar API smoke still requires a dedicated test user's OAuth grant.
+servers:
+  google-workspace:
+    env:
+      MCP_VALIDATE_OAUTH_CONFIG: "true"
