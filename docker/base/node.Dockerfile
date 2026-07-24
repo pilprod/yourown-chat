@@ -1,5 +1,5 @@
 ARG NODE_IMAGE=node:22.22.0-bookworm-slim@sha256:dd9d21971ec4395903fa6143c2b9267d048ae01ca6d3ea96f16cb30df6187d94
-ARG BASE_IMAGE=yourown-chat/base:local
+ARG BASE_IMAGE=base:local
 
 FROM ${NODE_IMAGE} AS language-runtime
 

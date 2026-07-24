@@ -98,32 +98,32 @@ snippets:
 - `docker/deploy-parameters.sh` resolves catalogued images to digests and
   generates the Cloud Deploy parameter list.
 
-The hierarchy is:
+Artifact Registry keeps each independently deployable image as a flat package:
 
 ```text
 docker/                         # one Artifact Registry repository
 ├── mattermost
-├── mcp/
-│   ├── cloudflared
-│   ├── google-cloud
-│   ├── google-workspace
-│   ├── terraform
-│   └── whatsapp-business
-└── yourown-chat/
-    ├── base
-    ├── node
-    └── python
+├── base
+├── node
+├── python
+├── mcp-cloudflared
+├── mcp-google-cloud
+├── mcp-google-workspace
+├── mcp-terraform
+└── mcp-whatsapp-business
 ```
 
-The runtime dependency graph inside that package hierarchy is:
+Each internal package gets an immutable `<git-sha>` tag and a moving `runtime`
+tag used to resolve the newest approved digest. The runtime dependency graph
+is:
 
 ```text
-yourown-chat/base (pinned Debian)
-├── yourown-chat/node
-│   ├── mcp/google-cloud
-│   └── mcp/whatsapp-business
-└── yourown-chat/python
-    └── mcp/google-workspace
+base (pinned Debian)
+├── node
+│   ├── mcp-google-cloud
+│   └── mcp-whatsapp-business
+└── python
+    └── mcp-google-workspace
 ```
 
 Terraform MCP and cloudflared are entries of type `mirror`: their official

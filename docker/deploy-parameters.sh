@@ -19,10 +19,9 @@ while IFS=$'\t' read -r name artifact_path kind dockerfile context parent_arg pa
     digest="$(gcloud artifacts docker images describe \
       "${built_image}" --format='value(image_summary.digest)')"
   else
-    digest="$(gcloud artifacts docker images list "${repository}" \
-      --sort-by='~UPDATE_TIME' \
-      --limit=1 \
-      --format='value(version)')"
+    digest="$(gcloud artifacts docker images describe \
+      "${repository}:runtime" \
+      --format='value(image_summary.digest)')"
   fi
 
   [[ -n "${digest}" ]] || {

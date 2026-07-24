@@ -50,7 +50,7 @@ There is no package download, writable npm cache, or init container at runtime.
 When `docker/mcp/google-cloud/**` or the shared `docker/base/**` changes, the
 unified release trigger
 audits, builds, and pushes
-`europe-west3-docker.pkg.dev/yourown-chat/docker/mcp/google-cloud:<git-sha>`
+`europe-west3-docker.pkg.dev/yourown-chat/docker/mcp-google-cloud:<git-sha>`
 before it creates an MCP release. Other MCP-only changes reuse the newest
 internal image rather than rebuilding identical dependencies. The trigger
 resolves the selected digest and passes
@@ -76,7 +76,7 @@ database changes. A rebuild is required only to consume fixed base packages or
 an updated npm lock.
 
 `docker/base/Dockerfile` produces the internally scanned
-`yourown-chat/base` image from a pinned Debian digest.
+`base` image from a pinned Debian digest.
 `docker/base/node.Dockerfile` and `docker/base/python.Dockerfile` create the
 language runtimes on top; application Dockerfiles consume only
 `RUNTIME_IMAGE`. This centralises CA certificates, the non-root UID, OS
@@ -97,12 +97,12 @@ mirrors rather than rebased.
 For a local build, build the base once and pass it explicitly:
 
 ```bash
-docker build -t yourown-chat/base:local docker/base
+docker build -t base:local docker/base
 docker build -f docker/base/node.Dockerfile \
-  --build-arg BASE_IMAGE=yourown-chat/base:local \
-  -t yourown-chat/node:local docker/base
-docker build --build-arg RUNTIME_IMAGE=yourown-chat/node:local \
-  -t mcp/whatsapp-business:local docker/mcp/whatsapp-business
+  --build-arg BASE_IMAGE=base:local \
+  -t node:local docker/base
+docker build --build-arg RUNTIME_IMAGE=node:local \
+  -t mcp-whatsapp-business:local docker/mcp/whatsapp-business
 ```
 
 `docker/mcp/upstreams.env` is the reviewable upstream lock for the other
