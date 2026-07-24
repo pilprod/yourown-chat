@@ -86,7 +86,9 @@ servers:
   # Google @google-cloud/observability-mcp (stdio) wrapped by supergateway.
   # Keyless: runs under the mcp-servers KSA -> `mcp` GSA (viewer roles), with
   # ADC provided by the GKE metadata server. readOnlyRootFilesystem is disabled
-  # because npx writes the pinned package to its cache under $HOME.
+  # because npx writes the pinned package to its cache under $HOME. Stateful
+  # mode keeps one stdio child for the Mattermost initialize/GET/tools sequence;
+  # stateless mode repeatedly spawned children and exhausted the memory limit.
   google-cloud:
     enabled: true
     serviceAccountName: mcp-servers
@@ -99,6 +101,7 @@ servers:
       - "npx -y @google-cloud/observability-mcp@0.2.3"
       - "--outputTransport"
       - "streamableHttp"
+      - "--stateful"
       - "--port"
       - "8080"
       - "--healthEndpoint"
