@@ -80,3 +80,34 @@ GKE.
 A semver tag in `pilprod/yourown-chat` remains the release mechanism for
 manifest or delivery changes. Its diff router creates a Mattermost release only
 when Mattermost paths changed. See [DEPLOY.md](DEPLOY.md).
+
+## MCP image factory
+
+MCP images use one declarative factory rather than per-image Cloud Build
+snippets:
+
+- `docker/images.tsv` describes image name, build or mirror mode, Dockerfile,
+  context, parent runtime, upstream source, change selector, audit, Cloud
+  Deploy parameter, OCI metadata and optional external Git source/revision;
+- `docker/prepare-images.sh` materialises every catalogued external build
+  context at its pinned revision;
+- `docker/audit-images.sh` applies the catalogued language audit policy;
+- `docker/build-images.sh` resolves the dependency graph, bootstraps missing
+  images, and publishes immutable plus `runtime` tags;
+- `docker/deploy-parameters.sh` resolves catalogued images to digests and
+  generates the Cloud Deploy parameter list.
+
+The hierarchy is:
+
+```text
+yourown-chat-base (pinned Debian)
+├── yourown-chat-node
+│   ├── mcp-google-cloud
+│   └── mcp-whatsapp-business
+└── yourown-chat-python
+    └── mcp-google-workspace
+```
+
+Terraform MCP and cloudflared are entries of type `mirror`: their official
+digests are copied byte-for-byte into Artifact Registry. Mattermost is built
+and released by its separate source-repository pipeline.

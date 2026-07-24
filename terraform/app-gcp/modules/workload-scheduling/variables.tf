@@ -8,9 +8,10 @@ variable "mcp_dev_deployments" {
   type        = map(string)
   description = "Namespace => ephemeral MCP Deployment that the Cloud Deploy cleanup identity may scale to zero."
   default = {
-    mcp-terraform        = "dev-mcp-terraform"
-    mcp-google-cloud     = "dev-mcp-google-cloud"
-    mcp-google-workspace = "dev-mcp-google-workspace"
+    mcp-terraform         = "dev-mcp-terraform"
+    mcp-google-cloud      = "dev-mcp-google-cloud"
+    mcp-google-workspace  = "dev-mcp-google-workspace"
+    mcp-whatsapp-business = "dev-mcp-whatsapp-business"
   }
 }
 

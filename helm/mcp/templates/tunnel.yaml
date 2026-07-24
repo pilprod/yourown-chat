@@ -30,7 +30,11 @@ spec:
         {{- toYaml .Values.defaults.podSecurityContext | nindent 8 }}
       containers:
         - name: cloudflared
+          {{- with .Values.tunnel.image.deployParameter }}
+          image: "from-deploy-parameters" {{ printf "# from-param: ${%s}" . }}
+          {{- else }}
           image: "{{ .Values.tunnel.image.repository }}:{{ .Values.tunnel.image.tag }}"
+          {{- end }}
           imagePullPolicy: {{ .Values.tunnel.image.pullPolicy | default "IfNotPresent" }}
           securityContext:
             {{- toYaml .Values.defaults.securityContext | nindent 12 }}

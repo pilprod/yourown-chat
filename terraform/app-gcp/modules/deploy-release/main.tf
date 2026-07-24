@@ -1,8 +1,9 @@
 locals {
   # Shared out-of-band Cloud Build 2nd-gen connection (console OAuth, README.md).
-  connection_id      = "projects/${var.project_id}/locations/${var.region}/connections/${var.connection_name}"
-  releaser_sa_id     = "releaser-${var.region}"
-  source_bucket_name = "deploy-source-${var.region}"
+  connection_id              = "projects/${var.project_id}/locations/${var.region}/connections/${var.connection_name}"
+  releaser_sa_id             = "releaser-${var.region}"
+  source_bucket_name         = "deploy-source-${var.region}"
+  artifact_repository_prefix = "${var.mattermost_image_repository.location}-docker.pkg.dev/${var.project_id}/${var.mattermost_image_repository.repository_id}"
 }
 
 resource "google_cloudbuildv2_repository" "this" {
@@ -100,12 +101,19 @@ resource "google_project_iam_member" "releaser_logs" {
   member  = "serviceAccount:${google_service_account.releaser.email}"
 }
 
-resource "google_artifact_registry_repository_iam_member" "releaser_reader" {
+resource "google_artifact_registry_repository_iam_member" "releaser_registry" {
   project    = var.project_id
   location   = var.mattermost_image_repository.location
   repository = var.mattermost_image_repository.repository_id
-  role       = "roles/artifactregistry.reader"
-  member     = "serviceAccount:${google_service_account.releaser.email}"
+  # The same tag-trigger builds the MCP image before cutting its release. A
+  # repository-scoped writer can push that image and read its immutable digest.
+  role   = "roles/artifactregistry.writer"
+  member = "serviceAccount:${google_service_account.releaser.email}"
+}
+
+moved {
+  from = google_artifact_registry_repository_iam_member.releaser_reader
+  to   = google_artifact_registry_repository_iam_member.releaser_registry
 }
 
 # Terraform (the apply SA) must actAs the releaser to create a trigger that runs
@@ -122,7 +130,7 @@ resource "google_cloudbuild_trigger" "release" {
   project         = var.project_id
   location        = var.region
   name            = "release"
-  description     = "Route ${var.source_subdir}/ changes to Mattermost and/or MCP Cloud Deploy pipelines on ${var.release_tag_regex} tags."
+  description     = "Route Helm deployment and Docker MCP image changes to component Cloud Deploy pipelines on ${var.release_tag_regex} tags."
   service_account = google_service_account.releaser.id
 
   repository_event_config {
@@ -165,6 +173,74 @@ resource "google_cloudbuild_trigger" "release" {
     }
 
     step {
+      id         = "prepare-mcp-image-sources"
+      name       = "gcr.io/cloud-builders/git"
+      entrypoint = "bash"
+      args = [
+        "-ceu",
+        <<-EOT
+          changed="$$(cat /workspace/changed-files)"
+          mcp_inputs_changed="$$(printf '%s\n' "$$changed" |
+            grep -E '^(helm/skaffold\\.yaml$|helm/mcp/|docker/)' || true)"
+
+          if [ "${var.mcp_enabled}" = "true" ] && [ -n "$$mcp_inputs_changed" ]; then
+            PREPARED_CONTEXT_ROOT="/workspace/image-sources" \
+              bash ../docker/prepare-images.sh
+          else
+            echo "No enabled MCP image inputs changed; skipping source preparation"
+          fi
+        EOT
+      ]
+      dir = var.source_subdir
+    }
+
+    step {
+      id         = "audit-mcp-images"
+      name       = "node:22.22.0-bookworm-slim@sha256:dd9d21971ec4395903fa6143c2b9267d048ae01ca6d3ea96f16cb30df6187d94"
+      entrypoint = "bash"
+      args = [
+        "-ceu",
+        <<-EOT
+          if [ "${var.mcp_enabled}" = "true" ]; then
+            CHANGED_FILES="/workspace/changed-files" \
+              bash ../docker/audit-images.sh
+          else
+            echo "MCP is disabled; skipping image audits"
+          fi
+        EOT
+      ]
+      dir = var.source_subdir
+    }
+
+    step {
+      id         = "build-mcp-images"
+      name       = "gcr.io/cloud-builders/docker"
+      entrypoint = "bash"
+      args = [
+        "-ceu",
+        <<-EOT
+          changed="$$(cat /workspace/changed-files)"
+          mcp_inputs_changed="$$(printf '%s\n' "$$changed" |
+            grep -E '^(helm/skaffold\\.yaml$|helm/mcp/|docker/)' || true)"
+
+          if [ "${var.mcp_enabled}" = "true" ] && [ -n "$$mcp_inputs_changed" ]; then
+            AR_PREFIX="${local.artifact_repository_prefix}" \
+            IMAGE_TAG="$COMMIT_SHA" \
+            BUILD_VERSION="$TAG_NAME" \
+            VCS_REF="$COMMIT_SHA" \
+            CHANGED_FILES="/workspace/changed-files" \
+            PREPARED_CONTEXT_ROOT="/workspace/image-sources" \
+            OUTPUT_DIR="/workspace" \
+              bash ../docker/build-images.sh
+          else
+            echo "No enabled MCP image inputs changed; skipping image catalog"
+          fi
+        EOT
+      ]
+      dir = var.source_subdir
+    }
+
+    step {
       id         = "release"
       name       = "gcr.io/google.com/cloudsdktool/cloud-sdk:slim"
       entrypoint = "bash"
@@ -180,7 +256,7 @@ resource "google_cloudbuild_trigger" "release" {
 
           common_changed="$$(printf '%s\n' "$$changed" | grep -E '^helm/skaffold\\.yaml$' || true)"
           mattermost_changed="$$(printf '%s\n' "$$changed" | grep -E '^helm/(mattermost|matterbridge)/' || true)"
-          mcp_changed="$$(printf '%s\n' "$$changed" | grep -E '^helm/mcp/' || true)"
+          mcp_changed="$$(printf '%s\n' "$$changed" | grep -E '^(helm/mcp/|docker/)' || true)"
 
           create_release() {
             pipeline="$$1"
@@ -196,7 +272,7 @@ resource "google_cloudbuild_trigger" "release" {
           }
 
           if [ -n "$$common_changed$$mattermost_changed" ]; then
-            image_repo="${var.mattermost_image_repository.location}-docker.pkg.dev/${var.project_id}/${var.mattermost_image_repository.repository_id}/${var.mattermost_image_repository.image_name}"
+            image_repo="${local.artifact_repository_prefix}/${var.mattermost_image_repository.image_name}"
             mattermost_tag="$$(gcloud artifacts docker tags list "$$image_repo" \
               --filter="tag~'/tags/v.*-patched$$'" \
               --format='value(tag)' | sort -V | tail -n1)"
@@ -205,7 +281,13 @@ resource "google_cloudbuild_trigger" "release" {
               --deploy-parameters "mattermost_dev_image=$$image_repo:$$mattermost_tag,mattermost_version=$$mattermost_tag"
           fi
           if [ "${var.mcp_enabled}" = "true" ]; then
-            [ -z "$$common_changed$$mcp_changed" ] || create_release mcp
+            if [ -n "$$common_changed$$mcp_changed" ]; then
+              deploy_parameters="$$(AR_PREFIX="${local.artifact_repository_prefix}" \
+                OUTPUT_DIR="/workspace" \
+                bash ../docker/deploy-parameters.sh)"
+              create_release mcp \
+                --deploy-parameters "$$deploy_parameters"
+            fi
           elif [ -n "$$common_changed$$mcp_changed" ]; then
             echo "MCP deployment changes detected, but mcp_servers_enabled=false; skipping MCP release"
           fi
@@ -230,6 +312,6 @@ resource "google_cloudbuild_trigger" "release" {
     google_storage_bucket_iam_member.releaser_source_bucket_read,
     google_project_iam_member.releaser_clouddeploy_viewer,
     google_project_iam_member.releaser_logs,
-    google_artifact_registry_repository_iam_member.releaser_reader,
+    google_artifact_registry_repository_iam_member.releaser_registry,
   ]
 }

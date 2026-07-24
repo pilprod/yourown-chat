@@ -89,6 +89,14 @@ profiles:
               - mcp/values.yaml
               - mcp/values-dev.yaml
               - mcp/values-google-workspace.yaml
+          - name: dev-mcp-whatsapp-business
+            chartPath: mcp
+            namespace: mcp-whatsapp-business
+            createNamespace: false
+            valuesFiles:
+              - mcp/values.yaml
+              - mcp/values-dev.yaml
+              - mcp/values-whatsapp-business.yaml
     verify:
       - name: mcp-smoke-test
         container:
@@ -105,6 +113,8 @@ profiles:
               http://dev-mcp-google-cloud.mcp-google-cloud.svc.cluster.local:8080/healthz;
               curl -sSf $retry
               http://dev-mcp-google-workspace.mcp-google-workspace.svc.cluster.local:8000/health;
+              curl -sSf $retry
+              http://dev-mcp-whatsapp-business.mcp-whatsapp-business.svc.cluster.local:3000/health;
               init='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"cloud-deploy-smoke","version":"1.0"}}}';
               terraform_init="$(curl -sSf $retry -X POST
               -H 'Content-Type: application/json'
@@ -125,7 +135,13 @@ profiles:
               -H 'Accept: application/json, text/event-stream'
               --data "$init"
               http://dev-mcp-google-workspace.mcp-google-workspace.svc.cluster.local:8000/mcp)";
-              test "$code" = 401
+              test "$code" = 401;
+              whatsapp_init="$(curl -sSf $retry -X POST
+              -H 'Content-Type: application/json'
+              -H 'Accept: application/json, text/event-stream'
+              --data "$init"
+              http://dev-mcp-whatsapp-business.mcp-whatsapp-business.svc.cluster.local:3000/mcp)";
+              printf '%s' "$whatsapp_init" | grep -q '"result"'
         executionMode:
           kubernetesCluster:
             jobManifestPath: mcp/verify/dev-job.yaml
@@ -162,6 +178,13 @@ profiles:
             valuesFiles:
               - mcp/values.yaml
               - mcp/values-google-workspace.yaml
+          - name: mcp-whatsapp-business
+            chartPath: mcp
+            namespace: mcp-whatsapp-business
+            createNamespace: false
+            valuesFiles:
+              - mcp/values.yaml
+              - mcp/values-whatsapp-business.yaml
     verify:
       - name: mcp-smoke-test
         container:
@@ -178,6 +201,8 @@ profiles:
               http://mcp-google-cloud.mcp-google-cloud.svc.cluster.local:8080/healthz;
               curl -sSf $retry
               http://mcp-google-workspace.mcp-google-workspace.svc.cluster.local:8000/health;
+              curl -sSf $retry
+              http://mcp-whatsapp-business.mcp-whatsapp-business.svc.cluster.local:3000/health;
               init='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"cloud-deploy-smoke","version":"1.0"}}}';
               terraform_init="$(curl -sSf $retry -X POST
               -H 'Content-Type: application/json'
@@ -198,7 +223,13 @@ profiles:
               -H 'Accept: application/json, text/event-stream'
               --data "$init"
               http://mcp-google-workspace.mcp-google-workspace.svc.cluster.local:8000/mcp)";
-              test "$code" = 401
+              test "$code" = 401;
+              whatsapp_init="$(curl -sSf $retry -X POST
+              -H 'Content-Type: application/json'
+              -H 'Accept: application/json, text/event-stream'
+              --data "$init"
+              http://mcp-whatsapp-business.mcp-whatsapp-business.svc.cluster.local:3000/mcp)";
+              printf '%s' "$whatsapp_init" | grep -q '"result"'
         executionMode:
           kubernetesCluster:
             jobManifestPath: mcp/verify/prod-job.yaml
@@ -242,3 +273,4 @@ customActions:
             kubectl --namespace mcp-terraform scale deployment/dev-mcp-terraform --replicas=0
             kubectl --namespace mcp-google-cloud scale deployment/dev-mcp-google-cloud --replicas=0
             kubectl --namespace mcp-google-workspace scale deployment/dev-mcp-google-workspace --replicas=0
+            kubectl --namespace mcp-whatsapp-business scale deployment/dev-mcp-whatsapp-business --replicas=0

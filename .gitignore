@@ -30,3 +30,36 @@ service-account*.json
 # OS / editor
 .DS_Store
 *.swp
+.idea/
+.vscode/
+
+# JavaScript / TypeScript
+**/node_modules/
+**/.npm/
+**/.pnpm-store/
+**/coverage/
+**/*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Python
+**/__pycache__/
+**/*.py[cod]
+**/.venv/
+**/venv/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.tox/
+**/.coverage
+**/htmlcov/
+**/*.egg-info/
+
+# Local application configuration and build output
+.env
+.env.*
+!.env.example
+**/dist/
+**/build/

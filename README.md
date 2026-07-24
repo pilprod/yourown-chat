@@ -42,8 +42,8 @@ holds the VPC, the cluster and the database — and the Cloudflare API token
 | PostgreSQL | Cloud SQL, private IP only, Frankfurt (`europe-west3`), PITR + 7-day backups |
 | Object storage | GCS bucket with S3-compatible HMAC creds for Mattermost ("filestore") |
 | Kubernetes | One zonal GKE Standard cluster, private nodes, one autoscaling `general` pool (`e2-standard-2`, 1–3 nodes) |
-| Container registry | One Artifact Registry repo (`docker`), optional vulnerability scanning |
-| CI | Cloud Build builds the Mattermost image on a `v*-patched` git tag |
+| Container registry | One Artifact Registry repo (`docker`) with a shared hardened runtime base and Artifact Analysis vulnerability scanning enabled |
+| CI | Cloud Build builds Mattermost on a `v*-patched` tag; one catalog-driven MCP builder creates shared OS/language bases and mirrors pinned vendor images into Artifact Registry |
 | CD | Separate Mattermost and MCP pipelines; ephemeral test workloads; one semver platform tag routes only changed components |
 | Secrets | Everything in Secret Manager, mounted via the CSI add-on + Workload Identity |
 | Encryption | One shared Cloud KMS **HSM** key (CMEK, 90-day rotation) over Cloud SQL, GCS, Secret Manager and **GKE etcd** (application-layer Kubernetes Secrets encryption) |
@@ -107,11 +107,15 @@ terraform/
                          # each stack: *.tfcomponent.hcl + *.tfdeploy.hcl + modules/ + its own lock file
 helm/                    # Kubernetes workloads, delivered by Cloud Deploy
   skaffold.yaml          # component-specific test/prod render profiles
-  mattermost/            # prod Mattermost (operator CR + SecretProviderClass)
   matterbridge/          # isolated bridge deployment
   mattermost/            # one chart, promoted with dev/prod values
   mcp/                   # MCP Helm chart, dev/prod values and protocol smoke jobs
   ingress-nginx/         # Cloudflare-only ingress values + runbook
+docker/
+  images.tsv             # declarative build/mirror/audit/deploy catalog
+  *-images.sh            # shared Cloud Build and local image tooling
+  base/                  # OS base plus Node.js/Python language runtimes
+  mcp/                   # thin application Dockerfiles and pinned inputs
 docs/BUILD.md            # image build flow in detail
 ```
 
@@ -186,7 +190,7 @@ git tag v9.11.3-patched  (on pilprod/mattermost)
 git tag 1.2.3  (on pilprod/yourown-chat)
   → diff against the previous semver tag
   → route helm/mattermost|matterbridge changes to Mattermost
-  → route helm/mcp changes to MCP
+  → route helm/mcp or docker changes to MCP
   → shared helm/skaffold.yaml changes route to both
 ```
 

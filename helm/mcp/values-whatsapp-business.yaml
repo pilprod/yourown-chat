@@ -1,4 +1,4 @@
-# google-workspace-only release in namespace mcp-google-workspace.
+# whatsapp-business-only release in namespace mcp-whatsapp-business.
 tunnel:
   enabled: false
 
@@ -10,5 +10,5 @@ servers:
     enabled: false
   google-cloud:
     enabled: false
-  whatsapp-business:
+  google-workspace:
     enabled: false

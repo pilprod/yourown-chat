@@ -121,6 +121,7 @@ spec:
       ports:
         - { protocol: TCP, port: 8080 }
         - { protocol: TCP, port: 8000 }
+        - { protocol: TCP, port: 3000 }
     # The same outbound-only connector carries the optional Zero Trust route
     # to ephemeral dev Mattermost.
     - to:

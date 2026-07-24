@@ -1,11 +1,13 @@
 # MANUAL FALLBACK for cutting a Cloud Deploy release of the helm/ workloads.
 # The stack's deploy_release component runs the same `gcloud deploy releases
 # create` automatically on semver tags; this file documents that command for a
-# manual run from any checkout. No image is built here (the image tag is the
-# source of truth inside the manifests).
+# manual run from any checkout. The MCP fallback builds/mirrors its pinned
+# images first and passes their immutable digests to Cloud Deploy.
 
 substitutions:
   _REGION: europe-west3
+  _AR_LOCATION: europe-west3
+  _AR_REPOSITORY: docker
   # Choose `mattermost` or `mcp`. This fallback creates exactly one release.
   _PIPELINE: mattermost
   # The Terraform-managed releaser can target both component pipelines.
@@ -18,18 +20,76 @@ options:
   dynamicSubstitutions: true
 
 steps:
+  - id: prepare-mcp-image-sources
+    name: gcr.io/cloud-builders/git
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        if [ "${_PIPELINE}" = "mcp" ]; then
+          PREPARED_CONTEXT_ROOT="/workspace/image-sources" \
+            bash docker/prepare-images.sh
+        else
+          echo "Mattermost fallback selected; skipping MCP source preparation"
+        fi
+
+  - id: audit-mcp-images
+    name: node:22.22.0-bookworm-slim@sha256:dd9d21971ec4395903fa6143c2b9267d048ae01ca6d3ea96f16cb30df6187d94
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        if [ "${_PIPELINE}" = "mcp" ]; then
+          FORCE_AUDIT="true" bash docker/audit-images.sh
+        else
+          echo "Mattermost fallback selected; skipping MCP npm audit"
+        fi
+
+  # The normal tag trigger performs the same build before cutting an MCP
+  # release. Keep the fallback self-contained so it also produces the scanned
+  # shared base and immutable derived MCP digests.
+  - id: build-mcp-images
+    name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        if [ "${_PIPELINE}" = "mcp" ]; then
+          AR_PREFIX="${_AR_LOCATION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPOSITORY}" \
+          IMAGE_TAG="manual-${BUILD_ID}" \
+          BUILD_VERSION="manual-${BUILD_ID}" \
+          VCS_REF="${BUILD_ID}" \
+          FORCE_BUILD="true" \
+          PREPARED_CONTEXT_ROOT="/workspace/image-sources" \
+          OUTPUT_DIR="/workspace" \
+            bash docker/build-images.sh
+        else
+          echo "Mattermost fallback selected; skipping MCP image build"
+        fi
+
   - id: release
     name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
-    dir: helm
-    entrypoint: gcloud
+    entrypoint: bash
     args:
-      - deploy
-      - releases
-      - create
-      - "rel-${SHORT_SHA}-${BUILD_ID}"
-      - --project=${PROJECT_ID}
-      - --region=${_REGION}
-      - --delivery-pipeline=${_PIPELINE}
-      # Uploads helm/ (skaffold.yaml + manifests); the pipeline's per-stage
-      # Skaffold profile renders each target. No --images: the tag is in-manifest.
-      - --source=.
+      - -ceu
+      - |
+        release_args=(
+          deploy releases create "rel-${SHORT_SHA}-${BUILD_ID}"
+          --project="${PROJECT_ID}"
+          --region="${_REGION}"
+          --delivery-pipeline="${_PIPELINE}"
+          --source=helm
+        )
+
+        if [ "${_PIPELINE}" = "mcp" ]; then
+          deploy_parameters="$$(\
+            AR_PREFIX="${_AR_LOCATION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPOSITORY}" \
+            OUTPUT_DIR="/workspace" \
+            bash docker/deploy-parameters.sh)"
+          release_args+=(
+            --deploy-parameters
+            "$${deploy_parameters}"
+          )
+        fi
+
+        gcloud "$${release_args[@]}"

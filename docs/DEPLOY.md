@@ -74,7 +74,8 @@ compares the tagged commit with the previous semver platform tag:
 
 - `helm/mattermost/` or `helm/matterbridge/` creates a
   `mattermost` release;
-- `helm/mcp/` creates an `mcp` release when `mcp_servers_enabled=true`;
+- `helm/mcp/` or `docker/` creates an `mcp` release when
+  `mcp_servers_enabled=true`;
 - `helm/skaffold.yaml` creates both releases;
 - unrelated changes create no Cloud Deploy release.
 

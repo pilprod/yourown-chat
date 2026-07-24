@@ -147,6 +147,18 @@ component "secrets" {
         value     = "REPLACE_ME_CLIENT_SECRET"
         accessors = [for m in [lookup(var.workload_identity_members, "mcp", "")] : m if m != ""]
       }
+      # WhatsApp Business uses Meta's official Cloud API. Do not grant these
+      # secrets to the Google Cloud MCP GSA: the app stack reads them during
+      # apply and materialises them only in the dedicated Kubernetes namespace.
+      "mcp-whatsapp-access-token" = {
+        value = "REPLACE_ME_ACCESS_TOKEN"
+      }
+      "mcp-whatsapp-waba-id" = {
+        value = "REPLACE_ME_WABA_ID"
+      }
+      "mcp-whatsapp-phone-number-id" = {
+        value = "REPLACE_ME_PHONE_NUMBER_ID"
+      }
     }
   }
 
@@ -184,6 +196,9 @@ component "prod_secret_values" {
         mcp_terraform_hcp_token            = component.secrets.secret_resource_ids["mcp-terraform-hcp-token"]
         mcp_google_workspace_client_id     = component.secrets.secret_resource_ids["mcp-google-workspace-client-id"]
         mcp_google_workspace_client_secret = component.secrets.secret_resource_ids["mcp-google-workspace-client-secret"]
+        mcp_whatsapp_access_token           = component.secrets.secret_resource_ids["mcp-whatsapp-access-token"]
+        mcp_whatsapp_waba_id                = component.secrets.secret_resource_ids["mcp-whatsapp-waba-id"]
+        mcp_whatsapp_phone_number_id        = component.secrets.secret_resource_ids["mcp-whatsapp-phone-number-id"]
       } : {},
       var.zero_trust_enabled ? {
         mcp_tunnel_token = "mcp-tunnel-token"
@@ -212,6 +227,7 @@ component "cluster_secrets" {
         mcp-terraform        = { labels = { tier = "prod", "part-of" = "yourown-chat", "mcp-server" = "terraform" } }
         mcp-google-cloud     = { labels = { tier = "prod", "part-of" = "yourown-chat", "mcp-server" = "google-cloud" } }
         mcp-google-workspace = { labels = { tier = "prod", "part-of" = "yourown-chat", "mcp-server" = "google-workspace" } }
+        mcp-whatsapp-business = { labels = { tier = "prod", "part-of" = "yourown-chat", "mcp-server" = "whatsapp-business" } }
         mcp-tunnel           = { labels = { tier = "prod", "part-of" = "yourown-chat", "mcp-component" = "tunnel" } }
       },
       var.matterbridge_enabled ? {
@@ -284,6 +300,16 @@ component "cluster_secrets" {
           data = {
             GOOGLE_OAUTH_CLIENT_ID     = component.prod_secret_values.values["mcp_google_workspace_client_id"]
             GOOGLE_OAUTH_CLIENT_SECRET = component.prod_secret_values.values["mcp_google_workspace_client_secret"]
+          }
+        }
+        mcp-whatsapp-business = {
+          name      = "mcp-whatsapp-business"
+          namespace = "mcp-whatsapp-business"
+          labels    = { "app.kubernetes.io/part-of" = "mcp-servers" }
+          data = {
+            WHATSAPP_ACCESS_TOKEN    = component.prod_secret_values.values["mcp_whatsapp_access_token"]
+            WHATSAPP_WABA_ID         = component.prod_secret_values.values["mcp_whatsapp_waba_id"]
+            WHATSAPP_PHONE_NUMBER_ID = component.prod_secret_values.values["mcp_whatsapp_phone_number_id"]
           }
         }
       } : {},

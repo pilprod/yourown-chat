@@ -1,0 +1,13 @@
+{
+  "name": "yourown-chat-whatsapp-business-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pinned hosted MCP adapter for the official WhatsApp Business Cloud API",
+  "license": "UNLICENSED",
+  "type": "module",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "express": "5.1.0",
+    "zod": "3.25.76"
+  }
+}

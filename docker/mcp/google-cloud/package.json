@@ -1,0 +1,11 @@
+{
+  "name": "yourown-chat-google-cloud-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Reproducible Streamable HTTP image for Google Cloud Observability MCP",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@google-cloud/observability-mcp": "0.2.3",
+    "supergateway": "3.4.3"
+  }
+}
