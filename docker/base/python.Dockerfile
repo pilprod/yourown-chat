@@ -1,4 +1,4 @@
-ARG BASE_IMAGE=yourown-chat-base:local
+ARG BASE_IMAGE=yourown-chat/base:local
 FROM ${BASE_IMAGE}
 
 ARG UV_VERSION=0.11.32

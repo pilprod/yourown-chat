@@ -86,7 +86,8 @@ when Mattermost paths changed. See [DEPLOY.md](DEPLOY.md).
 MCP images use one declarative factory rather than per-image Cloud Build
 snippets:
 
-- `docker/images.tsv` describes image name, build or mirror mode, Dockerfile,
+- `docker/images.tsv` separates the stable logical image name from its
+  Artifact Registry path and describes build or mirror mode, Dockerfile,
   context, parent runtime, upstream source, change selector, audit, Cloud
   Deploy parameter, OCI metadata and optional external Git source/revision;
 - `docker/prepare-images.sh` materialises every catalogued external build
@@ -100,12 +101,29 @@ snippets:
 The hierarchy is:
 
 ```text
-yourown-chat-base (pinned Debian)
-├── yourown-chat-node
-│   ├── mcp-google-cloud
-│   └── mcp-whatsapp-business
-└── yourown-chat-python
-    └── mcp-google-workspace
+docker/                         # one Artifact Registry repository
+├── mattermost
+├── mcp/
+│   ├── cloudflared
+│   ├── google-cloud
+│   ├── google-workspace
+│   ├── terraform
+│   └── whatsapp-business
+└── yourown-chat/
+    ├── base
+    ├── node
+    └── python
+```
+
+The runtime dependency graph inside that package hierarchy is:
+
+```text
+yourown-chat/base (pinned Debian)
+├── yourown-chat/node
+│   ├── mcp/google-cloud
+│   └── mcp/whatsapp-business
+└── yourown-chat/python
+    └── mcp/google-workspace
 ```
 
 Terraform MCP and cloudflared are entries of type `mirror`: their official

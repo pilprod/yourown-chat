@@ -65,6 +65,17 @@ profiles:
     manifests:
       helm:
         releases:
+          # The smoke Job runs from mcp-tunnel and is selected by its
+          # default-deny egress policy. Refresh that policy before verification
+          # whenever a new MCP port is introduced, without rolling cloudflared.
+          - name: dev-mcp-tunnel-policy
+            chartPath: mcp
+            namespace: mcp-tunnel
+            createNamespace: false
+            valuesFiles:
+              - mcp/values.yaml
+              - mcp/values-tunnel.yaml
+              - mcp/values-tunnel-policy.yaml
           - name: dev-mcp-terraform
             chartPath: mcp
             namespace: mcp-terraform

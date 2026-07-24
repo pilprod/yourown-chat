@@ -25,6 +25,9 @@ tunnel:
   # both stacks; waits in CreateContainerConfigError until app-gcp materialises
   # the mcp-tunnel Secret, then starts. See docs/MCP.md.
   enabled: true
+  # Dev delivery renders the shared egress policy before its smoke test but
+  # must not create or restart the long-lived connector workload.
+  workloadEnabled: true
   image:
     deployParameter: mcp_tunnel_image
     pullPolicy: IfNotPresent

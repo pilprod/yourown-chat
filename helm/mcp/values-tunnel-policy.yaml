@@ -1,0 +1,5 @@
+# Dev-stage release that refreshes the shared mcp-tunnel NetworkPolicy before
+# protocol smoke tests. The persistent cloudflared Deployment remains owned by
+# the production release and is not rendered here.
+tunnel:
+  workloadEnabled: false

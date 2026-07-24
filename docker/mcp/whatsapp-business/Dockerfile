@@ -1,4 +1,4 @@
-ARG RUNTIME_IMAGE=yourown-chat-node:local
+ARG RUNTIME_IMAGE=yourown-chat/node:local
 FROM ${RUNTIME_IMAGE}
 
 WORKDIR /app

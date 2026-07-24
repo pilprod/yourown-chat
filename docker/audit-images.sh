@@ -13,7 +13,7 @@ if [[ "${force_audit}" != "true" ]] &&
   exit 0
 fi
 
-while IFS=$'\t' read -r name kind dockerfile context parent_arg parent source_env change_regex audit deploy_parameter source description repository_env revision_env version_env; do
+while IFS=$'\t' read -r name artifact_path kind dockerfile context parent_arg parent source_env change_regex audit deploy_parameter source description repository_env revision_env version_env; do
   [[ -z "${name}" || "${name}" == \#* || "${audit}" == "-" ]] && continue
 
   case "${audit}" in

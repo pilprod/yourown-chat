@@ -1,4 +1,4 @@
-{{- if .Values.tunnel.enabled }}
+{{- if and .Values.tunnel.enabled .Values.tunnel.workloadEnabled }}
 ---
 # Cloudflare Tunnel connector: outbound-only link carrying Access-authenticated
 # traffic to private services (internal MCP servers + dev Mattermost) with zero

@@ -65,10 +65,10 @@ publish_runtime_tag() {
   docker push "${runtime_image}"
 }
 
-while IFS=$'\t' read -r name kind dockerfile context parent_arg parent source_env change_regex audit deploy_parameter source description repository_env revision_env version_env; do
+while IFS=$'\t' read -r name artifact_path kind dockerfile context parent_arg parent source_env change_regex audit deploy_parameter source description repository_env revision_env version_env; do
   [[ -z "${name}" || "${name}" == \#* ]] && continue
 
-  repository="${AR_PREFIX}/${name}"
+  repository="${AR_PREFIX}/${artifact_path}"
   immutable_image="${repository}:${IMAGE_TAG}"
   runtime_image="${repository}:runtime"
   should_build=false

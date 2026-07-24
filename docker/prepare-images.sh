@@ -10,7 +10,7 @@ source "${script_dir}/mcp/upstreams.env"
 
 mkdir -p "${prepared_context_root}"
 
-while IFS=$'\t' read -r name kind dockerfile context parent_arg parent source_env change_regex audit deploy_parameter source description repository_env revision_env version_env; do
+while IFS=$'\t' read -r name artifact_path kind dockerfile context parent_arg parent source_env change_regex audit deploy_parameter source description repository_env revision_env version_env; do
   [[ -z "${name}" || "${name}" == \#* || "${repository_env}" == "-" ]] && continue
 
   repository="${!repository_env}"

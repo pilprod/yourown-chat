@@ -1,4 +1,4 @@
-ARG RUNTIME_IMAGE=yourown-chat-python:local
+ARG RUNTIME_IMAGE=yourown-chat/python:local
 FROM ${RUNTIME_IMAGE}
 
 WORKDIR /app

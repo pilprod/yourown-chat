@@ -9,10 +9,10 @@ output_dir="${OUTPUT_DIR:-/workspace}"
 
 parameters=()
 
-while IFS=$'\t' read -r name kind dockerfile context parent_arg parent source_env change_regex audit deploy_parameter source description repository_env revision_env version_env; do
+while IFS=$'\t' read -r name artifact_path kind dockerfile context parent_arg parent source_env change_regex audit deploy_parameter source description repository_env revision_env version_env; do
   [[ -z "${name}" || "${name}" == \#* || "${deploy_parameter}" == "-" ]] && continue
 
-  repository="${AR_PREFIX}/${name}"
+  repository="${AR_PREFIX}/${artifact_path}"
   built_image_file="${output_dir}/${name}-image"
   if [[ -s "${built_image_file}" ]]; then
     built_image="$(cat "${built_image_file}")"
