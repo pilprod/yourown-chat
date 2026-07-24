@@ -85,7 +85,7 @@ resource "kubernetes_role_v1" "mattermost_cleanup" {
 
   rule {
     api_groups     = ["apps"]
-    resources      = ["deployments"]
+    resources      = ["deployments", "deployments/scale"]
     resource_names = ["dev-mattermost"]
     verbs          = ["get", "patch", "update"]
   }
@@ -120,7 +120,7 @@ resource "kubernetes_role_v1" "mcp_cleanup" {
 
   rule {
     api_groups     = ["apps"]
-    resources      = ["deployments"]
+    resources      = ["deployments", "deployments/scale"]
     resource_names = [each.value]
     verbs          = ["get", "patch", "update"]
   }
