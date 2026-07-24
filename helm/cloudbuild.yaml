@@ -6,8 +6,9 @@
 
 substitutions:
   _REGION: europe-west3
-  _PIPELINE: europe-west3
-  # Any SA with roles/clouddeploy.releaser on the pipeline + actAs on the exec SA.
+  # Choose `mattermost` or `mcp`. This fallback creates exactly one release.
+  _PIPELINE: mattermost
+  # The Terraform-managed releaser can target both component pipelines.
   _RELEASE_SA_EMAIL: releaser-europe-west3@${PROJECT_ID}.iam.gserviceaccount.com
 
 serviceAccount: projects/${PROJECT_ID}/serviceAccounts/${_RELEASE_SA_EMAIL}

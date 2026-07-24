@@ -1,13 +1,14 @@
 {{- range $name, $server := .Values.servers }}
 {{- if $server.enabled }}
+{{- $resourceName := include "mcp-servers.serverName" (dict "root" $ "name" $name) }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: mcp-{{ $name }}
+  name: {{ $resourceName }}
   namespace: {{ $.Release.Namespace }}
   labels:
-    app: mcp-{{ $name }}
+    app: {{ $resourceName }}
     app.kubernetes.io/part-of: mcp-servers
 spec:
   type: ClusterIP
@@ -17,6 +18,6 @@ spec:
       protocol: TCP
       name: http
   selector:
-    app: mcp-{{ $name }}
+    app: {{ $resourceName }}
 {{- end }}
 {{- end }}

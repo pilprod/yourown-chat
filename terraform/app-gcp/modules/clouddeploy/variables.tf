@@ -8,6 +8,11 @@ variable "region" {
   description = "Region for the delivery pipeline and targets."
 }
 
+variable "pipeline_name" {
+  type        = string
+  description = "Component delivery pipeline name, for example mattermost or mcp."
+}
+
 variable "gke_cluster_id" {
   type        = string
   description = "GKE cluster ID shared by every stage: projects/<p>/locations/<l>/clusters/<n>. Per-stage divergence (namespace, env) is handled by the Skaffold profile, not a separate cluster."
@@ -20,10 +25,11 @@ variable "gke_cluster_id" {
 
 variable "stages" {
   type = list(object({
-    name             = string
-    profiles         = optional(list(string), [])
-    require_approval = optional(bool, false)
-    verify           = optional(bool, false)
+    name               = string
+    profiles           = optional(list(string), [])
+    require_approval   = optional(bool, false)
+    verify             = optional(bool, false)
+    postdeploy_actions = optional(list(string), [])
   }))
   description = "Ordered promotion stages. Each becomes one Cloud Deploy target on the shared cluster; list order defines the dev -> prod promotion flow. Per stage: `profiles` = Skaffold profile(s) that render this stage's namespace/env; `require_approval` gates promotion into the stage; `verify` runs the Skaffold verify tests post-deploy (and adds the VERIFY execution usage to the target)."
 
@@ -65,10 +71,4 @@ variable "deploy_parameters" {
   type        = map(string)
   description = "Key => value map injected into every stage's Skaffold render. A manifest field annotated `# from-param: $${key}` has its value replaced on each release -- the Terraform-owned values (bucket, Workload Identity emails) flow into Kubernetes without hand-edited markers. Note: substitution replaces the WHOLE field value; partial interpolation inside a string is not supported."
   default     = {}
-}
-
-variable "mcp_servers_enabled" {
-  type        = bool
-  description = "Append the mcp-servers Skaffold profile to the prod stage, deploying the in-cluster MCP servers (helm/mcp-servers; per-server switchboard in its values.yaml)."
-  default     = false
 }

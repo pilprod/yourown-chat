@@ -13,3 +13,8 @@ Usage: include "mcp-servers.valueOrDefault" (dict "server" $server "defaults" $.
 {{- get $defaults $key | toYaml -}}
 {{- end -}}
 {{- end }}
+
+{{/* Stable resource name with an optional dev-release prefix. */}}
+{{- define "mcp-servers.serverName" -}}
+{{- printf "%smcp-%s" (.root.Values.namePrefix | default "") .name | trunc 63 | trimSuffix "-" -}}
+{{- end }}

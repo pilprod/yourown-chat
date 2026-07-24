@@ -1,0 +1,17 @@
+# On-cluster verify Job template for the Mattermost dev stage.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: dev-mattermost-smoke
+  namespace: dev
+spec:
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 120
+  template:
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      priorityClassName: development
+      containers:
+        - name: smoke-test
+          image: curlimages/curl:8.10.1

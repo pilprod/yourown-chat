@@ -1,0 +1,22 @@
+# On-cluster verify Job template for disposable MCP dev instances.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: mcp-dev-smoke
+  namespace: mcp-tunnel
+spec:
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 120
+  template:
+    metadata:
+      labels:
+        app: mcp-tunnel
+        app.kubernetes.io/component: verify
+        app.kubernetes.io/part-of: mcp-servers
+    spec:
+      priorityClassName: development
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      containers:
+        - name: smoke-test
+          image: curlimages/curl:8.10.1

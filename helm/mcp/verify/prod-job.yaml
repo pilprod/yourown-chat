@@ -18,15 +18,9 @@ spec:
         app.kubernetes.io/component: verify
         app.kubernetes.io/part-of: mcp-servers
     spec:
+      priorityClassName: production
       restartPolicy: Never
       automountServiceAccountToken: false
-      nodeSelector:
-        tier: prod
-      tolerations:
-        - key: dedicated
-          operator: Equal
-          value: prod
-          effect: NoSchedule
       containers:
         # Replaced by Skaffold; the name must match the verify container.
         - name: smoke-test

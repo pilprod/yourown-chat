@@ -1,10 +1,13 @@
 # App-gcp stack outputs — the GCP delivery-layer surface (CI/CD, GitOps, operators).
 
 # --- Continuous delivery ------------------------------------------------------
-output "clouddeploy_pipeline_name" {
-  type        = string
-  description = "Cloud Deploy delivery pipeline name."
-  value       = component.clouddeploy.delivery_pipeline_name
+output "clouddeploy_pipeline_names" {
+  type        = map(string)
+  description = "Component => Cloud Deploy delivery pipeline name."
+  value = {
+    mattermost = component.clouddeploy_mattermost.delivery_pipeline_name
+    mcp        = component.clouddeploy_mcp.delivery_pipeline_name
+  }
 }
 
 # --- Application secrets --------------------------------------------------------

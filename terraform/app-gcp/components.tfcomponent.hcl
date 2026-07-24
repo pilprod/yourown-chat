@@ -10,43 +10,74 @@ locals {
   }, var.extra_labels)
 }
 
-component "clouddeploy" {
+component "clouddeploy_mattermost" {
   source = "./modules/clouddeploy"
 
   inputs = {
     project_id     = var.project_id
     region         = var.region
     gke_cluster_id = var.gke_cluster_id
+    pipeline_name  = "mattermost"
 
     stages = [
       {
         name             = "dev"
-        profiles         = var.matterbridge_enabled ? ["dev", "matterbridge"] : ["dev"]
+        profiles         = var.matterbridge_enabled ? ["mattermost-dev", "matterbridge"] : ["mattermost-dev"]
         require_approval = false
         verify           = true
+        postdeploy_actions = ["cleanup-mattermost-dev"]
       },
       {
         name             = "prod"
-        profiles         = ["prod"]
+        profiles         = ["mattermost-prod"]
         require_approval = true
-        verify           = var.mcp_servers_enabled
+        verify           = false
       },
     ]
 
-    mcp_servers_enabled = var.mcp_servers_enabled
-
-    # Substituted into `# from-param: ${...}` manifest markers on each release.
-    # Credentials are deliberately NOT deploy parameters (they would land in
-    # pipeline config and release renders) -- cluster_secrets writes those
-    # straight to etcd.
     deploy_parameters = {
       filestore_bucket   = var.gcs_bucket_name
       mattermost_gsa     = var.workload_identity_emails.mattermost
       mattermost_dev_gsa = var.workload_identity_emails.dev
       matterbridge_gsa   = var.workload_identity_emails.matterbridge
       aop_verify_client  = var.aop_enabled ? "on" : "off"
-      # lookup(): the `mcp` key exists only after the platform stack applies
-      # its workload_identity_mcp component; empty keeps this stack planning.
+    }
+
+    labels = local.common_labels
+  }
+
+  providers = {
+    google      = provider.google.this
+    google-beta = provider.google-beta.this
+  }
+}
+
+component "clouddeploy_mcp" {
+  source = "./modules/clouddeploy"
+
+  inputs = {
+    project_id     = var.project_id
+    region         = var.region
+    gke_cluster_id = var.gke_cluster_id
+    pipeline_name  = "mcp"
+
+    stages = [
+      {
+        name               = "dev"
+        profiles           = ["mcp-dev"]
+        require_approval   = false
+        verify             = true
+        postdeploy_actions = ["cleanup-mcp-dev"]
+      },
+      {
+        name             = "prod"
+        profiles         = ["mcp-prod"]
+        require_approval = true
+        verify           = true
+      },
+    ]
+
+    deploy_parameters = {
       mcp_gsa = lookup(var.workload_identity_emails, "mcp", "")
     }
 
@@ -306,6 +337,14 @@ component "mattermost_image" {
 
     image_name = var.image_name
     builds     = var.builds
+
+    mattermost_delivery = {
+      pipeline_name                    = component.clouddeploy_mattermost.delivery_pipeline_name
+      execution_service_account_email = component.clouddeploy_mattermost.execution_service_account_email
+      deploy_repository_uri            = var.github_deploy_remote_uri
+      deploy_repository_ref            = "main"
+      source_bucket_name               = component.deploy_release.source_bucket_name
+    }
   }
 
   providers = {
@@ -327,10 +366,22 @@ component "deploy_release" {
     connection_name   = var.github_connection_name
     github_remote_uri = var.github_deploy_remote_uri
 
-    delivery_pipeline_name          = component.clouddeploy.delivery_pipeline_name
-    execution_service_account_email = component.clouddeploy.execution_service_account_email
+    delivery_pipelines = {
+      mattermost = {
+        execution_service_account_email = component.clouddeploy_mattermost.execution_service_account_email
+      }
+      mcp = {
+        execution_service_account_email = component.clouddeploy_mcp.execution_service_account_email
+      }
+    }
 
     release_tag_regex = var.release_tag_regex
+    mcp_enabled       = var.mcp_servers_enabled
+    mattermost_image_repository = {
+      location      = var.artifact_registry_location
+      repository_id = var.artifact_registry_repository_id
+      image_name    = var.image_name
+    }
 
     source_bucket_kms_key_name = var.cmek_key_id
 
@@ -353,6 +404,32 @@ component "gke_auth" {
 
   providers = {
     google = provider.google.this
+  }
+}
+
+# One shared node pool relies on Kubernetes scheduling policy, not permanent
+# per-environment VMs: prod can preempt dev, while the dev namespace has a hard
+# compute budget and safe defaults.
+component "workload_scheduling" {
+  source = "./modules/workload-scheduling"
+
+  depends_on = [component.cluster_secrets]
+
+  providers = {
+    kubernetes = provider.kubernetes.this
+  }
+}
+
+# Persistent dev database is deliberately outside Cloud Deploy. Mattermost dev
+# pods come and go, while Terraform retains the database and schema so every
+# new image validates real sequential migrations.
+component "dev_postgres" {
+  source = "./modules/dev-postgres"
+
+  depends_on = [component.cluster_secrets, component.workload_scheduling]
+
+  providers = {
+    kubernetes = provider.kubernetes.this
   }
 }
 

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: mattermost
+description: Mattermost application chart promoted from dev migration tests to production.
+type: application
+version: 0.1.0
+appVersion: "v11.8.3-patched"

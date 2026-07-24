@@ -4,9 +4,8 @@
 
 # Mattermost Operator + CRDs. Prod Mattermost (helm/mattermost/) is an
 # operator CR, so the operator must exist before Cloud Deploy ships it. No
-# custom values: the operator's default scheduling lands on the untainted dev
-# pool alongside kube-system, which is intentional -- the tainted prod pool is
-# reserved for prod workloads that explicitly tolerate it.
+# custom values: the operator lands on the shared autoscaling pool alongside
+# kube-system; system/operator pods have priority above disposable dev pods.
 import {
   for_each = var.adopt_existing_releases ? toset(["mattermost-operator/mattermost-operator"]) : toset([])
   to       = helm_release.mattermost_operator

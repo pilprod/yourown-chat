@@ -1,0 +1,25 @@
+# Ephemeral development instances coexist with prod in the same namespaces,
+# reusing the namespace-scoped Secrets and Workload Identity KSA.
+namePrefix: "dev-"
+
+devCleanup:
+  enabled: true
+
+serviceAccount:
+  create: false
+
+defaults:
+  priorityClassName: development
+  networkPolicy:
+    enabled: true
+    namespaceDefaults: false
+    allowedNamespaces:
+      - mcp-tunnel
+    tunnelNamespace: mcp-tunnel
+
+tunnel:
+  enabled: false
+
+servers:
+  google-workspace:
+    ingress: null

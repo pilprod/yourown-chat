@@ -20,7 +20,7 @@ Stacks** — у каждого свой стейт и свой blast radius:
 |---|---|---|---|
 | **platform-gcp** | `terraform/platform-gcp` | Stateful-фундамент: API, сеть + статический ingress-IP, CMEK-ключ, GKE-кластер, Cloud SQL, хранилище, реестр образов, Workload Identity SA | Редко |
 | **cloudflare** | `terraform/cloudflare` | Публичный edge `yourown.chat`: DNS, TLS/security-настройки, DNSSEC, WAF, Origin CA cert + origin-TLS секреты | Иногда |
-| **app-gcp** | `terraform/app-gcp` | Машинерия доставки: секреты приложений, пайплайн Cloud Deploy, CI образа, автонарезка релизов по тегу, бутстрап кластера (Mattermost Operator + ingress-nginx как Helm-релизы) | Часто |
+| **app-gcp** | `terraform/app-gcp` | Секреты, отдельные пайплайны Mattermost и MCP, постоянный dev PostgreSQL, CI образа, роутинг тегов и бутстрап кластера | Часто |
 
 Платформенный стек **публикует** ключевые значения (ingress-IP, ID кластера,
 координаты реестра, CMEK-ключ, WI-члены); два других **потребляют** их через
@@ -43,10 +43,10 @@ graph LR
 |---|---|
 | PostgreSQL | Cloud SQL, только private IP, Франкфурт (`europe-west3`), PITR + бэкапы 7 дней |
 | Объектное хранилище | GCS-бакет + S3-совместимые HMAC-ключи для Mattermost |
-| Kubernetes | Один зональный GKE Standard, приватные ноды, два пула: tainted prod (`e2-standard-2`) + dev/system (`e2-medium`) |
+| Kubernetes | Один зональный GKE Standard, приватные ноды, один autoscaling pool `general` (`e2-standard-2`, 1–3 ноды) |
 | Реестр образов | Один Artifact Registry (`docker`), опциональное сканирование уязвимостей |
 | CI | Cloud Build собирает образ Mattermost по git-тегу `v*-patched` |
-| CD | Пайплайн Cloud Deploy dev → prod; semver-тег на этом репо режет релиз автоматически |
+| CD | Отдельные Mattermost и MCP пайплайны; временные тестовые поды; единый semver-тег запускает только изменённые компоненты |
 | Секреты | Всё в Secret Manager, монтируется через CSI-аддон + Workload Identity |
 | Шифрование | Один общий Cloud KMS **HSM**-ключ (CMEK, ротация 90 дней) на Cloud SQL, GCS, Secret Manager и **etcd GKE** (application-layer шифрование Kubernetes Secrets) |
 | Edge | Cloudflare-прокси: Full (Strict) TLS, DNSSEC, HSTS, редирект www→apex, Origin CA cert из Terraform |
@@ -64,7 +64,7 @@ graph TD
   PS --> STO[storage<br/>GCS + HMAC]
   PS --> AR[artifact_registry<br/>docker-репо]
   NET --> SQL[cloudsql<br/>приватный Postgres]
-  NET --> GKE[gke<br/>1 кластер, 2 пула]
+  NET --> GKE[gke<br/>1 кластер, 1 pool]
   KMS[kms<br/>общий CMEK-ключ] -->|шифрует| SQL
   KMS -->|шифрует| STO
   KMS -->|шифрует etcd| GKE
@@ -72,7 +72,7 @@ graph TD
   WI --> STO
   NET -->|ingress-IP| CF[стек cloudflare<br/>DNS + TLS + Origin CA]
   CF -->|пишет cert/key| OSEC[origin-TLS секреты]
-  GKE --> CD[clouddeploy<br/>пайплайн dev→prod]
+  GKE --> CD[Cloud Deploy<br/>Mattermost + MCP]
   AR --> IMG[CI образа mattermost]
   CD --> DR[deploy_release<br/>semver-тег → релиз]
 ```
@@ -85,8 +85,9 @@ graph TD
    Manager. Приватный ключ не покидает этот стек — linked stacks не публикуют
    sensitive-значения, поэтому секреты создаются там, где рождается серт.
 3. **app-gcp** подключает доставку: Cloud Build следит за тегами в
-   `pilprod/mattermost`, Cloud Deploy доставляет workloads из `helm/`
-   dev → prod, а semver-тег на **этом** репо режет релиз без участия человека.
+   `pilprod/mattermost` и после успешной сборки запускает Mattermost pipeline.
+   Semver-тег на **этом** репо сравнивается с предыдущим и направляет изменения
+   Mattermost и/или MCP в независимые пайплайны.
    Он же бутстрапит сам кластер — Mattermost Operator и закрытый на Cloudflare
    ingress-nginx ставятся как Terraform-managed Helm-релизы (helm-провайдер
    ходит на endpoint GKE с короткоживущим токеном того же keyless apply SA;
@@ -109,7 +110,8 @@ helm/                    # Kubernetes-workloads, доставляются Cloud 
   skaffold.yaml          # профили рендера dev/prod
   mattermost/            # prod Mattermost (operator CR + SecretProviderClass)
   matterbridge/          # изолированный деплой моста
-  developing/            # общий namespace dev: Mattermost, Postgres, RBAC, NetworkPolicies
+  mattermost/            # единый chart Mattermost с values для dev и prod
+  mcp/                   # chart MCP, smoke-тесты и cleanup
   ingress-nginx/         # values только-для-Cloudflare + ранбук
 docs/BUILD.md            # процесс сборки образа подробно
 ```
@@ -211,13 +213,13 @@ kubectl rollout restart -n mattermost deploy  → поды подхватят с
 Требование — production-практики **и** самый дешёвый практичный GKE около
 ~$100/мес. Free tier GKE прощает плату за управление ровно одному зональному
 кластеру — второй добавил бы ~$74/мес. Поэтому dev и prod делят **один
-кластер**, а изоляция — внутри него:
+кластер и один node pool**:
 
-- prod на выделенном **tainted**-пуле (`e2-standard-2`) — dev-workloads туда
-  не шедулятся и не конкурируют за CPU/память prod'а;
-- dev на untainted `e2-medium` system-пуле вместе с `kube-system` —
-  on-demand, не Spot: преемпция CoreDNS ударила бы и по prod; в простое держит
-  одну ноду и может autoscale до трёх, когда системным pod'ам нужен запас;
+- один on-demand pool `general` (`e2-standard-2`), autoscaling от одной до трёх нод;
+- production PriorityClass может вытеснить временные dev-workloads; requests,
+  ResourceQuota и LimitRange ограничивают потребление dev;
+- после smoke Cloud Deploy масштабирует dev Mattermost/MCP в ноль, а временная
+  rollout-нода автоматически удаляется Cluster Autoscaler;
 - dev-сервисы и базы находятся в общем namespace `dev`, который заперт
   namespace-scoped RBAC и default-deny NetworkPolicies; интеграционные
   workloads, включая Matterbridge, остаются в отдельных namespace.
@@ -225,12 +227,12 @@ kubectl rollout restart -n mattermost deploy  → поды подхватят с
 | Статья | Конфиг | ≈$/мес |
 |---|---|---|
 | Управление GKE | 1 зональный кластер | $0 (free tier) |
-| Ноды prod | 1× `e2-standard-2` | ≈$49 |
-| Ноды dev/system | 1× `e2-medium` | ≈$24 |
+| Общие ноды | 1× `e2-standard-2` постоянно | ≈$49 |
+| Запас rollout | временные autoscaled-ноды | обычно <$1–2 |
 | Cloud SQL | `db-f1-micro`, 20 GiB, PITR | ≈$12–15 |
 | GCS + PVC | мелочь | ≈$3 |
 | Буфер | egress/рост | ≈$10–15 |
-| **Итого** | | **≈$98–106** |
+| **Итого** | | **≈$75–85** |
 
 Каждая ручка имеет путь ужесточения — переменная, а не переделка:
 `gke_regional = true` для HA control plane, `REGIONAL` для HA Cloud SQL,

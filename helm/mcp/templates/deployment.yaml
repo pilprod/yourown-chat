@@ -1,25 +1,27 @@
 {{- range $name, $server := .Values.servers }}
 {{- if $server.enabled }}
+{{- $resourceName := include "mcp-servers.serverName" (dict "root" $ "name" $name) }}
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: mcp-{{ $name }}
+  name: {{ $resourceName }}
   namespace: {{ $.Release.Namespace }}
   labels:
-    app: mcp-{{ $name }}
+    app: {{ $resourceName }}
     app.kubernetes.io/part-of: mcp-servers
 spec:
   replicas: {{ $server.replicaCount | default 1 }}
   selector:
     matchLabels:
-      app: mcp-{{ $name }}
+      app: {{ $resourceName }}
   template:
     metadata:
       labels:
-        app: mcp-{{ $name }}
+        app: {{ $resourceName }}
         app.kubernetes.io/part-of: mcp-servers
     spec:
+      priorityClassName: {{ $server.priorityClassName | default $.Values.defaults.priorityClassName }}
       {{- with $server.serviceAccountName }}
       serviceAccountName: {{ . }}
       {{- end }}

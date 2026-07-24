@@ -36,30 +36,22 @@ deployment "eu" {
     region         = local.gcp_region
     zone           = local.gcp_zone
 
-    # ONE zonal cluster (GKE free tier), two pools: prod tainted
-    # dedicated=prod; dev untainted and on-demand because it hosts
-    # kube-system/CoreDNS, which must not be preempted.
+    # ONE zonal cluster (GKE free tier), one autoscaling general-purpose pool.
+    # Kubernetes PriorityClass + requests/quotas protect prod capacity; dev
+    # workloads are preemptible and scaled down after release verification.
     gke_regional            = false
     gke_deletion_protection = true
     gke_node_pools = {
-      prod = {
+      general = {
         machine_type = "e2-standard-2"
-        spot         = false
-        min_count    = 1
-        max_count    = 2
-        disk_size_gb = 30
-        disk_type    = "pd-standard"
-        labels       = { tier = "prod" }
-        taints       = [{ key = "dedicated", value = "prod", effect = "NO_SCHEDULE" }]
-      }
-      dev = {
-        machine_type = "e2-medium"
         spot         = false
         min_count    = 1
         max_count    = 3
         disk_size_gb = 30
         disk_type    = "pd-standard"
-        labels       = { tier = "dev" }
+        labels = {
+          pool = "general"
+        }
         taints       = []
       }
     }

@@ -190,9 +190,21 @@ resource "google_container_node_pool" "pool" {
   }
 
   lifecycle {
+    # A pool name cannot be changed in-place. During the prod -> general
+    # migration, provision replacement capacity before draining the old pool.
+    create_before_destroy = true
+
     ignore_changes = [
       # Autoscaler owns the live node count.
       node_count,
     ]
   }
+}
+
+# One-time state migration for the budget topology change. The physical GKE
+# pool is replaced because its name changes, but create_before_destroy keeps
+# schedulable capacity throughout.
+moved {
+  from = google_container_node_pool.pool["prod"]
+  to   = google_container_node_pool.pool["general"]
 }

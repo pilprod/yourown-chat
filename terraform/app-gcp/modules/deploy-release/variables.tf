@@ -38,14 +38,25 @@ variable "github_remote_uri" {
 }
 
 # --- Cloud Deploy target (from the clouddeploy component) --------------------
-variable "delivery_pipeline_name" {
-  type        = string
-  description = "Name of the Cloud Deploy delivery pipeline releases are cut against. The releaser SA is granted roles/clouddeploy.releaser on THIS pipeline only (never project-wide)."
+variable "delivery_pipelines" {
+  type = map(object({
+    execution_service_account_email = string
+  }))
+  description = "Component pipeline name => execution identity. The platform tag router creates releases only for components changed since the previous release tag."
 }
 
-variable "execution_service_account_email" {
-  type        = string
-  description = "Email of the Cloud Deploy execution SA. The releaser must actAs it, because creating a release runs the render/deploy jobs as this identity."
+variable "mcp_enabled" {
+  type        = bool
+  description = "Whether the unified platform tag router may create MCP releases. Mattermost routing remains enabled independently."
+}
+
+variable "mattermost_image_repository" {
+  type = object({
+    location      = string
+    repository_id = string
+    image_name    = string
+  })
+  description = "Artifact Registry coordinates used to resolve the newest patched Mattermost tag for platform-triggered releases."
 }
 
 # --- Release cutting --------------------------------------------------------

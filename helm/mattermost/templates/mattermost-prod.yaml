@@ -1,3 +1,4 @@
+{{- if eq .Values.environment "prod" }}
 # Prod Mattermost (Mattermost Operator CR; operator + CRDs installed first).
 # Pinned to the prod node pool. DB (Cloud SQL) and filestore (GCS) are external
 # Secrets created directly in etcd by Terraform (app-gcp cluster_secrets), never
@@ -13,8 +14,18 @@ spec:
   # The operator assembles the ref as "<image>:<version>"; version is the
   # pushed git tag (^v.*-patched$).
   image: "europe-west3-docker.pkg.dev/yourown-chat/docker/mattermost"
-  version: "v11.8.3-patched"
+  version: "v11.8.3-patched" # from-param: ${mattermost_version}
   replicas: 1
+
+  # Required for Remote MCP integrations: Mattermost's SSRF protection blocks
+  # private/reserved destinations unless explicitly allowlisted. Keep this to
+  # exact service DNS names instead of opening the Pod/Service CIDRs.
+  mattermostEnv:
+    - name: MM_SERVICESETTINGS_ALLOWEDUNTRUSTEDINTERNALCONNECTIONS
+      value: >-
+        mcp-terraform.mcp-terraform.svc.cluster.local
+        mcp-google-cloud.mcp-google-cloud.svc.cluster.local
+        mcp-google-workspace.mcp-google-workspace.svc.cluster.local
 
   # Keep the existing replica serving until its replacement is Ready. The
   # operator renders RollingUpdate with maxSurge=1 and maxUnavailable=0, so a
@@ -48,13 +59,6 @@ spec:
       secret: mattermost-filestore
 
   scheduling:
-    nodeSelector:
-      tier: prod
-    tolerations:
-      - key: dedicated
-        operator: Equal
-        value: prod
-        effect: NoSchedule
     resources:
       requests:
         cpu: 25m
@@ -62,3 +66,4 @@ spec:
       limits:
         cpu: "1"
         memory: 1Gi
+{{- end }}

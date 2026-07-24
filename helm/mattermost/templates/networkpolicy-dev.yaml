@@ -1,3 +1,4 @@
+{{- if eq .Values.environment "dev" }}
 # Dev tenant network isolation (GKE Dataplane V2). Default-deny, then allow:
 # intra-namespace, DNS to kube-system, and egress to public IPs only. The
 # allow-egress-internet `except` list must cover this cluster's Pod/Service/node
@@ -36,11 +37,11 @@ kind: NetworkPolicy
 metadata:
   # Zero Trust developer access to the dev Mattermost: the ONLY cross-namespace
   # ingress admitted into dev, and it is pinpoint -- just the cloudflared
-  # tunnel pod (mattermost ns, app=mcp-tunnel), just dev-mattermost, just 8065.
+  # tunnel pod (mcp-tunnel ns, app=mcp-tunnel), just dev-mattermost, just 8065.
   # The pod carries traffic that already passed the Cloudflare Access email
   # allow-list (see terraform/cloudflare/modules/zero-trust); nothing else in
   # the mattermost namespace (prod Mattermost included) can use this opening.
-  # Inert until the tunnel pod exists (helm/mcp-servers tunnel.enabled).
+  # Inert until the tunnel pod exists (helm/mcp tunnel.enabled).
   name: allow-zero-trust-tunnel
   namespace: dev
 spec:
@@ -53,7 +54,7 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: mattermost
+              kubernetes.io/metadata.name: mcp-tunnel
           podSelector:
             matchLabels:
               app: mcp-tunnel
@@ -98,3 +99,4 @@ spec:
               - 10.0.0.0/8
               - 172.16.0.0/12
               - 192.168.0.0/16
+{{- end }}

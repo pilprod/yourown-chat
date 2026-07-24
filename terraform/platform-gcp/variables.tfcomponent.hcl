@@ -10,8 +10,8 @@
 # `yourown-chat`, so a yourown-chat-* prefix would just repeat it. `environment`
 # drives labels only.
 #
-# TOPOLOGY: the budget-optimized default is ONE zonal GKE cluster with two node
-# pools (prod + dev tiers) instead of separate clusters per environment. See
+# TOPOLOGY: the budget-optimized default is ONE zonal GKE cluster with one
+# autoscaling pool; Kubernetes priorities/quotas isolate workload tiers. See
 # platform.tfdeploy.hcl and the README for the rationale and the scale-out path.
 # ---------------------------------------------------------------------------
 
@@ -27,7 +27,7 @@ variable "project_number" {
 
 variable "environment" {
   type        = string
-  description = "Environment name (drives labels only; resource names are role-based or regional, never environment-scoped). The single-cluster budget default uses 'prod' as the platform cluster; dev workloads run as a tenant namespace on the dev node pool."
+  description = "Environment name (drives labels only; resource names are role-based or regional, never environment-scoped). The single-cluster budget default uses 'prod' as the platform cluster; dev workloads run as low-priority tenants on the shared node pool."
 
   validation {
     condition     = contains(["dev", "stage", "prod"], var.environment)
@@ -109,25 +109,18 @@ variable "gke_node_pools" {
       effect = string
     })), [])
   }))
-  description = "Map of node pool name => spec. Isolate workload tiers on one cluster via labels/taints (e.g. a tainted prod pool + an untainted dev pool)."
+  description = "Map of node pool name => spec. The default uses one autoscaling pool; Kubernetes PriorityClass and namespace quotas isolate workload tiers."
 
   default = {
-    prod = {
+    general = {
       machine_type = "e2-standard-2"
-      spot         = false
-      min_count    = 1
-      max_count    = 2
-      disk_size_gb = 30
-      labels       = { tier = "prod" }
-      taints       = [{ key = "dedicated", value = "prod", effect = "NO_SCHEDULE" }]
-    }
-    dev = {
-      machine_type = "e2-medium"
       spot         = false
       min_count    = 1
       max_count    = 3
       disk_size_gb = 30
-      labels       = { tier = "dev" }
+      labels = {
+        pool = "general"
+      }
       taints       = []
     }
   }

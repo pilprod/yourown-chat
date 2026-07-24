@@ -1,6 +1,6 @@
-# Skaffold config consumed by Cloud Deploy to render and apply the platform's
-# Kubernetes workloads. The app-gcp Terraform stack binds the dev and prod
-# targets to the profiles below and appends mcp-servers to prod when enabled.
+# Cloud Deploy uses Helm only for rendering and applies the resulting immutable
+# manifests with Skaffold/kubectl. Workload-specific pipelines select exactly
+# one profile family, so an MCP release never touches Mattermost or PostgreSQL.
 apiVersion: skaffold/v4beta11
 kind: Config
 metadata:
@@ -10,14 +10,19 @@ deploy:
   kubectl: {}
 
 profiles:
-  # Dev tenant. Namespaces, Secrets, and RBAC are owned by Terraform.
-  - name: dev
+  # Ephemeral migration/smoke environment. Persistent PostgreSQL is owned by
+  # Terraform's dev-postgres resources and is intentionally absent here.
+  - name: mattermost-dev
     manifests:
-      rawYaml:
-        - developing/serviceaccount.yaml
-        - developing/networkpolicy.yaml
-        - developing/postgres.yaml
-        - developing/mattermost-dev.yaml
+      helm:
+        releases:
+          - name: mattermost-dev
+            chartPath: mattermost
+            namespace: dev
+            createNamespace: false
+            valuesFiles:
+              - mattermost/values.yaml
+              - mattermost/values-dev.yaml
     verify:
       - name: smoke-test
         container:
@@ -30,38 +35,135 @@ profiles:
               http://dev-mattermost.dev.svc.cluster.local:8065/api/v4/system/ping
         executionMode:
           kubernetesCluster:
-            jobManifestPath: developing/verify/job.yaml
+            jobManifestPath: mattermost/verify/job.yaml
 
-  # Optional bridge appended by the app-gcp clouddeploy component when enabled.
+  # Optional bridge is additive only to the Mattermost dev stage.
   - name: matterbridge
-    patches:
-      - op: add
-        path: /manifests/rawYaml/-
-        value: matterbridge/serviceaccount.yaml
-      - op: add
-        path: /manifests/rawYaml/-
-        value: matterbridge/secretproviderclass.yaml
-      - op: add
-        path: /manifests/rawYaml/-
-        value: matterbridge/networkpolicy.yaml
-      - op: add
-        path: /manifests/rawYaml/-
-        value: matterbridge/deployment.yaml
-
-  # Production Mattermost workload promoted after the approval gate.
-  - name: prod
     manifests:
       rawYaml:
-        - mattermost/serviceaccount.yaml
-        - mattermost/mattermost.yaml
+        - matterbridge/serviceaccount.yaml
+        - matterbridge/secretproviderclass.yaml
+        - matterbridge/networkpolicy.yaml
+        - matterbridge/deployment.yaml
 
-  # In-cluster MCP servers, appended to prod by the app-gcp clouddeploy
-  # component when mcp_servers_enabled = true. Each server is rendered into its
-  # own namespace; the Tunnel is a fourth, connector-only namespace. Helm is
-  # used only to render; Cloud Deploy applies hydrated YAML. Must be listed
-  # AFTER prod: the patch targets /manifests, which exists only once the prod
-  # profile has populated it.
-  - name: mcp-servers
+  - name: mattermost-prod
+    manifests:
+      helm:
+        releases:
+          - name: mattermost-prod
+            chartPath: mattermost
+            namespace: mattermost
+            createNamespace: false
+            valuesFiles:
+              - mattermost/values.yaml
+              - mattermost/values-prod.yaml
+
+  # Dev MCP Deployments coexist with prod under a dev- prefix, reuse the
+  # namespace-scoped credentials, expose no public ingress, and are scaled to
+  # zero by the postdeploy hook after verification.
+  - name: mcp-dev
+    manifests:
+      rawYaml:
+        - mcp/cleanup-rbac.yaml
+      helm:
+        releases:
+          - name: dev-mcp-terraform
+            chartPath: mcp
+            namespace: mcp-terraform
+            createNamespace: false
+            valuesFiles:
+              - mcp/values.yaml
+              - mcp/values-dev.yaml
+              - mcp/values-terraform.yaml
+          - name: dev-mcp-google-cloud
+            chartPath: mcp
+            namespace: mcp-google-cloud
+            createNamespace: false
+            valuesFiles:
+              - mcp/values.yaml
+              - mcp/values-dev.yaml
+              - mcp/values-google-cloud.yaml
+          - name: dev-mcp-google-workspace
+            chartPath: mcp
+            namespace: mcp-google-workspace
+            createNamespace: false
+            valuesFiles:
+              - mcp/values.yaml
+              - mcp/values-dev.yaml
+              - mcp/values-google-workspace.yaml
+    verify:
+      - name: mcp-smoke-test
+        container:
+          name: smoke-test
+          image: curlimages/curl:8.10.1
+          command: ["/bin/sh", "-c"]
+          args:
+            - >-
+              set -eu;
+              retry='--retry 30 --retry-all-errors --retry-delay 5';
+              curl -sSf $retry
+              http://dev-mcp-terraform.mcp-terraform.svc.cluster.local:8080/health;
+              curl -sSf $retry
+              http://dev-mcp-google-cloud.mcp-google-cloud.svc.cluster.local:8080/healthz;
+              curl -sSf $retry
+              http://dev-mcp-google-workspace.mcp-google-workspace.svc.cluster.local:8000/health;
+              init='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"cloud-deploy-smoke","version":"1.0"}}}';
+              terraform_init="$(curl -sSf $retry -X POST
+              -H 'Content-Type: application/json'
+              -H 'Accept: application/json, text/event-stream'
+              -H 'Origin: https://yourown.chat'
+              --data "$init"
+              http://dev-mcp-terraform.mcp-terraform.svc.cluster.local:8080/mcp)";
+              printf '%s' "$terraform_init" | grep -q '"result"';
+              google_cloud_init="$(curl -sSf $retry -X POST
+              -H 'Content-Type: application/json'
+              -H 'Accept: application/json, text/event-stream'
+              --data "$init"
+              http://dev-mcp-google-cloud.mcp-google-cloud.svc.cluster.local:8080/mcp)";
+              printf '%s' "$google_cloud_init" | grep -q '"result"';
+              code="$(curl -sS -o /dev/null -w '%{http_code}'
+              -X POST
+              -H 'Content-Type: application/json'
+              -H 'Accept: application/json, text/event-stream'
+              --data "$init"
+              http://dev-mcp-google-workspace.mcp-google-workspace.svc.cluster.local:8000/mcp)";
+              test "$code" = 401
+        executionMode:
+          kubernetesCluster:
+            jobManifestPath: mcp/verify/dev-job.yaml
+
+  - name: mcp-prod
+    manifests:
+      helm:
+        releases:
+          - name: mcp-tunnel
+            chartPath: mcp
+            namespace: mcp-tunnel
+            createNamespace: false
+            valuesFiles:
+              - mcp/values.yaml
+              - mcp/values-tunnel.yaml
+          - name: mcp-terraform
+            chartPath: mcp
+            namespace: mcp-terraform
+            createNamespace: false
+            valuesFiles:
+              - mcp/values.yaml
+              - mcp/values-terraform.yaml
+          - name: mcp-google-cloud
+            chartPath: mcp
+            namespace: mcp-google-cloud
+            createNamespace: false
+            valuesFiles:
+              - mcp/values.yaml
+              - mcp/values-google-cloud.yaml
+          - name: mcp-google-workspace
+            chartPath: mcp
+            namespace: mcp-google-workspace
+            createNamespace: false
+            valuesFiles:
+              - mcp/values.yaml
+              - mcp/values-google-workspace.yaml
     verify:
       - name: mcp-smoke-test
         container:
@@ -101,37 +203,31 @@ profiles:
               test "$code" = 401
         executionMode:
           kubernetesCluster:
-            jobManifestPath: mcp-servers/verify/job.yaml
-    patches:
-      - op: add
-        path: /manifests/helm
-        value:
-          releases:
-            - name: mcp-tunnel
-              chartPath: mcp-servers
-              namespace: mcp-tunnel
-              createNamespace: false
-              valuesFiles:
-                - mcp-servers/values.yaml
-                - mcp-servers/values-tunnel.yaml
-            - name: mcp-terraform
-              chartPath: mcp-servers
-              namespace: mcp-terraform
-              createNamespace: false
-              valuesFiles:
-                - mcp-servers/values.yaml
-                - mcp-servers/values-terraform.yaml
-            - name: mcp-google-cloud
-              chartPath: mcp-servers
-              namespace: mcp-google-cloud
-              createNamespace: false
-              valuesFiles:
-                - mcp-servers/values.yaml
-                - mcp-servers/values-google-cloud.yaml
-            - name: mcp-google-workspace
-              chartPath: mcp-servers
-              namespace: mcp-google-workspace
-              createNamespace: false
-              valuesFiles:
-                - mcp-servers/values.yaml
-                - mcp-servers/values-google-workspace.yaml
+            jobManifestPath: mcp/verify/prod-job.yaml
+
+customActions:
+  - name: cleanup-mattermost-dev
+    containers:
+      - name: cleanup
+        image: bitnami/kubectl:1.33
+        command: ["/bin/sh", "-c"]
+        args:
+          - kubectl -n dev scale deployment/dev-mattermost --replicas=0
+    executionMode:
+      kubernetesCluster:
+        jobManifestPath: mattermost/cleanup/job.yaml
+
+  - name: cleanup-mcp-dev
+    containers:
+      - name: cleanup
+        image: bitnami/kubectl:1.33
+        command: ["/bin/sh", "-c"]
+        args:
+          - >-
+            set -eu;
+            kubectl -n mcp-terraform scale deployment/dev-mcp-terraform --replicas=0;
+            kubectl -n mcp-google-cloud scale deployment/dev-mcp-google-cloud --replicas=0;
+            kubectl -n mcp-google-workspace scale deployment/dev-mcp-google-workspace --replicas=0
+    executionMode:
+      kubernetesCluster:
+        jobManifestPath: mcp/cleanup/job.yaml

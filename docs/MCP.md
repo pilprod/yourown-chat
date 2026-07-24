@@ -2,10 +2,10 @@
 
 The platform consumes MCP (Model Context Protocol) servers in two ways:
 
-1. **In-cluster (self-hosted)** — deployed by the `mcp-servers` Helm chart
-   (`helm/mcp-servers`), rendered onto the prod stage by Cloud Deploy when the
+1. **In-cluster (self-hosted)** — deployed by the `mcp` Helm chart
+   (`helm/mcp`), rendered onto the prod stage by Cloud Deploy when the
    app-gcp stack sets `mcp_servers_enabled = true`. Each server is an entry in
-   `helm/mcp-servers/values.yaml` (`servers.<name>.enabled`) and is reachable
+   `helm/mcp/values.yaml` (`servers.<name>.enabled`) and is reachable
    across namespaces only from `mattermost`, at
    `http://mcp-<name>.mcp-<name>.svc.cluster.local:<port>/mcp`. Every server
    has its own default-deny namespace (`mcp-terraform`, `mcp-google-cloud`, or
@@ -183,8 +183,10 @@ nothing else depends on it.
 
 ### Automated rollout verification
 
-When MCP is enabled, the prod Cloud Deploy target runs
-`helm/mcp-servers/verify/job.yaml` after the deployments stabilize. The Job
+The `mcp` pipeline first creates temporary `dev-mcp-*` instances and runs
+`helm/mcp/verify/job.yaml`. Successful dev instances are scaled to zero before
+production approval. The prod target repeats the same verification after its
+deploy. Each Job
 runs in `mcp-tunnel`, follows the same NetworkPolicy path as cloudflared, and
 checks:
 
@@ -193,8 +195,7 @@ checks:
 - the expected unauthenticated `401` from Google Workspace in OAuth 2.1 mode.
 
 Any failure marks verification and the rollout unsuccessful. Apply the
-`app-gcp` stack before cutting the first release with this check because it
-enables `VERIFY` on the prod Cloud Deploy target.
+`app-gcp` stack before cutting the first MCP release.
 
 ### Manual smoke test
 
@@ -224,7 +225,7 @@ Then validate the external path:
 
 ## Adding an in-cluster server
 
-1. Add an entry under `servers:` in `helm/mcp-servers/values.yaml` (image,
+1. Add an entry under `servers:` in `helm/mcp/values.yaml` (image,
    port, env, `health`). Transport must be HTTP (streamable-http/SSE); wrap
    stdio-only servers with a gateway image first.
 2. Credentials: add a Secret Manager container in the app-gcp `secrets`
@@ -232,3 +233,9 @@ Then validate the external path:
    `mcp-<server>` namespace, then reference it with `secretEnvFrom`.
 3. Ship: merge → the tag-triggered release renders the profile; the server
    lands with the next prod rollout.
+
+Also add the new Service FQDN to
+`MM_SERVICESETTINGS_ALLOWEDUNTRUSTEDINTERNALCONNECTIONS` in both Mattermost
+environment templates. Mattermost deliberately blocks user-controlled
+integration requests to reserved IP ranges; this repository allowlists exact
+MCP Service names rather than a broad Pod or Service CIDR.

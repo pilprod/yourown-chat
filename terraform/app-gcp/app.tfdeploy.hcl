@@ -61,7 +61,7 @@ deployment "eu" {
 
     matterbridge_enabled = false
 
-    # Per-server on/off lives in helm/mcp-servers/values.yaml.
+    # Per-server on/off lives in helm/mcp/values.yaml.
     mcp_servers_enabled = true
 
     # Derived from the cloudflare stack's published outputs -- origin_tls_ready

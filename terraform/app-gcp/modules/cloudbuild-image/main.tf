@@ -35,6 +35,38 @@ resource "google_artifact_registry_repository_iam_member" "writer" {
   member     = "serviceAccount:${google_service_account.build.email}"
 }
 
+resource "google_clouddeploy_delivery_pipeline_iam_member" "releaser" {
+  project  = var.project_id
+  location = var.region
+  name     = var.mattermost_delivery.pipeline_name
+  role     = "roles/clouddeploy.releaser"
+  member   = "serviceAccount:${google_service_account.build.email}"
+}
+
+resource "google_project_iam_member" "clouddeploy_viewer" {
+  project = var.project_id
+  role    = "roles/clouddeploy.viewer"
+  member  = "serviceAccount:${google_service_account.build.email}"
+}
+
+resource "google_service_account_iam_member" "build_acts_as_exec" {
+  service_account_id = "projects/${var.project_id}/serviceAccounts/${var.mattermost_delivery.execution_service_account_email}"
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_service_account.build.email}"
+}
+
+resource "google_storage_bucket_iam_member" "release_source" {
+  bucket = var.mattermost_delivery.source_bucket_name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.build.email}"
+}
+
+resource "google_storage_bucket_iam_member" "release_source_bucket_read" {
+  bucket = var.mattermost_delivery.source_bucket_name
+  role   = "roles/storage.legacyBucketReader"
+  member = "serviceAccount:${google_service_account.build.email}"
+}
+
 # Terraform (the apply SA) must actAs the build SA to create triggers that run
 # as it. Granted here so the trigger create call downstream is authorized.
 resource "google_service_account_iam_member" "apply_acts_as_build" {
@@ -102,6 +134,44 @@ resource "google_cloudbuild_trigger" "this" {
       ]
     }
 
+    step {
+      id   = "checkout-deploy-source"
+      name = "gcr.io/cloud-builders/git"
+      args = [
+        "clone",
+        "--depth=1",
+        "--branch=${var.mattermost_delivery.deploy_repository_ref}",
+        var.mattermost_delivery.deploy_repository_uri,
+        "/workspace/yourown-chat",
+      ]
+    }
+
+    # A patched-source tag is a complete Mattermost release event. Only after
+    # the image push succeeds do we freeze its digest and start dev -> prod.
+    step {
+      id         = "mattermost-release"
+      name       = "gcr.io/google.com/cloudsdktool/cloud-sdk:slim"
+      entrypoint = "bash"
+      args = [
+        "-ceu",
+        <<-EOT
+          safe_tag="$$(printf '%s' '$TAG_NAME' | tr '.' '-')"
+          short_build="$$(printf '%s' '$BUILD_ID' | cut -c1-8)"
+          image="${local.image_repo_path}:$TAG_NAME"
+          digest="$$(gcloud artifacts docker images describe "$$image" --format='value(image_summary.digest)')"
+
+          gcloud deploy releases create "mattermost-$$safe_tag-$SHORT_SHA-$$short_build" \
+            --project "${var.project_id}" \
+            --region "${var.region}" \
+            --delivery-pipeline "${var.mattermost_delivery.pipeline_name}" \
+            --source "/workspace/yourown-chat/helm" \
+            --gcs-source-staging-dir "gs://${var.mattermost_delivery.source_bucket_name}/source" \
+            --deploy-parameters "mattermost_dev_image=${local.image_repo_path}:$TAG_NAME,mattermost_version=$TAG_NAME" \
+            --annotations "source-repo=pilprod/mattermost,git-tag=$TAG_NAME,git-sha=$COMMIT_SHA,image-digest=$$digest"
+        EOT
+      ]
+    }
+
     # Multi-stage Mattermost builds (webapp + server) are heavy; the default
     # build timeout is nowhere near enough.
     timeout = "3600s"
@@ -116,5 +186,10 @@ resource "google_cloudbuild_trigger" "this" {
     google_service_account_iam_member.apply_acts_as_build,
     google_project_iam_member.build_logs,
     google_artifact_registry_repository_iam_member.writer,
+    google_clouddeploy_delivery_pipeline_iam_member.releaser,
+    google_project_iam_member.clouddeploy_viewer,
+    google_service_account_iam_member.build_acts_as_exec,
+    google_storage_bucket_iam_member.release_source,
+    google_storage_bucket_iam_member.release_source_bucket_read,
   ]
 }

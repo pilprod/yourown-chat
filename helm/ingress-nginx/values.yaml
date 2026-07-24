@@ -9,16 +9,6 @@
 controller:
   replicaCount: 1
 
-  # Prod pool carries the dedicated=prod:NoSchedule taint, so the toleration is
-  # required or the controller never schedules.
-  nodeSelector:
-    tier: prod
-  tolerations:
-    - key: dedicated
-      operator: Equal
-      value: prod
-      effect: NoSchedule
-
   service:
     type: LoadBalancer
     loadBalancerIP: "REPLACE-ME-INGRESS-IP" # terraform output ingress_ip_address

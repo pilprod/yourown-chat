@@ -1,6 +1,7 @@
+{{- if eq .Values.environment "dev" }}
 # Dev Mattermost (Team Edition), run as a plain Deployment (no operator) to keep
 # dev lightweight. Local filestore on a 10Gi PVC, backed by the in-cluster
-# Postgres. Pinned to the dev node pool. The DB password is injected from the
+# Postgres. Low priority on the shared node pool. The DB password is injected from the
 # CSI-synced `dev-postgres` Secret and expanded into the datasource by Kubelet's
 # $(VAR) substitution.
 apiVersion: v1
@@ -49,8 +50,7 @@ spec:
         app: dev-mattermost
     spec:
       serviceAccountName: dev-app
-      nodeSelector:
-        tier: dev
+      priorityClassName: {{ .Values.priorityClassName }}
       securityContext:
         fsGroup: 2000
       containers:
@@ -59,7 +59,7 @@ spec:
           # git tags matching ^v.*-patched$ and pushed to the unified registry
           # (docker). Build once, promote the SAME image dev -> prod: dev
           # and prod reference the identical tag (no separate -patched-dev build).
-          image: "europe-west3-docker.pkg.dev/yourown-chat/docker/mattermost:v11.8.3-patched"
+          image: "europe-west3-docker.pkg.dev/yourown-chat/docker/mattermost:v11.8.3-patched" # from-param: ${mattermost_dev_image}
           env:
             - name: POSTGRES_PASSWORD
               valueFrom:
@@ -74,6 +74,14 @@ spec:
               value: local
             - name: MM_FILESETTINGS_DIRECTORY
               value: /mattermost/data
+            # Mattermost blocks RFC1918 destinations for user-controlled
+            # integrations by default. Allow only our three exact in-cluster
+            # MCP service names, never the cluster CIDR.
+            - name: MM_SERVICESETTINGS_ALLOWEDUNTRUSTEDINTERNALCONNECTIONS
+              value: >-
+                mcp-terraform.mcp-terraform.svc.cluster.local
+                mcp-google-cloud.mcp-google-cloud.svc.cluster.local
+                mcp-google-workspace.mcp-google-workspace.svc.cluster.local
           ports:
             - containerPort: 8065
           resources:
@@ -90,3 +98,4 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: dev-mattermost-data
+{{- end }}

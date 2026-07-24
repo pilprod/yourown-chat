@@ -1,11 +1,6 @@
 locals {
-  # Platform-utility names read ROLE-then-SCOPE (clouddeploy-europe-west3),
-  # mirroring the workload class (mattermost-europe-west3).
-  exec_sa_id = "clouddeploy-${var.region}"
-
-  # No "-pipeline" type suffix: it is THE delivery pipeline, named after the
-  # region alone (mirroring the GKE cluster / Cloud SQL instance).
-  pipeline_name = var.region
+  exec_sa_id    = "deploy-${var.pipeline_name}"
+  pipeline_name = var.pipeline_name
 
   # Targets keyed by stage name (order-independent); the pipeline below drives
   # the promotion order from the ordered var.stages list.
@@ -47,7 +42,7 @@ resource "google_clouddeploy_target" "stage" {
 
   project          = var.project_id
   location         = var.region
-  name             = "${each.value.name}-${var.region}"
+  name             = "${var.pipeline_name}-${each.value.name}"
   require_approval = each.value.require_approval
 
   gke {
@@ -55,7 +50,11 @@ resource "google_clouddeploy_target" "stage" {
   }
 
   execution_configs {
-    usages          = each.value.verify ? ["RENDER", "DEPLOY", "VERIFY"] : ["RENDER", "DEPLOY"]
+    usages = concat(
+      ["RENDER", "DEPLOY"],
+      each.value.verify ? ["VERIFY"] : [],
+      length(each.value.postdeploy_actions) > 0 ? ["POSTDEPLOY"] : [],
+    )
     service_account = google_service_account.exec.email
   }
 
@@ -63,9 +62,9 @@ resource "google_clouddeploy_target" "stage" {
   depends_on = [google_project_iam_member.exec]
 }
 
-# Serial promotion pipeline. The Terraform MCP server is an app-gcp workload:
-# when enabled, Terraform appends its renderer profile to the prod stage rather
-# than relying on an implicit, hand-maintained Helm deployment outside the stack.
+# Serial promotion pipeline. Each module instance owns one workload family;
+# profiles change environment values without pulling unrelated components into
+# the same rollout.
 resource "google_clouddeploy_delivery_pipeline" "this" {
   project  = var.project_id
   location = var.region
@@ -79,14 +78,7 @@ resource "google_clouddeploy_delivery_pipeline" "this" {
 
       content {
         target_id = google_clouddeploy_target.stage[stage.value.name].name
-        # The in-cluster MCP servers ride the prod stage as an extra Skaffold
-        # profile (one values-driven chart renders every enabled server), same
-        # pattern as matterbridge on dev.
-        profiles = (
-          stage.value.name == "prod" && var.mcp_servers_enabled
-          ? concat(stage.value.profiles, ["mcp-servers"])
-          : stage.value.profiles
-        )
+        profiles  = stage.value.profiles
 
         dynamic "deploy_parameters" {
           for_each = length(var.deploy_parameters) > 0 ? [1] : []
@@ -95,13 +87,18 @@ resource "google_clouddeploy_delivery_pipeline" "this" {
           }
         }
 
-        # Emit a strategy only when verify is enabled; sending the API default
-        # explicitly causes perpetual normalization drift.
         dynamic "strategy" {
-          for_each = stage.value.verify ? [1] : []
+          for_each = stage.value.verify || length(stage.value.postdeploy_actions) > 0 ? [1] : []
           content {
             standard {
-              verify = true
+              verify = stage.value.verify
+
+              dynamic "postdeploy" {
+                for_each = length(stage.value.postdeploy_actions) > 0 ? [1] : []
+                content {
+                  actions = stage.value.postdeploy_actions
+                }
+              }
             }
           }
         }

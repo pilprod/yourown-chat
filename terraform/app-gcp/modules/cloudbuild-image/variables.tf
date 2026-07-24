@@ -71,3 +71,14 @@ variable "builds" {
     error_message = "Provide at least one build."
   }
 }
+
+variable "mattermost_delivery" {
+  type = object({
+    pipeline_name                   = string
+    execution_service_account_email = string
+    deploy_repository_uri           = string
+    deploy_repository_ref           = optional(string, "main")
+    source_bucket_name              = string
+  })
+  description = "Mattermost Cloud Deploy destination created only after the patched image has been pushed successfully."
+}

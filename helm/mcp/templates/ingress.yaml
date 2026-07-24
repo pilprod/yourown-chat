@@ -1,5 +1,6 @@
 {{- range $name, $server := .Values.servers }}
 {{- if and $server.enabled $server.ingress }}
+{{- $resourceName := include "mcp-servers.serverName" (dict "root" $ "name" $name) }}
 ---
 # Public HTTPS route for servers whose OAuth 2.1 endpoints the browser must
 # reach (the MCP endpoint stays 401-protected). Same Cloudflare -> ingress-nginx
@@ -7,10 +8,10 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: mcp-{{ $name }}
+  name: {{ $resourceName }}
   namespace: {{ $.Release.Namespace }}
   labels:
-    app: mcp-{{ $name }}
+    app: {{ $resourceName }}
     app.kubernetes.io/part-of: mcp-servers
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
@@ -28,7 +29,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: mcp-{{ $name }}
+                name: {{ $resourceName }}
                 port:
                   name: http
 {{- end }}

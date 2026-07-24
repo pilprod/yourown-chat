@@ -17,7 +17,7 @@ Terraform Stacks**, each owning a piece with its own state and blast radius:
 |---|---|---|---|
 | **platform-gcp** | `terraform/platform-gcp` | The stateful foundation: APIs, network + reserved ingress IP, CMEK key, GKE cluster, Cloud SQL, object storage, container registry, Workload Identity SAs | Rarely |
 | **cloudflare** | `terraform/cloudflare` | The public edge for `yourown.chat`: DNS, TLS/security settings, DNSSEC, WAF, Origin CA cert + the origin-TLS secrets it fills | Sometimes |
-| **app-gcp** | `terraform/app-gcp` | The delivery machinery: app secrets, Cloud Deploy pipeline, image CI, tag-triggered release cutting, cluster bootstrap (Mattermost Operator + ingress-nginx as Helm releases) | Often |
+| **app-gcp** | `terraform/app-gcp` | App secrets; independent Mattermost and MCP delivery pipelines; persistent dev PostgreSQL; image CI; tag routing; cluster bootstrap | Often |
 
 The platform stack **publishes** its key values (ingress IP, cluster ID,
 registry coordinates, CMEK key, Workload Identity members); the other two
@@ -41,10 +41,10 @@ holds the VPC, the cluster and the database — and the Cloudflare API token
 |---|---|
 | PostgreSQL | Cloud SQL, private IP only, Frankfurt (`europe-west3`), PITR + 7-day backups |
 | Object storage | GCS bucket with S3-compatible HMAC creds for Mattermost ("filestore") |
-| Kubernetes | One zonal GKE Standard cluster, private nodes, two pools: tainted prod (`e2-standard-2`) + dev/system (`e2-medium`) |
+| Kubernetes | One zonal GKE Standard cluster, private nodes, one autoscaling `general` pool (`e2-standard-2`, 1–3 nodes) |
 | Container registry | One Artifact Registry repo (`docker`), optional vulnerability scanning |
 | CI | Cloud Build builds the Mattermost image on a `v*-patched` git tag |
-| CD | Cloud Deploy dev → prod pipeline; a semver tag on this repo cuts a release automatically |
+| CD | Separate Mattermost and MCP pipelines; ephemeral test workloads; one semver platform tag routes only changed components |
 | Secrets | Everything in Secret Manager, mounted via the CSI add-on + Workload Identity |
 | Encryption | One shared Cloud KMS **HSM** key (CMEK, 90-day rotation) over Cloud SQL, GCS, Secret Manager and **GKE etcd** (application-layer Kubernetes Secrets encryption) |
 | Edge | Cloudflare proxy: Full (Strict) TLS, DNSSEC, HSTS, www→apex redirect, Origin CA cert issued by Terraform |
@@ -70,7 +70,7 @@ graph TD
   WI --> STO
   NET -->|ingress IP| CF[cloudflare stack<br/>DNS + TLS + Origin CA]
   CF -->|writes cert/key| OSEC[origin-TLS secrets]
-  GKE --> CD[clouddeploy<br/>dev→prod pipeline]
+  GKE --> CD[Cloud Deploy<br/>Mattermost + MCP pipelines]
   AR --> IMG[mattermost_image CI]
   CD --> DR[deploy_release<br/>semver tag → release]
 ```
@@ -83,9 +83,10 @@ The flow in plain words:
    The private key never leaves this stack — linked stacks can't publish
    sensitive values, so the secrets are created where the cert is born.
 3. **app-gcp** wires up delivery: Cloud Build watches
-   `pilprod/mattermost` for image tags, Cloud Deploy delivers the `helm/`
-   workloads dev → prod, and a semver tag on **this** repo cuts a release
-   without any human running a command. It also bootstraps the cluster
+   `pilprod/mattermost` for image tags and immediately starts the Mattermost
+   delivery pipeline after a successful build. A semver tag on **this** repo
+   compares changes with the preceding platform tag and routes only Mattermost
+   and/or MCP changes to their own pipelines. It also bootstraps the cluster
    itself — the Mattermost Operator and the Cloudflare-locked ingress-nginx
    edge install as Terraform-managed Helm releases (the helm provider talks
    to the GKE endpoint with a short-lived token for the same keyless apply
@@ -105,10 +106,11 @@ terraform/
                          #   cluster bootstrap: operator + ingress-nginx Helm releases)
                          # each stack: *.tfcomponent.hcl + *.tfdeploy.hcl + modules/ + its own lock file
 helm/                    # Kubernetes workloads, delivered by Cloud Deploy
-  skaffold.yaml          # dev/prod render profiles
+  skaffold.yaml          # component-specific test/prod render profiles
   mattermost/            # prod Mattermost (operator CR + SecretProviderClass)
   matterbridge/          # isolated bridge deployment
-  developing/            # shared dev namespace: Mattermost, Postgres, RBAC, NetworkPolicies
+  mattermost/            # one chart, promoted with dev/prod values
+  mcp/                   # MCP Helm chart, test/prod values and smoke/cleanup jobs
   ingress-nginx/         # Cloudflare-only ingress values + runbook
 docs/BUILD.md            # image build flow in detail
 ```
@@ -167,21 +169,25 @@ short version:
 
 ### Day-2 flows
 
-**Ship a new Mattermost image** — tag the source repo; the same artifact is
-promoted, never rebuilt:
+**Ship a new Mattermost image** — tag the source repo; after the build the same
+artifact is automatically tested against persistent dev PostgreSQL and offered
+for production approval:
 
 ```
 git tag v9.11.3-patched  (on pilprod/mattermost)
   → Cloud Build builds & pushes docker/mattermost:v9.11.3-patched
+  → Mattermost dev rollout + migration smoke → dev scaled to 0
+  → production approval → rolling prod rollout
 ```
 
-**Cut a release** — tag this repo; no human runs gcloud:
+**Cut a platform release** — use one semver tag, without component tags:
 
 ```
 git tag 1.2.3  (on pilprod/yourown-chat)
-  → Cloud Build trigger "release" runs gcloud deploy releases create
-  → dev target deploys + smoke-test verify
-  → prod promotion waits for approval
+  → diff against the previous semver tag
+  → route helm/mattermost|matterbridge changes to Mattermost
+  → route helm/mcp changes to MCP
+  → shared helm/skaffold.yaml changes route to both
 ```
 
 **Rotate the DB password** — bump one committed value, no time-based
@@ -205,13 +211,14 @@ Details: [`docs/BUILD.md`](docs/BUILD.md).
 The brief asks for production practices **and** the cheapest practical GKE
 footprint around a ~$100/month target. GKE's free tier waives the management fee
 for exactly one zonal cluster — a second cluster would add ~$74/month. So dev
-and prod share **one cluster** and are isolated in-cluster instead of physically:
+and prod share **one cluster and one node pool**:
 
-- prod runs on a dedicated **tainted** pool (`e2-standard-2`) — dev workloads
-  can't schedule there, so they can never contend for prod's CPU or memory;
-- dev shares an untainted `e2-medium` system pool with `kube-system` —
-  on-demand, not Spot, because preempting CoreDNS would hurt prod too; it idles
-  at one node and may autoscale to three when system pods need headroom;
+- one on-demand `general` pool (`e2-standard-2`) autoscaling from one to three nodes;
+- production PriorityClass can preempt disposable dev workloads; accurate
+  requests, a dev ResourceQuota and LimitRange bound resource contention;
+- Cloud Deploy scales dev Mattermost/MCP back to zero after smoke tests. If a
+  rolling prod update cannot fit, Cluster Autoscaler adds a temporary node and
+  removes it after the rollout;
 - development services and databases share the `dev` namespace, which is
   locked down with namespace-scoped RBAC and default-deny NetworkPolicies;
   integration workloads such as Matterbridge remain isolated in their own
@@ -220,12 +227,12 @@ and prod share **one cluster** and are isolated in-cluster instead of physically
 | Line item | Config | ≈$/mo |
 |---|---|---|
 | GKE control plane | 1 zonal cluster | $0 (free tier) |
-| prod nodes | 1× `e2-standard-2` | ≈$49 |
-| dev/system nodes | 1× `e2-medium` | ≈$24 |
+| shared nodes | 1× `e2-standard-2` baseline | ≈$49 |
+| rollout capacity | temporary autoscaled nodes | typically <$1–2 |
 | Cloud SQL | `db-f1-micro`, 20 GiB, PITR | ≈$12–15 |
 | GCS + PVCs | small | ≈$3 |
 | Buffer | egress/growth | ≈$10–15 |
-| **Total** | | **≈$98–106** |
+| **Total** | | **≈$75–85** |
 
 Every knob has a hardening path — flip a variable, don't re-architect:
 `gke_regional = true` for an HA control plane, `REGIONAL` for HA Cloud SQL,

@@ -74,7 +74,7 @@ variable "node_pools" {
       effect = string
     })), [])
   }))
-  description = "Map of node pool name => spec. Use taints/labels to isolate workload tiers (e.g. prod vs dev) on one cluster."
+  description = "Map of node pool name => spec. The budget topology uses one shared pool and Kubernetes scheduling policy for workload tiers."
   default     = { primary = {} }
 
   validation {

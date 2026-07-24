@@ -16,17 +16,6 @@
 controller:
   replicaCount: 1
 
-  # Keep the public edge on the isolated prod pool: the tier=prod nodes carry
-  # the dedicated=prod:NoSchedule taint, so the selector needs the matching
-  # toleration or the controller would never schedule.
-  nodeSelector:
-    tier: prod
-  tolerations:
-    - key: dedicated
-      operator: Equal
-      value: prod
-      effect: NoSchedule
-
   service:
     type: LoadBalancer
     # Reserved static IP (the Cloudflare-facing "white address"), injected

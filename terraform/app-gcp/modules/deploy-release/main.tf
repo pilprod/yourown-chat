@@ -50,9 +50,11 @@ resource "google_service_account" "releaser" {
 
 # Create releases + rollouts on THIS pipeline only (never a project-wide grant).
 resource "google_clouddeploy_delivery_pipeline_iam_member" "releaser" {
+  for_each = var.delivery_pipelines
+
   project  = var.project_id
   location = var.region
-  name     = var.delivery_pipeline_name
+  name     = each.key
   role     = "roles/clouddeploy.releaser"
   member   = "serviceAccount:${google_service_account.releaser.email}"
 }
@@ -68,7 +70,9 @@ resource "google_project_iam_member" "releaser_clouddeploy_viewer" {
 # Creating a release runs the render/deploy jobs as the Cloud Deploy execution
 # SA, so the releaser must be able to actAs it.
 resource "google_service_account_iam_member" "releaser_acts_as_exec" {
-  service_account_id = "projects/${var.project_id}/serviceAccounts/${var.execution_service_account_email}"
+  for_each = var.delivery_pipelines
+
+  service_account_id = "projects/${var.project_id}/serviceAccounts/${each.value.execution_service_account_email}"
   role               = "roles/iam.serviceAccountUser"
   member             = "serviceAccount:${google_service_account.releaser.email}"
 }
@@ -96,6 +100,14 @@ resource "google_project_iam_member" "releaser_logs" {
   member  = "serviceAccount:${google_service_account.releaser.email}"
 }
 
+resource "google_artifact_registry_repository_iam_member" "releaser_reader" {
+  project    = var.project_id
+  location   = var.mattermost_image_repository.location
+  repository = var.mattermost_image_repository.repository_id
+  role       = "roles/artifactregistry.reader"
+  member     = "serviceAccount:${google_service_account.releaser.email}"
+}
+
 # Terraform (the apply SA) must actAs the releaser to create a trigger that runs
 # as it. Granted here so the trigger create call below is authorized.
 resource "google_service_account_iam_member" "apply_acts_as_releaser" {
@@ -104,13 +116,13 @@ resource "google_service_account_iam_member" "apply_acts_as_releaser" {
   member             = "serviceAccount:${var.apply_service_account_email}"
 }
 
-# On a semver tag in the deploy repo, cut one Cloud Deploy release from
-# source_subdir/ (auto-deploys to dev, promoted onward per the pipeline).
+# A single platform semver tag routes the frozen source to only the component
+# pipelines changed since the preceding semver tag.
 resource "google_cloudbuild_trigger" "release" {
   project         = var.project_id
   location        = var.region
   name            = "release"
-  description     = "Cut a Cloud Deploy release from ${var.source_subdir}/ on git tags matching ${var.release_tag_regex}."
+  description     = "Route ${var.source_subdir}/ changes to Mattermost and/or MCP Cloud Deploy pipelines on ${var.release_tag_regex} tags."
   service_account = google_service_account.releaser.id
 
   repository_event_config {
@@ -122,27 +134,77 @@ resource "google_cloudbuild_trigger" "release" {
 
   build {
     step {
+      id         = "route-components"
+      name       = "gcr.io/cloud-builders/git"
+      entrypoint = "bash"
+      args = [
+        "-ceu",
+        <<-EOT
+          git fetch --tags --force
+          previous_tag="$$(git tag --merged "$COMMIT_SHA^" --sort=-version:refname |
+            grep -E '^[0-9]+\\.[0-9]+\\.[0-9]+$' | head -1 || true)"
+          if [ -n "$$previous_tag" ]; then
+            git diff --name-only "$$previous_tag" "$COMMIT_SHA" > /workspace/changed-files
+          else
+            git ls-tree -r --name-only "$COMMIT_SHA" > /workspace/changed-files
+          fi
+          printf '%s' "$$previous_tag" > /workspace/previous-platform-tag
+        EOT
+      ]
+    }
+
+    step {
       id         = "release"
       name       = "gcr.io/google.com/cloudsdktool/cloud-sdk:slim"
       entrypoint = "bash"
       dir        = var.source_subdir
-      # Release name "rel-<tag>-<sha>-<build>": dots in the tag are sanitised to
-      # `-` (release names disallow dots); the build fragment keeps it unique on
-      # re-cuts. Escaping: Cloud Build built-ins ($TAG_NAME/$SHORT_SHA/$BUILD_ID)
-      # keep a single `$`; bash constructs use `$$` (HCL passes it through, Cloud
-      # Build unescapes to `$`). Braced `$${VAR}` must not appear.
       args = [
         "-ceu",
         <<-EOT
           safe_tag="$$(printf '%s' '$TAG_NAME' | tr '.' '-')"
           short_build="$$(printf '%s' '$BUILD_ID' | cut -c1-8)"
-          gcloud deploy releases create "rel-$$safe_tag-$SHORT_SHA-$$short_build" \
-            --project "${var.project_id}" \
-            --region "${var.region}" \
-            --delivery-pipeline "${var.delivery_pipeline_name}" \
-            --source "." \
-            --gcs-source-staging-dir "gs://${google_storage_bucket.source.name}/source" \
-            --annotations "git-tag=$TAG_NAME"
+
+          previous_tag="$$(cat /workspace/previous-platform-tag)"
+          changed="$$(cat /workspace/changed-files)"
+
+          common_changed="$$(printf '%s\n' "$$changed" | grep -E '^helm/skaffold\\.yaml$' || true)"
+          mattermost_changed="$$(printf '%s\n' "$$changed" | grep -E '^helm/(mattermost|matterbridge)/' || true)"
+          mcp_changed="$$(printf '%s\n' "$$changed" | grep -E '^helm/mcp/' || true)"
+
+          create_release() {
+            pipeline="$$1"
+            shift
+            gcloud deploy releases create "$$pipeline-$$safe_tag-$SHORT_SHA-$$short_build" \
+              --project "${var.project_id}" \
+              --region "${var.region}" \
+              --delivery-pipeline "$$pipeline" \
+              --source "." \
+              --gcs-source-staging-dir "gs://${google_storage_bucket.source.name}/source" \
+              --annotations "git-tag=$TAG_NAME,git-sha=$COMMIT_SHA,previous-tag=$$previous_tag" \
+              "$$@"
+          }
+
+          if [ -n "$$common_changed$$mattermost_changed" ]; then
+            image_repo="${var.mattermost_image_repository.location}-docker.pkg.dev/${var.project_id}/${var.mattermost_image_repository.repository_id}/${var.mattermost_image_repository.image_name}"
+            tag_ref="$$(gcloud artifacts docker tags list "$$image_repo" \
+              --filter="tag~':v.*-patched$$'" \
+              --sort-by=~CREATE_TIME \
+              --limit=1 \
+              --format='value(tag)')"
+            mattermost_tag="$$(printf '%s' "$$tag_ref" | sed 's/.*://')"
+            [ -n "$$mattermost_tag" ] || { echo "No v*-patched Mattermost image tag found"; exit 1; }
+            create_release mattermost \
+              --deploy-parameters "mattermost_dev_image=$$image_repo:$$mattermost_tag,mattermost_version=$$mattermost_tag"
+          fi
+          if [ "${var.mcp_enabled}" = "true" ]; then
+            [ -z "$$common_changed$$mcp_changed" ] || create_release mcp
+          elif [ -n "$$common_changed$$mcp_changed" ]; then
+            echo "MCP deployment changes detected, but mcp_servers_enabled=false; skipping MCP release"
+          fi
+
+          if [ -z "$$common_changed$$mattermost_changed$$mcp_changed" ]; then
+            echo "No Mattermost or MCP deployment changes in $TAG_NAME"
+          fi
         EOT
       ]
     }
@@ -160,5 +222,6 @@ resource "google_cloudbuild_trigger" "release" {
     google_storage_bucket_iam_member.releaser_source_bucket_read,
     google_project_iam_member.releaser_clouddeploy_viewer,
     google_project_iam_member.releaser_logs,
+    google_artifact_registry_repository_iam_member.releaser_reader,
   ]
 }

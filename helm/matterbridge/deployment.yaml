@@ -1,5 +1,5 @@
-# matterbridge, pinned to the shared dev/bridge node pool (nodeSelector
-# tier=dev — the dev pool is untainted so no toleration is needed). Its config
+# matterbridge is a low-priority integration workload on the shared node pool.
+# Its config
 # (with tokens) is mounted read-only from Secret Manager via the CSI volume.
 apiVersion: apps/v1
 kind: Deployment
@@ -24,8 +24,7 @@ spec:
         app: matterbridge
     spec:
       serviceAccountName: matterbridge
-      nodeSelector:
-        tier: dev
+      priorityClassName: development
       containers:
         - name: matterbridge
           # Pin to a digest/tag you trust rather than a moving tag.

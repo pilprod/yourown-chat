@@ -6,6 +6,14 @@
 # Credentials never live here -- set secretEnvFrom and create the Secret via the
 # app-gcp cluster_secrets component. See docs/MCP.md.
 
+# Ephemeral development releases use `dev-`; production keeps this empty.
+namePrefix: ""
+
+devCleanup:
+  enabled: false
+  serviceAccountName: mcp-dev-cleanup
+  serviceAccountNamespace: mcp-tunnel
+
 tunnel:
   # Cloudflare Tunnel connector for Zero Trust access to the private services
   # (internal MCP servers + dev Mattermost). Enabled with zero_trust_enabled in
@@ -24,13 +32,9 @@ serviceAccount:
   name: mcp-servers
 
 defaults:
-  nodeSelector:
-    tier: prod
-  tolerations:
-    - key: dedicated
-      operator: Equal
-      value: prod
-      effect: NoSchedule
+  priorityClassName: production
+  nodeSelector: {}
+  tolerations: []
 
   podSecurityContext:
     runAsNonRoot: true
@@ -55,6 +59,7 @@ defaults:
 
   networkPolicy:
     enabled: true
+    namespaceDefaults: true
     # Mattermost is the only cross-namespace caller. The chart additionally
     # permits the dedicated cloudflared connector for Zero Trust traffic.
     allowedNamespaces:

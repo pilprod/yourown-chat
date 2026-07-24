@@ -2,20 +2,21 @@
 {{- if $server.enabled }}
 {{- $np := $.Values.defaults.networkPolicy }}
 {{- if $server.networkPolicy }}{{ $np = $server.networkPolicy }}{{ end }}
+{{- $resourceName := include "mcp-servers.serverName" (dict "root" $ "name" $name) }}
 {{- if $np.enabled }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: mcp-{{ $name }}-ingress
+  name: {{ $resourceName }}-ingress
   namespace: {{ $.Release.Namespace }}
   labels:
-    app: mcp-{{ $name }}
+    app: {{ $resourceName }}
     app.kubernetes.io/part-of: mcp-servers
 spec:
   podSelector:
     matchLabels:
-      app: mcp-{{ $name }}
+      app: {{ $resourceName }}
   policyTypes:
     - Ingress
   ingress:
@@ -39,6 +40,7 @@ spec:
 {{- end }}
 {{- end }}
 {{- end }}
+{{- if .Values.defaults.networkPolicy.namespaceDefaults }}
 ---
 # Namespace-wide isolation. Per-server policies above selectively reopen
 # ingress; egress permits DNS and encrypted calls to external APIs only.
@@ -119,4 +121,16 @@ spec:
       ports:
         - { protocol: TCP, port: 8080 }
         - { protocol: TCP, port: 8000 }
+    # The same outbound-only connector carries the optional Zero Trust route
+    # to ephemeral dev Mattermost.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: dev
+          podSelector:
+            matchLabels:
+              app: dev-mattermost
+      ports:
+        - { protocol: TCP, port: 8065 }
+{{- end }}
 {{- end }}
