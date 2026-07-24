@@ -187,7 +187,7 @@ resource "google_cloudbuild_trigger" "release" {
           if [ -n "$$common_changed$$mattermost_changed" ]; then
             image_repo="${var.mattermost_image_repository.location}-docker.pkg.dev/${var.project_id}/${var.mattermost_image_repository.repository_id}/${var.mattermost_image_repository.image_name}"
             tag_ref="$$(gcloud artifacts docker tags list "$$image_repo" \
-              --filter="tag~':v.*-patched$$'" \
+              --filter="tag~'/tags/v.*-patched$$'" \
               --sort-by=~CREATE_TIME \
               --limit=1 \
               --format='value(tag)')"
