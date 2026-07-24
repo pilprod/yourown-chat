@@ -85,20 +85,53 @@ servers:
 
   # Google @google-cloud/observability-mcp (stdio) wrapped by supergateway.
   # Keyless: runs under the mcp-servers KSA -> `mcp` GSA (viewer roles), with
-  # ADC provided by the GKE metadata server. readOnlyRootFilesystem is disabled
-  # because npx writes the pinned package to its cache under $HOME. Stateful
-  # mode keeps one stdio child for the Mattermost initialize/GET/tools sequence;
-  # stateless mode repeatedly spawned children and exhausted the memory limit.
+  # ADC provided by the GKE metadata server. An init container installs the
+  # pinned official package once into an emptyDir; client requests never run
+  # concurrent npx installs against one cache. Stateful mode keeps the stdio
+  # child for the Mattermost initialize/GET/tools sequence; stateless mode
+  # repeatedly spawned children and exhausted the memory limit.
   google-cloud:
     enabled: true
     serviceAccountName: mcp-servers
     image:
       repository: supercorp/supergateway
       tag: "latest" # TODO pin after first rollout
+    initContainers:
+      - name: install-observability-mcp
+        image: supercorp/supergateway:latest
+        command: ["npm"]
+        args:
+          - install
+          - --prefix=/opt/google-cloud-mcp
+          - --omit=dev
+          - --no-audit
+          - --no-fund
+          - "@google-cloud/observability-mcp@0.2.3"
+        env:
+          - name: HOME
+            value: /tmp
+          - name: NPM_CONFIG_CACHE
+            value: /tmp/.npm
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          capabilities:
+            drop:
+              - ALL
+        resources:
+          requests:
+            cpu: 25m
+            memory: 64Mi
+          limits:
+            cpu: 500m
+            memory: 1Gi
+        volumeMounts:
+          - name: google-cloud-mcp-package
+            mountPath: /opt/google-cloud-mcp
     port: 8080
     args:
       - "--stdio"
-      - "npx -y @google-cloud/observability-mcp@0.2.3"
+      - "node /opt/google-cloud-mcp/node_modules/@google-cloud/observability-mcp/dist/bundle.js"
       - "--outputTransport"
       - "streamableHttp"
       - "--stateful"
@@ -111,6 +144,13 @@ servers:
       GOOGLE_CLOUD_QUOTA_PROJECT: "yourown-chat"
       HOME: /tmp
       NPM_CONFIG_CACHE: /tmp/.npm
+    volumeMounts:
+      - name: google-cloud-mcp-package
+        mountPath: /opt/google-cloud-mcp
+        readOnly: true
+    volumes:
+      - name: google-cloud-mcp-package
+        emptyDir: {}
     securityContext:
       allowPrivilegeEscalation: false
       readOnlyRootFilesystem: false

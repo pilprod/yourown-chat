@@ -140,7 +140,15 @@ resource "google_cloudbuild_trigger" "release" {
       args = [
         "-ceu",
         <<-EOT
-          git fetch --tags --force
+          # Cloud Build's repository checkout is shallow. Fetching only tag
+          # refs leaves their ancestry unavailable, so `git tag --merged`
+          # finds no previous platform tag and the router treats every file as
+          # changed. Expand the history before calculating the component diff.
+          if [ "$$(git rev-parse --is-shallow-repository)" = "true" ]; then
+            git fetch --unshallow --tags --force
+          else
+            git fetch --tags --force
+          fi
           previous_tag="$$(git tag --merged "$COMMIT_SHA^" --sort=-version:refname |
             grep -E '^[0-9]+\\.[0-9]+\\.[0-9]+$' | head -1 || true)"
           if [ -n "$$previous_tag" ]; then
@@ -148,6 +156,9 @@ resource "google_cloudbuild_trigger" "release" {
           else
             git ls-tree -r --name-only "$COMMIT_SHA" > /workspace/changed-files
           fi
+          echo "Previous platform tag: $${previous_tag:-<none>}"
+          echo "Changed files routed by this release:"
+          cat /workspace/changed-files
           printf '%s' "$$previous_tag" > /workspace/previous-platform-tag
         EOT
       ]

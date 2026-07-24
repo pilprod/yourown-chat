@@ -39,6 +39,13 @@ constraints (especially for consumer services without a public API).
 | Google Cloud (Logging, Monitoring, Trace, Error Reporting) | `@google-cloud/observability-mcp@0.2.3` (Google, preview) via supergateway | **none — keyless**: Workload Identity (`mcp-google-cloud/mcp-servers` KSA → `mcp` GSA, viewer roles); quota project is `yourown-chat` |
 | Google Workspace (Gmail, Calendar) | `google_workspace_mcp` (community, native streamable-http) | OAuth client in Secret Manager + one-time user consent (below) |
 
+The Google Cloud server is published as an npm/stdio package, not a container
+with native HTTP transport. Its pod installs the pinned package once in an init
+container, then starts supergateway in stateful Streamable HTTP mode against
+the installed bundle. Do not move `npx` back into the gateway request path:
+parallel Mattermost connection attempts race while extracting the shared npm
+cache and leave `initialize` hanging.
+
 #### HCP Terraform token
 
 Create a **team token** in HCP Terraform scoped to the `yourown-chat` project

@@ -27,6 +27,10 @@ spec:
       {{- end }}
       securityContext:
         {{- include "mcp-servers.valueOrDefault" (dict "server" $server "defaults" $.Values.defaults "key" "podSecurityContext") | nindent 8 }}
+      {{- with $server.initContainers }}
+      initContainers:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: {{ $name }}
           image: "{{ $server.image.repository }}:{{ $server.image.tag }}"
@@ -54,6 +58,10 @@ spec:
           envFrom:
             - secretRef:
                 name: {{ . }}
+          {{- end }}
+          {{- with $server.volumeMounts }}
+          volumeMounts:
+            {{- toYaml . | nindent 12 }}
           {{- end }}
           ports:
             - name: http
@@ -84,6 +92,10 @@ spec:
           {{- end }}
           resources:
             {{- include "mcp-servers.valueOrDefault" (dict "server" $server "defaults" $.Values.defaults "key" "resources") | nindent 12 }}
+      {{- with $server.volumes }}
+      volumes:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       nodeSelector:
         {{- include "mcp-servers.valueOrDefault" (dict "server" $server "defaults" $.Values.defaults "key" "nodeSelector") | nindent 8 }}
       tolerations:
