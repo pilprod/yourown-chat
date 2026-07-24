@@ -10,7 +10,7 @@ locals {
   }, var.extra_labels)
 }
 
-component "clouddeploy_mattermost" {
+component "clouddeploy" {
   source = "./modules/clouddeploy"
 
   inputs = {
@@ -339,8 +339,8 @@ component "mattermost_image" {
     builds     = var.builds
 
     mattermost_delivery = {
-      pipeline_name                    = component.clouddeploy_mattermost.delivery_pipeline_name
-      execution_service_account_email = component.clouddeploy_mattermost.execution_service_account_email
+      pipeline_name                    = component.clouddeploy.delivery_pipeline_name
+      execution_service_account_email = component.clouddeploy.execution_service_account_email
       deploy_repository_uri            = var.github_deploy_remote_uri
       deploy_repository_ref            = "main"
       source_bucket_name               = component.deploy_release.source_bucket_name
@@ -368,7 +368,7 @@ component "deploy_release" {
 
     delivery_pipelines = {
       mattermost = {
-        execution_service_account_email = component.clouddeploy_mattermost.execution_service_account_email
+        execution_service_account_email = component.clouddeploy.execution_service_account_email
       }
       mcp = {
         execution_service_account_email = component.clouddeploy_mcp.execution_service_account_email

@@ -5,7 +5,7 @@ output "clouddeploy_pipeline_names" {
   type        = map(string)
   description = "Component => Cloud Deploy delivery pipeline name."
   value = {
-    mattermost = component.clouddeploy_mattermost.delivery_pipeline_name
+    mattermost = component.clouddeploy.delivery_pipeline_name
     mcp        = component.clouddeploy_mcp.delivery_pipeline_name
   }
 }
