@@ -81,6 +81,6 @@ variable "labels" {
 
 variable "deploy_parameters" {
   type        = map(string)
-  description = "Key => value map injected into every stage's Skaffold render. A manifest field annotated `# from-param: $${key}` has its value replaced on each release -- the Terraform-owned values (bucket, Workload Identity emails) flow into Kubernetes without hand-edited markers. Note: substitution replaces the WHOLE field value; partial interpolation inside a string is not supported."
+  description = "Key => value map injected into every stage's Skaffold render. Skaffold passes these to authored Helm charts as --set values (consumed through .Values); raw manifests use `# from-param: $${key}` post-render directives. Terraform-owned values such as buckets and Workload Identity emails therefore flow into Kubernetes without placeholder resources."
   default     = {}
 }

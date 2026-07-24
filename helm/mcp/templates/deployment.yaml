@@ -34,7 +34,7 @@ spec:
       containers:
         - name: {{ $name }}
           {{- with $server.image.deployParameter }}
-          image: "from-deploy-parameters" {{ printf "# from-param: ${%s}" . }}
+          image: {{ required (printf "Cloud Deploy parameter %s is required" .) (get $.Values .) | quote }}
           {{- else }}
           image: "{{ $server.image.repository }}:{{ $server.image.tag }}"
           {{- end }}

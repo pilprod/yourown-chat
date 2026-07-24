@@ -6,6 +6,16 @@
 # Credentials never live here -- set secretEnvFrom and create the Secret via the
 # app-gcp cluster_secrets component. See docs/MCP.md.
 
+# Cloud Deploy supplies these to Skaffold's Helm renderer as --set values.
+# Enabled templates require them, so missing release parameters fail during
+# render instead of reaching GKE as placeholder images.
+mcp_terraform_image: ""
+mcp_google_cloud_image: ""
+mcp_google_workspace_image: ""
+mcp_whatsapp_business_image: ""
+mcp_tunnel_image: ""
+mcp_gsa: ""
+
 # Ephemeral development releases use `dev-`; production keeps this empty.
 namePrefix: ""
 

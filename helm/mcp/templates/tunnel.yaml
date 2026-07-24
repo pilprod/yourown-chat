@@ -31,7 +31,7 @@ spec:
       containers:
         - name: cloudflared
           {{- with .Values.tunnel.image.deployParameter }}
-          image: "from-deploy-parameters" {{ printf "# from-param: ${%s}" . }}
+          image: {{ required (printf "Cloud Deploy parameter %s is required" .) (get $.Values .) | quote }}
           {{- else }}
           image: "{{ .Values.tunnel.image.repository }}:{{ .Values.tunnel.image.tag }}"
           {{- end }}

@@ -1,2 +1,11 @@
 environment: dev
 priorityClassName: development
+
+# Cloud Deploy supplies these as Helm --set values. Environment-specific
+# templates require only the parameters they consume.
+mattermost_dev_image: ""
+mattermost_version: ""
+mattermost_dev_gsa: ""
+mattermost_gsa: ""
+filestore_bucket: ""
+aop_verify_client: ""
