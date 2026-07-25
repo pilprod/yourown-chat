@@ -170,6 +170,10 @@ servers:
       - "--outputTransport"
       - "streamableHttp"
       - "--stateful"
+      # Bound the lifetime of the per-session stdio child. Without this,
+      # short-lived Portal/client sessions accumulate until the pod is OOM.
+      - "--sessionTimeout"
+      - "60000"
       - "--port"
       - "8080"
       - "--healthEndpoint"
@@ -184,7 +188,9 @@ servers:
         memory: 256Mi
       limits:
         cpu: 500m
-        memory: 512Mi
+        # Logging responses are materialized by both the child and gateway.
+        # The session TTL bounds retained children; this covers response bursts.
+        memory: 1Gi
     health:
       path: /healthz
 

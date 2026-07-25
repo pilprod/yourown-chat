@@ -126,6 +126,32 @@ resolves the selected digest and passes
 and prod promote the exact same artifact. Automatic Artifact Analysis scanning
 is enabled for the repository by `platform-gcp`.
 
+The Google Cloud server uses stateful Streamable HTTP, but supergateway
+sessions expire after 60 seconds. Without `--sessionTimeout`, every
+short-lived Portal session leaves its own Observability stdio child running
+indefinitely and the pod eventually reaches its memory limit. The container
+has a 1 GiB limit for temporary JSON materialization; its scheduling request
+remains 256 MiB. Swap or a writable cache volume would not solve this workload
+because the retained memory belongs to live Node.js processes and in-flight
+response objects.
+
+Keep Observability calls bounded even with this headroom:
+
+- `list_log_entries`: include an indexed `resource.type` or exact `logName`, an
+  explicit timestamp interval, `orderBy: "timestamp desc"`, and `pageSize` no
+  larger than 20;
+- expand using `pageToken` or short adjacent time windows instead of a broad
+  project-wide query;
+- avoid project-wide `list_log_names` during routine diagnostics; use the
+  known log name or resource type;
+- bound monitoring and trace calls with narrow time intervals and small page
+  sizes as well.
+
+Google's preview server has no environment variable for a global page-size or
+time-range ceiling, so callers must currently supply these constraints. A
+first-party transport wrapper can clamp arguments later if stricter
+multi-client enforcement becomes necessary.
+
 Inspect the deployed digest and its current package findings:
 
 ```bash
