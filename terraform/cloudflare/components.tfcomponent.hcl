@@ -159,7 +159,8 @@ component "zero_trust_secrets" {
 
     secrets = {
       "mcp-tunnel-token" = {
-        value = one([for m in component.zero_trust : m.tunnel_token])
+        value     = one([for m in component.zero_trust : m.tunnel_token])
+        accessors = [var.workload_identity_members["mcp-tunnel"]]
       }
     }
   }

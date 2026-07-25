@@ -9,7 +9,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund \
     && npm cache clean --force
 
-COPY hcp-client.mjs server.mjs ./
+COPY hcp-client.mjs secret-env.mjs server.mjs tool-result.mjs ./
 
 ENV NODE_ENV=production \
     PORT=3000

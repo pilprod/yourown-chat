@@ -2,6 +2,8 @@
 {{- if $server.enabled }}
 {{- $resourceName := include "mcp-servers.serverName" (dict "root" $ "name" $name) }}
 {{- $mcpPath := $server.mcpPath | default "/mcp" }}
+{{- $secretProvider := $server.secretProvider | default dict }}
+{{- $secretProviderEnabled := $secretProvider.enabled | default false }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -73,16 +75,16 @@ spec:
               value: {{ $v | quote }}
             {{- end }}
           {{- end }}
-          {{- with $server.secretEnvFrom }}
-          # Credentials arrive via a Terraform-created Kubernetes Secret (the
-          # platform's Secret Manager -> etcd path); never from chart values.
-          envFrom:
-            - secretRef:
-                name: {{ . }}
-          {{- end }}
-          {{- with $server.volumeMounts }}
+          {{- if or $secretProviderEnabled $server.volumeMounts }}
           volumeMounts:
+            {{- if $secretProviderEnabled }}
+            - name: mcp-secrets
+              mountPath: /var/run/secrets/mcp
+              readOnly: true
+            {{- end }}
+            {{- with $server.volumeMounts }}
             {{- toYaml . | nindent 12 }}
+            {{- end }}
           {{- end }}
           ports:
             - name: http
@@ -113,9 +115,19 @@ spec:
           {{- end }}
           resources:
             {{- include "mcp-servers.valueOrDefault" (dict "server" $server "defaults" $.Values.defaults "key" "resources") | nindent 12 }}
-      {{- with $server.volumes }}
+      {{- if or $secretProviderEnabled $server.volumes }}
       volumes:
+        {{- if $secretProviderEnabled }}
+        - name: mcp-secrets
+          csi:
+            driver: secrets-store-gke.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: {{ $resourceName }}-gcp
+        {{- end }}
+        {{- with $server.volumes }}
         {{- toYaml . | nindent 8 }}
+        {{- end }}
       {{- end }}
       nodeSelector:
         {{- include "mcp-servers.valueOrDefault" (dict "server" $server "defaults" $.Values.defaults "key" "nodeSelector") | nindent 8 }}

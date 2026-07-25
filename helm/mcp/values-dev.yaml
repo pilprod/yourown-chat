@@ -6,9 +6,6 @@ namePrefix: "dev-"
 agentRegistry:
   enabled: false
 
-serviceAccount:
-  create: false
-
 defaults:
   priorityClassName: development
   networkPolicy:

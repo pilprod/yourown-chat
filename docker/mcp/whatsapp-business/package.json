@@ -5,6 +5,9 @@
   "description": "Pinned hosted MCP adapter for the official WhatsApp Business Cloud API",
   "license": "UNLICENSED",
   "type": "module",
+  "scripts": {
+    "test": "node --test"
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",
     "express": "5.1.0",

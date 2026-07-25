@@ -78,7 +78,12 @@ component "clouddeploy_mcp" {
     ]
 
     deploy_parameters = {
-      mcp_gsa = lookup(var.workload_identity_emails, "mcp", "")
+      mcp_secret_project        = var.project_id
+      mcp_google_cloud_gsa      = lookup(var.workload_identity_emails, "mcp", "")
+      mcp_terraform_gsa         = lookup(var.workload_identity_emails, "mcp-terraform", "")
+      mcp_terraform_stacks_gsa  = lookup(var.workload_identity_emails, "mcp-terraform-stacks", "")
+      mcp_whatsapp_gsa          = lookup(var.workload_identity_emails, "mcp-whatsapp", "")
+      mcp_tunnel_gsa            = lookup(var.workload_identity_emails, "mcp-tunnel", "")
     }
 
     labels = local.common_labels
@@ -133,23 +138,28 @@ component "secrets" {
         TOML
         accessors = [var.workload_identity_members.matterbridge]
       }
-      # MCP credentials, seeded with placeholders so pods always start; load
-      # real values out-of-band (docs/MCP.md) and restart the pods.
+      # MCP credentials are read directly by GKE's Secret Manager CSI add-on.
+      # Terraform manages only containers/IAM and never reads current values.
       "mcp-terraform-hcp-token" = {
-        value     = "REPLACE_ME_HCP_TEAM_TOKEN"
-        accessors = [for m in [lookup(var.workload_identity_members, "mcp", "")] : m if m != ""]
+        value = "REPLACE_ME_HCP_TEAM_TOKEN"
+        accessors = [
+          for key in ["mcp-terraform", "mcp-terraform-stacks"] :
+          var.workload_identity_members[key]
+        ]
       }
-      # WhatsApp Business uses Meta's official Cloud API. Do not grant these
-      # secrets to the Google Cloud MCP GSA: the app stack reads them during
-      # apply and materialises them only in the dedicated Kubernetes namespace.
+      # WhatsApp Business uses Meta's official Cloud API. Its dedicated
+      # Workload Identity is the only runtime accessor.
       "mcp-whatsapp-access-token" = {
-        value = "REPLACE_ME_ACCESS_TOKEN"
+        value     = "REPLACE_ME_ACCESS_TOKEN"
+        accessors = [var.workload_identity_members["mcp-whatsapp"]]
       }
       "mcp-whatsapp-waba-id" = {
-        value = "REPLACE_ME_WABA_ID"
+        value     = "REPLACE_ME_WABA_ID"
+        accessors = [var.workload_identity_members["mcp-whatsapp"]]
       }
       "mcp-whatsapp-phone-number-id" = {
-        value = "REPLACE_ME_PHONE_NUMBER_ID"
+        value     = "REPLACE_ME_PHONE_NUMBER_ID"
+        accessors = [var.workload_identity_members["mcp-whatsapp"]]
       }
     }
   }
@@ -160,9 +170,9 @@ component "secrets" {
   }
 }
 
-# Reads sensitive values back from Secret Manager (linked stacks cannot publish
-# sensitive outputs). Ordering: the cloudflare stack must have applied first
-# for the origin-TLS / tunnel entries to exist.
+# Reads the non-MCP application secrets that must still become native
+# Kubernetes Secrets for Mattermost/operator compatibility. MCP credentials use
+# CSI and deliberately never enter Terraform state or etcd.
 component "prod_secret_values" {
   source = "./modules/secret-lookup"
 
@@ -181,18 +191,6 @@ component "prod_secret_values" {
         # with verify-client off, and a missing Secret 403s the whole host.
         cloudflare_origin_pull_ca = "cloudflare-origin-pull-ca"
       } : {},
-      # Created by component.secrets in THIS stack -- pass the computed full
-      # resource path (not a literal id) so the read defers to apply time and
-      # does not 404 before the secret exists.
-      var.mcp_servers_enabled ? {
-        mcp_terraform_hcp_token            = component.secrets.secret_resource_ids["mcp-terraform-hcp-token"]
-        mcp_whatsapp_access_token           = component.secrets.secret_resource_ids["mcp-whatsapp-access-token"]
-        mcp_whatsapp_waba_id                = component.secrets.secret_resource_ids["mcp-whatsapp-waba-id"]
-        mcp_whatsapp_phone_number_id        = component.secrets.secret_resource_ids["mcp-whatsapp-phone-number-id"]
-      } : {},
-      var.zero_trust_enabled ? {
-        mcp_tunnel_token = "mcp-tunnel-token"
-      } : {},
     )
   }
 
@@ -201,8 +199,8 @@ component "prod_secret_values" {
   }
 }
 
-# Namespaces + credential Secrets written straight to etcd, so no secret ever
-# passes through Cloud Deploy.
+# Namespaces + legacy application Secrets. MCP namespaces remain owned here,
+# but MCP credentials are mounted directly from Secret Manager by their pods.
 component "cluster_secrets" {
   source = "./modules/cluster-secrets"
 
@@ -272,66 +270,6 @@ component "cluster_secrets" {
           namespace = "mattermost"
           labels    = { app = "mattermost" }
           data      = { "ca.crt" = component.prod_secret_values.values["cloudflare_origin_pull_ca"] }
-        }
-      } : {},
-      var.mcp_servers_enabled ? {
-        # Dev MCP workloads share one namespace, so namespace-scoped
-        # credentials are duplicated there without changing their Secret
-        # names. Production keeps one credential Secret per isolated server
-        # namespace.
-        dev-mcp-terraform-hcp = {
-          name      = "mcp-terraform-hcp"
-          namespace = "dev"
-          labels    = { "app.kubernetes.io/part-of" = "mcp-servers", tier = "dev" }
-          data = {
-            TFE_TOKEN = component.prod_secret_values.values["mcp_terraform_hcp_token"]
-          }
-        }
-        dev-mcp-whatsapp-business = {
-          name      = "mcp-whatsapp-business"
-          namespace = "dev"
-          labels    = { "app.kubernetes.io/part-of" = "mcp-servers", tier = "dev" }
-          data = {
-            WHATSAPP_ACCESS_TOKEN    = component.prod_secret_values.values["mcp_whatsapp_access_token"]
-            WHATSAPP_WABA_ID         = component.prod_secret_values.values["mcp_whatsapp_waba_id"]
-            WHATSAPP_PHONE_NUMBER_ID = component.prod_secret_values.values["mcp_whatsapp_phone_number_id"]
-          }
-        }
-        mcp-terraform-hcp = {
-          name      = "mcp-terraform-hcp"
-          namespace = "mcp-terraform"
-          labels    = { "app.kubernetes.io/part-of" = "mcp-servers" }
-          data = {
-            TFE_TOKEN = component.prod_secret_values.values["mcp_terraform_hcp_token"]
-          }
-        }
-        mcp-terraform-stacks-hcp = {
-          name      = "mcp-terraform-hcp"
-          namespace = "mcp-terraform-stacks"
-          labels    = { "app.kubernetes.io/part-of" = "mcp-servers" }
-          data = {
-            TFE_TOKEN = component.prod_secret_values.values["mcp_terraform_hcp_token"]
-          }
-        }
-        mcp-whatsapp-business = {
-          name      = "mcp-whatsapp-business"
-          namespace = "mcp-whatsapp-business"
-          labels    = { "app.kubernetes.io/part-of" = "mcp-servers" }
-          data = {
-            WHATSAPP_ACCESS_TOKEN    = component.prod_secret_values.values["mcp_whatsapp_access_token"]
-            WHATSAPP_WABA_ID         = component.prod_secret_values.values["mcp_whatsapp_waba_id"]
-            WHATSAPP_PHONE_NUMBER_ID = component.prod_secret_values.values["mcp_whatsapp_phone_number_id"]
-          }
-        }
-      } : {},
-      var.zero_trust_enabled ? {
-        mcp-tunnel = {
-          name      = "mcp-tunnel"
-          namespace = "mcp-tunnel"
-          labels    = { "app.kubernetes.io/part-of" = "mcp-servers" }
-          data = {
-            TUNNEL_TOKEN = component.prod_secret_values.values["mcp_tunnel_token"]
-          }
         }
       } : {},
     )

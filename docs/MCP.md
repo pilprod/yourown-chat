@@ -14,18 +14,19 @@ The platform consumes MCP (Model Context Protocol) servers in two ways:
    cannot initiate traffic to another MCP server. Each server admits only Mattermost and the Cloudflare
    Tunnel connector in the separate `mcp-tunnel` namespace. Egress is limited
    to cluster DNS plus encrypted external API/Tunnel traffic.
-   Credentials, when needed, follow the platform's secret path: Secret Manager
-   container (Terraform) → Kubernetes Secret created directly in etcd
-   (`cluster_secrets`) → `secretEnvFrom` in the server's values entry. No
-   secret ever passes through Cloud Deploy. The MCP Secret Manager containers
-   use the same regional CMEK (`cmek_key_id`) and least-privilege Workload
-   Identity accessor as the production Mattermost database secrets; only the
-   resulting Kubernetes Secrets are materialised in etcd.
+   Credentials are mounted directly from regional, CMEK-protected Secret
+   Manager containers through the managed GKE CSI add-on. Each server has a
+   dedicated Workload Identity and `SecretProviderClass`; operator-supplied
+   Terraform/Meta values never enter app-gcp state, Cloud Deploy, a Kubernetes
+   Secret, or etcd. (The Cloudflare-generated Tunnel token necessarily remains
+   sensitive state in the stack that creates it.) After adding a new
+   `versions/latest`, restart only that server's Deployment to remount it; no
+   Terraform apply or MCP release is required.
    Disposable `dev-mcp-*` instances instead share the quota-bound `dev`
    namespace with dev Mattermost and dev Postgres. They use the `development`
-   PriorityClass, the tenant's default-deny/intra-namespace policies, duplicate
-   namespace-scoped credential Secrets, and a `dev/mcp-servers` KSA bound to
-   the same read-only Google Cloud MCP GSA.
+   PriorityClass and the tenant's default-deny/intra-namespace policies. Each
+   dev server keeps its own KSA and the same per-server Secret Manager IAM
+   boundary as production.
 
 2. **Vendor-hosted (remote)** — the vendor runs the MCP endpoint; agents
    connect to its URL with OAuth. Nothing to deploy or operate on our side.
@@ -216,7 +217,7 @@ approval or approval of later plans.
 Rollout order for the Google Cloud server: apply **platform-gcp first** (creates
 the `mcp` GSA + Workload Identity binding and publishes it in
 `workload_identity_emails`), then app-gcp (injects the GSA into the KSA
-annotation via the `mcp_gsa` deploy parameter), then a release.
+annotation via the `mcp_google_cloud_gsa` deploy parameter), then a release.
 
 #### Official Google Workspace remote MCP
 
@@ -296,8 +297,9 @@ printf '%s' "<waba-id>"           | gcloud secrets versions add mcp-whatsapp-wab
 printf '%s' "<phone-number-id>"   | gcloud secrets versions add mcp-whatsapp-phone-number-id --data-file=-
 ```
 
-Re-apply `terraform/app-gcp`, then restart
-`deployment/mcp-whatsapp-business` in namespace `mcp-whatsapp-business`.
+Restart `deployment/mcp-whatsapp-business` after adding the versions; no
+`app-gcp` apply or MCP release is needed. The WhatsApp adapter reads the
+mounted files for every API call after the pod remounts them.
 In Mattermost add it as `WhatsApp Business` with URL
 `http://mcp-whatsapp-business.mcp-whatsapp-business.svc.cluster.local:3000/mcp`;
 leave headers and OAuth credentials empty because Meta credentials stay on the
@@ -495,20 +497,15 @@ Client availability is not identical:
    organization and renames its team/domain to `yourown-chat` /
    `yourown-chat.cloudflareaccess.com`; clients using the old
    `yellow-sunset-672e.cloudflareaccess.com` domain must be updated.
-2. Apply **cloudflare**: tunnel (+ token in Secret Manager
-   `mcp-tunnel-token`), DNS, Access apps for `dev.yourown.chat` /
-   every configured MCP hostname, including
-   `mcp-terraform-stacks.yourown.chat`.
-3. Apply **platform-gcp**, then **app-gcp**: the former binds Workload Identity
-   to both `mcp-google-cloud/mcp-servers` and `dev/mcp-servers`; the latter
-   creates one namespace per production MCP server plus `mcp-tunnel`, and
-   materialises credentials in both each production namespace and `dev`
-   before Cloud Deploy runs. (A release racing ahead of this step fails on a
-   missing Secret — apply and re-run the release.)
-4. Release: the cloudflared pod connects outbound; hostnames go live behind
-   Access. Until step 3 lands the pod waits in CreateContainerConfigError and
-   recovers on its own.
-5. Terraform supplies the Access service-token headers to all AI Controls
+2. Apply **platform-gcp**: create one Workload Identity per MCP runtime.
+3. Apply **cloudflare**: create/update the tunnel, its Secret Manager token,
+   DNS and Access apps; grant only the Tunnel identity access to that token.
+4. Apply **app-gcp**: grant Terraform/WhatsApp identities access to their own
+   Secret Manager containers and create the MCP namespaces.
+5. Release: Cloud Deploy creates KSAs + SecretProviderClasses and the pods
+   mount `versions/latest` directly. A release racing ahead of the IAM steps
+   waits in `ContainerCreating`; re-run it after the stack applies.
+6. Terraform supplies the Access service-token headers to all AI Controls
    registrations. No upstream browser authorization is required. If a server
    remains `Waiting`, inspect its error and run **Sync capabilities** as
    documented in [`CLOUDFLARE.md`](CLOUDFLARE.md). Do not configure a client
@@ -621,9 +618,10 @@ Then validate the external path:
 1. Add an entry under `servers:` in `helm/mcp/values.yaml` (image,
    port, env, `health`). Transport must be HTTP (streamable-http/SSE); wrap
    stdio-only servers with a gateway image first.
-2. Credentials: add a Secret Manager container in the app-gcp `secrets`
-   component, materialise it via `cluster_secrets` into that server's dedicated
-   `mcp-<server>` namespace, then reference it with `secretEnvFrom`.
+2. Credentials: add a Secret Manager container in app-gcp, grant only the new
+   server's Workload Identity `secretAccessor`, and declare its files under
+   `servers.<name>.secretProvider.files`. Read the mounted files through
+   `<ENV>_FILE`; do not create or synchronize a Kubernetes Secret.
 3. Ship: merge → the tag-triggered release renders the profile; the server
    lands with the next prod rollout.
 

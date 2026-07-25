@@ -6,12 +6,14 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
+import { readSecretEnv } from "./secret-env.mjs";
+
 const port = Number.parseInt(process.env.PORT ?? "3000", 10);
 const apiVersion = process.env.WHATSAPP_API_VERSION ?? "v23.0";
 const graphBaseUrl = `https://graph.facebook.com/${apiVersion}`;
 
 function requiredEnv(name) {
-  const value = process.env[name];
+  const value = readSecretEnv(name);
   if (!value || value.startsWith("REPLACE_ME_")) {
     throw new Error(`${name} is not configured`);
   }

@@ -1,3 +1,5 @@
+import { readSecretEnv } from "./secret-env.mjs";
+
 const terminalStatuses = new Set([
   "succeeded",
   "failed",
@@ -290,7 +292,7 @@ export class HcpStacksClient {
 
 export function clientFromEnv(fetchImpl = fetch) {
   return new HcpStacksClient({
-    token: process.env.TFE_TOKEN,
+    token: readSecretEnv("TFE_TOKEN"),
     address: process.env.TFE_ADDRESS,
     organization: process.env.TFE_ORGANIZATION,
     allowedStackNames: (process.env.TFE_STACK_ALLOWLIST ?? "")

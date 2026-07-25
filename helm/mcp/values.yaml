@@ -3,8 +3,8 @@
 # the whole set is gated by the app-gcp mcp_servers_enabled flag. Servers are
 # reachable only from the mattermost namespace or the dedicated mcp-tunnel
 # namespace. Skaffold renders one release per server namespace.
-# Credentials never live here -- set secretEnvFrom and create the Secret via the
-# app-gcp cluster_secrets component. See docs/MCP.md.
+# Credentials never live in chart values or Kubernetes Secrets. Secret Manager
+# CSI mounts versions/latest as read-only files under /var/run/secrets/mcp.
 
 # Cloud Deploy supplies these to Skaffold's Helm renderer as --set values.
 # Enabled templates require them, so missing release parameters fail during
@@ -14,7 +14,12 @@ mcp_terraform_stacks_image: ""
 mcp_google_cloud_image: ""
 mcp_whatsapp_business_image: ""
 mcp_tunnel_image: ""
-mcp_gsa: ""
+mcp_secret_project: ""
+mcp_google_cloud_gsa: ""
+mcp_terraform_gsa: ""
+mcp_terraform_stacks_gsa: ""
+mcp_whatsapp_gsa: ""
+mcp_tunnel_gsa: ""
 
 # Ephemeral development releases use `dev-`; production keeps this empty.
 namePrefix: ""
@@ -34,13 +39,13 @@ tunnel:
   image:
     deployParameter: mcp_tunnel_image
     pullPolicy: IfNotPresent
-  secretEnvFrom: mcp-tunnel
-
-serviceAccount:
-  # Shared KSA bound (Workload Identity) to the platform `mcp` GSA -- keyless
-  # read-only observability. Servers opt in via servers.<name>.serviceAccountName.
-  create: true
-  name: mcp-servers
+  serviceAccountName: mcp-tunnel
+  gcpServiceAccountDeployParameter: mcp_tunnel_gsa
+  secretProvider:
+    enabled: true
+    files:
+      - secretName: mcp-tunnel-token
+        path: tunnel-token
 
 defaults:
   priorityClassName: production
@@ -85,6 +90,8 @@ servers:
   # is fixed server-side (per-request overrides are rejected 403).
   terraform:
     enabled: true
+    serviceAccountName: mcp-terraform
+    gcpServiceAccountDeployParameter: mcp_terraform_gsa
     image:
       deployParameter: mcp_terraform_image
       pullPolicy: IfNotPresent
@@ -102,7 +109,12 @@ servers:
     env:
       MCP_ALLOWED_ORIGINS: "https://yourown.chat"
       TFE_ADDRESS: "https://app.terraform.io"
-    secretEnvFrom: mcp-terraform-hcp
+      TFE_TOKEN_FILE: /var/run/secrets/mcp/tfe-token
+    secretProvider:
+      enabled: true
+      files:
+        - secretName: mcp-terraform-hcp-token
+          path: tfe-token
     health:
       path: /health
 
@@ -112,6 +124,8 @@ servers:
   # name allowlist and never grants a deployment-group/global approval.
   terraform-stacks:
     enabled: true
+    serviceAccountName: mcp-terraform-stacks
+    gcpServiceAccountDeployParameter: mcp_terraform_stacks_gsa
     image:
       deployParameter: mcp_terraform_stacks_image
       pullPolicy: IfNotPresent
@@ -121,7 +135,12 @@ servers:
       TFE_ADDRESS: "https://app.terraform.io"
       TFE_ORGANIZATION: "papou-work"
       TFE_STACK_ALLOWLIST: "cloudflare,app-gcp,platform-gcp,agent-registry-gcp"
-    secretEnvFrom: mcp-terraform-hcp
+      TFE_TOKEN_FILE: /var/run/secrets/mcp/tfe-token
+    secretProvider:
+      enabled: true
+      files:
+        - secretName: mcp-terraform-hcp-token
+          path: tfe-token
     resources:
       requests:
         cpu: 10m
@@ -140,6 +159,7 @@ servers:
   google-cloud:
     enabled: true
     serviceAccountName: mcp-servers
+    gcpServiceAccountDeployParameter: mcp_google_cloud_gsa
     image:
       deployParameter: mcp_google_cloud_image
       pullPolicy: IfNotPresent
@@ -169,10 +189,12 @@ servers:
       path: /healthz
 
   # Community transport adapter over Meta's official WhatsApp Business Cloud
-  # API. This is not a WhatsApp Web/QR bridge. Account credentials are injected
-  # from Secret Manager and the pod is reachable only by Mattermost/tunnel.
+  # API. This is not a WhatsApp Web/QR bridge. Account credentials are mounted
+  # directly from Secret Manager through CSI.
   whatsapp-business:
     enabled: true
+    serviceAccountName: mcp-whatsapp-business
+    gcpServiceAccountDeployParameter: mcp_whatsapp_gsa
     image:
       deployParameter: mcp_whatsapp_business_image
       pullPolicy: IfNotPresent
@@ -180,7 +202,18 @@ servers:
     env:
       PORT: "3000"
       WHATSAPP_API_VERSION: "v23.0"
-    secretEnvFrom: mcp-whatsapp-business
+      WHATSAPP_ACCESS_TOKEN_FILE: /var/run/secrets/mcp/access-token
+      WHATSAPP_WABA_ID_FILE: /var/run/secrets/mcp/waba-id
+      WHATSAPP_PHONE_NUMBER_ID_FILE: /var/run/secrets/mcp/phone-number-id
+    secretProvider:
+      enabled: true
+      files:
+        - secretName: mcp-whatsapp-access-token
+          path: access-token
+        - secretName: mcp-whatsapp-waba-id
+          path: waba-id
+        - secretName: mcp-whatsapp-phone-number-id
+          path: phone-number-id
     resources:
       requests:
         cpu: 10m

@@ -3,9 +3,9 @@
 # Cloudflare Tunnel connector: outbound-only link carrying Access-authenticated
 # traffic to private services (internal MCP servers + dev Mattermost) with zero
 # public exposure. Ingress rules live in the cloudflare zero-trust module; the
-# pod runs with TUNNEL_TOKEN from the mcp-tunnel Secret in its dedicated
-# mcp-tunnel namespace; it is the only cross-namespace path admitted to MCP
-# services.
+# pod reads its token directly from Secret Manager through the GKE CSI driver
+# in its dedicated mcp-tunnel namespace; it is the only cross-namespace path
+# admitted to MCP services.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -26,6 +26,7 @@ spec:
         app.kubernetes.io/part-of: mcp-servers
     spec:
       priorityClassName: {{ .Values.defaults.priorityClassName }}
+      serviceAccountName: {{ .Values.tunnel.serviceAccountName }}
       securityContext:
         {{- toYaml .Values.defaults.podSecurityContext | nindent 8 }}
       containers:
@@ -44,9 +45,12 @@ spec:
             - --metrics
             - 0.0.0.0:2000
             - run
-          envFrom:
-            - secretRef:
-                name: {{ .Values.tunnel.secretEnvFrom }}
+            - --token-file
+            - /var/run/secrets/mcp/tunnel-token
+          volumeMounts:
+            - name: mcp-secrets
+              mountPath: /var/run/secrets/mcp
+              readOnly: true
           livenessProbe:
             httpGet:
               path: /ready
@@ -55,6 +59,13 @@ spec:
             periodSeconds: 20
           resources:
             {{- toYaml .Values.defaults.resources | nindent 12 }}
+      volumes:
+        - name: mcp-secrets
+          csi:
+            driver: secrets-store-gke.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: mcp-tunnel-gcp
       nodeSelector:
         {{- toYaml .Values.defaults.nodeSelector | nindent 8 }}
       tolerations:

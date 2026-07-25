@@ -128,6 +128,9 @@ while IFS=$'\t' read -r name artifact_path kind dockerfile context parent_arg pa
       }
       build_args+=(--build-arg "${parent_arg}=${parent_image}")
     fi
+    if [[ "${source_env}" != "-" ]]; then
+      build_args+=(--build-arg "UPSTREAM_IMAGE=${!source_env}")
+    fi
     docker build "${build_args[@]}" "${build_context}"
   else
     printf 'Unknown image kind %s for %s\n' "${kind}" "${name}" >&2

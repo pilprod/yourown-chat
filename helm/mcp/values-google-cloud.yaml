@@ -3,9 +3,6 @@
 tunnel:
   enabled: false
 
-serviceAccount:
-  create: true
-
 defaults:
   networkPolicy:
     # ADC uses Workload Identity Federation through the node-local GKE

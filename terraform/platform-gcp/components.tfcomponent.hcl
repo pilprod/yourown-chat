@@ -7,13 +7,17 @@
 locals {
   gke_location = var.gke_regional ? var.region : var.zone
 
-  # Kubernetes tenants (namespace / KSA) that consume GCP secrets. The Google
-  # Cloud MCP server alone needs a GCP identity, and gets its own namespace.
+  # Kubernetes tenants (namespace / KSA) that use Workload Identity. Every MCP
+  # runtime gets its own identity so CSI-mounted credentials stay isolated.
   ns = {
-    mattermost   = { namespace = "mattermost", ksa = "mattermost" }
-    matterbridge = { namespace = "matterbridge", ksa = "matterbridge" }
-    dev          = { namespace = "dev", ksa = "dev-app" }
-    mcp          = { namespace = "mcp-google-cloud", ksa = "mcp-servers" }
+    mattermost          = { namespace = "mattermost", ksa = "mattermost" }
+    matterbridge        = { namespace = "matterbridge", ksa = "matterbridge" }
+    dev                 = { namespace = "dev", ksa = "dev-app" }
+    mcp                 = { namespace = "mcp-google-cloud", ksa = "mcp-servers" }
+    mcp-terraform       = { namespace = "mcp-terraform", ksa = "mcp-terraform" }
+    mcp-terraform-stacks = { namespace = "mcp-terraform-stacks", ksa = "mcp-terraform-stacks" }
+    mcp-whatsapp        = { namespace = "mcp-whatsapp-business", ksa = "mcp-whatsapp-business" }
+    mcp-tunnel          = { namespace = "mcp-tunnel", ksa = "mcp-tunnel" }
   }
 
   common_labels = merge({
@@ -151,6 +155,80 @@ component "workload_identity_mcp" {
   depends_on = [component.gke]
 }
 
+# Dedicated identities keep CSI-mounted credentials isolated per MCP server.
+# Each identity is also bound to the matching disposable KSA in `dev`.
+component "workload_identity_mcp_terraform" {
+  source = "./modules/workload-identity"
+
+  inputs = {
+    project_id   = component.project_services.project_id
+    account_id   = "mcp-terraform"
+    display_name = "Terraform MCP Secret Manager identity"
+    namespace    = local.ns["mcp-terraform"].namespace
+    ksa_name     = local.ns["mcp-terraform"].ksa
+    additional_ksa_bindings = [{
+      namespace = local.ns.dev.namespace
+      ksa_name  = local.ns["mcp-terraform"].ksa
+    }]
+  }
+
+  providers = { google = provider.google.this }
+  depends_on = [component.gke]
+}
+
+component "workload_identity_mcp_terraform_stacks" {
+  source = "./modules/workload-identity"
+
+  inputs = {
+    project_id   = component.project_services.project_id
+    account_id   = "mcp-terraform-stacks"
+    display_name = "Terraform Stacks MCP Secret Manager identity"
+    namespace    = local.ns["mcp-terraform-stacks"].namespace
+    ksa_name     = local.ns["mcp-terraform-stacks"].ksa
+    additional_ksa_bindings = [{
+      namespace = local.ns.dev.namespace
+      ksa_name  = local.ns["mcp-terraform-stacks"].ksa
+    }]
+  }
+
+  providers = { google = provider.google.this }
+  depends_on = [component.gke]
+}
+
+component "workload_identity_mcp_whatsapp" {
+  source = "./modules/workload-identity"
+
+  inputs = {
+    project_id   = component.project_services.project_id
+    account_id   = "mcp-whatsapp"
+    display_name = "WhatsApp MCP Secret Manager identity"
+    namespace    = local.ns["mcp-whatsapp"].namespace
+    ksa_name     = local.ns["mcp-whatsapp"].ksa
+    additional_ksa_bindings = [{
+      namespace = local.ns.dev.namespace
+      ksa_name  = local.ns["mcp-whatsapp"].ksa
+    }]
+  }
+
+  providers = { google = provider.google.this }
+  depends_on = [component.gke]
+}
+
+component "workload_identity_mcp_tunnel" {
+  source = "./modules/workload-identity"
+
+  inputs = {
+    project_id   = component.project_services.project_id
+    account_id   = "mcp-tunnel"
+    display_name = "Cloudflare MCP Tunnel Secret Manager identity"
+    namespace    = local.ns["mcp-tunnel"].namespace
+    ksa_name     = local.ns["mcp-tunnel"].ksa
+  }
+
+  providers = { google = provider.google.this }
+  depends_on = [component.gke]
+}
+
 component "network" {
   source = "./modules/network"
 
@@ -232,9 +310,9 @@ component "gke" {
     services_range_name        = component.network.services_range_name
     master_authorized_networks = var.master_authorized_networks
     node_pools                 = var.gke_node_pools
-    enable_secret_manager_csi  = true
-    deletion_protection        = var.gke_deletion_protection
-    resource_labels            = local.common_labels
+    enable_secret_manager_csi = true
+    deletion_protection       = var.gke_deletion_protection
+    resource_labels           = local.common_labels
 
     # etcd Secrets encryption with the shared CMEK key (null omits the block ->
     # Google-managed); referencing kms orders the key + its GKE-agent grant first.
