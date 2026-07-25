@@ -10,6 +10,7 @@
 # Enabled templates require them, so missing release parameters fail during
 # render instead of reaching GKE as placeholder images.
 mcp_terraform_image: ""
+mcp_terraform_stacks_image: ""
 mcp_google_cloud_image: ""
 mcp_whatsapp_business_image: ""
 mcp_tunnel_image: ""
@@ -101,6 +102,32 @@ servers:
       MCP_ALLOWED_ORIGINS: "https://yourown.chat"
       TFE_ADDRESS: "https://app.terraform.io"
     secretEnvFrom: mcp-terraform-hcp
+    health:
+      path: /health
+
+  # Small first-party adapter for HCP Terraform Stacks deployment runs. The
+  # official HashiCorp MCP currently exposes Stack discovery but not deployment
+  # plan review/approval. This server resolves Stack IDs by an explicit
+  # name allowlist and never grants a deployment-group/global approval.
+  terraform-stacks:
+    enabled: true
+    image:
+      deployParameter: mcp_terraform_stacks_image
+      pullPolicy: IfNotPresent
+    port: 3000
+    env:
+      PORT: "3000"
+      TFE_ADDRESS: "https://app.terraform.io"
+      TFE_ORGANIZATION: "papou-work"
+      TFE_STACK_ALLOWLIST: "cloudflare,app-gcp,platform-gcp,agent-registry-gcp"
+    secretEnvFrom: mcp-terraform-hcp
+    resources:
+      requests:
+        cpu: 10m
+        memory: 64Mi
+      limits:
+        cpu: 250m
+        memory: 256Mi
     health:
       path: /health
 

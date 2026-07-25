@@ -9,5 +9,7 @@ serviceAccount:
 servers:
   terraform:
     enabled: false
+  terraform-stacks:
+    enabled: false
   whatsapp-business:
     enabled: false

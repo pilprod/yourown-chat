@@ -215,6 +215,7 @@ component "cluster_secrets" {
         # compromised server from reaching another server merely because both
         # happen to be MCP workloads.  The Tunnel connector is isolated too.
         mcp-terraform        = { labels = { tier = "prod", "part-of" = "yourown-chat", "mcp-server" = "terraform" } }
+        mcp-terraform-stacks = { labels = { tier = "prod", "part-of" = "yourown-chat", "mcp-server" = "terraform-stacks" } }
         mcp-google-cloud     = { labels = { tier = "prod", "part-of" = "yourown-chat", "mcp-server" = "google-cloud" } }
         mcp-whatsapp-business = { labels = { tier = "prod", "part-of" = "yourown-chat", "mcp-server" = "whatsapp-business" } }
         mcp-tunnel           = { labels = { tier = "prod", "part-of" = "yourown-chat", "mcp-component" = "tunnel" } }
@@ -299,6 +300,14 @@ component "cluster_secrets" {
         mcp-terraform-hcp = {
           name      = "mcp-terraform-hcp"
           namespace = "mcp-terraform"
+          labels    = { "app.kubernetes.io/part-of" = "mcp-servers" }
+          data = {
+            TFE_TOKEN = component.prod_secret_values.values["mcp_terraform_hcp_token"]
+          }
+        }
+        mcp-terraform-stacks-hcp = {
+          name      = "mcp-terraform-hcp"
+          namespace = "mcp-terraform-stacks"
           labels    = { "app.kubernetes.io/part-of" = "mcp-servers" }
           data = {
             TFE_TOKEN = component.prod_secret_values.values["mcp_terraform_hcp_token"]

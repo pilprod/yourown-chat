@@ -25,6 +25,7 @@ spec:
     - name: MM_SERVICESETTINGS_ALLOWEDUNTRUSTEDINTERNALCONNECTIONS
       value: >-
         mcp-terraform.mcp-terraform.svc.cluster.local
+        mcp-terraform-stacks.mcp-terraform-stacks.svc.cluster.local
         mcp-google-cloud.mcp-google-cloud.svc.cluster.local
         mcp-whatsapp-business.mcp-whatsapp-business.svc.cluster.local
 

@@ -69,6 +69,7 @@ deployment "yourown-chat" {
     zero_trust_upstreams = {
       dev                   = "http://dev-mattermost.dev.svc.cluster.local:8065"
       mcp-terraform         = "http://mcp-terraform.mcp-terraform.svc.cluster.local:8080"
+      mcp-terraform-stacks  = "http://mcp-terraform-stacks.mcp-terraform-stacks.svc.cluster.local:3000"
       mcp-google-cloud      = "http://mcp-google-cloud.mcp-google-cloud.svc.cluster.local:8080"
       mcp-whatsapp-business = "http://mcp-whatsapp-business.mcp-whatsapp-business.svc.cluster.local:3000"
     }

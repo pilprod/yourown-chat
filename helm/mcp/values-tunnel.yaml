@@ -6,6 +6,8 @@ serviceAccount:
 servers:
   terraform:
     enabled: false
+  terraform-stacks:
+    enabled: false
   google-cloud:
     enabled: false
   whatsapp-business:

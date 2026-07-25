@@ -82,6 +82,7 @@ spec:
             - name: MM_SERVICESETTINGS_ALLOWEDUNTRUSTEDINTERNALCONNECTIONS
               value: >-
                 dev-mcp-terraform.dev.svc.cluster.local
+                dev-mcp-terraform-stacks.dev.svc.cluster.local
                 dev-mcp-google-cloud.dev.svc.cluster.local
                 dev-mcp-whatsapp-business.dev.svc.cluster.local
           ports:

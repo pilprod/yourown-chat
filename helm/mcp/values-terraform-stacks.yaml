@@ -1,4 +1,4 @@
-# whatsapp-business-only release in namespace mcp-whatsapp-business.
+# terraform-stacks-only release in namespace mcp-terraform-stacks.
 tunnel:
   enabled: false
 
@@ -8,7 +8,7 @@ serviceAccount:
 servers:
   terraform:
     enabled: false
-  terraform-stacks:
-    enabled: false
   google-cloud:
+    enabled: false
+  whatsapp-business:
     enabled: false

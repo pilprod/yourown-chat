@@ -1,0 +1,16 @@
+{
+  "name": "yourown-chat-terraform-stacks-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Guarded MCP tools for reviewing and approving HCP Terraform Stack deployment runs",
+  "license": "UNLICENSED",
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "express": "5.1.0",
+    "zod": "3.25.76"
+  }
+}

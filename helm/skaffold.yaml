@@ -72,6 +72,14 @@ profiles:
               - mcp/values.yaml
               - mcp/values-dev.yaml
               - mcp/values-terraform.yaml
+          - name: dev-mcp-terraform-stacks
+            chartPath: mcp
+            namespace: dev
+            createNamespace: false
+            valuesFiles:
+              - mcp/values.yaml
+              - mcp/values-dev.yaml
+              - mcp/values-terraform-stacks.yaml
           - name: dev-mcp-google-cloud
             chartPath: mcp
             namespace: dev
@@ -106,6 +114,13 @@ profiles:
             valuesFiles:
               - mcp/values.yaml
               - mcp/values-terraform.yaml
+          - name: mcp-terraform-stacks
+            chartPath: mcp
+            namespace: mcp-terraform-stacks
+            createNamespace: false
+            valuesFiles:
+              - mcp/values.yaml
+              - mcp/values-terraform-stacks.yaml
           - name: mcp-google-cloud
             chartPath: mcp
             namespace: mcp-google-cloud
@@ -132,6 +147,8 @@ profiles:
               retry='--retry 30 --retry-all-errors --retry-delay 5';
               curl -sSf $retry \
                 http://mcp-terraform.mcp-terraform.svc.cluster.local:8080/health
+              curl -sSf $retry \
+                http://mcp-terraform-stacks.mcp-terraform-stacks.svc.cluster.local:3000/health
               curl -sSf $retry \
                 http://mcp-google-cloud.mcp-google-cloud.svc.cluster.local:8080/healthz
               curl -sSf $retry \
@@ -185,6 +202,9 @@ profiles:
               mcp_api_smoke terraform \
                 http://mcp-terraform.mcp-terraform.svc.cluster.local:8080/mcp \
                 list_terraform_orgs '{}'
+              mcp_api_smoke terraform-stacks \
+                http://mcp-terraform-stacks.mcp-terraform-stacks.svc.cluster.local:3000/mcp \
+                terraform_stacks_list_deployment_runs '{"pending_only":true}'
               mcp_api_smoke google-cloud \
                 http://mcp-google-cloud.mcp-google-cloud.svc.cluster.local:8080/mcp \
                 list_log_names '{"parent":"projects/yourown-chat","pageSize":1}'
@@ -233,5 +253,6 @@ customActions:
               --project "${cluster_project}" \
               --location "${cluster_location}"
             kubectl --namespace dev scale deployment/dev-mcp-terraform --replicas=0
+            kubectl --namespace dev scale deployment/dev-mcp-terraform-stacks --replicas=0
             kubectl --namespace dev scale deployment/dev-mcp-google-cloud --replicas=0
             kubectl --namespace dev scale deployment/dev-mcp-whatsapp-business --replicas=0

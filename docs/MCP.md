@@ -8,7 +8,8 @@ The platform consumes MCP (Model Context Protocol) servers in two ways:
    `helm/mcp/values.yaml` (`servers.<name>.enabled`). Production is reachable
    across namespaces only from `mattermost`, at
    `http://mcp-<name>.mcp-<name>.svc.cluster.local:<port>/mcp`. Every server
-   has its own default-deny namespace (`mcp-terraform`, `mcp-google-cloud`, or
+   has its own default-deny namespace (`mcp-terraform`,
+   `mcp-terraform-stacks`, `mcp-google-cloud`, or
    `mcp-whatsapp-business`), so a compromised server
    cannot initiate traffic to another MCP server. Each server admits only Mattermost and the Cloudflare
    Tunnel connector in the separate `mcp-tunnel` namespace. Egress is limited
@@ -43,8 +44,8 @@ Production GKE MCP Deployments carry the supported discovery metadata:
   `modelcontextprotocol.info/capabilities`;
 - `iam.gke.io/spiffe-identity-type: agent-identity` on the Pod template.
 
-GKE therefore registers and introspects Terraform, Google Cloud, and WhatsApp
-Business MCP after their production rollout. The dev overlay deliberately
+GKE therefore registers and introspects Terraform, Terraform Stacks, Google
+Cloud, and WhatsApp Business MCP after their production rollout. The dev overlay deliberately
 disables registration because those instances are disposable and are scaled
 to zero after review. Official Google remote MCP servers are registered
 automatically when their APIs are enabled.
@@ -87,7 +88,7 @@ gcloud agent-registry mcp-servers list \
   --location=europe-west3
 ```
 
-The three GKE servers should expose discovered tools after introspection. The
+The four GKE servers should expose discovered tools after introspection. The
 manually registered Meta entry is expected to show endpoint metadata without a
 Terraform-managed tool specification.
 
@@ -102,6 +103,7 @@ constraints (especially for consumer services without a public API).
 | Service | Server | Credentials |
 |---|---|---|
 | Terraform (Registry + **HCP Terraform**) | internally mirrored `hashicorp/terraform-mcp-server@sha256:67b4…` (official) — registry docs tokenless; workspaces/runs/stacks on app.terraform.io once `TFE_TOKEN` is loaded | HCP team token in Secret Manager (`mcp-terraform-hcp-token`, placeholder seeded) |
+| Terraform Stacks approvals | internally built `mcp-terraform-stacks` adapter over the official HCP Terraform Stacks API; plan inspection plus guarded run-scoped approve/cancel | same HCP team token, with Project Write or higher |
 | Google Cloud (Logging, Monitoring, Trace, Error Reporting) | internally built `mcp-google-cloud` image: `@google-cloud/observability-mcp@0.2.3` (Google, preview) + `supergateway@3.4.3` | **none — keyless**: Workload Identity (`mcp-google-cloud/mcp-servers` in prod and `dev/mcp-servers` in dev → `mcp` GSA, viewer roles); quota project is `yourown-chat` |
 | WhatsApp Business | internally built adapter over the official Meta WhatsApp Cloud API | Meta system-user token, WABA ID and phone-number ID in Secret Manager |
 
@@ -185,12 +187,31 @@ server), then:
 
 ```bash
 printf '%s' "<team-token>" | gcloud secrets versions add mcp-terraform-hcp-token --data-file=-
-# re-apply app-gcp, then: kubectl -n mcp-terraform rollout restart deploy/mcp-terraform
+# Re-apply app-gcp, then restart both consumers:
+kubectl -n mcp-terraform rollout restart deploy/mcp-terraform
+kubectl -n mcp-terraform-stacks rollout restart deploy/mcp-terraform-stacks
 ```
 
 The server reads the target address only from its own `TFE_ADDRESS` env
 (`https://app.terraform.io`); attempts to override it per-request are rejected,
 so chat input cannot repoint the server at another Terraform instance.
+
+The approval adapter resolves Stack IDs inside organization `papou-work` from
+the committed name allowlist:
+
+- `cloudflare`;
+- `app-gcp`;
+- `platform-gcp`;
+- `agent-registry-gcp`.
+
+`agent-registry-gcp` may be absent until that HCP Stack is created or the
+existing catalog Stack is renamed; it becomes available automatically once its
+name matches. Approval requires the exact `sdr-*` run ID, the exact `stc-*`
+configuration ID returned by the inspection tool, a reason, and the literal
+confirmation `APPROVE`. The adapter verifies that the run belongs to the named
+allowlisted Stack and has a plan step in `pending_operator`, then calls the
+run-scoped endpoint with `all_plans=false`. It never exposes deployment-group
+approval or approval of later plans.
 
 Rollout order for the Google Cloud server: apply **platform-gcp first** (creates
 the `mcp` GSA + Workload Identity binding and publishes it in
@@ -437,17 +458,17 @@ shared token for Cloudflare AI Controls itself and stores its headers in the
 upstream server registrations. Interactive clients use the Portal browser
 login and receive an opaque, refreshable user token.
 
-The two direct MCP hostnames remain `self_hosted` Access applications. They do
+The direct MCP hostnames remain `self_hosted` Access applications. They do
 not expose Managed OAuth to clients: AI Controls reaches them with the service
 token under a `Service Auth` policy. This edge credential does not change the
 downstream identity used by a server: Google Cloud MCP still calls Google
 Cloud through its shared GKE Workload Identity service account, while
 Terraform MCP still uses its configured HCP credential.
 
-The Cloudflare stack uses provider 5.22.x, registers both servers in AI
+The Cloudflare stack uses provider 5.22.x, registers every configured server in AI
 Controls, and creates a single `https://mcp.yourown.chat/mcp` MCP Portal. This
 matters for Claude Free, which permits one custom connector: one portal exposes
-both servers through that connector. The Portal uses Managed OAuth and a
+all servers through that connector. The Portal uses Managed OAuth and a
 proxied CNAME to `gateway.agents.cloudflare.com`. Terraform explicitly manages
 the Portal's `type = "mcp_portal"` Access application, policy, and Managed
 OAuth; do not create a second Stack that owns the same objects.
@@ -476,7 +497,8 @@ Client availability is not identical:
    `yellow-sunset-672e.cloudflareaccess.com` domain must be updated.
 2. Apply **cloudflare**: tunnel (+ token in Secret Manager
    `mcp-tunnel-token`), DNS, Access apps for `dev.yourown.chat` /
-   `mcp-terraform.yourown.chat` / `mcp-google-cloud.yourown.chat`.
+   every configured MCP hostname, including
+   `mcp-terraform-stacks.yourown.chat`.
 3. Apply **platform-gcp**, then **app-gcp**: the former binds Workload Identity
    to both `mcp-google-cloud/mcp-servers` and `dev/mcp-servers`; the latter
    creates one namespace per production MCP server plus `mcp-tunnel`, and
@@ -486,11 +508,11 @@ Client availability is not identical:
 4. Release: the cloudflared pod connects outbound; hostnames go live behind
    Access. Until step 3 lands the pod waits in CreateContainerConfigError and
    recovers on its own.
-5. Terraform supplies the Access service-token headers to both AI Controls
+5. Terraform supplies the Access service-token headers to all AI Controls
    registrations. No upstream browser authorization is required. If a server
    remains `Waiting`, inspect its error and run **Sync capabilities** as
    documented in [`CLOUDFLARE.md`](CLOUDFLARE.md). Do not configure a client
-   until both servers show `Ready`.
+   until all servers show `Ready`.
 
 ### Connect personal clients
 
@@ -543,6 +565,8 @@ service account, so it creates no pod in GKE. Each verifier Job runs in
 
 - each server's health endpoint;
 - a real read-only `list_terraform_orgs` HCP Terraform API call;
+- a real read-only `terraform_stacks_list_deployment_runs` call through the
+  guarded Stack adapter;
 - a real read-only `list_log_names` Google Cloud API call through Workload
   Identity;
 - a real read-only `whatsapp_get_phone_number` Meta API call;
@@ -560,6 +584,9 @@ Port-forward each private Service:
 ```bash
 kubectl port-forward -n mcp-terraform svc/mcp-terraform 18080:8080
 curl -i http://127.0.0.1:18080/health
+
+kubectl port-forward -n mcp-terraform-stacks svc/mcp-terraform-stacks 18082:3000
+curl -i http://127.0.0.1:18082/health
 
 kubectl port-forward -n mcp-google-cloud svc/mcp-google-cloud 18081:8080
 curl -i http://127.0.0.1:18081/healthz
@@ -584,10 +611,10 @@ Then validate the external path:
    curl -i https://mcp-google-cloud.yourown.chat/mcp/
    ```
 
-2. Confirm both AI Controls server entries are `Ready`, then add the Portal URL
+2. Confirm all AI Controls server entries are `Ready`, then add the Portal URL
    to Claude and ChatGPT using **Connect personal clients** above.
-3. In each client, verify that Terraform and Google Cloud tools are both
-   listed and run one read-only request against each.
+3. In each client, verify that Terraform, Terraform Stacks, and Google Cloud
+   tools are listed and run one read-only request against each.
 
 ## Adding an in-cluster server
 
