@@ -10,7 +10,10 @@ function jsonResponse(payload, status = 200) {
   });
 }
 
-function fixtureFetch({ runStatus = "pre_deploying_pending_operator" } = {}) {
+function fixtureFetch({
+  runStatus = "pre_deploying_pending_operator",
+  planStatus = "pending_operator",
+} = {}) {
   const calls = [];
   const fetchImpl = async (url, options = {}) => {
     const path = new URL(url).pathname + new URL(url).search;
@@ -74,7 +77,7 @@ function fixtureFetch({ runStatus = "pre_deploying_pending_operator" } = {}) {
           {
             id: "sds-plan1",
             attributes: {
-              status: "pending_operator",
+              status: planStatus,
               "operation-type": "plan",
             },
           },
@@ -159,6 +162,21 @@ test("approves one exact run without approving future plans", async () => {
   assert.deepEqual(JSON.parse(approval.options.body), {
     reason: "Reviewed through MCP",
   });
+});
+
+test("accepts hyphenated statuses returned by the HCP Stacks API", async () => {
+  const fixture = fixtureFetch({
+    runStatus: "pre-deploying-pending-operator",
+    planStatus: "pending-operator",
+  });
+  const result = await client(fixture.fetchImpl).approveRun({
+    stackName: "cloudflare",
+    runId: "sdr-run1",
+    expectedConfigurationId: "stc-config1",
+    reason: "Reviewed through MCP",
+  });
+
+  assert.equal(result.approved, true);
 });
 
 test("refuses stale configuration IDs and non-pending runs", async () => {

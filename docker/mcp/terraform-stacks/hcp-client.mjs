@@ -13,6 +13,10 @@ const approvableStatuses = new Set([
   "deploying_pending_operator",
 ]);
 
+function normalizeStatus(status) {
+  return status?.replaceAll("-", "_");
+}
+
 function required(value, name) {
   if (!value || value.startsWith("REPLACE_ME_")) {
     throw new Error(`${name} is not configured`);
@@ -239,7 +243,7 @@ export class HcpStacksClient {
         `Refusing stale approval: run configuration is ${configurationId}, expected ${expectedConfigurationId}`,
       );
     }
-    if (!approvableStatuses.has(inspection.run.status)) {
+    if (!approvableStatuses.has(normalizeStatus(inspection.run.status))) {
       throw new Error(
         `Run ${runId} is ${inspection.run.status}, not pending operator approval`,
       );
@@ -247,7 +251,8 @@ export class HcpStacksClient {
 
     const pendingPlan = inspection.steps.find(
       (step) =>
-        step["operation-type"] === "plan" && step.status === "pending_operator",
+        step["operation-type"] === "plan" &&
+        normalizeStatus(step.status) === "pending_operator",
     );
     if (!pendingPlan) {
       throw new Error(`Run ${runId} has no plan step pending operator approval`);
