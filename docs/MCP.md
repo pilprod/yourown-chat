@@ -623,12 +623,20 @@ service account, so it creates no pod in GKE. Each verifier Job runs in
 - a real read-only `list_log_names` Google Cloud API call through Workload
   Identity;
 - a real read-only `whatsapp_get_phone_number` Meta API call;
+- a read-only `whatsapp_list_messages` call against the mounted production
+  message index, ensuring the PVC-backed JSON store is readable through MCP;
 - official Gmail, Calendar, and Drive MCP credentials are deliberately not
   impersonated by CI; each Mattermost user verifies the remote connection
   after their own OAuth consent.
 
 Any failure marks verification and the rollout unsuccessful. Apply the
 `app-gcp` stack before cutting the first MCP release.
+
+The PVC-backed WhatsApp deployment is intentionally a one-replica `Recreate`
+Deployment. The JSON store has one writer and must never overlap old and new
+pods during a rollout. A short WhatsApp MCP interruption is preferable to
+concurrent file mutation; Meta retries webhook deliveries. Issue #71 tracks
+the PostgreSQL migration that will remove this limitation and the PVC.
 
 ### Manual smoke test
 

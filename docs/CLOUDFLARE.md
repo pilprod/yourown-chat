@@ -58,17 +58,12 @@ year (`8760h`); rotate it before expiry by replacing the resource through
 Terraform. The temporary shared token is intentional—split it into one token
 and least-privilege policy per MCP server when the role model is implemented.
 
-## DNSSEC registrar transfer
+## DNSSEC
 
-`yourown.chat` is transferring from GoDaddy to Cloudflare Registrar. While the
-public registrar remains GoDaddy and the parent `.chat` zone has no DS record,
-Cloudflare legitimately reports DNSSEC as `pending`. Do not add the DS record
-manually at GoDaddy during the transfer.
-
-Cloudflare Registrar will discover the zone's CDS/CDNSKEY records and publish
-the DS record after the transfer completes. When both conditions below are
-true, replace the temporary `ignore_changes = [status]` in
-`modules/cloudflare/settings.tf` with `status = "active"`:
+The registrar transfer completed on 2026-07-25. Cloudflare Registrar now
+publishes the DS record in the parent `.chat` zone, and Terraform converges the
+zone to `status = "active"` without a migration lifecycle exception. Verify the
+delegation with:
 
 ```bash
 curl -fsSL https://rdap.org/domain/yourown.chat
@@ -76,7 +71,8 @@ dig +short DS yourown.chat @1.1.1.1
 ```
 
 The RDAP response must identify Cloudflare as registrar and the DS query must
-return the Cloudflare key.
+return key tag `2371`, algorithm `13`, digest type `2`. Do not reintroduce a
+DNSSEC `ignore_changes`: it would hide a future delegation regression.
 
 ## Stable Origin CA plans
 

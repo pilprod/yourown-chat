@@ -193,6 +193,13 @@ servers:
   # directly from Secret Manager through CSI.
   whatsapp-business:
     enabled: true
+    # The bounded JSON index has exactly one writer on a ReadWriteOnce PVC.
+    # Recreate prevents a rolling release from briefly running two writers and
+    # corrupting the store. Move back to RollingUpdate only after issue #71
+    # migrates the index to transactional PostgreSQL.
+    replicaCount: 1
+    strategy:
+      type: Recreate
     serviceAccountName: mcp-whatsapp-business
     gcpServiceAccountDeployParameter: mcp_whatsapp_gsa
     image:

@@ -51,17 +51,5 @@ resource "cloudflare_zone_dnssec" "this" {
   count = var.dnssec_enabled ? 1 : 0
 
   zone_id = data.cloudflare_zone.this.id
-
-  lifecycle {
-    # Provider v5 declares status as Optional(active|disabled), but the API
-    # legitimately returns pending until the registrar publishes the DS record.
-    # Ignoring that workflow status prevents pending -> null from producing an
-    # update on every convergence plan. count still controls enable/disable.
-    #
-    # TODO(registrar-transfer): yourown.chat is transferring from GoDaddy to
-    # Cloudflare Registrar. Do not add the DS record manually at GoDaddy.
-    # Cloudflare Registrar will publish it from CDS/CDNSKEY after the transfer.
-    # Once the API reports active, replace this ignore with status = "active".
-    ignore_changes = [status]
-  }
+  status  = "active"
 }

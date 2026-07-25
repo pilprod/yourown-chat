@@ -195,6 +195,12 @@ profiles:
               mcp_api_smoke whatsapp-business \
                 http://mcp-whatsapp-business.mcp-whatsapp-business.svc.cluster.local:3000/mcp \
                 whatsapp_get_phone_number '{}'
+              # Exercise the production message index on its mounted PVC as a
+              # separate MCP session. This catches missing/unreadable storage,
+              # not only valid Meta credentials.
+              mcp_api_smoke whatsapp-message-store \
+                http://mcp-whatsapp-business.mcp-whatsapp-business.svc.cluster.local:3000/mcp \
+                whatsapp_list_messages '{"limit":1}'
 
         executionMode:
           kubernetesCluster:
