@@ -71,6 +71,7 @@ defaults:
   networkPolicy:
     enabled: true
     namespaceDefaults: true
+    allowGkeMetadata: false
     allowTunnel: true
     # Mattermost is the only cross-namespace caller. The chart additionally
     # permits the dedicated cloudflared connector for Zero Trust traffic.

@@ -116,37 +116,69 @@ profiles:
                 headers="/tmp/${name}.headers"
                 body="/tmp/${name}.body"
 
-                curl -sSf $retry -D "$headers" -o "$body" -X POST \
+                echo "[$name] initialize"
+                if ! curl -sS --fail-with-body --connect-timeout 5 \
+                  --max-time 45 \
+                  -D "$headers" -o "$body" -X POST \
                   -H 'Content-Type: application/json' \
                   -H 'Accept: application/json, text/event-stream' \
                   -H 'Origin: https://yourown.chat' \
-                  --data "$init" "$url"
-                grep -q '"result"' "$body"
+                  --data "$init" "$url"; then
+                  echo "[$name] initialize request failed" >&2
+                  cat "$body" >&2 || true
+                  return 1
+                fi
+                if ! grep -q '"result"' "$body"; then
+                  echo "[$name] initialize returned no result:" >&2
+                  cat "$body" >&2
+                  return 1
+                fi
 
                 session_id="$(grep -i '^mcp-session-id:' "$headers" |
                   tail -n1 | cut -d: -f2- | tr -d ' \r')"
-                test -n "$session_id"
+                if [ -z "$session_id" ]; then
+                  echo "[$name] initialize returned no Mcp-Session-Id" >&2
+                  cat "$headers" >&2
+                  return 1
+                fi
 
-                curl -sSf -o /dev/null -X POST \
+                echo "[$name] notifications/initialized"
+                if ! curl -sS --fail-with-body --connect-timeout 5 \
+                  --max-time 45 -o "$body" -X POST \
                   -H 'Content-Type: application/json' \
                   -H 'Accept: application/json, text/event-stream' \
                   -H 'Origin: https://yourown.chat' \
                   -H "Mcp-Session-Id: $session_id" \
                   --data '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
-                  "$url"
+                  "$url"; then
+                  echo "[$name] initialized notification failed" >&2
+                  cat "$body" >&2 || true
+                  return 1
+                fi
 
                 payload="$(printf \
                   '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"%s","arguments":%s}}' \
                   "$tool" "$arguments")"
-                curl -sSf -o "$body" -X POST \
+                echo "[$name] tools/call $tool"
+                if ! curl -sS --fail-with-body --connect-timeout 5 \
+                  --max-time 45 -o "$body" -X POST \
                   -H 'Content-Type: application/json' \
                   -H 'Accept: application/json, text/event-stream' \
                   -H 'Origin: https://yourown.chat' \
                   -H "Mcp-Session-Id: $session_id" \
-                  --data "$payload" "$url"
-                grep -q '"result"' "$body"
-                ! grep -Eq '"isError"[[:space:]]*:[[:space:]]*true' "$body"
-                ! grep -Eq '"error"[[:space:]]*:' "$body"
+                  --data "$payload" "$url"; then
+                  echo "[$name] tools/call request failed" >&2
+                  cat "$body" >&2 || true
+                  return 1
+                fi
+                if ! grep -q '"result"' "$body" ||
+                  grep -Eq '"isError"[[:space:]]*:[[:space:]]*true' "$body" ||
+                  grep -Eq '"error"[[:space:]]*:' "$body"; then
+                  echo "[$name] tools/call returned an MCP error:" >&2
+                  cat "$body" >&2
+                  return 1
+                fi
+                echo "[$name] smoke passed"
               }
 
               # These are real, read-only upstream API calls. They fail on

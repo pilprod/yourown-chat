@@ -7,16 +7,10 @@ import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
 import { clientFromEnv } from "./hcp-client.mjs";
+import { toolResult } from "./tool-result.mjs";
 
 const port = Number.parseInt(process.env.PORT ?? "3000", 10);
 const client = clientFromEnv();
-
-function toolResult(payload) {
-  return {
-    content: [{ type: "text", text: JSON.stringify(payload, null, 2) }],
-    structuredContent: payload,
-  };
-}
 
 function createServer() {
   const server = new McpServer({

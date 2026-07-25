@@ -101,6 +101,37 @@ spec:
         - { protocol: TCP, port: 443 }
         - { protocol: TCP, port: 7844 }
         - { protocol: UDP, port: 7844 }
+{{- if .Values.defaults.networkPolicy.allowGkeMetadata }}
+---
+# Workload Identity Federation token exchange. Dataplane V2 uses
+# 169.254.169.254:80/8080; the node-local metadata server on other supported
+# GKE dataplanes uses 169.254.169.252:987/988.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-gke-metadata
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/part-of: mcp-servers
+spec:
+  podSelector:
+    matchLabels:
+      app: {{ include "mcp-servers.serverName" (dict "root" . "name" "google-cloud") }}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 169.254.169.254/32
+      ports:
+        - { protocol: TCP, port: 80 }
+        - { protocol: TCP, port: 8080 }
+    - to:
+        - ipBlock:
+            cidr: 169.254.169.252/32
+      ports:
+        - { protocol: TCP, port: 987 }
+        - { protocol: TCP, port: 988 }
+{{- end }}
 {{- if .Values.tunnel.enabled }}
 ---
 # cloudflared is the sole cross-namespace caller. Its namespace is isolated by

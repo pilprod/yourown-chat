@@ -6,6 +6,12 @@ tunnel:
 serviceAccount:
   create: true
 
+defaults:
+  networkPolicy:
+    # ADC uses Workload Identity Federation through the node-local GKE
+    # metadata server. Keep this exception scoped to this release/namespace.
+    allowGkeMetadata: true
+
 servers:
   terraform:
     enabled: false
