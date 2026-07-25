@@ -70,12 +70,17 @@ function outboundMessage({ id, to, type, text, payload }) {
   return {
     id,
     direction: "outbound",
+    source: "cloud_api",
+    historical: false,
     from: requiredEnv("WHATSAPP_PHONE_NUMBER_ID"),
     to,
+    peer: to,
     type,
     text,
     timestamp,
     received_at: timestamp,
+    status: "accepted",
+    status_at: timestamp,
     payload,
   };
 }
@@ -196,12 +201,30 @@ function createServer() {
     "whatsapp_list_messages",
     "Read recently received and sent WhatsApp Business messages captured through the verified Meta webhook.",
     {
+      phone: z
+        .string()
+        .min(6)
+        .optional()
+        .describe("Filter by either participant"),
       from: z.string().min(6).optional().describe("Filter by sender number"),
       direction: z.enum(["inbound", "outbound"]).optional(),
+      source: z
+        .enum(["cloud_api", "business_app", "history", "cloud_api_status"])
+        .optional(),
+      status: z.string().min(1).optional(),
       since: z.string().datetime().optional(),
       limit: z.number().int().min(1).max(200).optional().default(50),
     },
     async (filters) => toolResult(await messageStore.list(filters)),
+  );
+
+  server.tool(
+    "whatsapp_list_conversations",
+    "List WhatsApp conversations assembled from webhook, Coexistence history, and WhatsApp Business app echo events.",
+    {
+      limit: z.number().int().min(1).max(200).optional().default(50),
+    },
+    async (filters) => toolResult(await messageStore.conversations(filters)),
   );
 
   server.tool(
@@ -221,17 +244,24 @@ function createServer() {
     "whatsapp_mark_message_read",
     "Mark a WhatsApp message as read.",
     { message_id: z.string().min(1) },
-    async ({ message_id }) =>
-      toolResult(
-        await graphRequest(`${requiredEnv("WHATSAPP_PHONE_NUMBER_ID")}/messages`, {
+    async ({ message_id }) => {
+      const result = await graphRequest(
+        `${requiredEnv("WHATSAPP_PHONE_NUMBER_ID")}/messages`,
+        {
           method: "POST",
           body: {
             messaging_product: "whatsapp",
             status: "read",
             message_id,
           },
-        }),
-      ),
+        },
+      );
+      const indexedMessage = await messageStore.updateStatus(message_id, "read");
+      return toolResult({
+        ...result,
+        indexed: Boolean(indexedMessage),
+      });
+    },
   );
 
   server.tool(
@@ -290,7 +320,10 @@ app.get("/webhooks/whatsapp", (request, response) => {
 
 app.post(
   "/webhooks/whatsapp",
-  express.raw({ type: "application/json", limit: "1mb" }),
+  express.raw({
+    type: "application/json",
+    limit: process.env.WHATSAPP_WEBHOOK_BODY_LIMIT ?? "16mb",
+  }),
   async (request, response) => {
     try {
       if (
@@ -304,7 +337,8 @@ app.post(
         return;
       }
       const payload = JSON.parse(request.body.toString("utf8"));
-      await messageStore.ingestWebhook(payload);
+      const ingested = await messageStore.ingestWebhook(payload);
+      console.log("Indexed WhatsApp webhook", ingested);
       response.sendStatus(200);
     } catch (error) {
       console.error("WhatsApp webhook failed", error);

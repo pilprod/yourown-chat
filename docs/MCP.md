@@ -321,13 +321,18 @@ Meta app under **WhatsApp → Configuration**:
 ```text
 Callback URL: https://whatsapp-webhook.yourown.chat/webhooks/whatsapp
 Verify token: value from mcp-whatsapp-webhook-verify-token
-Webhook field: messages
+Webhook fields: messages, history, smb_message_echoes
 ```
 
 Subscribe the app to the intended WABA. The public hostname routes only the
 anchored `/webhooks/whatsapp` path; `/mcp` is not reachable on that hostname.
 POST requests are accepted only with a valid HMAC signature made with the Meta
-App Secret.
+App Secret. `messages` supplies Cloud API inbound messages and delivery
+statuses. For a number onboarded through WhatsApp Coexistence, `history`
+supplies the history that the business explicitly allowed Meta to share during
+onboarding, and `smb_message_echoes` supplies new messages sent from the
+WhatsApp Business app and linked devices. The larger history payloads are
+accepted up to 16 MiB.
 
 Restart `deployment/mcp-whatsapp-business` after adding credential versions;
 no later `app-gcp` apply or MCP release is needed for credential rotation. The
@@ -339,14 +344,25 @@ server.
 
 Reading tools:
 
+- `whatsapp_list_conversations` — conversations with latest message, locally
+  derived unread count, and source list;
 - `whatsapp_list_messages` — newest captured messages, optionally filtered by
-  sender, direction, timestamp, and limit;
+  either participant, sender, direction, source, delivery/read status,
+  timestamp, and limit;
 - `whatsapp_get_message` — one message by its `wamid`;
 - `whatsapp_mark_message_read` — acknowledge an inbound message through the
-  official Graph API.
+  official Graph API and update the local index.
 
-Webhook delivery begins only after Meta subscription. It cannot reconstruct
-messages received before the webhook was enabled.
+Every captured message stays in the MCP store even if it is later opened on the
+phone. Coexistence history can import up to the history window offered by Meta
+during onboarding (currently up to 180 days), but it is not a general
+on-demand history API and excludes unsupported conversations such as groups.
+New phone-originated messages are synchronized through
+`smb_message_echoes`. Meta delivery-status webhooks track Cloud API outbound
+messages; Meta does not document a guaranteed live webhook for every inbound
+message being opened in the phone app. Consequently, `unread_count` is a local
+best-effort value: it is accurate for imported history state and messages
+marked read through this MCP, but a phone-only read may remain locally unread.
 
 For Facebook Messenger and Instagram messaging, reuse the official Meta Graph
 APIs rather than treating Developer Tools MCP as a messaging gateway. The

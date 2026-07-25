@@ -209,6 +209,7 @@ servers:
       WHATSAPP_WEBHOOK_VERIFY_TOKEN_FILE: /var/run/secrets/mcp/webhook-verify-token
       WHATSAPP_MESSAGE_STORE: /var/lib/whatsapp-mcp/messages.json
       WHATSAPP_MESSAGE_RETENTION: "5000"
+      WHATSAPP_WEBHOOK_BODY_LIMIT: "16mb"
     secretProvider:
       enabled: true
       files:
