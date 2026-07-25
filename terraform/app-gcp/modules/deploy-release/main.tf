@@ -251,9 +251,9 @@ resource "google_cloudbuild_trigger" "release" {
 
           previous_tag="$$(cat /workspace/previous-platform-tag)"
           mattermost_changed="$$(bash route-components.sh \
-            /workspace/changed-files mattermost)"
+            /workspace/changed-files mattermost "$$previous_tag")"
           mcp_changed="$$(bash route-components.sh \
-            /workspace/changed-files mcp)"
+            /workspace/changed-files mcp "$$previous_tag")"
 
           create_release() {
             pipeline="$$1"
