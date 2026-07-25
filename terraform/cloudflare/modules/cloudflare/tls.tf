@@ -1,6 +1,17 @@
 # Origin TLS hardening: the Cloudflare Origin CA cert (served by the ingress for
 # Full (Strict) TLS) and the AOP client cert (below).
 
+locals {
+  # cloudflare provider v4 modelled hostnames as a set, while v5 models them as
+  # an order-sensitive ForceNew list. Sort once so the CSR, API request and
+  # refreshed state use the same canonical order and do not rotate the
+  # certificate on every convergence plan.
+  origin_cert_hostnames = sort(distinct(concat(
+    [var.domain, "*.${var.domain}"],
+    var.origin_cert_hostnames,
+  )))
+}
+
 resource "tls_private_key" "origin" {
   count = var.manage_origin_cert ? 1 : 0
 
@@ -17,16 +28,20 @@ resource "tls_cert_request" "origin" {
     common_name = var.domain
   }
 
-  dns_names = distinct(concat([var.domain, "*.${var.domain}"], var.origin_cert_hostnames))
+  dns_names = local.origin_cert_hostnames
 }
 
 resource "cloudflare_origin_ca_certificate" "origin" {
   count = var.manage_origin_cert ? 1 : 0
 
   csr                = tls_cert_request.origin[0].cert_request_pem
-  hostnames          = distinct(concat([var.domain, "*.${var.domain}"], var.origin_cert_hostnames))
+  hostnames          = local.origin_cert_hostnames
   request_type       = "origin-rsa"
   requested_validity = var.origin_cert_validity_days
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 # Self-signed AOP client keypair. Generated unconditionally so the origin's

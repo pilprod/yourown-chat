@@ -127,6 +127,13 @@ imports every existing setting using `<zone_id>/<setting_id>` and then manages
 its value. Removing such a resource later would stop Terraform management; it
 would not delete the remote Cloudflare setting.
 
+Provider v4 stored Origin CA certificate hostnames as an unordered set, while
+provider v5 stores the same ForceNew field as an ordered list. The module sorts
+the complete SAN list before using it in both the CSR and the Cloudflare
+resource. This prevents an apex/wildcard ordering difference from rotating the
+Origin CA certificate on every Stack convergence plan; any intentional SAN
+change is still applied with create-before-destroy.
+
 The `Some objects will no longer be managed` warning is also expected only for
 the three old application-scoped policy addresses. Their `removed` block uses
 `destroy = false`, while the same `allowed-emails` policies are declared inline
