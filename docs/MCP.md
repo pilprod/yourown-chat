@@ -241,10 +241,33 @@ another personal-account bridge.
 
 The server exposes tools to send text, template, and link-hosted media
 messages; mark a message as read; and inspect the business profile, phone
-number, and message templates. Create a Meta Business app with the WhatsApp
-product, a WABA and phone number, then issue a permanent system-user token with
-`whatsapp_business_messaging` and `whatsapp_business_management`. Replace the
-seeded Secret Manager placeholders:
+number, and message templates.
+
+**Where to get the three keys** (all from [Meta Business Suite / Developers](https://developers.facebook.com)):
+
+1. **One-time setup.** In [business.facebook.com](https://business.facebook.com)
+   confirm you have a **WhatsApp Business Account (WABA)** and a phone number
+   (Business Settings → Accounts → WhatsApp Accounts). In
+   [developers.facebook.com](https://developers.facebook.com) create/open a
+   **Business-type app** and add the **WhatsApp** product to it.
+
+2. **`mcp-whatsapp-waba-id`** — the WABA ID. App dashboard → **WhatsApp → API
+   Setup**: the "WhatsApp Business Account ID" shown there (also in Business
+   Settings → WhatsApp Accounts → your account).
+
+3. **`mcp-whatsapp-phone-number-id`** — the sender's **Phone number ID** (NOT
+   the phone number itself). Same **WhatsApp → API Setup** page, under "From",
+   next to the number — a numeric ID.
+
+4. **`mcp-whatsapp-access-token`** — a **permanent System-User token** (the
+   24-hour test token expires, don't use it). Business Settings → **Users →
+   System users** → add/select a system user → **Generate new token** → pick
+   your app → grant **`whatsapp_business_messaging`** and
+   **`whatsapp_business_management`** → set expiry **Never**. Also assign the
+   WABA to that system user (System users → Assign assets → your WABA → full
+   control) or the token can't act on it.
+
+Then replace the seeded Secret Manager placeholders:
 
 ```bash
 printf '%s' "<system-user-token>" | gcloud secrets versions add mcp-whatsapp-access-token --data-file=-
