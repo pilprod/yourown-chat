@@ -1,43 +1,13 @@
-# ---------------------------------------------------------------------------
-# Zone-wide edge settings (TLS + hardening) and DNSSEC. Every setting here is
-# available on the Cloudflare Free plan.
-# ---------------------------------------------------------------------------
+# Cloudflare provider v5 removed cloudflare_zone_settings_override. Phase 1 of
+# the migration deliberately forgets the aggregate v4 state object while
+# leaving every remote zone setting unchanged. Do not replace this block with
+# cloudflare_zone_setting resources until this change has been applied once
+# with provider v4; see docs/CLOUDFLARE_V5_MIGRATION.md.
+removed {
+  from = cloudflare_zone_settings_override.this
 
-resource "cloudflare_zone_settings_override" "this" {
-  zone_id = data.cloudflare_zone.this.id
-
-  settings {
-    # --- TLS ---
-    ssl              = var.ssl_mode # strict = Full (Strict)
-    always_use_https = var.always_use_https
-    min_tls_version  = var.min_tls_version
-    # 'zrt' = TLS 1.3 + 0-RTT: the value the API reports while zero_rtt = "on".
-    # Sending plain "on" here would drift back to 'zrt' on every plan.
-    tls_1_3                  = var.tls_1_3
-    automatic_https_rewrites = var.automatic_https_rewrites
-    opportunistic_encryption = var.opportunistic_encryption
-
-    # --- Performance / protocol ---
-    http3      = var.http3
-    zero_rtt   = var.zero_rtt
-    brotli     = var.brotli
-    websockets = var.websockets
-    ipv6       = var.ipv6
-
-    # --- Hardening ---
-    security_level    = var.security_level
-    browser_check     = var.browser_check
-    email_obfuscation = var.email_obfuscation
-    challenge_ttl     = var.challenge_ttl
-
-    # HSTS — force HTTPS at the browser once served over TLS.
-    security_header {
-      enabled            = var.hsts.enabled
-      max_age            = var.hsts.max_age
-      include_subdomains = var.hsts.include_subdomains
-      preload            = var.hsts.preload
-      nosniff            = var.hsts.nosniff
-    }
+  lifecycle {
+    destroy = false
   }
 }
 

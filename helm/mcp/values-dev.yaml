@@ -3,6 +3,9 @@
 # one namespace per server.
 namePrefix: "dev-"
 
+agentRegistry:
+  enabled: false
+
 serviceAccount:
   create: false
 
@@ -17,7 +20,3 @@ defaults:
 
 tunnel:
   enabled: false
-
-servers:
-  google-workspace:
-    ingress: null

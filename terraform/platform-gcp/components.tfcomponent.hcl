@@ -37,6 +37,14 @@ locals {
     "monitoring.googleapis.com",
     "cloudbuild.googleapis.com",
     "artifactregistry.googleapis.com",
+    "agentregistry.googleapis.com",
+    # Official Google-hosted Workspace MCP servers and their underlying APIs.
+    "gmail.googleapis.com",
+    "gmailmcp.googleapis.com",
+    "calendar-json.googleapis.com",
+    "calendarmcp.googleapis.com",
+    "drive.googleapis.com",
+    "drivemcp.googleapis.com",
     ],
     var.artifact_registry_vulnerability_scanning ? ["containerscanning.googleapis.com"] : []
   )

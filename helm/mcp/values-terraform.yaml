@@ -8,7 +8,5 @@ serviceAccount:
 servers:
   google-cloud:
     enabled: false
-  google-workspace:
-    enabled: false
   whatsapp-business:
     enabled: false

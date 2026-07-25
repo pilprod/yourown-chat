@@ -108,7 +108,6 @@ docker/                         # one Artifact Registry repository
 ├── python
 ├── mcp-cloudflared
 ├── mcp-google-cloud
-├── mcp-google-workspace
 ├── mcp-terraform
 └── mcp-whatsapp-business
 ```
@@ -123,7 +122,6 @@ base (pinned Debian)
 │   ├── mcp-google-cloud
 │   └── mcp-whatsapp-business
 └── python
-    └── mcp-google-workspace
 ```
 
 Terraform MCP and cloudflared are entries of type `mirror`: their official

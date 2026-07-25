@@ -10,5 +10,3 @@ servers:
     enabled: false
   google-cloud:
     enabled: false
-  google-workspace:
-    enabled: false

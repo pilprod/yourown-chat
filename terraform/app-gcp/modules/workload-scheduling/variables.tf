@@ -10,7 +10,6 @@ variable "mcp_dev_deployments" {
   default = [
     "dev-mcp-terraform",
     "dev-mcp-google-cloud",
-    "dev-mcp-google-workspace",
     "dev-mcp-whatsapp-business",
   ]
 }

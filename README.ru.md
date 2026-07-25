@@ -13,24 +13,28 @@ Self-hosted чат-платформа Mattermost в Google Cloud за Cloudflare
 
 ## Что внутри
 
-Всё живёт в одном GCP-проекте и описано **тремя связанными (linked) Terraform
-Stacks** — у каждого свой стейт и свой blast radius:
+Всё живёт в одном GCP-проекте и описано **четырьмя Terraform Stacks** (три
+связаны данными, один — независимый governance-каталог) — у каждого свой стейт
+и свой blast radius:
 
 | Стек | Директория | Владеет | Меняется |
 |---|---|---|---|
 | **platform-gcp** | `terraform/platform-gcp` | Stateful-фундамент: API, сеть + статический ingress-IP, CMEK-ключ, GKE-кластер, Cloud SQL, хранилище, реестр образов, Workload Identity SA | Редко |
 | **cloudflare** | `terraform/cloudflare` | Публичный edge `yourown.chat`: DNS, TLS/security-настройки, DNSSEC, WAF, Origin CA cert + origin-TLS секреты | Иногда |
 | **app-gcp** | `terraform/app-gcp` | Секреты, отдельные пайплайны Mattermost и MCP, постоянный dev PostgreSQL, CI образа, роутинг тегов и бутстрап кластера | Часто |
+| **agent-registry-gcp** | `terraform/agent-registry-gcp` | Каталог Google Cloud Agent Registry для внешних API и vendor-hosted MCP; GKE и Google MCP регистрируются автоматически | Редко |
 
 Платформенный стек **публикует** ключевые значения (ingress-IP, ID кластера,
-координаты реестра, CMEK-ключ, WI-члены); два других **потребляют** их через
-механизм linked stacks. Ничего не копируется руками, а когда apply платформы
-меняет опубликованное значение — HCP сам запускает планы даунстримов:
+координаты реестра, CMEK-ключ, WI-члены); **cloudflare** и **app-gcp**
+потребляют их через механизм linked stacks. Ничего не копируется руками, а
+когда apply платформы меняет опубликованное значение — HCP сам запускает планы
+даунстримов:
 
 ```mermaid
 graph LR
   P[platform-gcp<br/>фундамент] -->|ingress IP, CMEK, WI| CF[cloudflare<br/>edge]
   P -->|кластер, реестр, CMEK, WI| A[app-gcp<br/>доставка]
+  P -.->|включает Agent Registry API| R[agent-registry-gcp<br/>governance-каталог]
 ```
 
 Зачем резать? Ошибка в edge-правилах или CI теперь физически не может задеть
@@ -105,6 +109,7 @@ terraform/
   cloudflare/            # стек 2: edge (DNS/TLS/WAF/Origin CA) + origin-TLS секреты
   app-gcp/               # стек 3: доставка (секреты, Cloud Deploy, CI, релизы,
                          #   бутстрап кластера: operator + ingress-nginx Helm-релизы)
+  agent-registry-gcp/    # стек 4: GCP-каталог внешних endpoint/MCP (Google provider 7.x)
                          # в каждом: *.tfcomponent.hcl + *.tfdeploy.hcl + modules/ + свой lock
 helm/                    # Kubernetes-workloads, доставляются Cloud Deploy
   skaffold.yaml          # профили рендера dev/prod
@@ -119,7 +124,7 @@ docs/BUILD.md            # процесс сборки образа подроб
 Важные структурные детали:
 
 - **Один стек = одна директория.** HCP читает по стеку на working directory —
-  три HCP-стека смотрят на три директории.
+  четыре HCP-стека смотрят на четыре директории.
 - **Модули не шарятся между стеками.** Бандлер Stacks не ходит по `../`,
   поэтому у каждого стека свои `modules/` (маленький `secrets`-модуль
   существует дважды сознательно).
@@ -163,11 +168,14 @@ cloudflare — `yourown-chat` (зона глобальна, единица де�
    Providers, and Groups: Edit`. Последнее право необходимо для чтения и
    переименования team/domain; без него plan падает с `failed to read Access
    Organization state`.
-4. **Создать три HCP-стека** — имена строго `platform-gcp`, `cloudflare`,
-   `app-gcp` (на них ссылаются linked-источники), working directory
-   `terraform/<стек>`.
-5. **Apply**: сначала platform-gcp; cloudflare и app-gcp подтянутся сами (оба
-   зависят только от платформы, их порядок неважен).
+4. **Создать четыре HCP-стека** — имена строго `platform-gcp`, `cloudflare`,
+   `app-gcp`, `agent-registry-gcp`, working directory `terraform/<стек>`.
+5. **Apply**: сначала platform-gcp; cloudflare и app-gcp подтянутся сами.
+   `agent-registry-gcp` применить после того, как platform-gcp включит API.
+   Если стек уже создан под старым именем `agent-registry`, переименовать его
+   через **Stack → Settings**, изменить working directory на
+   `terraform/agent-registry-gcp` и сохранить существующий state; новый стек
+   создавать не нужно.
 6. **Выкатить workloads** из [`helm/`](docs/DEPLOY.md): ingress-nginx +
    оператор Mattermost, применить манифесты. Бакет и WI-емейлы приезжают сами
    через Cloud Deploy deploy parameters; руками остаются только ingress

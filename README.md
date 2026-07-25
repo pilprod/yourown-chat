@@ -10,25 +10,28 @@ managed end-to-end with **HCP Terraform Stacks** — production practices on a
 
 ## What's inside
 
-Everything lives in one GCP project and is described by **three linked
-Terraform Stacks**, each owning a piece with its own state and blast radius:
+Everything lives in one GCP project and is described by **four Terraform
+Stacks** (three data-linked plus one independent governance catalog), each
+owning a piece with its own state and blast radius:
 
 | Stack | Directory | What it owns | Changes |
 |---|---|---|---|
 | **platform-gcp** | `terraform/platform-gcp` | The stateful foundation: APIs, network + reserved ingress IP, CMEK key, GKE cluster, Cloud SQL, object storage, container registry, Workload Identity SAs | Rarely |
 | **cloudflare** | `terraform/cloudflare` | The public edge for `yourown.chat`: DNS, TLS/security settings, DNSSEC, WAF, Origin CA cert + the origin-TLS secrets it fills | Sometimes |
 | **app-gcp** | `terraform/app-gcp` | App secrets; independent Mattermost and MCP delivery pipelines; persistent dev PostgreSQL; image CI; tag routing; cluster bootstrap | Often |
+| **agent-registry-gcp** | `terraform/agent-registry-gcp` | Google Cloud Agent Registry catalog entries for external APIs and vendor-hosted MCP servers; GKE and Google MCPs register automatically | Rarely |
 
 The platform stack **publishes** its key values (ingress IP, cluster ID,
-registry coordinates, CMEK key, Workload Identity members); the other two
-**consume** them over HCP's linked-stacks mechanism. Nothing is copy-pasted
-between stacks, and when a platform apply changes a published value, HCP
-automatically triggers the downstream plans:
+registry coordinates, CMEK key, Workload Identity members); **cloudflare** and
+**app-gcp** consume them over HCP's linked-stacks mechanism. Nothing is
+copy-pasted between stacks, and when a platform apply changes a published
+value, HCP automatically triggers the downstream plans:
 
 ```mermaid
 graph LR
   P[platform-gcp<br/>foundation] -->|ingress IP, CMEK, WI| CF[cloudflare<br/>edge]
   P -->|cluster, registry, CMEK, WI| A[app-gcp<br/>delivery]
+  P -.->|enables Agent Registry API| R[agent-registry-gcp<br/>governance catalog]
 ```
 
 Why split? A mistake in edge rules or CI can now never touch the state that
@@ -104,6 +107,7 @@ terraform/
   cloudflare/            # stack 2: edge (DNS/TLS/WAF/Origin CA) + origin-TLS secrets
   app-gcp/               # stack 3: delivery (secrets, Cloud Deploy, image CI, release cutting,
                          #   cluster bootstrap: operator + ingress-nginx Helm releases)
+  agent-registry-gcp/    # stack 4: GCP endpoint/MCP governance catalog (Google provider 7.x)
                          # each stack: *.tfcomponent.hcl + *.tfdeploy.hcl + modules/ + its own lock file
 helm/                    # Kubernetes workloads, delivered by Cloud Deploy
   skaffold.yaml          # component-specific test/prod render profiles
@@ -122,7 +126,7 @@ docs/BUILD.md            # image build flow in detail
 A few structural notes worth knowing:
 
 - **One stack per directory.** HCP Terraform reads one stack per working
-  directory, so there are three HCP Stacks pointing at the three directories.
+  directory, so there are four HCP Stacks pointing at the four directories.
 - **Modules are not shared across stacks.** The Stacks bundler can't follow
   `../` paths, so each stack carries its own `modules/` (the small `secrets`
   module exists twice on purpose).
@@ -161,11 +165,11 @@ short version:
    `pilprod/mattermost` and `pilprod/yourown-chat`.
 3. **Create the Cloudflare API token** (zone-scoped, the only static secret)
    and store it in an HCP variable set attached to the cloudflare stack.
-4. **Create the three HCP Stacks** — names must be exactly `platform-gcp`,
-   `cloudflare`, `app-gcp` (the linked-stack sources reference them), working
-   directories `terraform/<stack>`.
-5. **Apply**: platform-gcp first; cloudflare and app-gcp follow automatically
-   (they only depend on the platform, so their order doesn't matter).
+4. **Create the four HCP Stacks** — names must be exactly `platform-gcp`,
+   `cloudflare`, `app-gcp`, `agent-registry-gcp` (the linked-stack sources
+   reference the first three), working directories `terraform/<stack>`.
+5. **Apply**: platform-gcp first; cloudflare and app-gcp follow automatically.
+   Apply agent-registry-gcp after platform-gcp has enabled its API.
 6. **Deploy the workloads** from [`helm/`](docs/DEPLOY.md): ingress-nginx +
    Mattermost operator, apply manifests. The bucket and Workload Identity
    emails are injected automatically via Cloud Deploy deploy parameters; only
@@ -317,7 +321,7 @@ cluster) without rewrites.
 ## Google Cloud Initial Setup
 
 One-time, out-of-band bootstrap that the Terraform stacks depend on. Run it
-once; afterwards the three stacks provision everything else themselves.
+once; afterwards the four stacks provision everything else themselves.
 
 What this section does:
 
@@ -329,7 +333,8 @@ What this section does:
 - authorizes the shared Cloud Build GitHub connection (`pilprod-github`);
 - creates the Cloudflare API token (the only static secret — Cloudflare has no
   Workload Identity path);
-- creates the three linked Stacks in HCP Terraform.
+- creates the three linked Stacks plus the independent Agent Registry catalog
+  Stack in HCP Terraform.
 
 ### Auth flow
 
@@ -480,6 +485,7 @@ for ROLE in \
   roles/storage.admin \
   roles/clouddeploy.admin \
   roles/artifactregistry.admin \
+  roles/agentregistry.editor \
   roles/cloudbuild.connectionAdmin \
   roles/cloudbuild.builds.editor ; do
   gcloud projects add-iam-policy-binding "$PROJECT_ID" \
@@ -502,6 +508,7 @@ Why each role, in one line each:
 | `storage.admin` | GCS bucket + HMAC keys |
 | `clouddeploy.admin` | pipeline + targets + execution SA binding |
 | `artifactregistry.admin` | the `docker` repo + build SA writer grant |
+| `agentregistry.editor` | register and maintain external endpoints and vendor-hosted MCP metadata |
 | `cloudbuild.connectionAdmin` + `builds.editor` | repository links + tag triggers on the shared connection |
 
 > Start broad to keep the first apply unblocked without granting Owner/Editor;
@@ -545,18 +552,23 @@ To rotate or re-scope access later, re-authorize the App from the console or
 GitHub settings — the connection keeps its name and ID, so Terraform doesn't
 change. If you ever recreate it, reuse the same name.
 
-### 9. Create the three linked Stacks in HCP Terraform
+### 9. Create the four Stacks in HCP Terraform
 
-All three live in the **same HCP project** (linked stacks only work
-project-locally) and connect to this repo — only the working directory
-differs. Names must match the `upstream_input` sources **exactly**
-(`app.terraform.io/papou-work/yourown-chat/<stack name>`):
+All four live in the **same HCP project** and connect to this repo — only the
+working directory differs. Names used by `upstream_input` must match
+**exactly** (`app.terraform.io/papou-work/yourown-chat/<stack name>`):
 
 | Stack name | Working directory | Consumes |
 |---|---|---|
 | `platform-gcp` | `terraform/platform-gcp` | — |
 | `cloudflare` | `terraform/cloudflare` | `platform-gcp` |
 | `app-gcp` | `terraform/app-gcp` | `platform-gcp` (not cloudflare) |
+| `agent-registry-gcp` | `terraform/agent-registry-gcp` | — (apply after `platform-gcp` enables the API) |
+
+If the catalog Stack already exists under the old `agent-registry` name, keep
+its state: in HCP Terraform open **Stack → Settings**, change the name to
+`agent-registry-gcp`, change the working directory to
+`terraform/agent-registry-gcp`, and save. Do not create a replacement Stack.
 
 Then:
 
@@ -568,8 +580,11 @@ Then:
 3. Once it applies, its published values unlock the **cloudflare** and
    **app-gcp** plans (HCP triggers them automatically; order between the two
    doesn't matter).
+4. Apply **agent-registry-gcp**. It is intentionally independent because its
+   catalog contains stable public interfaces, but the Agent Registry API must
+   already be enabled by **platform-gcp**.
 
-> Migrating from an older single-stack layout: create the three stacks, then
+> Migrating from an older single-stack layout: create the four stacks, then
 > delete the old one. State doesn't carry over — with a torn-down environment
 > everything creates fresh; with live infrastructure you'd need state moves.
 

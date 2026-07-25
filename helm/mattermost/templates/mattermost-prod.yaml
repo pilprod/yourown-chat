@@ -26,7 +26,6 @@ spec:
       value: >-
         mcp-terraform.mcp-terraform.svc.cluster.local
         mcp-google-cloud.mcp-google-cloud.svc.cluster.local
-        mcp-google-workspace.mcp-google-workspace.svc.cluster.local
         mcp-whatsapp-business.mcp-whatsapp-business.svc.cluster.local
 
   # Keep the existing replica serving until its replacement is Ready. The

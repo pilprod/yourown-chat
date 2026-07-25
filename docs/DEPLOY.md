@@ -125,7 +125,7 @@ gcloud deploy targets rollback mattermost-prod \
 
 ## MCP verification
 
-The dev stage deploys all four prefixed instances into the shared `dev`
+The dev stage deploys all three prefixed instances into the shared `dev`
 namespace. Cloud Deploy waits for their Kubernetes rollout; startup, readiness,
 and liveness probes check the health endpoints. There is intentionally no dev
 credential smoke: a process-level check with placeholder credentials would
@@ -135,9 +135,9 @@ The ready dev deployments remain available for review. Production approval
 runs their external cleanup hook as the prod predeploy step. The production
 stage then deploys into the isolated MCP namespaces and performs real,
 read-only upstream API calls through Terraform, Google Cloud, and WhatsApp
-Business MCP. Google Workspace verifies its OAuth configuration and anonymous
-authentication boundary; Gmail/Calendar requires a separately consented test
-user before CI can make a real Workspace API call.
+Business MCP. Official Gmail, Calendar, and Drive MCP connections are
+vendor-hosted and are verified by each Mattermost user after OAuth consent
+rather than by the GKE delivery pipeline.
 
 ```bash
 gcloud deploy releases promote \
@@ -165,7 +165,9 @@ Cloud Deploy parameters, verification, cleanup, approval, and release history.
 
 ## One-time apply and migration
 
-Apply `platform-gcp`, `cloudflare`, then `app-gcp`. The app stack:
+Apply `platform-gcp` first, then `cloudflare` and `app-gcp`. Apply the
+independent `agent-registry-gcp` stack after `platform-gcp` has enabled
+`agentregistry.googleapis.com`. The app stack:
 
 - creates namespaces and Secrets;
 - owns the persistent `dev-postgres` Service and StatefulSet directly;

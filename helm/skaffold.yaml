@@ -80,14 +80,6 @@ profiles:
               - mcp/values.yaml
               - mcp/values-dev.yaml
               - mcp/values-google-cloud.yaml
-          - name: dev-mcp-google-workspace
-            chartPath: mcp
-            namespace: dev
-            createNamespace: false
-            valuesFiles:
-              - mcp/values.yaml
-              - mcp/values-dev.yaml
-              - mcp/values-google-workspace.yaml
           - name: dev-mcp-whatsapp-business
             chartPath: mcp
             namespace: dev
@@ -121,14 +113,6 @@ profiles:
             valuesFiles:
               - mcp/values.yaml
               - mcp/values-google-cloud.yaml
-          - name: mcp-google-workspace
-            chartPath: mcp
-            namespace: mcp-google-workspace
-            createNamespace: false
-            valuesFiles:
-              - mcp/values.yaml
-              - mcp/values-google-workspace.yaml
-              - mcp/values-google-workspace-prod.yaml
           - name: mcp-whatsapp-business
             chartPath: mcp
             namespace: mcp-whatsapp-business
@@ -150,8 +134,6 @@ profiles:
                 http://mcp-terraform.mcp-terraform.svc.cluster.local:8080/health
               curl -sSf $retry \
                 http://mcp-google-cloud.mcp-google-cloud.svc.cluster.local:8080/healthz
-              curl -sSf $retry \
-                http://mcp-google-workspace.mcp-google-workspace.svc.cluster.local:8000/health
               curl -sSf $retry \
                 http://mcp-whatsapp-business.mcp-whatsapp-business.svc.cluster.local:3000/health
 
@@ -210,16 +192,6 @@ profiles:
                 http://mcp-whatsapp-business.mcp-whatsapp-business.svc.cluster.local:3000/mcp \
                 whatsapp_get_phone_number '{}'
 
-              # Workspace uses per-user OAuth. CI has no user grant by design;
-              # startup validates the prod OAuth client config, while this
-              # verifies that protocol-level auth rejects an anonymous client.
-              code="$(curl -sS -o /dev/null -w '%{http_code}' \
-                -X POST \
-                -H 'Content-Type: application/json' \
-                -H 'Accept: application/json, text/event-stream' \
-                --data "$init" \
-                http://mcp-google-workspace.mcp-google-workspace.svc.cluster.local:8000/mcp)"
-              test "$code" = 401
         executionMode:
           kubernetesCluster:
             jobManifestPath: mcp/verify/prod-job.yaml
@@ -262,5 +234,4 @@ customActions:
               --location "${cluster_location}"
             kubectl --namespace dev scale deployment/dev-mcp-terraform --replicas=0
             kubectl --namespace dev scale deployment/dev-mcp-google-cloud --replicas=0
-            kubectl --namespace dev scale deployment/dev-mcp-google-workspace --replicas=0
             kubectl --namespace dev scale deployment/dev-mcp-whatsapp-business --replicas=0

@@ -57,9 +57,10 @@ deployment "yourown-chat" {
     # Zero Trust (Access + Tunnel) for private services. PREREQUISITE Terraform
     # cannot do: the varset API token must carry ACCOUNT permissions (Cloudflare
     # Tunnel:Edit + Access: Apps and Policies:Edit + Access: Organizations,
-    # Identity Providers, and Groups:Edit) before applying. The flag is the kill
-    # switch for the beta claude.ai <-> MCP-portal interop (docs/MCP.md); the dev
-    # Mattermost browser path has no beta dependency.
+    # Identity Providers, and Groups:Edit) before applying. The flag is the
+    # kill switch for the external private-service path. Human MCP clients also
+    # require Managed OAuth. Migrate this stack and its state to provider 5.x
+    # before managing that setting and the MCP Portal in IaC (docs/MCP.md).
     zero_trust_enabled        = true
     zero_trust_team_name      = "yourown-chat"
     zero_trust_allowed_emails = ["ilya@papou.email", "popov.pilprod@gmail.com"]
@@ -67,7 +68,6 @@ deployment "yourown-chat" {
       dev                  = "http://dev-mattermost.dev.svc.cluster.local:8065"
       mcp-terraform        = "http://mcp-terraform.mcp-terraform.svc.cluster.local:8080"
       mcp-google-cloud     = "http://mcp-google-cloud.mcp-google-cloud.svc.cluster.local:8080"
-      mcp-google-workspace = "http://mcp-google-workspace.mcp-google-workspace.svc.cluster.local:8000"
     }
   }
 }

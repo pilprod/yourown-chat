@@ -8,8 +8,8 @@ The platform consumes MCP (Model Context Protocol) servers in two ways:
    `helm/mcp/values.yaml` (`servers.<name>.enabled`). Production is reachable
    across namespaces only from `mattermost`, at
    `http://mcp-<name>.mcp-<name>.svc.cluster.local:<port>/mcp`. Every server
-   has its own default-deny namespace (`mcp-terraform`, `mcp-google-cloud`,
-   `mcp-google-workspace`, or `mcp-whatsapp-business`), so a compromised server
+   has its own default-deny namespace (`mcp-terraform`, `mcp-google-cloud`, or
+   `mcp-whatsapp-business`), so a compromised server
    cannot initiate traffic to another MCP server. Each server admits only Mattermost and the Cloudflare
    Tunnel connector in the separate `mcp-tunnel` namespace. Egress is limited
    to cluster DNS plus encrypted external API/Tunnel traffic.
@@ -30,6 +30,67 @@ The platform consumes MCP (Model Context Protocol) servers in two ways:
    connect to its URL with OAuth. Nothing to deploy or operate on our side.
    Preferred whenever an official remote endpoint exists.
 
+## Google Cloud Agent Registry
+
+Agent Registry is the discovery/governance catalog for these integrations; it
+does not host, proxy, authenticate to, or keep an MCP process alive.
+`platform-gcp` enables `agentregistry.googleapis.com`.
+
+Production GKE MCP Deployments carry the supported discovery metadata:
+
+- `registry.gke.io/functional-type: MCP_SERVER`;
+- `modelcontextprotocol.info/urls` and
+  `modelcontextprotocol.info/capabilities`;
+- `iam.gke.io/spiffe-identity-type: agent-identity` on the Pod template.
+
+GKE therefore registers and introspects Terraform, Google Cloud, and WhatsApp
+Business MCP after their production rollout. The dev overlay deliberately
+disables registration because those instances are disposable and are scaled
+to zero after review. Official Google remote MCP servers are registered
+automatically when their APIs are enabled.
+
+The independent `terraform/agent-registry-gcp` HCP Stack uses Google provider 7.x
+without forcing the platform/app stacks off their pinned 6.x line. It
+registers the public interfaces already used by agents:
+
+| Registry kind | Entry | Interface |
+|---|---|---|
+| Endpoint | Mattermost API | `https://yourown.chat/api/v4` |
+| Endpoint | HCP Terraform API | `https://app.terraform.io/api/v2` |
+| Endpoint | Meta Graph API | `https://graph.facebook.com/v23.0` |
+| MCP server | Meta Developer Tools MCP | `https://mcp.facebook.com/devtools` |
+
+Apply `platform-gcp` first and then `agent-registry-gcp`. The Terraform apply SA
+needs `roles/agentregistry.editor`; existing environments can grant it once:
+
+```bash
+gcloud projects add-iam-policy-binding yourown-chat \
+  --member=serviceAccount:terraform-apply@yourown-chat.iam.gserviceaccount.com \
+  --role=roles/agentregistry.editor
+```
+
+The external Meta MCP is registered with `NO_SPEC`: its endpoint is
+catalogued, but Agent Registry does not automatically import tools from an
+OAuth-protected third-party endpoint. Authentication and tool authorization
+still happen with Meta.
+
+After the Agent Registry stack and the production MCP release are applied,
+verify both discovery paths:
+
+```bash
+gcloud agent-registry endpoints list \
+  --project=yourown-chat \
+  --location=europe-west3
+
+gcloud agent-registry mcp-servers list \
+  --project=yourown-chat \
+  --location=europe-west3
+```
+
+The three GKE servers should expose discovered tools after introspection. The
+manually registered Meta entry is expected to show endpoint metadata without a
+Terraform-managed tool specification.
+
 ## Integration matrix
 
 Status of every requested integration. "Community" servers are third-party
@@ -42,7 +103,6 @@ constraints (especially for consumer services without a public API).
 |---|---|---|
 | Terraform (Registry + **HCP Terraform**) | internally mirrored `hashicorp/terraform-mcp-server@sha256:67b4…` (official) — registry docs tokenless; workspaces/runs/stacks on app.terraform.io once `TFE_TOKEN` is loaded | HCP team token in Secret Manager (`mcp-terraform-hcp-token`, placeholder seeded) |
 | Google Cloud (Logging, Monitoring, Trace, Error Reporting) | internally built `mcp-google-cloud` image: `@google-cloud/observability-mcp@0.2.3` (Google, preview) + `supergateway@3.4.3` | **none — keyless**: Workload Identity (`mcp-google-cloud/mcp-servers` in prod and `dev/mcp-servers` in dev → `mcp` GSA, viewer roles); quota project is `yourown-chat` |
-| Google Workspace (Gmail, Calendar) | internally built `google_workspace_mcp` v1.22.1 at commit `da3c708…` (community, native streamable-http) | OAuth client in Secret Manager + one-time user consent (below) |
 | WhatsApp Business | internally built adapter over the official Meta WhatsApp Cloud API | Meta system-user token, WABA ID and phone-number ID in Secret Manager |
 
 The Google Cloud server is published as an npm/stdio package, not a container
@@ -113,12 +173,9 @@ docker build --build-arg RUNTIME_IMAGE=node:local \
 `docker/mcp/upstreams.env` is the reviewable upstream lock for the other
 runtime images. Terraform MCP 0.5.2 and cloudflared 2026.7.3 are pulled by their
 official multi-architecture digest and mirrored into the internal repository.
-Google Workspace is built from its exact release commit with our pinned Python
-base image and `uv` version; its upstream `uv.lock` remains authoritative for
-Python dependencies. Changing the lock file or internal Workspace Dockerfile
-builds new internal images. WhatsApp Business is built from the committed
-Node.js source and lock file in `docker/mcp/whatsapp-business`. All five
-workloads are rendered with Artifact Registry `@sha256` references.
+WhatsApp Business is built from the committed Node.js source and lock file in
+`docker/mcp/whatsapp-business`. Every in-cluster workload is rendered with an
+Artifact Registry `@sha256` reference.
 
 #### HCP Terraform token
 
@@ -140,41 +197,47 @@ the `mcp` GSA + Workload Identity binding and publishes it in
 `workload_identity_emails`), then app-gcp (injects the GSA into the KSA
 annotation via the `mcp_gsa` deploy parameter), then a release.
 
-#### Google Workspace: per-user OAuth (no manual consent plumbing)
+#### Official Google Workspace remote MCP
 
-The server runs in OAuth 2.1 **multi-user** mode: Mattermost Agents shows each
-user a **Connect** button, the user passes the Google consent under their own
-account in the browser, and every tool call then runs with that user's token —
-each user sees only their own Gmail/Calendar. Operator setup is one-time:
+Google provides vendor-hosted remote MCP servers for Gmail, Calendar, and
+Drive. They replace the previous community `google_workspace_mcp` workload:
+there is no Workspace image, pod, namespace, Kubernetes Secret, tunnel route,
+or credential smoke in this repository.
 
-1. In Google Cloud console create an **OAuth client ID** (type: Web
-   application, redirect URI
-   `https://mcp-google-workspace.yourown.chat/oauth2callback`) under a project with
-   the Gmail and Calendar APIs enabled.
-2. Load the real values over the seeded placeholders:
+The `platform-gcp` stack enables both the product API and MCP API for each
+service:
 
-   ```bash
-   printf '%s' "<client-id>"     | gcloud secrets versions add mcp-google-workspace-client-id --data-file=-
-   printf '%s' "<client-secret>" | gcloud secrets versions add mcp-google-workspace-client-secret --data-file=-
-   # re-apply app-gcp (cluster_secrets picks up the new versions), then:
-   kubectl -n mcp-google-workspace rollout restart deploy/mcp-google-workspace
-   ```
+- Gmail: `gmail.googleapis.com`, `gmailmcp.googleapis.com`;
+- Calendar: `calendar-json.googleapis.com`, `calendarmcp.googleapis.com`;
+- Drive: `drive.googleapis.com`, `drivemcp.googleapis.com`.
 
-3. Users click **Connect** on the server in Agents — that's it. (Mobile apps
-   can't start the OAuth flow yet; connect once from web/desktop.)
+These services are in Google Workspace Developer Preview. Enrol the Google
+Cloud project in the preview if the console requests it, configure the Google
+Auth Platform consent screen, then create a **Web application** OAuth client.
+Register this exact Mattermost Agents callback:
 
-Plumbing behind it: the server's OAuth endpoints are published at
-`https://mcp-google-workspace.yourown.chat` (Cloudflare Access → Tunnel → private
-ClusterIP; the cloudflare stack owns the DNS record). The MCP endpoint itself stays OAuth-protected — an
-unauthenticated request gets 401, which is exactly what triggers the Connect
-flow.
+```text
+https://yourown.chat/plugins/mattermost-ai/oauth/callback
+```
 
-#### WhatsApp Business Cloud API
+The OAuth client ID and secret are entered in Mattermost's MCP server settings,
+not placed in Kubernetes. Mattermost stores a separate OAuth token for every
+user, so each user must click **Connect** and grant their own Google access.
+Use the smallest scopes required by the enabled tools and require confirmation
+for tools that send mail, change calendars, or create/copy Drive files.
 
-Meta does not publish an official MCP server. This repository therefore owns a
-small Streamable HTTP adapter in `docker/mcp/whatsapp-business/server.mjs`
-which calls only the official WhatsApp Cloud API. It does not use WhatsApp Web,
-a QR session, Baileys, or another personal-account bridge.
+#### Meta Developer Tools and business messaging
+
+Meta now publishes the official, beta **Meta Developer Tools MCP** at
+`https://mcp.facebook.com/devtools`. It covers developer-platform operations:
+app configuration and diagnostics, API health, App Review/compliance,
+documentation/changelog search, and webhook subscription administration. It
+does **not** send or receive WhatsApp, Messenger, or Instagram messages.
+
+The repository therefore still owns a small Streamable HTTP WhatsApp adapter
+in `docker/mcp/whatsapp-business/server.mjs`, which calls only the official
+WhatsApp Cloud API. It does not use WhatsApp Web, a QR session, Baileys, or
+another personal-account bridge.
 
 The server exposes tools to send text, template, and link-hosted media
 messages; mark a message as read; and inspect the business profile, phone
@@ -199,6 +262,27 @@ The initial integration is outbound/admin only and needs no public webhook.
 Receiving messages later should use a separate public webhook path which
 validates Meta's signature; do not publish the MCP endpoint itself.
 
+For Facebook Messenger and Instagram messaging, reuse the official Meta Graph
+APIs rather than treating Developer Tools MCP as a messaging gateway. The
+recommended evolution is one reviewed `mcp-meta` codebase/image with shared
+Graph API transport, validation, retries, and webhook verification, but three
+least-privilege runtime boundaries:
+
+| Runtime | Identity/configuration | Purpose |
+|---|---|---|
+| `mcp-meta-whatsapp` | system-user token, WABA ID, phone-number ID | WhatsApp Cloud API |
+| `mcp-meta-messenger` | Page access token and Messenger-approved permissions | Facebook Page Messenger |
+| `mcp-meta-instagram` | Instagram professional-account token and approved messaging permissions | Instagram Direct |
+
+Keep separate Helm releases, namespaces, Secrets, and Agent Registry entries
+even if they share one image. This avoids turning one leaked token or one
+compromised runtime into access to all Meta surfaces. A Meta Business app can
+host the required products, but product access, App Review, tokens, webhook
+topics, and user/account eligibility remain product-specific. Build Messenger
+and Instagram adapters only when their exact tool set and inbound webhook
+contract are defined; the current WhatsApp deployment should not be deleted
+before that replacement exists.
+
 ## Connect Terraform and Google Workspace to Mattermost
 
 Open **System Console → Plugins → Agents → MCP Servers** (the label can be
@@ -219,27 +303,28 @@ Kubernetes Secret; never paste it into Mattermost. After saving, enable the
 Terraform tools for the agent and test with a read-only request such as listing
 the accessible HCP Terraform workspaces.
 
-For Google Workspace use:
+For Google Workspace add three separate remote servers. Use the same Web OAuth
+client ID and secret for each:
 
-- Name: `Google Workspace`
-- Enabled: `true`
-- Server URL:
-  `http://mcp-google-workspace.mcp-google-workspace.svc.cluster.local:8000/mcp`
-- Headers: empty
-- OAuth credentials: empty
+| Name | Server URL |
+|---|---|
+| `Gmail` | `https://gmailmcp.googleapis.com/mcp/v1` |
+| `Google Calendar` | `https://calendarmcp.googleapis.com/mcp/v1` |
+| `Google Drive` | `https://drivemcp.googleapis.com/mcp/v1` |
 
-Save it, enable its tools for the agent, and click **Connect** in Mattermost
-web or desktop. Complete Cloudflare Access if requested, then Google consent.
-The OAuth client is configured on the MCP server and each Mattermost user gets
-their own Google token, so client ID and secret must not be copied into
-Mattermost. If **Connect** is absent, first verify that
-`https://mcp-google-workspace.yourown.chat` is reachable through Access and
-that its OAuth redirect URI is registered exactly as documented above.
+Set `Enabled` to `true`, leave headers empty, and fill the OAuth client ID and
+client secret under **OAuth Credentials**. Save each server, enable the desired
+tools for the agent, then click **Connect** from Mattermost web or desktop and
+complete Google consent. There is no Cloudflare Access step for these three
+endpoints because Mattermost connects directly to Google.
 
 ### Official vendor-hosted remote — connect, nothing to deploy
 
 | Service | Remote endpoint | Auth |
 |---|---|---|
+| Gmail | `https://gmailmcp.googleapis.com/mcp/v1` | Google OAuth, per Mattermost user |
+| Google Calendar | `https://calendarmcp.googleapis.com/mcp/v1` | Google OAuth, per Mattermost user |
+| Google Drive | `https://drivemcp.googleapis.com/mcp/v1` | Google OAuth, per Mattermost user |
 | Cloudflare | `https://docs.mcp.cloudflare.com/sse` + per-product endpoints (bindings, observability, …) | OAuth (Cloudflare account) |
 | Figma | `https://mcp.figma.com/mcp` | OAuth |
 | Miro | `https://mcp.miro.com/` | OAuth |
@@ -258,6 +343,14 @@ that its OAuth redirect URI is registered exactly as documented above.
 | X.com (Twitter) | community MCP over paid API | paid API key | API pricing gates real use |
 | Facebook | community MCP over Graph API (pages/ads only) | Meta app + token | personal-profile access is not exposed by Meta |
 | LinkedIn | community (scraper-based mostly) | — | official API is partner-gated; scrapers violate ToS — not recommended |
+| iCloud Calendar | community `@icloud-calendar-mcp/server` | Apple ID + app-specific password | CalDAV bridge; third-party code receives account credentials |
+| iCloud Drive | community `@instacodeio/icloud-drive-mcp-server` | local macOS iCloud session | local-only bridge over `~/Library/Mobile Documents`; requires Full Disk Access |
+
+Apple does not provide an official iCloud MCP server. The two community
+options above are intentionally not deployed: the Calendar bridge requires an
+app-specific Apple password, while the Drive bridge depends on a logged-in Mac
+and local filesystem access. Reconsider them only as a separately reviewed
+personal/local integration, not as a production cluster service.
 
 ### No viable MCP / public API today
 
@@ -283,21 +376,75 @@ MCP client / browser → Access policy (allowed emails, Google SSO / one-time PI
 
 Everything fits the Zero Trust **Free** plan: 50 seats (only Zero Trust users
 consume one; Mattermost chat users go in-cluster and consume none), tunnel and
-Access apps are free.
-
-For a browser-based client, open the protected hostname and complete the
-Access login. No Cloudflare WARP client is required on macOS or iOS: the
-browser holds the Access session. Native/non-browser MCP clients must support
-the Access browser/OAuth flow or use an explicitly provisioned machine/service
-credential; WARP is optional and is not part of this Tunnel route.
+Access apps are free. Cloudflare OAuth tokens do not consume LLM/API tokens;
+the limits and subscription of the MCP client itself are separate.
 
 The layer ships **enabled** (`zero_trust_enabled = true` in both stacks,
 `tunnel.enabled: true` in the chart, allowed emails committed); the account ID
-is derived from the zone lookup. The flags are the **kill switch**: the
-claude.ai web/mobile connector has a KNOWN OAuth interop issue against
-Access-fronted MCP portals (Claude Code works against the same URL) — if the
-smoke test below fails, that path simply stays unused (or flip the flags off);
-nothing else depends on it.
+is derived from the zone lookup. The flags are the kill switch for the
+external private-service path. Mattermost continues to use in-cluster Service
+URLs and does not traverse Cloudflare.
+
+### Human MCP clients: Managed OAuth, not service tokens
+
+A normal browser Access application redirects an unauthenticated request with
+HTTP `302`. That works for a browser, but it does not give ChatGPT, Claude, or
+another remote MCP client an OAuth authorization endpoint. A client reporting
+that the address is reachable but authentication redirects to an Access login
+page is therefore behaving correctly: **Managed OAuth is not enabled**.
+
+For every human-facing MCP Access application:
+
+1. Go to **Zero Trust → Access controls → Applications**, edit the application,
+   and enable **Advanced settings → Managed OAuth**.
+2. Enable dynamic client registration. Allow `localhost` and `127.0.0.1` for
+   desktop/CLI clients.
+3. Allow these hosted-client redirects:
+   `https://claude.ai/api/mcp/auth_callback`, `https://chatgpt.com/*`, and
+   `https://playground.ai.cloudflare.com/*`.
+4. Use a short access-token lifetime (15 minutes) and a long grant session
+   (two weeks). Revoking an Access user or changing the allow policy is then
+   re-evaluated during refresh without requiring daily logins.
+5. Verify that an unauthenticated MCP request now returns HTTP `401` with
+   `WWW-Authenticate`, not `302`, and that
+   `/.well-known/oauth-authorization-server` returns OAuth metadata.
+
+Do **not** distribute `CF-Access-Client-Id` /
+`CF-Access-Client-Secret` to ChatGPT, Claude, phones, or user laptops. Access
+service tokens are shared machine identities and are reserved for unattended
+CI/server-to-server callers. Interactive clients use the browser login and
+receive an opaque, refreshable user token.
+
+Cloudflare Managed OAuth authorizes access to the MCP endpoint. It does not
+change the downstream identity used by a server: Google Cloud MCP still calls
+Google Cloud through its shared GKE Workload Identity service account, while
+Terraform MCP still uses its configured HCP credential.
+
+The current Cloudflare stack is pinned to provider 4.x, which predates the
+`oauth_configuration` and MCP Portal resources. This is a provider-migration
+constraint, not a Cloudflare or Terraform limitation: provider 5.x can manage
+both. A Dashboard toggle is acceptable only as a temporary connectivity test;
+it is not the desired state because provider 4.x cannot detect or preserve that
+field reliably. The permanent change must migrate the existing Cloudflare
+resources and state to provider 5.x, then declare Managed OAuth and a single
+`https://mcp.yourown.chat/mcp` Cloudflare MCP Portal in IaC. This matters for
+Claude Free, which permits one custom connector: one portal can expose both
+servers through that single connector. The portal must use Managed OAuth and a
+proxied CNAME to `gateway.agents.cloudflare.com`. The required two-apply
+procedure is documented in
+[`CLOUDFLARE_V5_MIGRATION.md`](CLOUDFLARE_V5_MIGRATION.md); do not create a
+second Stack that owns the same objects.
+
+Client availability is not identical:
+
+- Claude remote connectors work from claude.ai, Claude Desktop, and mobile;
+  Claude Free currently permits one custom connector. Add it from the web
+  settings once; all clients use the cloud-hosted connection.
+- ChatGPT custom MCP apps are currently web-only. Pro can use read/fetch MCP
+  tools; full MCP including write actions requires Business or Enterprise/Edu.
+- WARP is not required for either path. The MCP client connects from the
+  vendor's cloud to the public Cloudflare edge, then Tunnel reaches the private
+  ClusterIP.
 
 ### Rollout (in order)
 
@@ -311,8 +458,7 @@ nothing else depends on it.
    `yellow-sunset-672e.cloudflareaccess.com` domain must be updated.
 2. Apply **cloudflare**: tunnel (+ token in Secret Manager
    `mcp-tunnel-token`), DNS, Access apps for `dev.yourown.chat` /
-   `mcp-terraform.yourown.chat` / `mcp-google-cloud.yourown.chat` /
-   `mcp-google-workspace.yourown.chat`.
+   `mcp-terraform.yourown.chat` / `mcp-google-cloud.yourown.chat`.
 3. Apply **platform-gcp**, then **app-gcp**: the former binds Workload Identity
    to both `mcp-google-cloud/mcp-servers` and `dev/mcp-servers`; the latter
    creates one namespace per production MCP server plus `mcp-tunnel`, and
@@ -322,10 +468,16 @@ nothing else depends on it.
 4. Release: the cloudflared pod connects outbound; hostnames go live behind
    Access. Until step 3 lands the pod waits in CreateContainerConfigError and
    recovers on its own.
-5. Zero Trust dashboard (beta, no Terraform resource yet): create an **MCP
-   Server Portal**, register the two MCP hostnames as upstream servers, attach
-   the Access policy. The portal URL is what personal Claude connects to.
-   The portal URL is the address used by compatible personal MCP clients.
+5. For a temporary connectivity test only, enable Managed OAuth on both MCP
+   Access applications in the Dashboard as described above.
+6. Complete both phases in
+   [`CLOUDFLARE_V5_MIGRATION.md`](CLOUDFLARE_V5_MIGRATION.md), migrate the
+   Cloudflare stack and state to provider 5.x, declare
+   Managed OAuth in `cloudflare_zero_trust_access_application`, create the
+   **MCP Server Portal**, register both MCP hostnames, attach the same email
+   allow policy, and publish `mcp.yourown.chat` as a proxied CNAME to
+   `gateway.agents.cloudflare.com`. Use `https://mcp.yourown.chat/mcp` in
+   personal clients.
 
 ### Automated rollout verification
 
@@ -344,10 +496,9 @@ service account, so it creates no pod in GKE. Each verifier Job runs in
 - a real read-only `list_log_names` Google Cloud API call through Workload
   Identity;
 - a real read-only `whatsapp_get_phone_number` Meta API call;
-- non-placeholder Google Workspace OAuth application configuration at startup
-  and the expected unauthenticated `401` in OAuth 2.1 mode. A Gmail/Calendar
-  API smoke requires a separately provisioned test user's OAuth grant and is
-  intentionally not impersonated by CI.
+- official Gmail, Calendar, and Drive MCP credentials are deliberately not
+  impersonated by CI; each Mattermost user verifies the remote connection
+  after their own OAuth consent.
 
 Any failure marks verification and the rollout unsuccessful. Apply the
 `app-gcp` stack before cutting the first MCP release.
@@ -363,23 +514,34 @@ curl -i http://127.0.0.1:18080/health
 kubectl port-forward -n mcp-google-cloud svc/mcp-google-cloud 18081:8080
 curl -i http://127.0.0.1:18081/healthz
 
-kubectl port-forward -n mcp-google-workspace svc/mcp-google-workspace 18082:8000
-curl -i http://127.0.0.1:18082/health
-
 kubectl port-forward -n mcp-whatsapp-business svc/mcp-whatsapp-business 18083:3000
 curl -i http://127.0.0.1:18083/health
 ```
 
 Then validate the external path:
 
-0. Browser check first: `https://mcp-google-workspace.yourown.chat` → Access
-   login → Google OAuth Connect flow. This validates Tunnel + Access end-to-end.
-1. Add the portal URL as a custom connector in claude.ai from **web and
-   phone**; Claude Code / desktop from macOS as the control group.
-2. Expected: OAuth → Access login (allowed email) → tools listed.
-3. Claude Code works but claude.ai web/phone fails at OAuth → the known
-   interop gap is still open: use Claude Code/desktop meanwhile and re-test
-   later — both sides are in active beta.
+0. In Mattermost connect Gmail, Calendar, and Drive, then run one read-only
+   request against each service.
+1. Before Managed OAuth, confirm the failure mode:
+   `curl -I https://mcp-google-cloud.yourown.chat/mcp/` returns `302`.
+2. After Managed OAuth, the same unauthenticated request must return `401`
+   with `WWW-Authenticate`; OAuth discovery must return JSON:
+
+   ```bash
+   curl -i https://mcp-google-cloud.yourown.chat/mcp/
+   curl -sS \
+     https://mcp-google-cloud.yourown.chat/.well-known/oauth-authorization-server
+   ```
+
+3. Add the direct URL to Claude from claude.ai **Customize → Connectors → Add
+   custom connector**. Complete the Access login and confirm the tools are
+   listed in claude.ai, Claude Desktop, and mobile.
+4. In ChatGPT web, enable Developer mode, create a custom app with the same
+   URL, complete OAuth during **Scan Tools**, and test a read-only call. This
+   cannot currently be validated in the ChatGPT mobile app because custom MCP
+   apps are web-only.
+5. Once `mcp.yourown.chat` exists, replace the direct connector with the portal
+   URL so one authorization exposes the curated tools from both servers.
 
 ## Adding an in-cluster server
 

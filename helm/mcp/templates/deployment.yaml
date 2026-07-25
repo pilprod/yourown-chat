@@ -1,6 +1,7 @@
 {{- range $name, $server := .Values.servers }}
 {{- if $server.enabled }}
 {{- $resourceName := include "mcp-servers.serverName" (dict "root" $ "name" $name) }}
+{{- $mcpPath := $server.mcpPath | default "/mcp" }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -10,6 +11,18 @@ metadata:
   labels:
     app: {{ $resourceName }}
     app.kubernetes.io/part-of: mcp-servers
+    {{- if $.Values.agentRegistry.enabled }}
+    registry.gke.io/functional-type: "MCP_SERVER"
+    {{- end }}
+  {{- if $.Values.agentRegistry.enabled }}
+  annotations:
+    modelcontextprotocol.info/urls: |
+      - http://{{ $resourceName }}.{{ $.Release.Namespace }}.svc.cluster.local:{{ $server.port }}{{ $mcpPath }}
+    modelcontextprotocol.info/capabilities: |
+      card:
+        endpoint: {{ $mcpPath | quote }}
+        protocol: "HTTP"
+  {{- end }}
 spec:
   replicas: {{ $server.replicaCount | default 1 }}
   selector:
@@ -17,6 +30,10 @@ spec:
       app: {{ $resourceName }}
   template:
     metadata:
+      {{- if $.Values.agentRegistry.enabled }}
+      annotations:
+        iam.gke.io/spiffe-identity-type: agent-identity
+      {{- end }}
       labels:
         app: {{ $resourceName }}
         app.kubernetes.io/part-of: mcp-servers
