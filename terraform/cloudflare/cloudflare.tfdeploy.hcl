@@ -73,6 +73,15 @@ deployment "yourown-chat" {
       mcp-google-cloud      = "http://mcp-google-cloud.mcp-google-cloud.svc.cluster.local:8080"
       mcp-whatsapp-business = "http://mcp-whatsapp-business.mcp-whatsapp-business.svc.cluster.local:3000"
     }
+    # Meta cannot pass an interactive Cloudflare Access login. This hostname
+    # exposes only the signed /webhooks/whatsapp handler; the MCP hostname
+    # remains protected by Access.
+    zero_trust_public_upstreams = {
+      whatsapp-webhook = {
+        service = "http://mcp-whatsapp-business.mcp-whatsapp-business.svc.cluster.local:3000"
+        path    = "^/webhooks/whatsapp$"
+      }
+    }
   }
 }
 

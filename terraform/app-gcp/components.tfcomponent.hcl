@@ -161,6 +161,16 @@ component "secrets" {
         value     = "REPLACE_ME_PHONE_NUMBER_ID"
         accessors = [var.workload_identity_members["mcp-whatsapp"]]
       }
+      "mcp-whatsapp-app-secret" = {
+        value     = "REPLACE_ME_META_APP_SECRET"
+        accessors = [var.workload_identity_members["mcp-whatsapp"]]
+      }
+      "mcp-whatsapp-webhook-verify-token" = {
+        generate  = true
+        special   = false
+        length    = 48
+        accessors = [var.workload_identity_members["mcp-whatsapp"]]
+      }
     }
   }
 

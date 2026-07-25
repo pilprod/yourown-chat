@@ -15,5 +15,18 @@ defaults:
     allowedNamespaces: []
     tunnelNamespace: mcp-tunnel
 
+servers:
+  # Dev webhook data is disposable and disappears with the pod. Production
+  # keeps the bounded message index on its dedicated PVC.
+  whatsapp-business:
+    persistence:
+      enabled: false
+    volumeMounts:
+      - name: data
+        mountPath: /var/lib/whatsapp-mcp
+    volumes:
+      - name: data
+        emptyDir: {}
+
 tunnel:
   enabled: false

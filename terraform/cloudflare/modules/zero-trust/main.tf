@@ -35,6 +35,11 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "this" {
         hostname = "${label}.${var.domain}"
         service  = service
       }],
+      [for label, upstream in var.public_upstreams : {
+        hostname = "${label}.${var.domain}"
+        path     = upstream.path
+        service  = upstream.service
+      }],
       [{ service = "http_status:404" }]
     )
   }
@@ -51,6 +56,18 @@ resource "cloudflare_dns_record" "this" {
   proxied = true
   ttl     = 1
   comment = "Private service behind Cloudflare Tunnel + Access (Managed by Terraform)."
+}
+
+resource "cloudflare_dns_record" "public_webhook" {
+  for_each = var.public_upstreams
+
+  zone_id = var.zone_id
+  name    = each.key
+  type    = "CNAME"
+  content = "${cloudflare_zero_trust_tunnel_cloudflared.this.id}.cfargotunnel.com"
+  proxied = true
+  ttl     = 1
+  comment = "Signed public webhook behind Cloudflare Tunnel (Managed by Terraform)."
 }
 
 locals {

@@ -1,0 +1,24 @@
+{{- range $name, $server := .Values.servers }}
+{{- $persistence := $server.persistence | default dict }}
+{{- if and $server.enabled ($persistence.enabled | default false) }}
+{{- $resourceName := include "mcp-servers.serverName" (dict "root" $ "name" $name) }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $resourceName }}-data
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    app: {{ $resourceName }}
+    app.kubernetes.io/part-of: mcp-servers
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- with $persistence.storageClassName }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $persistence.size | default "1Gi" }}
+{{- end }}
+{{- end }}

@@ -6,11 +6,22 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
+import { MessageStore } from "./message-store.mjs";
 import { readSecretEnv } from "./secret-env.mjs";
+import { verifySubscription, verifyWebhookSignature } from "./webhook.mjs";
 
 const port = Number.parseInt(process.env.PORT ?? "3000", 10);
 const apiVersion = process.env.WHATSAPP_API_VERSION ?? "v23.0";
 const graphBaseUrl = `https://graph.facebook.com/${apiVersion}`;
+const messageStore = new MessageStore(
+  process.env.WHATSAPP_MESSAGE_STORE ?? "/var/lib/whatsapp-mcp/messages.json",
+  {
+    maxMessages: Number.parseInt(
+      process.env.WHATSAPP_MESSAGE_RETENTION ?? "5000",
+      10,
+    ),
+  },
+);
 
 function requiredEnv(name) {
   const value = readSecretEnv(name);
@@ -54,6 +65,41 @@ function toolResult(payload) {
   };
 }
 
+function outboundMessage({ id, to, type, text, payload }) {
+  const timestamp = new Date().toISOString();
+  return {
+    id,
+    direction: "outbound",
+    from: requiredEnv("WHATSAPP_PHONE_NUMBER_ID"),
+    to,
+    type,
+    text,
+    timestamp,
+    received_at: timestamp,
+    payload,
+  };
+}
+
+async function sendAndRecord({ to, type, text, body }) {
+  const result = await graphRequest(
+    `${requiredEnv("WHATSAPP_PHONE_NUMBER_ID")}/messages`,
+    { method: "POST", body },
+  );
+  const id = result?.messages?.[0]?.id;
+  if (id) {
+    try {
+      await messageStore.recordOutbound(
+        outboundMessage({ id, to, type, text, payload: body }),
+      );
+    } catch (error) {
+      // The Graph API has already accepted the message. Do not turn a local
+      // indexing failure into an apparent send failure that an agent may retry.
+      console.error("Failed to index outbound WhatsApp message", error);
+    }
+  }
+  return result;
+}
+
 function createServer() {
   const server = new McpServer({
     name: "yourown-chat-whatsapp-business",
@@ -70,8 +116,10 @@ function createServer() {
     },
     async ({ to, body, preview_url }) =>
       toolResult(
-        await graphRequest(`${requiredEnv("WHATSAPP_PHONE_NUMBER_ID")}/messages`, {
-          method: "POST",
+        await sendAndRecord({
+          to,
+          type: "text",
+          text: body,
           body: {
             messaging_product: "whatsapp",
             recipient_type: "individual",
@@ -94,8 +142,10 @@ function createServer() {
     },
     async ({ to, name, language_code, components }) =>
       toolResult(
-        await graphRequest(`${requiredEnv("WHATSAPP_PHONE_NUMBER_ID")}/messages`, {
-          method: "POST",
+        await sendAndRecord({
+          to,
+          type: "template",
+          text: `template:${name}`,
           body: {
             messaging_product: "whatsapp",
             to,
@@ -127,8 +177,10 @@ function createServer() {
         ...(filename && media_type === "document" ? { filename } : {}),
       };
       return toolResult(
-        await graphRequest(`${requiredEnv("WHATSAPP_PHONE_NUMBER_ID")}/messages`, {
-          method: "POST",
+        await sendAndRecord({
+          to,
+          type: media_type,
+          text: caption,
           body: {
             messaging_product: "whatsapp",
             to,
@@ -137,6 +189,31 @@ function createServer() {
           },
         }),
       );
+    },
+  );
+
+  server.tool(
+    "whatsapp_list_messages",
+    "Read recently received and sent WhatsApp Business messages captured through the verified Meta webhook.",
+    {
+      from: z.string().min(6).optional().describe("Filter by sender number"),
+      direction: z.enum(["inbound", "outbound"]).optional(),
+      since: z.string().datetime().optional(),
+      limit: z.number().int().min(1).max(200).optional().default(50),
+    },
+    async (filters) => toolResult(await messageStore.list(filters)),
+  );
+
+  server.tool(
+    "whatsapp_get_message",
+    "Read one captured WhatsApp Business message by its wamid.",
+    { message_id: z.string().min(1) },
+    async ({ message_id }) => {
+      const message = await messageStore.get(message_id);
+      if (!message) {
+        throw new Error(`WhatsApp message ${message_id} was not found`);
+      }
+      return toolResult(message);
     },
   );
 
@@ -197,6 +274,45 @@ function createServer() {
 }
 
 const app = express();
+
+app.get("/webhooks/whatsapp", (request, response) => {
+  if (
+    !verifySubscription(
+      request.query,
+      requiredEnv("WHATSAPP_WEBHOOK_VERIFY_TOKEN"),
+    )
+  ) {
+    response.status(403).send("Webhook verification failed");
+    return;
+  }
+  response.status(200).send(request.query["hub.challenge"]);
+});
+
+app.post(
+  "/webhooks/whatsapp",
+  express.raw({ type: "application/json", limit: "1mb" }),
+  async (request, response) => {
+    try {
+      if (
+        !verifyWebhookSignature(
+          request.body,
+          request.header("x-hub-signature-256"),
+          requiredEnv("WHATSAPP_APP_SECRET"),
+        )
+      ) {
+        response.status(401).send("Invalid webhook signature");
+        return;
+      }
+      const payload = JSON.parse(request.body.toString("utf8"));
+      await messageStore.ingestWebhook(payload);
+      response.sendStatus(200);
+    } catch (error) {
+      console.error("WhatsApp webhook failed", error);
+      response.sendStatus(400);
+    }
+  },
+);
+
 app.use(express.json({ limit: "1mb" }));
 
 const transports = new Map();
@@ -259,6 +375,8 @@ for (const method of ["get", "delete"]) {
     await transport.handleRequest(request, response);
   });
 }
+
+await messageStore.init();
 
 const httpServer = app.listen(port, "0.0.0.0", () => {
   console.log(`WhatsApp Business MCP listening on 0.0.0.0:${port}/mcp`);

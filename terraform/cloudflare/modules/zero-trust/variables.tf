@@ -28,6 +28,31 @@ variable "upstreams" {
   }
 }
 
+variable "public_upstreams" {
+  type = map(object({
+    service = string
+    path    = string
+  }))
+  description = "Public hostname label => private service URL and anchored path regex. These routes receive no Access application and must verify signed webhook requests at the origin."
+  default     = {}
+
+  validation {
+    condition = length(setintersection(
+      toset(keys(var.public_upstreams)),
+      toset(keys(var.upstreams)),
+    )) == 0
+    error_message = "A hostname cannot be both Access-protected and public."
+  }
+
+  validation {
+    condition = alltrue([
+      for upstream in values(var.public_upstreams) :
+      startswith(upstream.path, "^") && endswith(upstream.path, "$")
+    ])
+    error_message = "Every public upstream path must be an anchored regular expression."
+  }
+}
+
 variable "allowed_emails" {
   type        = list(string)
   description = "Emails allowed through the Access policy (Zero Trust Free covers 50 users)."

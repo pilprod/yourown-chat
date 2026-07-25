@@ -205,6 +205,10 @@ servers:
       WHATSAPP_ACCESS_TOKEN_FILE: /var/run/secrets/mcp/access-token
       WHATSAPP_WABA_ID_FILE: /var/run/secrets/mcp/waba-id
       WHATSAPP_PHONE_NUMBER_ID_FILE: /var/run/secrets/mcp/phone-number-id
+      WHATSAPP_APP_SECRET_FILE: /var/run/secrets/mcp/app-secret
+      WHATSAPP_WEBHOOK_VERIFY_TOKEN_FILE: /var/run/secrets/mcp/webhook-verify-token
+      WHATSAPP_MESSAGE_STORE: /var/lib/whatsapp-mcp/messages.json
+      WHATSAPP_MESSAGE_RETENTION: "5000"
     secretProvider:
       enabled: true
       files:
@@ -214,6 +218,14 @@ servers:
           path: waba-id
         - secretName: mcp-whatsapp-phone-number-id
           path: phone-number-id
+        - secretName: mcp-whatsapp-app-secret
+          path: app-secret
+        - secretName: mcp-whatsapp-webhook-verify-token
+          path: webhook-verify-token
+    persistence:
+      enabled: true
+      mountPath: /var/lib/whatsapp-mcp
+      size: 1Gi
     resources:
       requests:
         cpu: 10m

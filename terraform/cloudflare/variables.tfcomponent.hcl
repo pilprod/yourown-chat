@@ -195,6 +195,15 @@ variable "zero_trust_upstreams" {
   default     = {}
 }
 
+variable "zero_trust_public_upstreams" {
+  type = map(object({
+    service = string
+    path    = string
+  }))
+  description = "Signed public webhook hostname label => in-cluster service URL plus an anchored path regex, routed through the Tunnel without an Access application. The origin must authenticate every request itself."
+  default     = {}
+}
+
 variable "zero_trust_allowed_emails" {
   type        = list(string)
   description = "Emails admitted by the Access policy on every private hostname, including dev Mattermost and MCP (Zero Trust Free covers 50 users). Only used when zero_trust_enabled = true."

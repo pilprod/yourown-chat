@@ -4,6 +4,8 @@
 {{- $mcpPath := $server.mcpPath | default "/mcp" }}
 {{- $secretProvider := $server.secretProvider | default dict }}
 {{- $secretProviderEnabled := $secretProvider.enabled | default false }}
+{{- $persistence := $server.persistence | default dict }}
+{{- $persistenceEnabled := $persistence.enabled | default false }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -75,12 +77,16 @@ spec:
               value: {{ $v | quote }}
             {{- end }}
           {{- end }}
-          {{- if or $secretProviderEnabled $server.volumeMounts }}
+          {{- if or $secretProviderEnabled $persistenceEnabled $server.volumeMounts }}
           volumeMounts:
             {{- if $secretProviderEnabled }}
             - name: mcp-secrets
               mountPath: /var/run/secrets/mcp
               readOnly: true
+            {{- end }}
+            {{- if $persistenceEnabled }}
+            - name: data
+              mountPath: {{ $persistence.mountPath | default "/var/lib/mcp" }}
             {{- end }}
             {{- with $server.volumeMounts }}
             {{- toYaml . | nindent 12 }}
@@ -115,7 +121,7 @@ spec:
           {{- end }}
           resources:
             {{- include "mcp-servers.valueOrDefault" (dict "server" $server "defaults" $.Values.defaults "key" "resources") | nindent 12 }}
-      {{- if or $secretProviderEnabled $server.volumes }}
+      {{- if or $secretProviderEnabled $persistenceEnabled $server.volumes }}
       volumes:
         {{- if $secretProviderEnabled }}
         - name: mcp-secrets
@@ -124,6 +130,11 @@ spec:
             readOnly: true
             volumeAttributes:
               secretProviderClass: {{ $resourceName }}-gcp
+        {{- end }}
+        {{- if $persistenceEnabled }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ $resourceName }}-data
         {{- end }}
         {{- with $server.volumes }}
         {{- toYaml . | nindent 8 }}
