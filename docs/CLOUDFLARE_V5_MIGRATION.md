@@ -139,8 +139,15 @@ field accepting only `active` or `disabled`, while Cloudflare legitimately
 returns `pending` until the registrar publishes the DS record. The module
 ignores drift for this workflow-status field only; the `dnssec_enabled` count
 still controls whether DNSSEC is enabled, and all DS material remains available
-through outputs. Publish the reported DS record at the registrar to move the
-remote status from `pending` to `active`.
+through outputs.
+
+`yourown.chat` is currently transferring from GoDaddy to Cloudflare Registrar.
+Do **not** publish the DS record manually at GoDaddy during this transfer.
+Cloudflare Registrar will discover the zone's CDS/CDNSKEY records and publish
+the DS record after the transfer completes; this can take another one or two
+days. When the Cloudflare DNSSEC API reports `active`, remove the temporary
+`ignore_changes = [status]` workaround and configure `status = "active"` so
+Terraform resumes enforcing the desired DNSSEC state.
 
 The `Some objects will no longer be managed` warning is also expected only for
 the three old application-scoped policy addresses. Their `removed` block uses
