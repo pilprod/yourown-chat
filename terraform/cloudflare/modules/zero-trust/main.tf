@@ -193,16 +193,16 @@ data "cloudflare_zero_trust_access_applications" "mcp_portal" {
     postcondition {
       condition = length([
         for application in self.result : application
-        if application.type == "mcp_portal" && (
-          (application.name != null ? application.name : "") == cloudflare_zero_trust_access_ai_controls_mcp_portal.this.name ||
-          (application.domain != null ? application.domain : "") == cloudflare_zero_trust_access_ai_controls_mcp_portal.this.hostname ||
-          startswith(
-            application.domain != null ? application.domain : "",
-            "${cloudflare_zero_trust_access_ai_controls_mcp_portal.this.hostname}/"
-          )
-        )
+        if application.type == "mcp_portal"
       ]) == 1
-      error_message = "Expected exactly one type=mcp_portal Access application for ${cloudflare_zero_trust_access_ai_controls_mcp_portal.this.hostname} after creating the Portal."
+      error_message = "Expected exactly one type=mcp_portal Access application after creating the ${cloudflare_zero_trust_access_ai_controls_mcp_portal.this.hostname} Portal. MCP applications returned by Cloudflare: ${jsonencode([
+        for application in self.result : {
+          id     = application.id
+          name   = application.name
+          domain = application.domain
+          type   = application.type
+        } if contains(["mcp", "mcp_portal"], application.type)
+      ])}"
     }
   }
 }

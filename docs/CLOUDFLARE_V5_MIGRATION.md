@@ -103,8 +103,9 @@ resource. The Stack resolves this without a manual UUID or a second deployment:
 2. a bounded 20-second consistency wait lets the separate Access API observe
    Cloudflare's automatically generated application;
 3. a data source lists the account's Access applications without relying on
-   Cloudflare's eventually-consistent domain filter, then discovers the portal
-   by type plus name/hostname;
+   Cloudflare's eventually-consistent domain filter, then selects the account's
+   single `type = "mcp_portal"` application (the Access API does not guarantee
+   that this application repeats the Portal's name or hostname);
 4. its computed UUID is passed to `component.zero_trust_portal_access`;
    because the import ID is unknown during the initial plan, HCP Terraform
    defers the entire dependent component;
