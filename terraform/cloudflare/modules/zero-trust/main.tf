@@ -166,6 +166,28 @@ resource "cloudflare_zero_trust_access_ai_controls_mcp_portal" "this" {
   }]
 }
 
+# Cloudflare creates the Portal's type=mcp_portal Access application as a side
+# effect. The read is deliberately deferred until the Portal exists; its
+# computed UUID becomes the dependency token that makes Terraform Stacks defer
+# the separate import/management component to a convergence plan.
+data "cloudflare_zero_trust_access_applications" "mcp_portal" {
+  account_id = var.account_id
+  domain     = cloudflare_zero_trust_access_ai_controls_mcp_portal.this.hostname
+  exact      = true
+
+  depends_on = [cloudflare_zero_trust_access_ai_controls_mcp_portal.this]
+
+  lifecycle {
+    postcondition {
+      condition = length([
+        for application in self.result : application
+        if application.type == "mcp_portal"
+      ]) == 1
+      error_message = "Expected exactly one type=mcp_portal Access application for ${cloudflare_zero_trust_access_ai_controls_mcp_portal.this.hostname} after creating the Portal."
+    }
+  }
+}
+
 # The Portal API does not create DNS when called by Terraform.
 resource "cloudflare_dns_record" "mcp_portal" {
   zone_id = var.zone_id

@@ -117,10 +117,10 @@ component "zero_trust_portal_access" {
   source = "./modules/zero-trust-portal-access"
 
   inputs = {
-    account_id       = one([for c in component.cloudflare : c.account_id])
-    hostname         = one([for z in component.zero_trust : z.mcp_portal_hostname])
-    allowed_emails   = var.zero_trust_allowed_emails
-    session_duration = "24h"
+    account_id     = one([for c in component.cloudflare : c.account_id])
+    application_id = one([for z in component.zero_trust : z.mcp_portal_access_application_id])
+    hostname       = one([for z in component.zero_trust : z.mcp_portal_hostname])
+    allowed_emails = var.zero_trust_allowed_emails
   }
 
   providers = {

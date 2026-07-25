@@ -56,7 +56,7 @@ Phase 2:
 2. rename resource addresses using generated `moved` blocks, including
    `cloudflare_record` to `cloudflare_dns_record` and the Access organization
    v5 resource name;
-3. recreate each formerly aggregated zone setting as an individual
+3. import each formerly aggregated zone setting as an individual
    `cloudflare_zone_setting` resource;
 4. keep the Tunnel ingress as a real `config.ingress` value and replace the
    obsolete `tunnel_token` argument with `tunnel_secret`;
@@ -100,10 +100,11 @@ of creating the Portal, but its UUID is not exposed by the Portal Terraform
 resource. The Stack resolves this without a manual UUID or a second deployment:
 
 1. `component.zero_trust` creates the Portal;
-2. `component.zero_trust_portal_access` explicitly depends on it, so HCP
-   Terraform defers that component;
-3. during the convergence re-plan, the dependent component discovers the
-   generated application by its exact hostname and type;
+2. a data source in that component is deferred until the Portal exists, then
+   discovers the generated application by its exact hostname and type;
+3. its computed UUID is passed to `component.zero_trust_portal_access`;
+   because the import ID is unknown during the initial plan, HCP Terraform
+   defers the entire dependent component;
 4. its declarative `import` adopts the generated UUID and applies the email
    allow policy, Managed OAuth, dynamic client registration, and token
    lifetimes.
@@ -116,11 +117,25 @@ matches.
 
 The initial plan must not replace existing DNS records, the Tunnel, direct
 Access applications, certificates, or the Zero Trust organization. Expected
-changes are state address moves, individual zone-setting management, inline
-migration of the existing policies, Managed OAuth updates, the two AI Controls
-server registrations, their dedicated policy applications, and the new
-Portal/CNAME. The convergence plan may only import and update the
+changes are state address moves, imports of the existing individual zone
+settings, inline migration of the existing policies, Managed OAuth updates,
+the two AI Controls server registrations, their dedicated policy applications,
+and the new Portal/CNAME. The convergence plan may only import and update the
 Cloudflare-generated Portal Access application.
+
+Provider v5 emits `Resource Destruction Considerations` for every
+`cloudflare_zone_setting` because Cloudflare exposes these settings as
+non-deletable zone singletons. This warning is informational: the migration
+imports every existing setting using `<zone_id>/<setting_id>` and then manages
+its value. Removing such a resource later would stop Terraform management; it
+would not delete the remote Cloudflare setting.
+
+The `Some objects will no longer be managed` warning is also expected only for
+the three old application-scoped policy addresses. Their `removed` block uses
+`destroy = false`, while the same `allowed-emails` policies are declared inline
+on the corresponding v5 Access applications in the same plan. Stop if the plan
+shows those applications with an empty `policies` value or proposes deleting
+the remote policies.
 
 Finally, open **Zero Trust → Access controls → AI controls → MCP servers** and
 complete the one-time upstream OAuth authorization for each server. Interactive

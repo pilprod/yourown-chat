@@ -20,6 +20,13 @@ locals {
   }
 }
 
+import {
+  for_each = local.string_zone_settings
+
+  to = cloudflare_zone_setting.string[each.key]
+  id = "${data.cloudflare_zone.this.id}/${each.key}"
+}
+
 resource "cloudflare_zone_setting" "string" {
   for_each = local.string_zone_settings
 
@@ -28,10 +35,20 @@ resource "cloudflare_zone_setting" "string" {
   value      = each.value
 }
 
+import {
+  to = cloudflare_zone_setting.challenge_ttl
+  id = "${data.cloudflare_zone.this.id}/challenge_ttl"
+}
+
 resource "cloudflare_zone_setting" "challenge_ttl" {
   zone_id    = data.cloudflare_zone.this.id
   setting_id = "challenge_ttl"
   value      = var.challenge_ttl
+}
+
+import {
+  to = cloudflare_zone_setting.security_header
+  id = "${data.cloudflare_zone.this.id}/security_header"
 }
 
 resource "cloudflare_zone_setting" "security_header" {
