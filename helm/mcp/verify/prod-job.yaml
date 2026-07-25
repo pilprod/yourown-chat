@@ -1,6 +1,6 @@
 # On-cluster verify Job template for the production MCP rollout. Skaffold
 # replaces the smoke-test container with the verifier declared in
-# helm/skaffold.yaml. The Job runs from the connector namespace and carries the
+# helm/skaffold-mcp.yaml. The Job runs from the connector namespace and carries the
 # tunnel label so the existing least-privilege NetworkPolicies admit the same
 # upstream path that cloudflared uses.
 apiVersion: batch/v1

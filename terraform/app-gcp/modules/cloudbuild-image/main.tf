@@ -165,6 +165,7 @@ resource "google_cloudbuild_trigger" "this" {
             --region "${var.region}" \
             --delivery-pipeline "${var.mattermost_delivery.pipeline_name}" \
             --source "/workspace/yourown-chat/helm" \
+            --skaffold-file "skaffold-mattermost.yaml" \
             --gcs-source-staging-dir "gs://${var.mattermost_delivery.source_bucket_name}/source" \
             --deploy-parameters "mattermost_dev_image=${local.image_repo_path}:$TAG_NAME,mattermost_version=$TAG_NAME" \
             --annotations "source-repo=pilprod/mattermost,git-tag=$TAG_NAME,git-sha=$COMMIT_SHA,image-digest=$$digest"

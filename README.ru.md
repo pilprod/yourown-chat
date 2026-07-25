@@ -112,7 +112,8 @@ terraform/
   agent-registry-gcp/    # стек 4: GCP-каталог внешних endpoint/MCP (Google provider 7.x)
                          # в каждом: *.tfcomponent.hcl + *.tfdeploy.hcl + modules/ + свой lock
 helm/                    # Kubernetes-workloads, доставляются Cloud Deploy
-  skaffold.yaml          # профили рендера dev/prod
+  skaffold-mattermost.yaml # рендер и cleanup только для Mattermost
+  skaffold-mcp.yaml        # рендер, smoke и cleanup только для MCP
   mattermost/            # prod Mattermost (operator CR + SecretProviderClass)
   matterbridge/          # изолированный деплой моста
   mattermost/            # единый chart Mattermost с values для dev и prod

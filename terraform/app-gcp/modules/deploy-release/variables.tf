@@ -68,7 +68,7 @@ variable "release_tag_regex" {
 
 variable "source_subdir" {
   type        = string
-  description = "Sub-directory in the deploy repo that holds skaffold.yaml (the Cloud Deploy render root). The release is cut with --source=. from here."
+  description = "Sub-directory in the deploy repo that holds the component-specific skaffold-<pipeline>.yaml files. The release is cut with --source=. and an explicit --skaffold-file from here."
   default     = "helm"
 }
 

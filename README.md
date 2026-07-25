@@ -110,7 +110,8 @@ terraform/
   agent-registry-gcp/    # stack 4: GCP endpoint/MCP governance catalog (Google provider 7.x)
                          # each stack: *.tfcomponent.hcl + *.tfdeploy.hcl + modules/ + its own lock file
 helm/                    # Kubernetes workloads, delivered by Cloud Deploy
-  skaffold.yaml          # component-specific test/prod render profiles
+  skaffold-mattermost.yaml # Mattermost-only dev/prod render and cleanup
+  skaffold-mcp.yaml        # MCP-only dev/prod render, smoke, and cleanup
   matterbridge/          # isolated bridge deployment
   mattermost/            # one chart, promoted with dev/prod values
   mcp/                   # MCP Helm chart, dev probes and prod credential/API smoke
@@ -195,7 +196,7 @@ git tag 1.2.3  (on pilprod/yourown-chat)
   → diff against the previous semver tag
   → route helm/mattermost|matterbridge changes to Mattermost
   → route helm/mcp or docker changes to MCP
-  → shared helm/skaffold.yaml changes route to both
+  → route each component's skaffold-<component>.yaml only to its own pipeline
 ```
 
 **Rotate the DB password** — bump one committed value, no time-based

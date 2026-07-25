@@ -179,11 +179,10 @@ resource "google_cloudbuild_trigger" "release" {
       args = [
         "-ceu",
         <<-EOT
-          changed="$$(cat /workspace/changed-files)"
-          mcp_inputs_changed="$$(printf '%s\n' "$$changed" |
-            grep -E '^(helm/skaffold\\.yaml$|helm/mcp/|docker/)' || true)"
+          mcp_inputs_changed="$$(bash route-components.sh \
+            /workspace/changed-files mcp)"
 
-          if [ "${var.mcp_enabled}" = "true" ] && [ -n "$$mcp_inputs_changed" ]; then
+          if [ "${var.mcp_enabled}" = "true" ] && [ "$$mcp_inputs_changed" = "true" ]; then
             PREPARED_CONTEXT_ROOT="/workspace/image-sources" \
               bash ../docker/prepare-images.sh
           else
@@ -219,11 +218,10 @@ resource "google_cloudbuild_trigger" "release" {
       args = [
         "-ceu",
         <<-EOT
-          changed="$$(cat /workspace/changed-files)"
-          mcp_inputs_changed="$$(printf '%s\n' "$$changed" |
-            grep -E '^(helm/skaffold\\.yaml$|helm/mcp/|docker/)' || true)"
+          mcp_inputs_changed="$$(bash route-components.sh \
+            /workspace/changed-files mcp)"
 
-          if [ "${var.mcp_enabled}" = "true" ] && [ -n "$$mcp_inputs_changed" ]; then
+          if [ "${var.mcp_enabled}" = "true" ] && [ "$$mcp_inputs_changed" = "true" ]; then
             AR_PREFIX="${local.artifact_repository_prefix}" \
             IMAGE_TAG="$COMMIT_SHA" \
             BUILD_VERSION="$TAG_NAME" \
@@ -252,11 +250,10 @@ resource "google_cloudbuild_trigger" "release" {
           short_build="$$(printf '%s' '$BUILD_ID' | cut -c1-8)"
 
           previous_tag="$$(cat /workspace/previous-platform-tag)"
-          changed="$$(cat /workspace/changed-files)"
-
-          common_changed="$$(printf '%s\n' "$$changed" | grep -E '^helm/skaffold\\.yaml$' || true)"
-          mattermost_changed="$$(printf '%s\n' "$$changed" | grep -E '^helm/(mattermost|matterbridge)/' || true)"
-          mcp_changed="$$(printf '%s\n' "$$changed" | grep -E '^(helm/mcp/|docker/)' || true)"
+          mattermost_changed="$$(bash route-components.sh \
+            /workspace/changed-files mattermost)"
+          mcp_changed="$$(bash route-components.sh \
+            /workspace/changed-files mcp)"
 
           create_release() {
             pipeline="$$1"
@@ -266,12 +263,13 @@ resource "google_cloudbuild_trigger" "release" {
               --region "${var.region}" \
               --delivery-pipeline "$$pipeline" \
               --source "." \
+              --skaffold-file "skaffold-$$pipeline.yaml" \
               --gcs-source-staging-dir "gs://${google_storage_bucket.source.name}/source" \
               --annotations "git-tag=$TAG_NAME,git-sha=$COMMIT_SHA,previous-tag=$$previous_tag" \
               "$$@"
           }
 
-          if [ -n "$$common_changed$$mattermost_changed" ]; then
+          if [ "$$mattermost_changed" = "true" ]; then
             image_repo="${local.artifact_repository_prefix}/${var.mattermost_image_repository.image_name}"
             mattermost_tag="$$(gcloud artifacts docker tags list "$$image_repo" \
               --filter="tag~'/tags/v.*-patched$$'" \
@@ -281,18 +279,18 @@ resource "google_cloudbuild_trigger" "release" {
               --deploy-parameters "mattermost_dev_image=$$image_repo:$$mattermost_tag,mattermost_version=$$mattermost_tag"
           fi
           if [ "${var.mcp_enabled}" = "true" ]; then
-            if [ -n "$$common_changed$$mcp_changed" ]; then
+            if [ "$$mcp_changed" = "true" ]; then
               deploy_parameters="$$(AR_PREFIX="${local.artifact_repository_prefix}" \
                 OUTPUT_DIR="/workspace" \
                 bash ../docker/deploy-parameters.sh)"
               create_release mcp \
                 --deploy-parameters "$$deploy_parameters"
             fi
-          elif [ -n "$$common_changed$$mcp_changed" ]; then
+          elif [ "$$mcp_changed" = "true" ]; then
             echo "MCP deployment changes detected, but mcp_servers_enabled=false; skipping MCP release"
           fi
 
-          if [ -z "$$common_changed$$mattermost_changed$$mcp_changed" ]; then
+          if [ "$$mattermost_changed" = "false" ] && [ "$$mcp_changed" = "false" ]; then
             echo "No Mattermost or MCP deployment changes in $TAG_NAME"
           fi
         EOT

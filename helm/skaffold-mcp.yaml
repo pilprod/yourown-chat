@@ -1,63 +1,14 @@
-# Cloud Deploy uses Helm only for rendering and applies the resulting immutable
-# manifests with Skaffold/kubectl. Workload-specific pipelines select exactly
-# one profile family, so an MCP release never touches Mattermost or PostgreSQL.
+# MCP-only Cloud Deploy render configuration. It owns MCP profiles, protocol
+# verification, and dev cleanup without participating in Mattermost routing.
 apiVersion: skaffold/v4beta11
 kind: Config
 metadata:
-  name: yourown-chat
+  name: yourown-chat-mcp
 
 deploy:
   kubectl: {}
 
 profiles:
-  # Ephemeral migration/smoke environment. Persistent PostgreSQL is owned by
-  # Terraform's dev-postgres resources and is intentionally absent here.
-  - name: mattermost-dev
-    manifests:
-      helm:
-        releases:
-          - name: mattermost-dev
-            chartPath: mattermost
-            namespace: dev
-            createNamespace: false
-            valuesFiles:
-              - mattermost/values.yaml
-              - mattermost/values-dev.yaml
-    verify:
-      - name: smoke-test
-        container:
-          name: smoke-test
-          image: curlimages/curl:8.10.1
-          command: ["/bin/sh", "-c"]
-          args:
-            - >-
-              curl -sSf --retry 30 --retry-connrefused --retry-delay 5
-              http://dev-mattermost.dev.svc.cluster.local:8065/api/v4/system/ping
-        executionMode:
-          kubernetesCluster:
-            jobManifestPath: mattermost/verify/job.yaml
-
-  # Optional bridge is additive only to the Mattermost dev stage.
-  - name: matterbridge
-    manifests:
-      rawYaml:
-        - matterbridge/serviceaccount.yaml
-        - matterbridge/secretproviderclass.yaml
-        - matterbridge/networkpolicy.yaml
-        - matterbridge/deployment.yaml
-
-  - name: mattermost-prod
-    manifests:
-      helm:
-        releases:
-          - name: mattermost-prod
-            chartPath: mattermost
-            namespace: mattermost
-            createNamespace: false
-            valuesFiles:
-              - mattermost/values.yaml
-              - mattermost/values-prod.yaml
-
   # Disposable MCP instances share the isolated, quota-bound dev namespace.
   # Production keeps one namespace per MCP server.
   - name: mcp-dev
@@ -96,6 +47,7 @@ profiles:
               - mcp/values.yaml
               - mcp/values-dev.yaml
               - mcp/values-whatsapp-business.yaml
+
   - name: mcp-prod
     manifests:
       helm:
@@ -216,27 +168,9 @@ profiles:
           kubernetesCluster:
             jobManifestPath: mcp/verify/prod-job.yaml
 
-# executionMode is intentionally omitted for cleanup actions. Cloud Deploy
-# therefore runs these containers in its Cloud Build execution environment
-# under the target's dedicated PREDEPLOY service account, not as pods in GKE.
+# Cloud Deploy executes this PREDEPLOY action in Cloud Build under the
+# dedicated cleanup service account, not as a pod in GKE.
 customActions:
-  - name: cleanup-mattermost-dev
-    containers:
-      - name: cleanup-mattermost-dev
-        image: gcr.io/cloud-builders/kubectl@sha256:3744bfd3765ac2a09133a164fcd74c8468fac192af8accadbdfbccbb20643961
-        command: ["/bin/sh", "-ceu"]
-        args:
-          - |
-            cluster_name="${GKE_CLUSTER##*/}"
-            cluster_parent="${GKE_CLUSTER%/clusters/*}"
-            cluster_location="${cluster_parent##*/}"
-            cluster_project_path="${cluster_parent%/locations/*}"
-            cluster_project="${cluster_project_path##*/}"
-            gcloud container clusters get-credentials "${cluster_name}" \
-              --project "${cluster_project}" \
-              --location "${cluster_location}"
-            kubectl --namespace dev scale deployment/dev-mattermost --replicas=0
-
   - name: cleanup-mcp-dev
     containers:
       - name: cleanup-mcp-dev

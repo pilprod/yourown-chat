@@ -5,7 +5,7 @@ description: >-
   platform. One values-driven chart renders every in-cluster MCP server as its
   own Deployment/Service/NetworkPolicy; enable or disable individual servers in
   values.yaml (servers.<name>.enabled). Rendered by Cloud Deploy via the
-  mcp-dev and mcp-prod Skaffold profiles (helm/skaffold.yaml), gated by the
+  mcp-dev and mcp-prod Skaffold profiles (helm/skaffold-mcp.yaml), gated by the
   app-gcp stack's mcp_servers_enabled variable.
 type: application
 version: 0.2.0

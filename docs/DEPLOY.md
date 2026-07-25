@@ -76,7 +76,8 @@ compares the tagged commit with the previous semver platform tag:
   `mattermost` release;
 - `helm/mcp/` or `docker/` creates an `mcp` release when
   `mcp_servers_enabled=true`;
-- `helm/skaffold.yaml` creates both releases;
+- `helm/skaffold-mattermost.yaml` routes only to `mattermost`;
+- `helm/skaffold-mcp.yaml` routes only to `mcp`;
 - unrelated changes create no Cloud Deploy release.
 
 For a routed Mattermost release, the trigger resolves the newest
