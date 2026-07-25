@@ -103,8 +103,6 @@ component "zero_trust" {
   providers = {
     cloudflare = provider.cloudflare.this
     random     = provider.random.this
-    # Required to remove the retired time_sleep resource from existing state.
-    time = provider.time.this
   }
 }
 
@@ -129,9 +127,8 @@ component "zero_trust_portal_access" {
   depends_on = [component.zero_trust]
 }
 
-# Adopt the account's existing Zero Trust organization and keep its human-facing
-# team name/domain under Terraform control. Kept as a separate component so the
-# module-level import block is evaluated at a component root.
+# Keep the Zero Trust organization's human-facing team name/domain under
+# Terraform control.
 component "zero_trust_organization" {
   for_each = var.zero_trust_enabled ? toset(["default"]) : toset([])
 

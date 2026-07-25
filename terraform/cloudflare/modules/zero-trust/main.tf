@@ -52,11 +52,6 @@ resource "cloudflare_dns_record" "this" {
   comment = "Private service behind Cloudflare Tunnel + Access (Managed by Terraform)."
 }
 
-moved {
-  from = cloudflare_record.this
-  to   = cloudflare_dns_record.this
-}
-
 locals {
   mcp_upstreams = {
     for label, service in var.upstreams : label => service
@@ -104,17 +99,10 @@ resource "cloudflare_zero_trust_access_application" "this" {
   }]
 }
 
-removed {
-  from = cloudflare_zero_trust_access_policy.allow
-
-  lifecycle {
-    destroy = false
-  }
-}
-
-# AI Controls catalog entry for every public MCP origin. OAuth is Cloudflare
-# Access Managed OAuth on the self-hosted application above. The shared
-# callback avoids a portal-specific redirect URI.
+# AI Controls catalog entry for every public MCP origin. Cloudflare stores one
+# admin OAuth grant for capability synchronization and shared Portal access.
+# End users authenticate only to the Portal; they do not receive or handle the
+# upstream grant.
 resource "cloudflare_zero_trust_access_ai_controls_mcp_server" "this" {
   for_each = local.mcp_upstreams
 
@@ -162,7 +150,10 @@ resource "cloudflare_zero_trust_access_ai_controls_mcp_portal" "this" {
   servers = [for server in cloudflare_zero_trust_access_ai_controls_mcp_server.this : {
     server_id        = server.id
     default_disabled = false
-    on_behalf        = true
+    # Use the server's admin credential. Per-user upstream OAuth is redundant:
+    # Google Cloud and Terraform already use shared workload credentials after
+    # the MCP request reaches the cluster.
+    on_behalf = false
   }]
 }
 

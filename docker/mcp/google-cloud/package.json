@@ -7,5 +7,10 @@
   "dependencies": {
     "@google-cloud/observability-mcp": "0.2.3",
     "supergateway": "3.4.3"
+  },
+  "overrides": {
+    "googleapis-common": {
+      "gaxios": "7.3.0"
+    }
   }
 }

@@ -79,11 +79,6 @@ resource "cloudflare_authenticated_origin_pulls_hostname_certificate" "aop" {
   private_key = tls_private_key.aop.private_key_pem
 }
 
-moved {
-  from = cloudflare_authenticated_origin_pulls_certificate.aop
-  to   = cloudflare_authenticated_origin_pulls_hostname_certificate.aop
-}
-
 resource "cloudflare_authenticated_origin_pulls" "aop" {
   count = var.aop_enabled ? 1 : 0
 

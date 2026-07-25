@@ -17,14 +17,8 @@ resource "cloudflare_dns_record" "apex" {
   comment = var.record_comment
 }
 
-moved {
-  from = cloudflare_record.apex
-  to   = cloudflare_dns_record.apex
-}
-
 # www is a SECONDARY record: proxied so Cloudflare can 301 it to the apex (see
-# cloudflare_ruleset.redirect_www below). The moved block preserves the
-# pre-existing record identity during the v4 -> v5 type rename.
+# cloudflare_ruleset.redirect_www below).
 resource "cloudflare_dns_record" "www" {
   count = var.manage_www ? 1 : 0
 
@@ -35,11 +29,6 @@ resource "cloudflare_dns_record" "www" {
   proxied = true
   ttl     = 1
   comment = "Managed by Terraform (cloudflare component). Secondary; 301-redirected to the apex."
-}
-
-moved {
-  from = cloudflare_record.www
-  to   = cloudflare_dns_record.www
 }
 
 # 301 www -> apex so the apex stays the single canonical host (path + query
@@ -85,11 +74,6 @@ resource "cloudflare_dns_record" "extra" {
   comment  = each.value.comment
 }
 
-moved {
-  from = cloudflare_record.extra
-  to   = cloudflare_dns_record.extra
-}
-
 resource "cloudflare_dns_record" "caa" {
   for_each = { for i, r in var.caa_records : tostring(i) => r }
 
@@ -103,9 +87,4 @@ resource "cloudflare_dns_record" "caa" {
     tag   = each.value.tag
     value = each.value.value
   }
-}
-
-moved {
-  from = cloudflare_record.caa
-  to   = cloudflare_dns_record.caa
 }

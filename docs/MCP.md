@@ -393,21 +393,13 @@ another remote MCP client an OAuth authorization endpoint. A client reporting
 that the address is reachable but authentication redirects to an Access login
 page is therefore behaving correctly: **Managed OAuth is not enabled**.
 
-For every human-facing MCP Access application:
-
-1. Go to **Zero Trust → Access controls → Applications**, edit the application,
-   and enable **Advanced settings → Managed OAuth**.
-2. Enable dynamic client registration. Allow `localhost` and `127.0.0.1` for
-   desktop/CLI clients.
-3. Allow these hosted-client redirects:
-   `https://claude.ai/api/mcp/auth_callback`, `https://chatgpt.com/*`, and
-   `https://playground.ai.cloudflare.com/*`.
-4. Use a short access-token lifetime (15 minutes) and a long grant session
-   (two weeks). Revoking an Access user or changing the allow policy is then
-   re-evaluated during refresh without requiring daily logins.
-5. Verify that an unauthenticated MCP request now returns HTTP `401` with
-   `WWW-Authenticate`, not `302`, and that
-   `/.well-known/oauth-authorization-server` returns OAuth metadata.
+Terraform enables Managed OAuth and dynamic client registration on every
+human-facing MCP Access application. It permits loopback callbacks plus the
+hosted Claude, ChatGPT, Cloudflare Playground, and shared Cloudflare callback
+URIs. Access tokens last 15 minutes and grants last two weeks. Verify that an
+unauthenticated MCP request returns HTTP `401` with `WWW-Authenticate`, not
+`302`, and that `/.well-known/oauth-authorization-server` returns OAuth
+metadata.
 
 Do **not** distribute `CF-Access-Client-Id` /
 `CF-Access-Client-Secret` to ChatGPT, Claude, phones, or user laptops. Access
@@ -425,11 +417,9 @@ direct MCP applications. It also registers both servers in AI Controls and
 creates a single `https://mcp.yourown.chat/mcp` MCP Portal. This matters for
 Claude Free, which permits one custom connector: one portal exposes both
 servers through that connector. The Portal uses Managed OAuth and a proxied
-CNAME to `gateway.agents.cloudflare.com`. Cloudflare auto-creates the Portal's
-Access application, so one post-create import is required before Terraform can
-attach its policy; the exact fail-closed procedure is documented in
-[`CLOUDFLARE_V5_MIGRATION.md`](CLOUDFLARE_V5_MIGRATION.md); do not create a
-second Stack that owns the same objects.
+CNAME to `gateway.agents.cloudflare.com`. Terraform explicitly manages the
+Portal's `type = "mcp_portal"` Access application, policy, and Managed OAuth;
+do not create a second Stack that owns the same objects.
 
 Client availability is not identical:
 
@@ -465,15 +455,47 @@ Client availability is not identical:
 4. Release: the cloudflared pod connects outbound; hostnames go live behind
    Access. Until step 3 lands the pod waits in CreateContainerConfigError and
    recovers on its own.
-5. Apply the v5 migration in
-   [`CLOUDFLARE_V5_MIGRATION.md`](CLOUDFLARE_V5_MIGRATION.md). After the AI
-   Controls Portal is created, the dependent `zero_trust_portal_access`
-   component explicitly creates its `type = "mcp_portal"` Access application
-   and attaches the allow policy and Managed OAuth in the same Stack
-   deployment.
-6. Complete one-time interactive upstream OAuth authorization for the two
-   registered servers in Cloudflare AI Controls. Use
-   `https://mcp.yourown.chat/mcp` in personal clients.
+5. Complete the one-time admin authorization and capability synchronization
+   for both registered servers as documented in
+   [`CLOUDFLARE.md`](CLOUDFLARE.md). Do not configure a client until both
+   servers show `Ready`.
+
+### Connect personal clients
+
+Use the single Portal endpoint in every remote client:
+
+```text
+https://mcp.yourown.chat/mcp
+```
+
+For Claude Free, Pro, or Max:
+
+1. In `claude.ai`, open **Customize → Connectors**.
+2. Select **+ → Add custom connector**.
+3. Name it `yourown-chat`, paste the Portal URL, and leave optional static
+   OAuth client credentials empty.
+4. Select **Connect** and complete the single Cloudflare Access login for the
+   Portal. Upstream servers use the administrator credential and do not prompt
+   the client for another authorization.
+5. Enable the connector for a conversation from **+ → Connectors**. The same
+   account connection is then usable from Claude Desktop and mobile; a new
+   connector cannot be added from mobile itself.
+
+For ChatGPT Pro:
+
+1. Use ChatGPT web and enable **Settings → Apps → Advanced settings →
+   Developer mode**.
+2. Open **Settings → Apps → Create**, name the app `yourown-chat`, enter the
+   Portal URL, and select OAuth.
+3. Select **Scan Tools**, complete the Cloudflare Access login, wait for the
+   tool scan, then select **Create**.
+4. Start a new chat, enable the draft app from the tools menu, and test a
+   read-only Terraform or Google Cloud request.
+
+ChatGPT custom MCP apps are web-only. A Pro account can use read/fetch
+capabilities; write/modify actions require Business or Enterprise/Edu. Do not
+add the two direct upstream URLs as separate apps unless diagnosing the
+Portal—the Portal is the stable client interface.
 
 ### Automated rollout verification
 
@@ -518,26 +540,20 @@ Then validate the external path:
 
 0. In Mattermost connect Gmail, Calendar, and Drive, then run one read-only
    request against each service.
-1. Before Managed OAuth, confirm the failure mode:
-   `curl -I https://mcp-google-cloud.yourown.chat/mcp/` returns `302`.
-2. After Managed OAuth, the same unauthenticated request must return `401`
+1. Confirm that the unauthenticated Portal and direct MCP requests return `401`
    with `WWW-Authenticate`; OAuth discovery must return JSON:
 
    ```bash
+   curl -i https://mcp.yourown.chat/mcp
    curl -i https://mcp-google-cloud.yourown.chat/mcp/
    curl -sS \
-     https://mcp-google-cloud.yourown.chat/.well-known/oauth-authorization-server
+     https://mcp.yourown.chat/.well-known/oauth-authorization-server
    ```
 
-3. Add the direct URL to Claude from claude.ai **Customize → Connectors → Add
-   custom connector**. Complete the Access login and confirm the tools are
-   listed in claude.ai, Claude Desktop, and mobile.
-4. In ChatGPT web, enable Developer mode, create a custom app with the same
-   URL, complete OAuth during **Scan Tools**, and test a read-only call. This
-   cannot currently be validated in the ChatGPT mobile app because custom MCP
-   apps are web-only.
-5. Once `mcp.yourown.chat` exists, replace the direct connector with the portal
-   URL so one authorization exposes the curated tools from both servers.
+2. Confirm both AI Controls server entries are `Ready`, then add the Portal URL
+   to Claude and ChatGPT using **Connect personal clients** above.
+3. In each client, verify that Terraform and Google Cloud tools are both
+   listed and run one read-only request against each.
 
 ## Adding an in-cluster server
 

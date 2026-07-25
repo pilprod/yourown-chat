@@ -22,12 +22,6 @@ required_providers {
     source  = "hashicorp/random"
     version = "~> 3.5"
   }
-  # Kept assigned while HCP state still contains the retired time_sleep
-  # resource. There is no active sleep in configuration.
-  time = {
-    source  = "hashicorp/time"
-    version = "~> 0.14.0"
-  }
 }
 
 # --- Cloudflare: single ephemeral zone-scoped API token ---------------------
@@ -54,4 +48,3 @@ provider "google" "this" {
 }
 
 provider "random" "this" {}
-provider "time" "this" {}
