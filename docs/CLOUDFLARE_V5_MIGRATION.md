@@ -85,8 +85,8 @@ Localhost and loopback clients are admitted through the separate
 
 Use a 15-minute access-token lifetime and a two-week grant session. The
 Cloudflare API token needs account-level edit permissions for Access
-applications/policies and Cloudflare Tunnel, plus the existing zone
-permissions.
+applications/policies, Cloudflare Tunnel, and MCP Portals, plus the existing
+zone permissions.
 
 The phase-2 plan must not replace existing DNS, Tunnel, Access, certificate,
 or organization objects. Expected remote changes are the new portal/DNS

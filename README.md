@@ -597,7 +597,8 @@ in the setup — and it never touches git or state.
 #### 10.1 Scope the token
 
 Cloudflare dashboard → **My Profile → API Tokens → Create Token → Create
-Custom Token**, scoped to the `yourown.chat` zone only:
+Custom Token**, scoped to the `yourown.chat` zone and, for Zero Trust, the
+owning Cloudflare account:
 
 | Permission | Access | Needed for |
 |---|---|---|
@@ -610,18 +611,20 @@ Custom Token**, scoped to the `yourown.chat` zone only:
 | Account → Cloudflare Tunnel | Edit | only if `zero_trust_enabled = true` (the tunnel) |
 | Account → Access: Apps and Policies | Edit | only if `zero_trust_enabled = true` (Access apps/policies) |
 | Account → Access: Organizations, Identity Providers, and Groups | Edit | only if `zero_trust_enabled = true` (read/update the Zero Trust team name and domain) |
+| Account → MCP Portals | Edit | only if `zero_trust_enabled = true` (AI Controls MCP servers and Portal) |
 
 **Zone Resources**: `Include → Specific zone → yourown.chat`.
-**Account Resources** (only for the three Zero Trust rows above): `Include →
+**Account Resources** (only for the four Zero Trust rows above): `Include →
 Specific account → your account`. Without these ACCOUNT-scoped permissions the
 Zero Trust resources fail with **error 10000 (Authentication error)** or
 **failed to read Access Organization state** — tunnels, Access apps, and the
-organization/team settings are account-level, not zone-level.
+organization/team settings and MCP Portal catalog are account-level, not
+zone-level.
 
-If the token predates Zero Trust organization management, re-issue it with all
-three account permissions and replace `cloudflare_api_token` in the HCP
-variable set before retrying the plan. Editing the token in Cloudflare does not
-update the already stored varset value automatically.
+If the token predates Zero Trust or MCP Portal management, edit it to add all
+four account permissions. If you create or roll the token instead, replace
+`cloudflare_api_token` in the HCP variable set before retrying the plan; HCP
+does not learn a newly generated token secret automatically.
 
 **Do not IP-filter the token** for HCP-managed runs: plan/apply execute from
 dynamic AWS egress IPs that are *not* in HCP's published ranges, so an
