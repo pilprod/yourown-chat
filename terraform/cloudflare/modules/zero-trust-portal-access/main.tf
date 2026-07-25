@@ -7,11 +7,6 @@ locals {
   ]
 }
 
-import {
-  to = cloudflare_zero_trust_access_application.this
-  id = "accounts/${var.account_id}/${var.application_id}"
-}
-
 resource "cloudflare_zero_trust_access_application" "this" {
   account_id       = var.account_id
   name             = "yourown-chat"

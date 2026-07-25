@@ -93,39 +93,27 @@ or organization objects. Expected remote changes are the new portal/DNS
 record, OAuth configuration updates on the two MCP applications, and
 individual management of the already-effective zone settings.
 
-### Single Stack deployment with deferred Portal adoption
+### Single Stack deployment with an explicit Portal Access application
 
-Cloudflare creates a `type = "mcp_portal"` Access application as a side effect
-of creating the Portal, but its UUID is not exposed by the Portal Terraform
-resource. The Stack resolves this without a manual UUID or a second deployment:
+The Cloudflare dashboard creates a `type = "mcp_portal"` Access application as
+a side effect of creating a Portal, but the AI Controls API used by Terraform
+does not currently do so. The Stack therefore manages both objects explicitly:
 
-1. `component.zero_trust` creates the Portal;
-2. a bounded 20-second consistency wait lets the separate Access API observe
-   Cloudflare's automatically generated application;
-3. a data source lists the account's Access applications without relying on
-   Cloudflare's eventually-consistent domain filter, then selects the account's
-   single `type = "mcp_portal"` application (the Access API does not guarantee
-   that this application repeats the Portal's name or hostname);
-4. its computed UUID is passed to `component.zero_trust_portal_access`;
-   because the import ID is unknown during the initial plan, HCP Terraform
-   defers the entire dependent component;
-5. its declarative `import` adopts the generated UUID and applies the email
-   allow policy, Managed OAuth, dynamic client registration, and token
-   lifetimes.
+1. `component.zero_trust` creates the AI Controls Portal;
+2. the dependent `component.zero_trust_portal_access` creates its
+   `type = "mcp_portal"` Access application for `mcp.yourown.chat`;
+3. that application owns the email allow policy, Managed OAuth, dynamic client
+   registration, and token lifetimes.
 
-Approve the phase-2 deployment once. HCP Terraform will show the Portal Access
-component as deferred and automatically run its follow-up convergence plan.
-The dependent module requires exactly one `type = "mcp_portal"` application
-for `mcp.yourown.chat` and fails closed if Cloudflare returns zero or multiple
-matches.
+No discovery wait, generated UUID, declarative import, or second convergence
+plan is required. Approve the phase-2 deployment once.
 
 The initial plan must not replace existing DNS records, the Tunnel, direct
 Access applications, certificates, or the Zero Trust organization. Expected
 changes are state address moves, imports of the existing individual zone
 settings, inline migration of the existing policies, Managed OAuth updates,
 the two AI Controls server registrations, their dedicated policy applications,
-and the new Portal/CNAME. The convergence plan may only import and update the
-Cloudflare-generated Portal Access application.
+the new Portal/CNAME, and its explicitly managed Portal Access application.
 
 Provider v5 emits `Resource Destruction Considerations` for every
 `cloudflare_zone_setting` because Cloudflare exposes these settings as
@@ -159,8 +147,8 @@ is then available in Claude Desktop and mobile as well.
 
 Existing resources do not need manual imports: HCP state, provider state
 upgraders, explicit `moved` blocks, and the policy `removed` block preserve
-their identity. The only planned import is the Portal Access application that
-Cloudflare creates before the deferred component's convergence plan.
+their identity. The Portal Access application is a new Terraform-managed
+resource rather than an imported Cloudflare side effect.
 
 If phase 1 was applied but phase 2 must be postponed, the Cloudflare settings
 remain active remotely but are temporarily unmanaged. Resume phase 2 before

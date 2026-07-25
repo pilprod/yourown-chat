@@ -103,15 +103,12 @@ component "zero_trust" {
   providers = {
     cloudflare = provider.cloudflare.this
     random     = provider.random.this
-    time       = provider.time.this
   }
 }
 
-# Cloudflare creates the Portal's type=mcp_portal Access application as a side
-# effect and does not expose its UUID on the Portal resource. Stacks defers this
-# component until zero_trust has been applied; its data source can then discover
-# the generated UUID during the dependent component's plan and import it without
-# a second user-triggered deployment.
+# Although the dashboard creates a type=mcp_portal Access application as a side
+# effect, the AI Controls API used by Terraform does not. Create and manage that
+# application explicitly after the Portal exists.
 component "zero_trust_portal_access" {
   for_each = var.zero_trust_enabled ? toset(["default"]) : toset([])
 
@@ -119,7 +116,6 @@ component "zero_trust_portal_access" {
 
   inputs = {
     account_id     = one([for c in component.cloudflare : c.account_id])
-    application_id = one([for z in component.zero_trust : z.mcp_portal_access_application_id])
     hostname       = one([for z in component.zero_trust : z.mcp_portal_hostname])
     allowed_emails = var.zero_trust_allowed_emails
   }

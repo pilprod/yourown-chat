@@ -166,47 +166,6 @@ resource "cloudflare_zero_trust_access_ai_controls_mcp_portal" "this" {
   }]
 }
 
-# Portal creation and its generated Access application are eventually
-# consistent across two Cloudflare APIs. Give /access/apps a bounded window to
-# observe the side effect before resolving the UUID used by the dependent
-# import component.
-resource "time_sleep" "mcp_portal_access_application" {
-  create_duration = "20s"
-
-  triggers = {
-    portal_id = cloudflare_zero_trust_access_ai_controls_mcp_portal.this.id
-  }
-
-  depends_on = [cloudflare_zero_trust_access_ai_controls_mcp_portal.this]
-}
-
-# Cloudflare creates the Portal's type=mcp_portal Access application as a side
-# effect. The read is deliberately deferred until the Portal exists; its
-# computed UUID becomes the dependency token that makes Terraform Stacks defer
-# the separate import/management component to a convergence plan.
-data "cloudflare_zero_trust_access_applications" "mcp_portal" {
-  account_id = var.account_id
-
-  depends_on = [time_sleep.mcp_portal_access_application]
-
-  lifecycle {
-    postcondition {
-      condition = length([
-        for application in self.result : application
-        if application.type == "mcp_portal"
-      ]) == 1
-      error_message = "Expected exactly one type=mcp_portal Access application after creating the ${cloudflare_zero_trust_access_ai_controls_mcp_portal.this.hostname} Portal. MCP applications returned by Cloudflare: ${jsonencode([
-        for application in self.result : {
-          id     = application.id
-          name   = application.name
-          domain = application.domain
-          type   = application.type
-        } if contains(["mcp", "mcp_portal"], application.type)
-      ])}"
-    }
-  }
-}
-
 # The Portal API does not create DNS when called by Terraform.
 resource "cloudflare_dns_record" "mcp_portal" {
   zone_id = var.zone_id

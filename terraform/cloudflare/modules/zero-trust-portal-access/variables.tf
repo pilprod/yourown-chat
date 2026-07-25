@@ -1,16 +1,11 @@
 variable "account_id" {
   type        = string
-  description = "Cloudflare account that owns the generated Portal Access application."
-}
-
-variable "application_id" {
-  type        = string
-  description = "UUID discovered by the Portal-owning component after Cloudflare creates the type=mcp_portal Access application."
+  description = "Cloudflare account that owns the explicitly managed Portal Access application."
 }
 
 variable "hostname" {
   type        = string
-  description = "MCP Portal hostname used to discover its generated type=mcp_portal Access application."
+  description = "MCP Portal hostname secured by this type=mcp_portal Access application."
 }
 
 variable "allowed_emails" {

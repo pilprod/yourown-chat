@@ -466,11 +466,11 @@ Client availability is not identical:
    Access. Until step 3 lands the pod waits in CreateContainerConfigError and
    recovers on its own.
 5. Apply the v5 migration in
-   [`CLOUDFLARE_V5_MIGRATION.md`](CLOUDFLARE_V5_MIGRATION.md). The
-   `zero_trust_portal_access` dependent component is deferred until Cloudflare
-   creates the Portal, then its convergence plan automatically discovers and
-   imports the generated Access application and attaches the allow policy and
-   Managed OAuth in the same Stack deployment.
+   [`CLOUDFLARE_V5_MIGRATION.md`](CLOUDFLARE_V5_MIGRATION.md). After the AI
+   Controls Portal is created, the dependent `zero_trust_portal_access`
+   component explicitly creates its `type = "mcp_portal"` Access application
+   and attaches the allow policy and Managed OAuth in the same Stack
+   deployment.
 6. Complete one-time interactive upstream OAuth authorization for the two
    registered servers in Cloudflare AI Controls. Use
    `https://mcp.yourown.chat/mcp` in personal clients.
