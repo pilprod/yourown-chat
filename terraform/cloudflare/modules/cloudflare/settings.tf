@@ -70,4 +70,12 @@ resource "cloudflare_zone_dnssec" "this" {
   count = var.dnssec_enabled ? 1 : 0
 
   zone_id = data.cloudflare_zone.this.id
+
+  lifecycle {
+    # Provider v5 declares status as Optional(active|disabled), but the API
+    # legitimately returns pending until the registrar publishes the DS record.
+    # Ignoring that workflow status prevents pending -> null from producing an
+    # update on every convergence plan. count still controls enable/disable.
+    ignore_changes = [status]
+  }
 }

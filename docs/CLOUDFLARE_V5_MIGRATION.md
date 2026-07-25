@@ -134,6 +134,14 @@ resource. This prevents an apex/wildcard ordering difference from rotating the
 Origin CA certificate on every Stack convergence plan; any intentional SAN
 change is still applied with create-before-destroy.
 
+The provider v5 DNSSEC resource also models `status` as an optional desired
+field accepting only `active` or `disabled`, while Cloudflare legitimately
+returns `pending` until the registrar publishes the DS record. The module
+ignores drift for this workflow-status field only; the `dnssec_enabled` count
+still controls whether DNSSEC is enabled, and all DS material remains available
+through outputs. Publish the reported DS record at the registrar to move the
+remote status from `pending` to `active`.
+
 The `Some objects will no longer be managed` warning is also expected only for
 the three old application-scoped policy addresses. Their `removed` block uses
 `destroy = false`, while the same `allowed-emails` policies are declared inline

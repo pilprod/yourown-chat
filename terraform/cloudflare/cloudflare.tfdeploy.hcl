@@ -64,7 +64,7 @@ deployment "yourown-chat" {
     # (docs/MCP.md).
     zero_trust_enabled        = true
     zero_trust_team_name      = "yourown-chat"
-    zero_trust_allowed_emails = ["ilya@papou.email", "popov.pilprod@gmail.com"]
+    zero_trust_allowed_emails = ["ilya@papou.email"]
     zero_trust_upstreams = {
       dev                  = "http://dev-mattermost.dev.svc.cluster.local:8065"
       mcp-terraform        = "http://mcp-terraform.mcp-terraform.svc.cluster.local:8080"
