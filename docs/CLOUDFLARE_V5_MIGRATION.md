@@ -108,6 +108,11 @@ does not currently do so. The Stack therefore manages both objects explicitly:
 No discovery wait, generated UUID, declarative import, or second convergence
 plan is required. Approve the phase-2 deployment once.
 
+The `hashicorp/time` provider assignment remains temporarily so HCP Terraform
+can remove the retired `time_sleep.mcp_portal_access_application` address from
+existing state. No `time_sleep` resource remains in configuration, so this
+compatibility assignment adds no deployment delay.
+
 The initial plan must not replace existing DNS records, the Tunnel, direct
 Access applications, certificates, or the Zero Trust organization. Expected
 changes are state address moves, imports of the existing individual zone

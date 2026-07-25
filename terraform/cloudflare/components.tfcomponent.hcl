@@ -103,6 +103,8 @@ component "zero_trust" {
   providers = {
     cloudflare = provider.cloudflare.this
     random     = provider.random.this
+    # Required to remove the retired time_sleep resource from existing state.
+    time = provider.time.this
   }
 }
 
