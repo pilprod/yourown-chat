@@ -610,11 +610,12 @@ owning Cloudflare account:
 | Zone → Zone WAF | Edit | only if you enable WAF/rate-limit rules |
 | Account → Cloudflare Tunnel | Edit | only if `zero_trust_enabled = true` (the tunnel) |
 | Account → Access: Apps and Policies | Edit | only if `zero_trust_enabled = true` (Access apps/policies) |
+| Account → Access: Service Tokens | Edit | only if `zero_trust_enabled = true` (AI Controls → protected MCP upstreams) |
 | Account → Access: Organizations, Identity Providers, and Groups | Edit | only if `zero_trust_enabled = true` (read/update the Zero Trust team name and domain) |
 | Account → MCP Portals | Edit | only if `zero_trust_enabled = true` (AI Controls MCP servers and Portal) |
 
 **Zone Resources**: `Include → Specific zone → yourown.chat`.
-**Account Resources** (only for the four Zero Trust rows above): `Include →
+**Account Resources** (only for the five Zero Trust rows above): `Include →
 Specific account → your account`. Without these ACCOUNT-scoped permissions the
 Zero Trust resources fail with **error 10000 (Authentication error)** or
 **failed to read Access Organization state** — tunnels, Access apps, and the

@@ -283,7 +283,7 @@ and Instagram adapters only when their exact tool set and inbound webhook
 contract are defined; the current WhatsApp deployment should not be deleted
 before that replacement exists.
 
-## Connect Terraform and Google Workspace to Mattermost
+## Connect Terraform, Google Cloud, and Google Workspace to Mattermost
 
 Open **System Console → Plugins → Agents → MCP Servers** (the label can be
 **Remote MCP Servers** in some plugin versions), add the server, save, then
@@ -302,6 +302,20 @@ The HCP Terraform team token is already injected into the server from its
 Kubernetes Secret; never paste it into Mattermost. After saving, enable the
 Terraform tools for the agent and test with a read-only request such as listing
 the accessible HCP Terraform workspaces.
+
+For Google Cloud use:
+
+- Name: `Google Cloud`
+- Enabled: `true`
+- Server URL:
+  `http://mcp-google-cloud.mcp-google-cloud.svc.cluster.local:8080/mcp`
+- Headers: empty
+- OAuth credentials: empty
+
+The pod authenticates through GKE Workload Identity. Mattermost must not use
+the public Cloudflare URL or receive a Google service-account key. After
+saving, enable the tools for the agent and test with a read-only request such
+as listing Cloud Logging log names.
 
 For Google Workspace add three separate remote servers. Use the same Web OAuth
 client ID and secret for each:
@@ -385,41 +399,35 @@ is derived from the zone lookup. The flags are the kill switch for the
 external private-service path. Mattermost continues to use in-cluster Service
 URLs and does not traverse Cloudflare.
 
-### Human MCP clients: Managed OAuth, not service tokens
+### Human clients use Portal OAuth; Cloudflare uses a service token upstream
 
-A normal browser Access application redirects an unauthenticated request with
-HTTP `302`. That works for a browser, but it does not give ChatGPT, Claude, or
-another remote MCP client an OAuth authorization endpoint. A client reporting
-that the address is reachable but authentication redirects to an Access login
-page is therefore behaving correctly: **Managed OAuth is not enabled**.
-
-Terraform enables Managed OAuth and dynamic client registration on every
-human-facing MCP Access application. It permits loopback callbacks plus the
-hosted Claude, ChatGPT, Cloudflare Playground, and shared Cloudflare callback
-URIs. Access tokens last 15 minutes and grants last two weeks. Verify that an
-unauthenticated MCP request returns HTTP `401` with `WWW-Authenticate`, not
-`302`, and that `/.well-known/oauth-authorization-server` returns OAuth
-metadata.
+Claude and ChatGPT connect only to the MCP Portal. Terraform enables Managed
+OAuth and dynamic client registration on the Portal's `type = "mcp_portal"`
+Access application. It permits loopback callbacks plus the hosted Claude,
+ChatGPT, Cloudflare Playground, and shared Cloudflare callback URIs. Access
+tokens last 15 minutes and grants last two weeks.
 
 Do **not** distribute `CF-Access-Client-Id` /
 `CF-Access-Client-Secret` to ChatGPT, Claude, phones, or user laptops. Access
-service tokens are shared machine identities and are reserved for unattended
-CI/server-to-server callers. Interactive clients use the browser login and
-receive an opaque, refreshable user token.
+service tokens are shared machine identities. Terraform creates one temporary
+shared token for Cloudflare AI Controls itself and stores its headers in the
+upstream server registrations. Interactive clients use the Portal browser
+login and receive an opaque, refreshable user token.
 
-Cloudflare Managed OAuth authorizes access to the MCP endpoint. It does not
-change the downstream identity used by a server: Google Cloud MCP still calls
-Google Cloud through its shared GKE Workload Identity service account, while
+The two direct MCP hostnames remain `self_hosted` Access applications. They do
+not expose Managed OAuth to clients: AI Controls reaches them with the service
+token under a `Service Auth` policy. This edge credential does not change the
+downstream identity used by a server: Google Cloud MCP still calls Google
+Cloud through its shared GKE Workload Identity service account, while
 Terraform MCP still uses its configured HCP credential.
 
-The Cloudflare stack uses provider 5.22.x and declares Managed OAuth on both
-direct MCP applications. It also registers both servers in AI Controls and
-creates a single `https://mcp.yourown.chat/mcp` MCP Portal. This matters for
-Claude Free, which permits one custom connector: one portal exposes both
-servers through that connector. The Portal uses Managed OAuth and a proxied
-CNAME to `gateway.agents.cloudflare.com`. Terraform explicitly manages the
-Portal's `type = "mcp_portal"` Access application, policy, and Managed OAuth;
-do not create a second Stack that owns the same objects.
+The Cloudflare stack uses provider 5.22.x, registers both servers in AI
+Controls, and creates a single `https://mcp.yourown.chat/mcp` MCP Portal. This
+matters for Claude Free, which permits one custom connector: one portal exposes
+both servers through that connector. The Portal uses Managed OAuth and a
+proxied CNAME to `gateway.agents.cloudflare.com`. Terraform explicitly manages
+the Portal's `type = "mcp_portal"` Access application, policy, and Managed
+OAuth; do not create a second Stack that owns the same objects.
 
 Client availability is not identical:
 
@@ -434,13 +442,13 @@ Client availability is not identical:
 
 ### Rollout (in order)
 
-1. **Prerequisite Terraform cannot do**: edit or re-issue the Cloudflare API token
-   with ACCOUNT permissions `Cloudflare Tunnel:Edit` + `Access: Apps and
-   Policies:Edit` + `Access: Organizations, Identity Providers, and
-   Groups:Edit` + `MCP Portals:Edit` (keep the existing zone permissions),
-   update the varset — BEFORE applying, or the cloudflare apply fails on
-   authorization. The stack adopts the existing Zero Trust organization and
-   renames its team/domain to `yourown-chat` /
+1. **Prerequisite Terraform cannot do**: edit or re-issue the Cloudflare API
+   token with ACCOUNT permissions `Cloudflare Tunnel:Edit` + `Access: Apps and
+   Policies:Edit` + `Access: Service Tokens:Edit` + `Access: Organizations,
+   Identity Providers, and Groups:Edit` + `MCP Portals:Edit` (keep the existing
+   zone permissions), update the varset — BEFORE applying, or the cloudflare
+   apply fails on authorization. The stack adopts the existing Zero Trust
+   organization and renames its team/domain to `yourown-chat` /
    `yourown-chat.cloudflareaccess.com`; clients using the old
    `yellow-sunset-672e.cloudflareaccess.com` domain must be updated.
 2. Apply **cloudflare**: tunnel (+ token in Secret Manager
@@ -455,10 +463,11 @@ Client availability is not identical:
 4. Release: the cloudflared pod connects outbound; hostnames go live behind
    Access. Until step 3 lands the pod waits in CreateContainerConfigError and
    recovers on its own.
-5. Complete the one-time admin authorization and capability synchronization
-   for both registered servers as documented in
-   [`CLOUDFLARE.md`](CLOUDFLARE.md). Do not configure a client until both
-   servers show `Ready`.
+5. Terraform supplies the Access service-token headers to both AI Controls
+   registrations. No upstream browser authorization is required. If a server
+   remains `Waiting`, inspect its error and run **Sync capabilities** as
+   documented in [`CLOUDFLARE.md`](CLOUDFLARE.md). Do not configure a client
+   until both servers show `Ready`.
 
 ### Connect personal clients
 
@@ -540,14 +549,16 @@ Then validate the external path:
 
 0. In Mattermost connect Gmail, Calendar, and Drive, then run one read-only
    request against each service.
-1. Confirm that the unauthenticated Portal and direct MCP requests return `401`
-   with `WWW-Authenticate`; OAuth discovery must return JSON:
+1. Confirm that the unauthenticated Portal returns `401` with
+   `WWW-Authenticate` and OAuth discovery returns JSON. A direct MCP hostname
+   without the Terraform-managed service-token headers is expected to be
+   rejected by Access (commonly with a browser-login redirect):
 
    ```bash
    curl -i https://mcp.yourown.chat/mcp
-   curl -i https://mcp-google-cloud.yourown.chat/mcp/
    curl -sS \
      https://mcp.yourown.chat/.well-known/oauth-authorization-server
+   curl -i https://mcp-google-cloud.yourown.chat/mcp/
    ```
 
 2. Confirm both AI Controls server entries are `Ready`, then add the Portal URL

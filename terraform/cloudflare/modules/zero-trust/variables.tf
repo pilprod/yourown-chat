@@ -43,3 +43,9 @@ variable "session_duration" {
   description = "Access session lifetime before re-authentication."
   default     = "24h"
 }
+
+variable "mcp_service_token_duration" {
+  type        = string
+  description = "Lifetime of the shared AI Controls machine credential used to reach protected MCP upstreams. Rotate before expiry; split per server when fine-grained roles are introduced."
+  default     = "8760h"
+}

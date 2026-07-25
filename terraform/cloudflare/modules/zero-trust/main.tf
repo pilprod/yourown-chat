@@ -1,7 +1,8 @@
 # Zero Trust access to private in-cluster services: client -> Access policy
 # (allowed emails) -> Cloudflare Tunnel (outbound-only cloudflared pod) ->
 # ClusterIP, no public exposure. Requires an ACCOUNT-scoped API token
-# (Cloudflare Tunnel:Edit + Access: Apps and Policies:Edit + MCP Portals:Edit).
+# (Cloudflare Tunnel:Edit + Access: Apps and Policies:Edit + Access: Service
+# Tokens:Edit + MCP Portals:Edit).
 # The sibling zero-trust-organization component additionally needs Access:
 # Organizations, Identity Providers, and Groups:Edit.
 
@@ -57,13 +58,20 @@ locals {
     for label, service in var.upstreams : label => service
     if startswith(label, "mcp-")
   }
+}
 
-  managed_oauth_allowed_uris = [
-    "https://claude.ai/api/mcp/auth_callback",
-    "https://chatgpt.com/*",
-    "https://playground.ai.cloudflare.com/*",
-    "https://oauth-callbacks.cloudflareaccess.com/cdn-cgi/access/outbound-oauth-callback",
-  ]
+# One machine identity lets AI Controls synchronize and invoke every currently
+# registered upstream. End-user clients never receive these credentials.
+# Split this into one token and policy per server when the MCP role model is
+# introduced.
+resource "cloudflare_zero_trust_access_service_token" "ai_controls" {
+  account_id = var.account_id
+  name       = "yourown-chat AI Controls MCP upstreams"
+  duration   = var.mcp_service_token_duration
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 # Access application + inline allow-list policy per hostname. Provider v5 no
@@ -77,42 +85,46 @@ resource "cloudflare_zero_trust_access_application" "this" {
   type             = "self_hosted"
   session_duration = var.session_duration
 
-  oauth_configuration = startswith(each.key, "mcp-") ? {
-    enabled = true
-    dynamic_client_registration = {
-      enabled                = true
-      allow_any_on_localhost = true
-      allow_any_on_loopback  = true
-      allowed_uris           = local.managed_oauth_allowed_uris
-    }
-    grant = {
-      access_token_lifetime = "15m"
-      session_duration      = "336h"
-    }
-  } : null
-
-  policies = [{
-    name       = "allowed-emails"
-    precedence = 1
-    decision   = "allow"
-    include    = [for email in var.allowed_emails : { email = { email = email } }]
-  }]
+  policies = concat(
+    startswith(each.key, "mcp-") ? [{
+      name       = "ai-controls-service-token"
+      precedence = 1
+      decision   = "non_identity"
+      include = [{
+        service_token = {
+          token_id = cloudflare_zero_trust_access_service_token.ai_controls.id
+        }
+      }]
+    }] : [],
+    [{
+      name       = "allowed-emails"
+      precedence = startswith(each.key, "mcp-") ? 2 : 1
+      decision   = "allow"
+      include    = [for email in var.allowed_emails : { email = { email = email } }]
+    }]
+  )
 }
 
 # AI Controls catalog entry for every public MCP origin. Cloudflare stores one
-# admin OAuth grant for capability synchronization and shared Portal access.
-# End users authenticate only to the Portal; they do not receive or handle the
-# upstream grant.
+# Access service-token credential for capability synchronization and shared
+# Portal access. End users authenticate only to the Portal and never receive
+# or handle this machine credential.
 resource "cloudflare_zero_trust_access_ai_controls_mcp_server" "this" {
   for_each = local.mcp_upstreams
 
-  account_id                       = var.account_id
-  id                               = trimprefix(each.key, "mcp-")
-  name                             = each.key
-  description                      = "yourown-chat ${each.key} MCP server"
-  hostname                         = "https://${each.key}.${var.domain}/mcp"
-  auth_type                        = "oauth"
-  is_shared_oauth_callback_enabled = true
+  account_id  = var.account_id
+  id          = trimprefix(each.key, "mcp-")
+  name        = each.key
+  description = "yourown-chat ${each.key} MCP server"
+  hostname    = "https://${each.key}.${var.domain}/mcp"
+  auth_type   = "bearer"
+  auth_credentials = jsonencode({
+    headers = {
+      "CF-Access-Client-Id"     = cloudflare_zero_trust_access_service_token.ai_controls.client_id
+      "CF-Access-Client-Secret" = cloudflare_zero_trust_access_service_token.ai_controls.client_secret
+    }
+  })
+  is_shared_oauth_callback_enabled = false
   secure_web_gateway               = false
 }
 
@@ -150,9 +162,9 @@ resource "cloudflare_zero_trust_access_ai_controls_mcp_portal" "this" {
   servers = [for server in cloudflare_zero_trust_access_ai_controls_mcp_server.this : {
     server_id        = server.id
     default_disabled = false
-    # Use the server's admin credential. Per-user upstream OAuth is redundant:
-    # Google Cloud and Terraform already use shared workload credentials after
-    # the MCP request reaches the cluster.
+    # Use the server's Access service token. Per-user upstream authorization is
+    # redundant: Google Cloud and Terraform already use shared workload
+    # credentials after the MCP request reaches the cluster.
     on_behalf = false
   }]
 }

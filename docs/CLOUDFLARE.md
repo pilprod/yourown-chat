@@ -11,6 +11,7 @@ The account-scoped token stored in the HCP Terraform varset requires:
 
 - Cloudflare Tunnel: Edit
 - Access: Apps and Policies: Edit
+- Access: Service Tokens: Edit
 - Access: Organizations, Identity Providers, and Groups: Edit
 - MCP Portals: Edit
 
@@ -22,8 +23,6 @@ Single Redirect, and Zone WAF permissions.
 Terraform explicitly manages the AI Controls Portal and its separate
 `type = "mcp_portal"` Access application. The application owns the email allow
 policy, Managed OAuth, dynamic client registration, and token lifetimes.
-Interactive authorization of upstream MCP servers in the Cloudflare dashboard
-is intentionally outside Terraform.
 
 The client endpoint is:
 
@@ -31,31 +30,33 @@ The client endpoint is:
 https://mcp.yourown.chat/mcp
 ```
 
-### Initial server synchronization
+### Upstream authentication and initial synchronization
 
-After creating a server, Cloudflare must obtain one admin OAuth credential
-before it can synchronize the server's tools and prompts. This interactive
-authorization is required once per server and cannot be completed by the
-Terraform provider:
+Terraform creates one Cloudflare Access service token for AI Controls, adds a
+`Service Auth` policy to each direct MCP Access application, and stores the
+token's two headers in each AI Controls server registration. The secret stays
+inside encrypted Terraform state and Cloudflare; it is never sent to Claude,
+ChatGPT, Mattermost, a phone, or a user laptop.
 
-1. Open **Zero Trust → Access controls → AI controls → MCP servers**.
-2. For `mcp-terraform` and `mcp-google-cloud`, open **Edit → Authenticate
-   server** and complete Cloudflare Access login as `ilya@papou.email`.
-3. Select **… → Sync capabilities** for each server.
-4. Continue only after both entries show `Ready` and a non-zero tool count.
+No interactive upstream authorization is required. After apply, AI Controls
+uses these headers for both capability synchronization and Portal-to-upstream
+requests:
 
-`Waiting` means Cloudflare is still trying to fetch capabilities. If it does
-not clear, hover over the status for the upstream error, reauthenticate, and
-run **Sync capabilities** again. `Sync Required` means the stored admin refresh
-token must be renewed. Cloudflare also refreshes capabilities automatically
-approximately every two hours.
+- `CF-Access-Client-Id`
+- `CF-Access-Client-Secret`
 
-The Portal mapping keeps `on_behalf = false`, so the admin credential is used
-both for catalog synchronization and Portal-to-upstream requests. A client
-authenticates only to `mcp.yourown.chat`; it is not prompted to authorize the
-Terraform and Google Cloud servers separately. The servers still use their
-own in-cluster workload credentials for calls to HCP Terraform and Google
-Cloud.
+The Portal mapping keeps `on_behalf = false`. A human authenticates only to
+`mcp.yourown.chat` using Portal Managed OAuth and is not prompted separately
+for Terraform or Google Cloud. The MCP processes still use their own
+in-cluster workload credentials for calls to HCP Terraform and Google Cloud.
+
+Continue only after both AI Controls entries show `Ready` and a non-zero tool
+count. `Waiting` means Cloudflare cannot yet initialize the upstream MCP
+session: inspect the status error, verify the direct hostname and Access
+policy, then select **… → Sync capabilities**. The service token lasts one
+year (`8760h`); rotate it before expiry by replacing the resource through
+Terraform. The temporary shared token is intentional—split it into one token
+and least-privilege policy per MCP server when the role model is implemented.
 
 ## DNSSEC registrar transfer
 

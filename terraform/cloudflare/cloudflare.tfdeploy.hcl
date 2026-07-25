@@ -56,8 +56,9 @@ deployment "yourown-chat" {
 
     # Zero Trust (Access + Tunnel) for private services. PREREQUISITE Terraform
     # cannot do: the varset API token must carry ACCOUNT permissions (Cloudflare
-    # Tunnel:Edit + Access: Apps and Policies:Edit + Access: Organizations,
-    # Identity Providers, and Groups:Edit + MCP Portals:Edit) before applying.
+    # Tunnel:Edit + Access: Apps and Policies:Edit + Access: Service
+    # Tokens:Edit + Access: Organizations, Identity Providers, and
+    # Groups:Edit + MCP Portals:Edit) before applying.
     # The flag is the kill switch for the external private-service path. Human
     # MCP clients also require Managed OAuth. Migrate this stack and its state
     # to provider 5.x before managing that setting and the MCP Portal in IaC
