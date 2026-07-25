@@ -23,7 +23,14 @@ output "mcp_portal_access_application_id" {
   description = "UUID Cloudflare generated for the Portal Access application. Computed after Portal creation so Stacks defers its importing component."
   value = one([
     for application in data.cloudflare_zero_trust_access_applications.mcp_portal.result : application.id
-    if application.type == "mcp_portal"
+    if application.type == "mcp_portal" && (
+      (application.name != null ? application.name : "") == cloudflare_zero_trust_access_ai_controls_mcp_portal.this.name ||
+      (application.domain != null ? application.domain : "") == cloudflare_zero_trust_access_ai_controls_mcp_portal.this.hostname ||
+      startswith(
+        application.domain != null ? application.domain : "",
+        "${cloudflare_zero_trust_access_ai_controls_mcp_portal.this.hostname}/"
+      )
+    )
   ])
 }
 

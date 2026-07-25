@@ -103,6 +103,7 @@ component "zero_trust" {
   providers = {
     cloudflare = provider.cloudflare.this
     random     = provider.random.this
+    time       = provider.time.this
   }
 }
 

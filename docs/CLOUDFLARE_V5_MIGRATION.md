@@ -100,12 +100,15 @@ of creating the Portal, but its UUID is not exposed by the Portal Terraform
 resource. The Stack resolves this without a manual UUID or a second deployment:
 
 1. `component.zero_trust` creates the Portal;
-2. a data source in that component is deferred until the Portal exists, then
-   discovers the generated application by its exact hostname and type;
-3. its computed UUID is passed to `component.zero_trust_portal_access`;
+2. a bounded 20-second consistency wait lets the separate Access API observe
+   Cloudflare's automatically generated application;
+3. a data source lists the account's Access applications without relying on
+   Cloudflare's eventually-consistent domain filter, then discovers the portal
+   by type plus name/hostname;
+4. its computed UUID is passed to `component.zero_trust_portal_access`;
    because the import ID is unknown during the initial plan, HCP Terraform
    defers the entire dependent component;
-4. its declarative `import` adopts the generated UUID and applies the email
+5. its declarative `import` adopts the generated UUID and applies the email
    allow policy, Managed OAuth, dynamic client registration, and token
    lifetimes.
 
