@@ -93,6 +93,19 @@ git push origin 1.2.3
 Component tags are intentionally not used. A platform version identifies one
 reviewed repository state while the router avoids rolling unchanged workloads.
 
+Platform tags follow an immutable-after-trigger policy:
+
+- if a remote tag has started any Cloud Build release process, keep it forever,
+  even when the build fails before Cloud Deploy creates a release;
+- fix the problem in a new commit and publish the next semver tag;
+- a tag may be deleted and recreated only when no Cloud Build was ever started
+  for it and no Cloud Deploy release was created from it;
+- never force-push an already triggered tag.
+
+This keeps build, rollout, and audit records tied to one exact commit. Before
+recreating an untriggered tag, verify in Cloud Build that no build exists for
+the tag and in Cloud Deploy that no release carries that version.
+
 ## Mattermost guarantees
 
 The dev stage deploys one Mattermost instance and waits for

@@ -157,8 +157,7 @@ resource "google_cloudbuild_trigger" "release" {
           else
             git fetch --tags --force
           fi
-          previous_tag="$$(git tag --merged "$COMMIT_SHA^" --sort=-version:refname |
-            grep -E '^[0-9]+\\.[0-9]+\\.[0-9]+$' | head -1 || true)"
+          previous_tag="$$(bash "${var.source_subdir}/previous-platform-tag.sh" "$COMMIT_SHA")"
           if [ -n "$$previous_tag" ]; then
             git diff --name-only "$$previous_tag" "$COMMIT_SHA" > /workspace/changed-files
           else

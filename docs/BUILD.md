@@ -81,6 +81,11 @@ A semver tag in `pilprod/yourown-chat` remains the release mechanism for
 manifest or delivery changes. Its diff router creates a Mattermost release only
 when Mattermost paths changed. See [DEPLOY.md](DEPLOY.md).
 
+Once a tag starts any Cloud Build release process it is immutable, including
+when that process fails. Publish a new semver tag for the corrected commit.
+Deleting and recreating a tag is allowed only when Cloud Build has never
+started for it and Cloud Deploy has no release derived from it.
+
 ## MCP image factory
 
 MCP images use one declarative factory rather than per-image Cloud Build
