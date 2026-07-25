@@ -22,5 +22,7 @@ locals {
 }
 
 data "cloudflare_zone" "this" {
-  name = var.domain
+  filter = {
+    name = var.domain
+  }
 }

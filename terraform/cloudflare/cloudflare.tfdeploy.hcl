@@ -88,3 +88,8 @@ publish_output "zero_trust_ready" {
   description = "True once the Cloudflare Zero Trust tunnel token Secret Manager version exists. app-gcp derives zero_trust_enabled from it."
   value       = deployment.yourown-chat.zero_trust_ready
 }
+
+publish_output "mcp_portal_url" {
+  description = "Single Cloudflare Managed OAuth endpoint for Claude, ChatGPT and other remote MCP clients."
+  value       = deployment.yourown-chat.mcp_portal_url
+}

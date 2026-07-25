@@ -56,20 +56,26 @@ resource "tls_self_signed_cert" "aop" {
   allowed_uses = ["digital_signature", "key_encipherment", "client_auth"]
 }
 
-resource "cloudflare_authenticated_origin_pulls_certificate" "aop" {
+resource "cloudflare_authenticated_origin_pulls_hostname_certificate" "aop" {
   count = var.aop_enabled ? 1 : 0
 
   zone_id     = data.cloudflare_zone.this.id
   certificate = tls_self_signed_cert.aop.cert_pem
   private_key = tls_private_key.aop.private_key_pem
-  type        = "per-hostname"
+}
+
+moved {
+  from = cloudflare_authenticated_origin_pulls_certificate.aop
+  to   = cloudflare_authenticated_origin_pulls_hostname_certificate.aop
 }
 
 resource "cloudflare_authenticated_origin_pulls" "aop" {
   count = var.aop_enabled ? 1 : 0
 
-  zone_id                                = data.cloudflare_zone.this.id
-  hostname                               = local.apex_record_name
-  authenticated_origin_pulls_certificate = cloudflare_authenticated_origin_pulls_certificate.aop[0].id
-  enabled                                = true
+  zone_id = data.cloudflare_zone.this.id
+  config = [{
+    hostname = local.apex_record_name
+    cert_id  = cloudflare_authenticated_origin_pulls_hostname_certificate.aop[0].id
+    enabled  = true
+  }]
 }

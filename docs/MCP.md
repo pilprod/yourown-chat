@@ -420,18 +420,14 @@ change the downstream identity used by a server: Google Cloud MCP still calls
 Google Cloud through its shared GKE Workload Identity service account, while
 Terraform MCP still uses its configured HCP credential.
 
-The current Cloudflare stack is pinned to provider 4.x, which predates the
-`oauth_configuration` and MCP Portal resources. This is a provider-migration
-constraint, not a Cloudflare or Terraform limitation: provider 5.x can manage
-both. A Dashboard toggle is acceptable only as a temporary connectivity test;
-it is not the desired state because provider 4.x cannot detect or preserve that
-field reliably. The permanent change must migrate the existing Cloudflare
-resources and state to provider 5.x, then declare Managed OAuth and a single
-`https://mcp.yourown.chat/mcp` Cloudflare MCP Portal in IaC. This matters for
-Claude Free, which permits one custom connector: one portal can expose both
-servers through that single connector. The portal must use Managed OAuth and a
-proxied CNAME to `gateway.agents.cloudflare.com`. The required two-apply
-procedure is documented in
+The Cloudflare stack uses provider 5.22.x and declares Managed OAuth on both
+direct MCP applications. It also registers both servers in AI Controls and
+creates a single `https://mcp.yourown.chat/mcp` MCP Portal. This matters for
+Claude Free, which permits one custom connector: one portal exposes both
+servers through that connector. The Portal uses Managed OAuth and a proxied
+CNAME to `gateway.agents.cloudflare.com`. Cloudflare auto-creates the Portal's
+Access application, so one post-create import is required before Terraform can
+attach its policy; the exact fail-closed procedure is documented in
 [`CLOUDFLARE_V5_MIGRATION.md`](CLOUDFLARE_V5_MIGRATION.md); do not create a
 second Stack that owns the same objects.
 
@@ -468,16 +464,15 @@ Client availability is not identical:
 4. Release: the cloudflared pod connects outbound; hostnames go live behind
    Access. Until step 3 lands the pod waits in CreateContainerConfigError and
    recovers on its own.
-5. For a temporary connectivity test only, enable Managed OAuth on both MCP
-   Access applications in the Dashboard as described above.
-6. Complete both phases in
-   [`CLOUDFLARE_V5_MIGRATION.md`](CLOUDFLARE_V5_MIGRATION.md), migrate the
-   Cloudflare stack and state to provider 5.x, declare
-   Managed OAuth in `cloudflare_zero_trust_access_application`, create the
-   **MCP Server Portal**, register both MCP hostnames, attach the same email
-   allow policy, and publish `mcp.yourown.chat` as a proxied CNAME to
-   `gateway.agents.cloudflare.com`. Use `https://mcp.yourown.chat/mcp` in
-   personal clients.
+5. Apply the v5 migration in
+   [`CLOUDFLARE_V5_MIGRATION.md`](CLOUDFLARE_V5_MIGRATION.md). The
+   `zero_trust_portal_access` dependent component is deferred until Cloudflare
+   creates the Portal, then its convergence plan automatically discovers and
+   imports the generated Access application and attaches the allow policy and
+   Managed OAuth in the same Stack deployment.
+6. Complete one-time interactive upstream OAuth authorization for the two
+   registered servers in Cloudflare AI Controls. Use
+   `https://mcp.yourown.chat/mcp` in personal clients.
 
 ### Automated rollout verification
 

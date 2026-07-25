@@ -12,10 +12,15 @@ resource "random_id" "tunnel_secret" {
 }
 
 resource "cloudflare_zero_trust_tunnel_cloudflared" "this" {
+  account_id    = var.account_id
+  name          = "yourown-chat-private"
+  tunnel_secret = random_id.tunnel_secret.b64_std
+  config_src    = "cloudflare"
+}
+
+data "cloudflare_zero_trust_tunnel_cloudflared_token" "this" {
   account_id = var.account_id
-  name       = "yourown-chat-private"
-  secret     = random_id.tunnel_secret.b64_std
-  config_src = "cloudflare"
+  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.this.id
 }
 
 # hostname -> in-cluster service URL; a catch-all 404 closes everything else.
@@ -23,22 +28,19 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "this" {
   account_id = var.account_id
   tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.this.id
 
-  config {
-    dynamic "ingress_rule" {
-      for_each = var.upstreams
-      content {
-        hostname = "${ingress_rule.key}.${var.domain}"
-        service  = ingress_rule.value
-      }
-    }
-    ingress_rule {
-      service = "http_status:404"
-    }
+  config = {
+    ingress = concat(
+      [for label, service in var.upstreams : {
+        hostname = "${label}.${var.domain}"
+        service  = service
+      }],
+      [{ service = "http_status:404" }]
+    )
   }
 }
 
 # Proxied DNS onto the tunnel (no origin IP; points at cfargotunnel.com).
-resource "cloudflare_record" "this" {
+resource "cloudflare_dns_record" "this" {
   for_each = var.upstreams
 
   zone_id = var.zone_id
@@ -50,8 +52,27 @@ resource "cloudflare_record" "this" {
   comment = "Private service behind Cloudflare Tunnel + Access (Managed by Terraform)."
 }
 
-# Access application + allow-list policy per hostname: only the listed emails
-# pass the edge (checked before the request reaches the tunnel).
+moved {
+  from = cloudflare_record.this
+  to   = cloudflare_dns_record.this
+}
+
+locals {
+  mcp_upstreams = {
+    for label, service in var.upstreams : label => service
+    if startswith(label, "mcp-")
+  }
+
+  managed_oauth_allowed_uris = [
+    "https://claude.ai/api/mcp/auth_callback",
+    "https://chatgpt.com/*",
+    "https://playground.ai.cloudflare.com/*",
+    "https://oauth-callbacks.cloudflareaccess.com/cdn-cgi/access/outbound-oauth-callback",
+  ]
+}
+
+# Access application + inline allow-list policy per hostname. Provider v5 no
+# longer manages application-scoped policies as standalone resources.
 resource "cloudflare_zero_trust_access_application" "this" {
   for_each = var.upstreams
 
@@ -60,18 +81,98 @@ resource "cloudflare_zero_trust_access_application" "this" {
   domain           = "${each.key}.${var.domain}"
   type             = "self_hosted"
   session_duration = var.session_duration
+
+  oauth_configuration = startswith(each.key, "mcp-") ? {
+    enabled = true
+    dynamic_client_registration = {
+      enabled                = true
+      allow_any_on_localhost = true
+      allow_any_on_loopback  = true
+      allowed_uris           = local.managed_oauth_allowed_uris
+    }
+    grant = {
+      access_token_lifetime = "15m"
+      session_duration      = "336h"
+    }
+  } : null
+
+  policies = [{
+    name       = "allowed-emails"
+    precedence = 1
+    decision   = "allow"
+    include    = [for email in var.allowed_emails : { email = { email = email } }]
+  }]
 }
 
-resource "cloudflare_zero_trust_access_policy" "allow" {
-  for_each = var.upstreams
+removed {
+  from = cloudflare_zero_trust_access_policy.allow
 
-  account_id     = var.account_id
-  application_id = cloudflare_zero_trust_access_application.this[each.key].id
-  name           = "allowed-emails"
-  precedence     = 1
-  decision       = "allow"
-
-  include {
-    email = var.allowed_emails
+  lifecycle {
+    destroy = false
   }
+}
+
+# AI Controls catalog entry for every public MCP origin. OAuth is Cloudflare
+# Access Managed OAuth on the self-hosted application above. The shared
+# callback avoids a portal-specific redirect URI.
+resource "cloudflare_zero_trust_access_ai_controls_mcp_server" "this" {
+  for_each = local.mcp_upstreams
+
+  account_id                       = var.account_id
+  id                               = trimprefix(each.key, "mcp-")
+  name                             = each.key
+  description                      = "yourown-chat ${each.key} MCP server"
+  hostname                         = "https://${each.key}.${var.domain}/mcp"
+  auth_type                        = "oauth"
+  is_shared_oauth_callback_enabled = true
+  secure_web_gateway               = false
+}
+
+# A dedicated type=mcp Access application controls which authenticated users
+# can discover each server through a portal. It is separate from the
+# self_hosted application that protects the server's direct URL.
+resource "cloudflare_zero_trust_access_application" "mcp_server" {
+  for_each = local.mcp_upstreams
+
+  account_id = var.account_id
+  name       = "${each.key}-portal-policy"
+  type       = "mcp"
+  destinations = [{
+    type          = "via_mcp_server_portal"
+    mcp_server_id = cloudflare_zero_trust_access_ai_controls_mcp_server.this[each.key].id
+  }]
+
+  policies = [{
+    name       = "allowed-emails"
+    precedence = 1
+    decision   = "allow"
+    include    = [for email in var.allowed_emails : { email = { email = email } }]
+  }]
+}
+
+resource "cloudflare_zero_trust_access_ai_controls_mcp_portal" "this" {
+  account_id         = var.account_id
+  id                 = "yourown-chat"
+  name               = "yourown-chat"
+  description        = "Curated MCP access for yourown-chat agents"
+  hostname           = "mcp.${var.domain}"
+  allow_code_mode    = true
+  secure_web_gateway = false
+
+  servers = [for server in cloudflare_zero_trust_access_ai_controls_mcp_server.this : {
+    server_id        = server.id
+    default_disabled = false
+    on_behalf        = true
+  }]
+}
+
+# The Portal API does not create DNS when called by Terraform.
+resource "cloudflare_dns_record" "mcp_portal" {
+  zone_id = var.zone_id
+  name    = "mcp"
+  type    = "CNAME"
+  content = "gateway.agents.cloudflare.com"
+  proxied = true
+  ttl     = 1
+  comment = "Cloudflare MCP Portal (Managed by Terraform)."
 }

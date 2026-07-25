@@ -5,22 +5,22 @@ output "zone_id" {
 
 output "account_id" {
   description = "Cloudflare account ID owning the zone. Feeds the zero-trust module (tunnels and Access apps are account-level), so no hand-copied account ID input is needed."
-  value       = data.cloudflare_zone.this.account_id
+  value       = data.cloudflare_zone.this.account.id
 }
 
 output "record_hostname" {
   description = "Fully-qualified hostname of the managed apex A record."
-  value       = cloudflare_record.apex.hostname
+  value       = cloudflare_dns_record.apex.name
 }
 
 output "record_id" {
   description = "ID of the managed apex A record."
-  value       = cloudflare_record.apex.id
+  value       = cloudflare_dns_record.apex.id
 }
 
 output "origin_ip" {
   description = "IPv4 the proxied apex A record points at (echoes the platform ingress IP)."
-  value       = cloudflare_record.apex.content
+  value       = cloudflare_dns_record.apex.content
 }
 
 output "dnssec" {

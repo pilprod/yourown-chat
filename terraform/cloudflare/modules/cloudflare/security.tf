@@ -15,15 +15,12 @@ resource "cloudflare_ruleset" "custom_firewall" {
   kind    = "zone"
   phase   = "http_request_firewall_custom"
 
-  dynamic "rules" {
-    for_each = var.custom_firewall_rules
-    content {
-      action      = rules.value.action
-      expression  = rules.value.expression
-      description = rules.value.description
-      enabled     = rules.value.enabled
-    }
-  }
+  rules = [for rule in var.custom_firewall_rules : {
+    action      = rule.action
+    expression  = rule.expression
+    description = rule.description
+    enabled     = rule.enabled
+  }]
 }
 
 resource "cloudflare_ruleset" "managed_waf" {
@@ -34,15 +31,17 @@ resource "cloudflare_ruleset" "managed_waf" {
   kind    = "zone"
   phase   = "http_request_firewall_managed"
 
-  rules {
-    action      = "execute"
-    description = "Deploy the Cloudflare Managed Ruleset"
-    expression  = "true"
-    enabled     = true
-    action_parameters {
-      id = "efb7b8c949ac4650a09736fc376e9aee" # Cloudflare Managed Ruleset
+  rules = [
+    {
+      action      = "execute"
+      description = "Deploy the Cloudflare Managed Ruleset"
+      expression  = "true"
+      enabled     = true
+      action_parameters = {
+        id = "efb7b8c949ac4650a09736fc376e9aee" # Cloudflare Managed Ruleset
+      }
     }
-  }
+  ]
 }
 
 resource "cloudflare_ruleset" "rate_limit" {
@@ -53,20 +52,16 @@ resource "cloudflare_ruleset" "rate_limit" {
   kind    = "zone"
   phase   = "http_ratelimit"
 
-  dynamic "rules" {
-    for_each = var.rate_limit_rules
-    content {
-      action      = rules.value.action
-      expression  = rules.value.expression
-      description = rules.value.description
-      enabled     = true
-
-      ratelimit {
-        characteristics     = rules.value.characteristics
-        period              = rules.value.period
-        requests_per_period = rules.value.requests_per_period
-        mitigation_timeout  = rules.value.mitigation_timeout
-      }
+  rules = [for rule in var.rate_limit_rules : {
+    action      = rule.action
+    expression  = rule.expression
+    description = rule.description
+    enabled     = true
+    ratelimit = {
+      characteristics     = rule.characteristics
+      period              = rule.period
+      requests_per_period = rule.requests_per_period
+      mitigation_timeout  = rule.mitigation_timeout
     }
-  }
+  }]
 }

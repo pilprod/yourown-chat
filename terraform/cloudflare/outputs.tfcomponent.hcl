@@ -78,3 +78,14 @@ output "zero_trust_ready" {
   ) : false
 }
 
+output "mcp_portal_url" {
+  type        = string
+  description = "Single Cloudflare Managed OAuth MCP endpoint for remote clients."
+  value       = length(component.zero_trust) > 0 ? one([for z in component.zero_trust : z.mcp_portal_url]) : null
+}
+
+output "mcp_server_ids" {
+  type        = map(string)
+  description = "Cloudflare AI Controls MCP server IDs keyed by upstream hostname label."
+  value       = length(component.zero_trust) > 0 ? one([for z in component.zero_trust : z.mcp_server_ids]) : {}
+}
