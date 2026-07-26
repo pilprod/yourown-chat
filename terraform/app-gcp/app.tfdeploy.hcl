@@ -69,14 +69,13 @@ deployment "eu" {
 
     # Derived from the cloudflare stack's published outputs -- origin_tls_ready
     # and zero_trust_ready are true when Secret Manager versions exist.
-    # try() guards against a not-yet-reapplied cloudflare stack missing the output.
+    # try() guards the initial bootstrap. Once cloudflare publishes readiness,
+    # a fresh app-gcp deployment installs the POSTDEPLOY sync action.
     zero_trust_enabled = try(upstream_input.cloudflare.zero_trust_ready, false)
     mcp_capability_sync_enabled = try(
       upstream_input.cloudflare.mcp_capability_sync_ready,
       false,
     )
-
-
 
     # Cloud Build 2nd-gen GitHub connection, authorized once out-of-band in the
     # console (README.md); both repos are linked to it.
