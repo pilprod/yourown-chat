@@ -3,6 +3,6 @@ name: mattermost
 description: Mattermost application chart promoted from dev migration tests to production.
 type: application
 version: 0.1.0
-# The image-triggered release substitutes the exact immutable v*-patched tag
-# in its frozen Cloud Deploy source checkout.
+# The image-triggered release records the human-readable v*-patched source tag
+# here, while deployment parameters freeze the actual image by digest.
 appVersion: "from-image-trigger"

@@ -58,7 +58,9 @@ Terraform apply; it contains no important data.
 Pushing `v*.*-patched` in `pilprod/mattermost` starts the image build. Only
 after the image is successfully pushed does that build clone `yourown-chat`
 `main` and create a release in the `mattermost` pipeline. Both stages receive
-the same image tag; the image digest is recorded in release annotations.
+the same immutable image digest. The source tag remains in Chart metadata and
+release annotations for readability, but is never used as the Kubernetes image
+identity.
 
 ```bash
 git tag v9.11.3-patched
@@ -66,8 +68,11 @@ git push origin v9.11.3-patched
 ```
 
 This path needs no second tag in `yourown-chat`.
-Its Cloud Deploy release ID is derived from the image version, without the
-source-only `v` and `-patched` markers: `mattermost-11-9-0-img`.
+Its Cloud Deploy release ID is derived from the image version and includes the
+short release-source commit plus the short Cloud Build ID when the production
+rollout name remains within 63 characters:
+`mattermost-11-9-0-img-a1b2c3d4-12345678`. If it does not fit, only the
+optional build suffix is dropped; the source commit is retained.
 
 ### A unified platform tag
 
@@ -83,9 +88,10 @@ compares the tagged commit with the previous semver platform tag:
 - unrelated changes create no Cloud Deploy release.
 
 For a routed Mattermost release, the trigger resolves the newest
-`v*-patched` tag in Artifact Registry and passes it to both stages. A later
-platform release therefore cannot accidentally restore the static chart
-default after a direct image-triggered rollout.
+`v*-patched` tag in Artifact Registry, freezes its current digest, and passes
+that immutable digest to both stages. A later platform release therefore
+cannot accidentally restore the static chart default or skip a rollout because
+a mutable tag string stayed unchanged.
 
 ```bash
 git tag 1.2.3

@@ -12,8 +12,9 @@ metadata:
   name: mattermost
   namespace: mattermost
 spec:
-  # The operator assembles the ref as "<image>:<version>"; version is the
-  # pushed git tag (^v.*-patched$).
+  # The operator recognizes a sha256-prefixed version and assembles the
+  # immutable ref as "<image>@<version>". This makes the resulting Deployment
+  # pod template change even when a source tag was rebuilt in the registry.
   image: "europe-west3-docker.pkg.dev/yourown-chat/docker/mattermost"
   version: {{ required "Cloud Deploy parameter mattermost_version is required" .Values.mattermost_version | quote }}
   replicas: 1

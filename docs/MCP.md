@@ -108,7 +108,7 @@ constraints (especially for consumer services without a public API).
 
 | Service | Server | Credentials |
 |---|---|---|
-| Terraform (Registry + **HCP Terraform**) | internally mirrored `hashicorp/terraform-mcp-server@sha256:67b4…` (official) — registry docs tokenless; workspaces/runs/stacks on app.terraform.io once `TFE_TOKEN` is loaded | HCP user token in Secret Manager (`mcp-terraform-hcp-token`, placeholder seeded) |
+| Terraform (Registry + **HCP Terraform**) | internally mirrored `hashicorp/terraform-mcp-server:1.1.0@sha256:312d…` (official) — registry docs tokenless; workspaces/runs/stacks on app.terraform.io once `TFE_TOKEN` is loaded | HCP user token in Secret Manager (`mcp-terraform-hcp-token`, placeholder seeded) |
 | Terraform Stacks management | internally built `mcp-terraform-stacks` adapter over the official HCP Terraform Stacks API; guarded settings read/create/update plus deployment plan inspection and run-scoped approve/cancel | same HCP user token, with Project Maintain or higher and its owner authorized for the repository's HCP GitHub App |
 | Google Cloud (Observability + Artifact Analysis + guarded Cloud Deploy lifecycle) | internally built `mcp-google-cloud` image: `@google-cloud/observability-mcp@0.2.3` (Google, preview) behind a native Streamable HTTP aggregator | **none — keyless**: separate Workload Identity principals for prod lifecycle and disposable read-only dev; quota project is `yourown-chat` |
 | WhatsApp Business | internally built adapter over the official Meta WhatsApp Cloud API | Meta system-user token, WABA ID and phone-number ID in Secret Manager |
@@ -235,11 +235,17 @@ database changes. A rebuild is required only to consume fixed base packages or
 an updated npm lock.
 
 `docker/base/Dockerfile` produces the internally scanned
-`base` image from a pinned Debian digest.
+`base` image from a pinned Debian 13 digest and installs all available package
+updates during the build.
 `docker/base/node.Dockerfile` and `docker/base/python.Dockerfile` create the
 language runtimes on top; application Dockerfiles consume only
 `RUNTIME_IMAGE`. This centralises CA certificates, the non-root UID, OS
 packages, and runtime policy without adding Node to the Python image.
+The Node runtime contains the `node` executable but not npm, npx, Corepack, or
+their package-management dependency trees; each application resolves its lock
+file in a disposable build stage and copies only production `node_modules`.
+The Python runtime copies the official standalone `uv` binaries and does not
+carry pip/setuptools metadata.
 
 `docker/images.tsv` is the single image catalog for built and mirrored images.
 Both the tag-triggered and manual Cloud Build paths call
@@ -250,8 +256,10 @@ source, description, revision and version labels, all come from the catalog.
 Parent changes propagate through the catalog, missing
 `runtime` tags bootstrap automatically, and every published image also gets an
 immutable build tag. Mattermost remains on its upstream image, while the
-official Terraform and cloudflared images are catalogued as byte-for-byte
-mirrors rather than rebased.
+official Terraform image is mirrored by digest. Cloudflared is compiled from
+the unmodified commit behind the pinned official release tag with a patched
+pinned Go toolchain and copied into the same pinned distroless runtime family
+used upstream.
 
 For a local build, build the base once and pass it explicitly:
 
@@ -265,8 +273,10 @@ docker build --build-arg RUNTIME_IMAGE=node:local \
 ```
 
 `docker/mcp/upstreams.env` is the reviewable upstream lock for the other
-runtime images. Terraform MCP 0.5.2 and cloudflared 2026.7.3 are pulled by their
-official multi-architecture digest and mirrored into the internal repository.
+runtime images. Terraform MCP 1.1.0 is pulled by its official
+multi-architecture digest. Cloudflared 2026.7.3 is checked out at commit
+`3a2b45c2a511fcdd81b68c190938e4ffadbea5dc` and rebuilt with Go 1.26.5
+rather than the vulnerable Go 1.26.4 used by the upstream container.
 WhatsApp Business is built from the committed Node.js source and lock file in
 `docker/mcp/whatsapp-business`. Every in-cluster workload is rendered with an
 Artifact Registry `@sha256` reference.

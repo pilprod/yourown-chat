@@ -55,10 +55,11 @@ spec:
         fsGroup: 2000
       containers:
         - name: mattermost
-          # Custom (patched) image built by the image-CI components (terraform/) on
-          # git tags matching ^v.*-patched$ and pushed to the unified registry
-          # (docker). Build once, promote the SAME image dev -> prod: dev
-          # and prod reference the identical tag (no separate -patched-dev build).
+          # Custom (patched) image built by the image-CI components (terraform/)
+          # on git tags matching ^v.*-patched$ and pushed to the unified
+          # registry. Cloud Deploy freezes the tag to repository@sha256 before
+          # rendering, so replacing a mutable tag always changes the pod
+          # template and the exact same digest is promoted to production.
           image: {{ required "Cloud Deploy parameter mattermost_dev_image is required" .Values.mattermost_dev_image | quote }}
           env:
             - name: POSTGRES_PASSWORD

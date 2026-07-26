@@ -1,16 +1,18 @@
+ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.11.32@sha256:df4cae8f3a96d175e2e5f992e597550000edbe78fdc2594d5cd8de1a217f504c
 ARG BASE_IMAGE=base:local
-FROM ${BASE_IMAGE}
 
-ARG UV_VERSION=0.11.32
+FROM ${UV_IMAGE} AS uv-runtime
+
+FROM ${BASE_IMAGE}
 
 USER root
 
 RUN apt-get update \
-    && apt-get install --yes --no-install-recommends python3 python3-venv \
-    && rm -rf /var/lib/apt/lists/* \
-    && python3 -m venv /opt/uv \
-    && /opt/uv/bin/pip install --no-cache-dir "uv==${UV_VERSION}"
+    && apt-get install --yes --no-install-recommends python3 \
+    && rm -rf /var/lib/apt/lists/*
 
-ENV PATH="/opt/uv/bin:${PATH}"
+# Copy the official standalone binaries. A runtime Python image does not need
+# pip, setuptools, wheel, or a virtualenv containing their vulnerable metadata.
+COPY --from=uv-runtime /uv /uvx /usr/local/bin/
 
 USER 65532:65532

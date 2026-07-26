@@ -33,6 +33,8 @@ service-account*.json
 *.swp
 .idea/
 .vscode/
+.codex/*
+!.codex/config.toml
 
 # JavaScript / TypeScript
 **/node_modules/

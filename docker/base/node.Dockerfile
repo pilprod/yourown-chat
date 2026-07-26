@@ -1,4 +1,4 @@
-ARG NODE_IMAGE=node:22.22.0-bookworm-slim@sha256:dd9d21971ec4395903fa6143c2b9267d048ae01ca6d3ea96f16cb30df6187d94
+ARG NODE_IMAGE=node:22.23.1-bookworm-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3
 ARG BASE_IMAGE=base:local
 
 FROM ${NODE_IMAGE} AS language-runtime
@@ -7,8 +7,12 @@ FROM ${BASE_IMAGE}
 
 USER root
 
-COPY --from=language-runtime /usr/local/ /usr/local/
+# Runtime images do not install packages. Keep npm, npx, Corepack and their
+# dependency trees in ephemeral build stages instead of publishing their CVEs
+# in every Node service image.
+COPY --from=language-runtime /usr/local/bin/node /usr/local/bin/node
 
-ENV NODE_ENV=production
+ENV NODE_ENV=production \
+    NODE_VERSION=22.23.1
 
 USER 65532:65532

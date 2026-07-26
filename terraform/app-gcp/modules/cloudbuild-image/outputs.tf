@@ -19,6 +19,6 @@ output "trigger_ids" {
 }
 
 output "image_path" {
-  description = "Full unified image path (no tag), e.g. europe-west3-docker.pkg.dev/PROJECT/docker/mattermost. Reference this in the Mattermost manifests with the pushed tag (single tag, e.g. :v9.11.3-patched, promoted dev -> prod)."
+  description = "Full unified image path (no tag), e.g. europe-west3-docker.pkg.dev/PROJECT/docker/mattermost. The release resolves the pushed source tag and promotes one immutable digest dev -> prod."
   value       = local.image_repo_path
 }

@@ -1,6 +1,6 @@
 # Mattermost image CI
 
-The platform builds one patched Mattermost image and promotes that exact tag
+The platform builds one patched Mattermost image and promotes its exact digest
 through the `mattermost` Cloud Deploy pipeline.
 
 ```text
@@ -43,8 +43,14 @@ The build:
 2. resolves its digest;
 3. clones `pilprod/yourown-chat` at `main`;
 4. creates a `mattermost` release from `helm/`;
-5. passes the new tag to both dev and prod render parameters and records the
-   source tag, commit, and digest in annotations.
+5. passes `repository@sha256:...` to dev and the same `sha256:...` to the
+   Mattermost Operator's digest-aware `spec.version` in prod;
+6. records the source tag, commit, build ID, and digest in the release identity
+   and annotations.
+
+Resolving the tag before creating the release is mandatory. Reusing a mutable
+tag string in a Deployment pod template does not create a new ReplicaSet when
+the registry moves that tag to another digest.
 
 The deployment is started only after the push succeeds. There is no need to
 edit both Mattermost manifests or create a second platform tag for a normal
@@ -131,6 +137,8 @@ base (pinned Debian)
 └── python
 ```
 
-Terraform MCP and cloudflared are entries of type `mirror`: their official
-digests are copied byte-for-byte into Artifact Registry. Mattermost is built
-and released by its separate source-repository pipeline.
+Terraform MCP is copied from the current official release digest.
+Cloudflared is built from the exact commit behind an official release tag with
+a pinned patched Go toolchain because the corresponding upstream container can
+lag a Go security patch. Mattermost is built and released by its separate
+source-repository pipeline.

@@ -120,6 +120,9 @@ while IFS=$'\t' read -r name artifact_path kind dockerfile context parent_arg pa
       --label "org.opencontainers.image.revision=${image_vcs_ref}"
       --label "org.opencontainers.image.version=${image_build_version}"
     )
+    if [[ "${version_env}" != "-" ]]; then
+      build_args+=(--build-arg "UPSTREAM_VERSION=${image_build_version}")
+    fi
     if [[ "${parent}" != "-" ]]; then
       parent_image="$(get_image_ref "${parent}" || true)"
       [[ -n "${parent_image}" ]] || {

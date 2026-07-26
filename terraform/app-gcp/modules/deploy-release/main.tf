@@ -256,15 +256,17 @@ resource "google_cloudbuild_trigger" "release" {
 
           create_release() {
             pipeline="$$1"
-            shift
-            gcloud deploy releases create "$$pipeline-$$safe_tag-$SHORT_SHA-$$short_build" \
+            release_id="$$2"
+            annotations="$$3"
+            shift 3
+            gcloud deploy releases create "$$release_id" \
               --project "${var.project_id}" \
               --region "${var.region}" \
               --delivery-pipeline "$$pipeline" \
               --source "." \
               --skaffold-file "skaffold-$$pipeline.yaml" \
               --gcs-source-staging-dir "gs://${google_storage_bucket.source.name}/source" \
-              --annotations "git-tag=$TAG_NAME,git-sha=$COMMIT_SHA,previous-tag=$$previous_tag" \
+              --annotations "$$annotations" \
               "$$@"
           }
 
@@ -274,15 +276,32 @@ resource "google_cloudbuild_trigger" "release" {
               --filter="tag~'/tags/v.*-patched$$'" \
               --format='value(tag)' | sort -V | tail -n1)"
             [ -n "$$mattermost_tag" ] || { echo "No v*-patched Mattermost image tag found"; exit 1; }
-            create_release mattermost \
-              --deploy-parameters "mattermost_dev_image=$$image_repo:$$mattermost_tag,mattermost_version=$$mattermost_tag"
+            mattermost_tag="$${mattermost_tag##*/}"
+            digest="$$(gcloud artifacts docker images describe \
+              "$$image_repo:$$mattermost_tag" \
+              --format='value(image_summary.digest)')"
+            deploy_parameters="$$(bash mattermost-image-parameters.sh \
+              "$$image_repo" \
+              "$$digest")"
+            mattermost_release_id="$$(bash mattermost-release-id.sh \
+              "$$mattermost_tag" \
+              "$COMMIT_SHA" \
+              "$BUILD_ID")"
+            create_release \
+              mattermost \
+              "$$mattermost_release_id" \
+              "git-tag=$TAG_NAME,git-sha=$COMMIT_SHA,build-id=$BUILD_ID,previous-tag=$$previous_tag,image-tag=$$mattermost_tag,image-digest=$$digest" \
+              --deploy-parameters "$$deploy_parameters"
           fi
           if [ "${var.mcp_enabled}" = "true" ]; then
             if [ "$$mcp_changed" = "true" ]; then
               deploy_parameters="$$(AR_PREFIX="${local.artifact_repository_prefix}" \
                 OUTPUT_DIR="/workspace" \
                 bash ../docker/deploy-parameters.sh)"
-              create_release mcp \
+              create_release \
+                mcp \
+                "mcp-$$safe_tag-$SHORT_SHA-$$short_build" \
+                "git-tag=$TAG_NAME,git-sha=$COMMIT_SHA,build-id=$BUILD_ID,previous-tag=$$previous_tag" \
                 --deploy-parameters "$$deploy_parameters"
             fi
           elif [ "$$mcp_changed" = "true" ]; then

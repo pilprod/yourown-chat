@@ -157,13 +157,19 @@ resource "google_cloudbuild_trigger" "this" {
         <<-EOT
           image="${local.image_repo_path}:$TAG_NAME"
           digest="$$(gcloud artifacts docker images describe "$$image" --format='value(image_summary.digest)')"
+          deploy_parameters="$$(bash \
+            /workspace/yourown-chat/helm/mattermost-image-parameters.sh \
+            "${local.image_repo_path}" \
+            "$$digest")"
 
-          # An immutable image tag maps to one readable Cloud Deploy release.
-          # The helper strips v/-patched and only falls back to mm- when the
-          # derived production rollout would exceed the 63-character limit.
+          # Include both the source commit and this build when the derived
+          # production rollout stays within Cloud Deploy's 63-character limit.
+          # The build suffix is optional; the source commit is never dropped.
           release_id="$$(bash \
             /workspace/yourown-chat/helm/mattermost-release-id.sh \
-            "$TAG_NAME")"
+            "$TAG_NAME" \
+            "$COMMIT_SHA" \
+            "$BUILD_ID")"
 
           # Chart.appVersion describes the exact immutable image promoted by
           # this release. The deploy repository keeps a neutral placeholder;
@@ -180,8 +186,8 @@ resource "google_cloudbuild_trigger" "this" {
             --source "/workspace/yourown-chat/helm" \
             --skaffold-file "skaffold-mattermost.yaml" \
             --gcs-source-staging-dir "gs://${var.mattermost_delivery.source_bucket_name}/source" \
-            --deploy-parameters "mattermost_dev_image=${local.image_repo_path}:$TAG_NAME,mattermost_version=$TAG_NAME" \
-            --annotations "source-repo=pilprod/mattermost,git-tag=$TAG_NAME,git-sha=$COMMIT_SHA,image-digest=$$digest"
+            --deploy-parameters "$$deploy_parameters" \
+            --annotations "source-repo=pilprod/mattermost,git-tag=$TAG_NAME,git-sha=$COMMIT_SHA,build-id=$BUILD_ID,image-digest=$$digest"
         EOT
       ]
     }

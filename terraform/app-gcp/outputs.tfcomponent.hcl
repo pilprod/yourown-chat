@@ -20,7 +20,7 @@ output "app_secret_ids" {
 # --- Image-build CI ---------------------------------------------------------
 output "image_path" {
   type        = string
-  description = "Unified image path without tag, e.g. europe-west3-docker.pkg.dev/yourown-chat/docker/mattermost. Reference this in BOTH Mattermost manifests with the single pushed tag (e.g. :v9.11.3-patched), promoted dev -> prod."
+  description = "Unified image path without tag, e.g. europe-west3-docker.pkg.dev/yourown-chat/docker/mattermost. Cloud Build resolves the pushed source tag to one immutable digest and promotes that digest dev -> prod."
   value       = component.mattermost_image.image_path
 }
 

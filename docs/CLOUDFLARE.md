@@ -30,6 +30,28 @@ The client endpoint is:
 https://mcp.yourown.chat/mcp
 ```
 
+### Codex client authentication
+
+This repository makes the `yourown-chat` MCP server required in
+`.codex/config.toml`. A new Codex task must fail during startup when the Portal
+cannot initialize instead of silently continuing without its operational
+tools.
+
+Managed OAuth access tokens last 15 minutes and grants last two weeks. When a
+grant expires or its refresh token is revoked, Codex can retain stale
+credentials and still display `Authenticated` even though MCP initialization
+fails with `invalid_grant: Invalid refresh token`. Restarting Codex does not
+repair that credential. Reauthorize it explicitly:
+
+```bash
+codex mcp logout yourown-chat
+codex mcp login yourown-chat
+```
+
+After the browser flow succeeds, start a new task and confirm that the
+`yourown-chat` tools are present. Do not use a local MCP client, `kubectl`, or
+`gcloud` as an operational fallback.
+
 ### Upstream authentication and initial synchronization
 
 Terraform creates one Cloudflare Access service token for AI Controls, adds a
