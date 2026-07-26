@@ -592,15 +592,12 @@ Then:
 ### 10. Create the Cloudflare API token
 
 The cloudflare stack manages the `yourown.chat` zone. Cloudflare has no
-Workload Identity path, so its API credentials are static secrets. Neither
-touches git or Terraform state:
-
-- `cloudflare_api_token` is the provider token with the permissions below;
-- `cloudflare_mcp_sync_api_token` is a separate account-scoped token with only
-  `MCP Portals: Edit`. Terraform sends it through a write-only provider
-  argument to the CMEK-encrypted `cloudflare-mcp-capability-sync` Secret
-  Manager secret so Cloud Deploy can refresh the AI Controls catalog after a
-  verified MCP rollout.
+Workload Identity path, so its API credential is a static secret.
+`cloudflare_api_token` is used ephemerally by the provider and copied through
+a write-only provider argument to the CMEK-encrypted
+`cloudflare-mcp-capability-sync` Secret Manager secret. The value never enters
+Terraform state. Cloud Deploy reads that secret to refresh the AI Controls
+catalog after a verified MCP rollout.
 
 #### 10.1 Scope the token
 
@@ -651,22 +648,16 @@ with a fixed NAT egress.
 1. Create a variable set, apply it to the **cloudflare** stack.
 2. Add a Terraform variable `cloudflare_api_token` = the token. Tick
    **Sensitive**, leave **HCL** unchecked.
-3. Create a second custom Cloudflare token scoped to the owning account with
-   only `Account → MCP Portals → Edit`. Add it to the same variable set as
-   `cloudflare_mcp_sync_api_token`, also **Sensitive** with **HCL** unchecked.
-4. Put the variable set's ID into the `store "varset"` block in
+3. Put the variable set's ID into the `store "varset"` block in
    `terraform/cloudflare/cloudflare.tfdeploy.hcl`.
 
 #### 10.3 Rotating
 
-For the provider token, update `cloudflare_api_token` in the varset; its value
-is consumed ephemerally and needs no version bump.
-
-For the postdeploy token, update `cloudflare_mcp_sync_api_token`, increment
+Update `cloudflare_api_token` in the varset, increment
 `cloudflare_mcp_sync_api_token_version` in
 `terraform/cloudflare/cloudflare.tfdeploy.hcl`, and apply the cloudflare stack.
 The explicit version bump creates one new write-only Secret Manager version;
-the secret value still never enters Terraform state.
+the shared secret value still never enters Terraform state.
 
 #### 10.4 Origin TLS
 

@@ -71,12 +71,12 @@ variable "cloudflare_mcp_sync_api_token" {
   type        = string
   ephemeral   = true
   sensitive   = true
-  description = "Dedicated Cloudflare API token used only by Cloud Deploy to synchronize AI Controls MCP capabilities. Scope it to the owning account with MCP Portals:Edit and no zone permissions."
+  description = "Cloudflare API token copied write-only into Secret Manager for Cloud Deploy capability synchronization. The deployment currently supplies the existing account-scoped provider token."
 }
 
 variable "cloudflare_mcp_sync_api_token_version" {
   type        = number
-  description = "Operator-controlled write-only Secret Manager version for the dedicated MCP capability-sync token. Increment whenever that token rotates."
+  description = "Operator-controlled write-only Secret Manager version for the MCP capability-sync credential. Increment whenever the shared Cloudflare token rotates."
   default     = 1
 
   validation {

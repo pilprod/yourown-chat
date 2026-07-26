@@ -45,7 +45,9 @@ deployment "yourown-chat" {
     public_ingress_enabled = upstream_input.platform.ingress_ip_address != null
 
     cloudflare_api_token                  = store.varset.cloudflare.cloudflare_api_token
-    cloudflare_mcp_sync_api_token         = store.varset.cloudflare.cloudflare_mcp_sync_api_token
+    # Reuse the account-scoped provider token. secret_data_wo copies it to
+    # Secret Manager without persisting the value in Terraform state.
+    cloudflare_mcp_sync_api_token         = store.varset.cloudflare.cloudflare_api_token
     cloudflare_mcp_sync_api_token_version = 1
     domain                                = "yourown.chat"
 

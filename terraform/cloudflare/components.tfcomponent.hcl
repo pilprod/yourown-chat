@@ -172,10 +172,10 @@ component "zero_trust_secrets" {
   }
 }
 
-# Keep the narrowly scoped capability-sync token separate from the provider
-# token. A dedicated module is required because the token is ephemeral:
-# secret_data_wo sends it to Secret Manager without persisting it in Terraform
-# state. Cloud Deploy reads this one secret from Cloud Build, never from GKE.
+# Copy the existing account-scoped provider token into Secret Manager. A
+# dedicated module is required because the token is ephemeral: secret_data_wo
+# sends it without persisting it in Terraform state. Cloud Deploy reads this
+# one secret from Cloud Build, never from GKE.
 component "mcp_capability_sync_secret" {
   for_each = var.zero_trust_enabled ? toset(["default"]) : toset([])
 
