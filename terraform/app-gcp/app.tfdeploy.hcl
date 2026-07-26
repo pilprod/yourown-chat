@@ -71,6 +71,10 @@ deployment "eu" {
     # and zero_trust_ready are true when Secret Manager versions exist.
     # try() guards against a not-yet-reapplied cloudflare stack missing the output.
     zero_trust_enabled = try(upstream_input.cloudflare.zero_trust_ready, false)
+    mcp_capability_sync_enabled = try(
+      upstream_input.cloudflare.mcp_capability_sync_ready,
+      false,
+    )
 
 
 

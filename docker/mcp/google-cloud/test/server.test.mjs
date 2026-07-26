@@ -24,6 +24,8 @@ test("aggregator exposes official observability and guarded deploy tools", async
       GOOGLE_CLOUD_DEPLOY_LOCATION: "europe-west3",
       GOOGLE_CLOUD_DEPLOY_PIPELINE_TARGETS:
         "mattermost=mattermost-dev|mattermost-prod,mcp=mcp-dev|mcp-prod",
+      GOOGLE_CLOUD_SECURITY_LOCATION: "europe-west3",
+      GOOGLE_CLOUD_SECURITY_REPOSITORIES: "docker",
     },
     stderr: "pipe",
   });
@@ -39,6 +41,9 @@ test("aggregator exposes official observability and guarded deploy tools", async
     assert(names.has("google_cloud_deploy_list_releases"));
     assert(names.has("google_cloud_deploy_plan_promote"));
     assert(names.has("google_cloud_deploy_approve_rollout"));
+    assert(names.has("google_cloud_security_list_images"));
+    assert(names.has("google_cloud_security_list_vulnerabilities"));
+    assert(names.has("google_cloud_security_get_vulnerability"));
   } finally {
     await client.close();
   }
@@ -60,6 +65,9 @@ test("dev mode omits lifecycle tools entirely", async () => {
       OBSERVABILITY_MCP_COMMAND: process.execPath,
       OBSERVABILITY_MCP_ENTRYPOINT: observability,
       GOOGLE_CLOUD_DEPLOY_ENABLED: "false",
+      GOOGLE_CLOUD_PROJECT: "yourown-chat",
+      GOOGLE_CLOUD_SECURITY_LOCATION: "europe-west3",
+      GOOGLE_CLOUD_SECURITY_REPOSITORIES: "docker",
     },
     stderr: "pipe",
   });
@@ -74,6 +82,8 @@ test("dev mode omits lifecycle tools entirely", async () => {
     assert(names.has("list_log_entries"));
     assert(!names.has("google_cloud_deploy_list_releases"));
     assert(!names.has("google_cloud_deploy_approve_rollout"));
+    assert(names.has("google_cloud_security_list_images"));
+    assert(names.has("google_cloud_security_get_vulnerability"));
   } finally {
     await client.close();
   }

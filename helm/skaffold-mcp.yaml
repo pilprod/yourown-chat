@@ -283,9 +283,93 @@ profiles:
           kubernetesCluster:
             jobManifestPath: mcp/verify/prod-whatsapp-personal-job.yaml
 
-# Cloud Deploy executes this PREDEPLOY action in Cloud Build under the
-# dedicated cleanup service account, not as a pod in GKE.
+# Cloud Deploy executes these lifecycle actions in Cloud Build, not as pods in
+# GKE. PREDEPLOY cleanup uses its dedicated cleanup identity; POSTDEPLOY
+# capability sync uses the normal MCP execution identity.
 customActions:
+  # Run only after the production rollout and its protocol/credential verify
+  # succeed. The execution SA reads one narrowly scoped Secret Manager value;
+  # the Cloudflare token never enters Kubernetes or the rendered manifests.
+  - name: sync-cloudflare-mcp-capabilities
+    containers:
+      - name: sync-cloudflare-mcp-capabilities
+        image: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+        command: ["/bin/bash", "-ceu"]
+        args:
+          - |
+            credential_file="$(mktemp)"
+            trap 'rm -f "$credential_file"' EXIT
+            gcloud secrets versions access latest \
+              --secret=cloudflare-mcp-capability-sync \
+              > "$credential_file"
+
+            python3 - "$credential_file" <<'PY'
+            import json
+            import sys
+            import time
+            import urllib.error
+            import urllib.parse
+            import urllib.request
+
+            with open(sys.argv[1], encoding="utf-8") as handle:
+                credential = json.load(handle)
+
+            account_id = credential["account_id"]
+            token = credential["api_token"]
+            server_ids = credential["server_ids"]
+            root = (
+                "https://api.cloudflare.com/client/v4/accounts/"
+                f"{urllib.parse.quote(account_id, safe='')}"
+                "/access/ai-controls/mcp/servers"
+            )
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            }
+
+            def request(url, method="GET"):
+                call = urllib.request.Request(url, method=method, headers=headers)
+                try:
+                    with urllib.request.urlopen(call, timeout=60) as response:
+                        payload = json.load(response)
+                except urllib.error.HTTPError as error:
+                    body = error.read().decode("utf-8", errors="replace")
+                    raise RuntimeError(
+                        f"Cloudflare {method} failed ({error.code}): {body}"
+                    ) from error
+                if not payload.get("success", False):
+                    raise RuntimeError(
+                        f"Cloudflare {method} failed: {payload.get('errors', payload)}"
+                    )
+                return payload.get("result") or {}
+
+            for server_id in server_ids:
+                encoded_id = urllib.parse.quote(server_id, safe="")
+                server_url = f"{root}/{encoded_id}"
+                result = request(f"{server_url}/sync", method="POST")
+                status = result.get("status")
+                print(f"{server_id}: sync requested, status={status}", flush=True)
+
+                deadline = time.monotonic() + 120
+                while status == "waiting" and time.monotonic() < deadline:
+                    time.sleep(5)
+                    result = request(server_url)
+                    status = result.get("status")
+
+                if status != "ready":
+                    details = result.get("error_details") or result.get("error")
+                    raise RuntimeError(
+                        f"{server_id}: capability sync ended in {status}: {details}"
+                    )
+
+                tools = result.get("tools") or []
+                prompts = result.get("prompts") or []
+                print(
+                    f"{server_id}: ready, tools={len(tools)}, prompts={len(prompts)}",
+                    flush=True,
+                )
+            PY
+
   - name: cleanup-mcp-dev
     containers:
       - name: cleanup-mcp-dev

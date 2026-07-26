@@ -110,7 +110,7 @@ constraints (especially for consumer services without a public API).
 |---|---|---|
 | Terraform (Registry + **HCP Terraform**) | internally mirrored `hashicorp/terraform-mcp-server@sha256:67b4…` (official) — registry docs tokenless; workspaces/runs/stacks on app.terraform.io once `TFE_TOKEN` is loaded | HCP user token in Secret Manager (`mcp-terraform-hcp-token`, placeholder seeded) |
 | Terraform Stacks management | internally built `mcp-terraform-stacks` adapter over the official HCP Terraform Stacks API; guarded settings read/create/update plus deployment plan inspection and run-scoped approve/cancel | same HCP user token, with Project Maintain or higher and its owner authorized for the repository's HCP GitHub App |
-| Google Cloud (Observability + guarded Cloud Deploy lifecycle) | internally built `mcp-google-cloud` image: `@google-cloud/observability-mcp@0.2.3` (Google, preview), a thin tool aggregator, and `supergateway@3.4.3` | **none — keyless**: separate Workload Identity principals for prod lifecycle and disposable observability-only dev; quota project is `yourown-chat` |
+| Google Cloud (Observability + Artifact Analysis + guarded Cloud Deploy lifecycle) | internally built `mcp-google-cloud` image: `@google-cloud/observability-mcp@0.2.3` (Google, preview), a thin tool aggregator, and `supergateway@3.4.3` | **none — keyless**: separate Workload Identity principals for prod lifecycle and disposable read-only dev; quota project is `yourown-chat` |
 | WhatsApp Business | internally built adapter over the official Meta WhatsApp Cloud API | Meta system-user token, WABA ID and phone-number ID in Secret Manager |
 
 The Google Cloud server is published as an npm/stdio package, not a container
@@ -132,6 +132,24 @@ resolves the selected digest and passes
 `mcp_google_cloud_image=<repository>@sha256:...` to Cloud Deploy, so both dev
 and prod promote the exact same artifact. Automatic Artifact Analysis scanning
 is enabled for the repository by `platform-gcp`.
+
+The first-party security adapter exposes only the committed
+`yourown-chat/europe-west3/docker` repository:
+
+- `google_cloud_security_list_images` lists immutable digest pages with tags,
+  sizes, timestamps, discovery status, available-fix count, and vulnerability
+  counts by severity for every returned image;
+- `google_cloud_security_list_vulnerabilities` returns complete vulnerability
+  occurrences for one digest, including CVE/GHSA ID, effective severity, CVSS
+  score, remediation, affected/fixed package versions, and the raw occurrence;
+- `google_cloud_security_get_vulnerability` returns the occurrence plus its
+  provider Note, including the advisory description, CVSS vectors, related
+  URLs, affected versions, and remediation metadata available from Google.
+
+All three tools are read-only. Image URIs must use an allowlisted repository
+and immutable `@sha256:` digest; occurrence names must belong to the configured
+project. The identities hold only `roles/artifactregistry.reader` and
+`roles/containeranalysis.occurrences.viewer` for this feature.
 
 The Google Cloud server uses stateful Streamable HTTP, but supergateway
 sessions expire after 60 seconds. Without `--sessionTimeout`, every
@@ -173,8 +191,8 @@ The Workload Identity GSA has `roles/clouddeploy.releaser` and
 the two pipeline execution/cleanup identities; the MCP cannot impersonate
 unrelated service accounts. Release creation remains owned by the tag-triggered
 Cloud Build pipeline. The dev pod uses `mcp-observability-dev`, which has only
-Logging, Monitoring, and Trace read access, and its lifecycle tools are not
-advertised.
+Logging, Monitoring, Trace, Artifact Registry, and Artifact Analysis read
+access; its mutating lifecycle tools are not advertised.
 
 Google's preview server has no environment variable for a global page-size or
 time-range ceiling, so callers must currently supply these constraints. A
@@ -668,17 +686,25 @@ Client availability is not identical:
    `yellow-sunset-672e.cloudflareaccess.com` domain must be updated.
 2. Apply **platform-gcp**: create one Workload Identity per MCP runtime.
 3. Apply **cloudflare**: create/update the tunnel, its Secret Manager token,
-   DNS and Access apps; grant only the Tunnel identity access to that token.
+   DNS and Access apps. It also copies the dedicated account token carrying
+   only `MCP Portals:Edit` into the CMEK-encrypted
+   `cloudflare-mcp-capability-sync` secret through the Google provider's
+   write-only argument; the token remains absent from Terraform state. Only
+   the `deploy-mcp` Cloud Deploy identity can read this copy.
 4. Apply **app-gcp**: grant Terraform/WhatsApp identities access to their own
-   Secret Manager containers and create the MCP namespaces.
+   Secret Manager containers, create the MCP namespaces, and enable the
+   capability-sync postdeploy action after the cloudflare stack publishes its
+   readiness output.
 5. Release: Cloud Deploy creates KSAs + SecretProviderClasses and the pods
    mount `versions/latest` directly. A release racing ahead of the IAM steps
    waits in `ContainerCreating`; re-run it after the stack applies.
 6. Terraform supplies the Access service-token headers to all AI Controls
-   registrations. No upstream browser authorization is required. If a server
-   remains `Waiting`, inspect its error and run **Sync capabilities** as
-   documented in [`CLOUDFLARE.md`](CLOUDFLARE.md). Do not configure a client
-   until all servers show `Ready`.
+   registrations. No upstream browser authorization is required. After prod
+   verify, Cloud Deploy calls Cloudflare's capability-sync API for every
+   registered server and waits up to two minutes for each one to reach
+   `Ready`. A sync failure fails POSTDEPLOY instead of leaving clients on a
+   stale tool catalog. Manual **Sync capabilities** is only a recovery path;
+   see [`CLOUDFLARE.md`](CLOUDFLARE.md).
 
 ### Connect personal clients
 

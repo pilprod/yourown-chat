@@ -195,6 +195,12 @@ variable "zero_trust_enabled" {
   default     = false
 }
 
+variable "mcp_capability_sync_enabled" {
+  type        = bool
+  description = "Run the Cloudflare AI Controls capability sync after a verified production MCP rollout. Derived from the cloudflare stack only after its CMEK-encrypted sync credential exists."
+  default     = false
+}
+
 variable "dev_team_rbac_subjects" {
   type = list(object({
     kind = string

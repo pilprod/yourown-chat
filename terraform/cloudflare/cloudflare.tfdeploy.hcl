@@ -44,8 +44,10 @@ deployment "yourown-chat" {
     # when its public_ingress_enabled is false.
     public_ingress_enabled = upstream_input.platform.ingress_ip_address != null
 
-    cloudflare_api_token = store.varset.cloudflare.cloudflare_api_token
-    domain               = "yourown.chat"
+    cloudflare_api_token                  = store.varset.cloudflare.cloudflare_api_token
+    cloudflare_mcp_sync_api_token         = store.varset.cloudflare.cloudflare_mcp_sync_api_token
+    cloudflare_mcp_sync_api_token_version = 1
+    domain                                = "yourown.chat"
 
     cloudflare_proxied            = true
     cloudflare_ssl_mode           = "strict"
@@ -101,6 +103,11 @@ publish_output "aop_enabled" {
 publish_output "zero_trust_ready" {
   description = "True once the Cloudflare Zero Trust tunnel token Secret Manager version exists. app-gcp derives zero_trust_enabled from it."
   value       = deployment.yourown-chat.zero_trust_ready
+}
+
+publish_output "mcp_capability_sync_ready" {
+  description = "True once Cloud Deploy can read the CMEK-encrypted Cloudflare MCP capability-sync credential."
+  value       = deployment.yourown-chat.mcp_capability_sync_ready
 }
 
 publish_output "mcp_portal_url" {

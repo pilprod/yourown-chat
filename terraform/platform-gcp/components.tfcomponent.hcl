@@ -42,6 +42,7 @@ locals {
     "monitoring.googleapis.com",
     "cloudbuild.googleapis.com",
     "artifactregistry.googleapis.com",
+    "containeranalysis.googleapis.com",
     "agentregistry.googleapis.com",
     # Official Google-hosted Workspace MCP servers and their underlying APIs.
     "gmail.googleapis.com",
@@ -140,6 +141,8 @@ component "workload_identity_mcp" {
       "roles/logging.viewer",
       "roles/monitoring.viewer",
       "roles/cloudtrace.user",
+      "roles/artifactregistry.reader",
+      "roles/containeranalysis.occurrences.viewer",
       "roles/clouddeploy.releaser",
       "roles/clouddeploy.approver",
     ]
@@ -167,6 +170,8 @@ component "workload_identity_mcp_dev" {
       "roles/logging.viewer",
       "roles/monitoring.viewer",
       "roles/cloudtrace.user",
+      "roles/artifactregistry.reader",
+      "roles/containeranalysis.occurrences.viewer",
     ]
   }
 

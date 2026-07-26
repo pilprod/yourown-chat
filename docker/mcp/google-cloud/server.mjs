@@ -7,6 +7,7 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 
+import { artifactVulnerabilityClientFromEnv } from "./artifact-vulnerability-client.mjs";
 import { cloudDeployClientFromEnv } from "./cloud-deploy-client.mjs";
 import { toolError, toolResult } from "./tool-result.mjs";
 
@@ -28,8 +29,9 @@ const officialTools = (await observability.listTools()).tools;
 const deployEnabled =
   (process.env.GOOGLE_CLOUD_DEPLOY_ENABLED ?? "true").toLowerCase() === "true";
 const deploy = deployEnabled ? cloudDeployClientFromEnv() : null;
+const security = artifactVulnerabilityClientFromEnv();
 
-const customTools = [
+const deployTools = [
   {
     name: "google_cloud_deploy_list_releases",
     description:
@@ -60,7 +62,7 @@ const customTools = [
       properties: {
         pipeline: { type: "string" },
         release: { type: "string" },
-        page_size: { type: "integer", minimum: 1, maximum: 100, default: 20 },
+        page_size: { type: "integer", minimum: 1, maximum: 50, default: 20 },
         page_token: { type: "string" },
       },
       required: ["pipeline", "release"],
@@ -182,7 +184,101 @@ const customTools = [
   },
 ];
 
-const enabledCustomTools = deployEnabled ? customTools : [];
+const securityTools = [
+  {
+    name: "google_cloud_security_list_images",
+    description:
+      "List immutable Docker images in an allowlisted Artifact Registry repository, with tags, size, timestamps, scan status, and vulnerability counts by severity for every image.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        repository: { type: "string" },
+        page_size: { type: "integer", minimum: 1, maximum: 100, default: 20 },
+        page_token: { type: "string" },
+        include_vulnerability_summary: { type: "boolean", default: true },
+      },
+      required: ["repository"],
+      additionalProperties: false,
+    },
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+  },
+  {
+    name: "google_cloud_security_list_vulnerabilities",
+    description:
+      "Return full Artifact Analysis vulnerability occurrences for one immutable image digest, including CVE/GHSA ID, effective severity, CVSS score, affected/fixed package versions, remediation, timestamps, and raw occurrence metadata.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        repository: { type: "string" },
+        image_uri: {
+          type: "string",
+          description:
+            "Immutable Artifact Registry URI ending in @sha256:<64 hex characters>, as returned by google_cloud_security_list_images.",
+        },
+        page_size: {
+          type: "integer",
+          minimum: 1,
+          maximum: 200,
+          default: 100,
+        },
+        page_token: { type: "string" },
+        severity: {
+          type: "string",
+          enum: [
+            "SEVERITY_UNSPECIFIED",
+            "MINIMAL",
+            "LOW",
+            "MEDIUM",
+            "HIGH",
+            "CRITICAL",
+          ],
+        },
+        fix_available_only: { type: "boolean", default: false },
+      },
+      required: ["repository", "image_uri"],
+      additionalProperties: false,
+    },
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+  },
+  {
+    name: "google_cloud_security_get_vulnerability",
+    description:
+      "Get the complete Artifact Analysis occurrence and its provider Note for one vulnerability. The Note adds the full advisory description, CVSS vectors, related URLs, affected versions, and remediation metadata available from Google.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        occurrence_name: {
+          type: "string",
+          description:
+            "Full projects/<configured-project>/occurrences/<id> name returned by google_cloud_security_list_vulnerabilities.",
+        },
+      },
+      required: ["occurrence_name"],
+      additionalProperties: false,
+    },
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+  },
+];
+
+const enabledCustomTools = [
+  ...securityTools,
+  ...(deployEnabled ? deployTools : []),
+];
 const customNames = new Set(enabledCustomTools.map((tool) => tool.name));
 const duplicate = officialTools.find((tool) => customNames.has(tool.name));
 if (duplicate) {
@@ -223,6 +319,27 @@ async function callCustom(name, input) {
         rollout: input.rollout,
         expectedEtag: input.expected_etag,
         reason: input.reason,
+      });
+    case "google_cloud_security_list_images":
+      return security.listImages({
+        repository: input.repository,
+        pageSize: input.page_size,
+        pageToken: input.page_token,
+        includeVulnerabilitySummary:
+          input.include_vulnerability_summary ?? true,
+      });
+    case "google_cloud_security_list_vulnerabilities":
+      return security.listVulnerabilities({
+        repository: input.repository,
+        imageUri: input.image_uri,
+        pageSize: input.page_size,
+        pageToken: input.page_token,
+        severity: input.severity,
+        fixAvailableOnly: input.fix_available_only,
+      });
+    case "google_cloud_security_get_vulnerability":
+      return security.getVulnerability({
+        occurrenceName: input.occurrence_name,
       });
     default:
       throw new Error(`Unknown custom tool: ${name}`);

@@ -83,6 +83,9 @@ component "clouddeploy_mcp" {
         require_approval  = true
         verify            = true
         predeploy_actions = ["cleanup-mcp-dev"]
+        postdeploy_actions = var.mcp_capability_sync_enabled ? [
+          "sync-cloudflare-mcp-capabilities",
+        ] : []
       },
     ]
 

@@ -171,3 +171,37 @@ component "zero_trust_secrets" {
     random = provider.random.this
   }
 }
+
+# Keep the narrowly scoped capability-sync token separate from the provider
+# token. A dedicated module is required because the token is ephemeral:
+# secret_data_wo sends it to Secret Manager without persisting it in Terraform
+# state. Cloud Deploy reads this one secret from Cloud Build, never from GKE.
+component "mcp_capability_sync_secret" {
+  for_each = var.zero_trust_enabled ? toset(["default"]) : toset([])
+
+  source = "./modules/write-only-secret"
+
+  inputs = {
+    project_id        = var.project_id
+    replica_locations = [var.region]
+    labels            = local.common_labels
+    kms_key_name      = var.cmek_key_id
+    secret_id         = "cloudflare-mcp-capability-sync"
+    secret_data = jsonencode({
+      account_id = one([for c in component.cloudflare : c.account_id])
+      api_token  = var.cloudflare_mcp_sync_api_token
+      server_ids = sort(values(one([for z in component.zero_trust : z.mcp_server_ids])))
+    })
+    # Prevent an identical new Secret Manager version on every Terraform run.
+    secret_data_version = var.cloudflare_mcp_sync_api_token_version
+    accessors = [
+      "serviceAccount:deploy-mcp@${var.project_id}.iam.gserviceaccount.com",
+    ]
+  }
+
+  providers = {
+    google = provider.google.this
+  }
+
+  depends_on = [component.zero_trust]
+}

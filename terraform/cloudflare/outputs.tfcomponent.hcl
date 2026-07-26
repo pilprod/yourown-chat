@@ -78,6 +78,12 @@ output "zero_trust_ready" {
   ) : false
 }
 
+output "mcp_capability_sync_ready" {
+  type        = bool
+  description = "True once the Cloudflare MCP capability-sync credential has a Secret Manager version."
+  value       = length(component.mcp_capability_sync_secret) > 0
+}
+
 output "mcp_portal_url" {
   type        = string
   description = "Single Cloudflare Managed OAuth MCP endpoint for remote clients."
