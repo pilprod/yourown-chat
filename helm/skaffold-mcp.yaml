@@ -206,6 +206,9 @@ profiles:
               mcp_api_smoke terraform-stacks \
                 http://mcp-terraform-stacks.mcp-terraform-stacks.svc.cluster.local:3000/mcp \
                 terraform_stacks_list_deployment_runs '{"pending_only":true}'
+              mcp_api_smoke terraform-stack-settings \
+                http://mcp-terraform-stacks.mcp-terraform-stacks.svc.cluster.local:3000/mcp \
+                terraform_stacks_get_stack_settings '{"stack_name":"platform-gcp"}'
               mcp_api_smoke google-cloud \
                 http://mcp-google-cloud.mcp-google-cloud.svc.cluster.local:8080/mcp \
                 list_log_names '{"parent":"projects/yourown-chat","pageSize":1}'

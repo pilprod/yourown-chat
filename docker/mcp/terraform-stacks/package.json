@@ -1,8 +1,8 @@
 {
   "name": "yourown-chat-terraform-stacks-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "Guarded MCP tools for reviewing and approving HCP Terraform Stack deployment runs",
+  "description": "Guarded HCP Terraform Stack settings, creation, update, review, and approval MCP",
   "license": "UNLICENSED",
   "type": "module",
   "scripts": {

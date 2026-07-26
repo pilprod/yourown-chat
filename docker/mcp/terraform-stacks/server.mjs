@@ -15,8 +15,170 @@ const client = clientFromEnv();
 function createServer() {
   const server = new McpServer({
     name: "yourown-chat-terraform-stacks",
-    version: "1.0.0",
+    version: "1.1.0",
   });
+
+  server.registerTool(
+    "terraform_stacks_get_stack_settings",
+    {
+      description:
+        "Read one approval-allowlisted or management-policy-compliant Stack, including project, VCS and working-directory settings.",
+      inputSchema: {
+        stack_name: z.string().min(1),
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    async ({ stack_name }) => toolResult(await client.stackSettings(stack_name)),
+  );
+
+  const createInputSchema = {
+    name: z.string().regex(/^[A-Za-z0-9_-]{1,90}$/),
+    description: z.string().max(500).optional().default(""),
+    project_id: z.string().regex(/^prj-[A-Za-z0-9]+$/),
+    repository: z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/),
+    working_directory: z.string().min(1).max(255),
+    branch: z.string().min(1).max(255).optional().default("main"),
+    speculative_enabled: z.boolean().optional().default(false),
+    trigger_disabled: z.boolean().optional().default(false),
+    fetch_configuration: z.boolean().optional().default(true),
+  };
+
+  server.registerTool(
+    "terraform_stacks_plan_create",
+    {
+      description:
+        "Validate and preview creation of one VCS-backed Stack against committed project, repository and directory policies. Makes no changes.",
+      inputSchema: createInputSchema,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    async (input) =>
+      toolResult(
+        await client.planCreateStack({
+          name: input.name,
+          description: input.description,
+          projectId: input.project_id,
+          repository: input.repository,
+          workingDirectory: input.working_directory,
+          branch: input.branch,
+          speculativeEnabled: input.speculative_enabled,
+          triggerDisabled: input.trigger_disabled,
+          fetchConfiguration: input.fetch_configuration,
+        }),
+      ),
+  );
+
+  server.registerTool(
+    "terraform_stacks_create",
+    {
+      description:
+        "Create exactly the previously previewed VCS-backed Stack. The plan hash and literal CREATE_STACK confirmation are mandatory. Creation never modifies the separate approval allowlist.",
+      inputSchema: {
+        ...createInputSchema,
+        expected_plan_id: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+        confirmation: z.literal("CREATE_STACK"),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+    },
+    async (input) =>
+      toolResult(
+        await client.createStack({
+          name: input.name,
+          description: input.description,
+          projectId: input.project_id,
+          repository: input.repository,
+          workingDirectory: input.working_directory,
+          branch: input.branch,
+          speculativeEnabled: input.speculative_enabled,
+          triggerDisabled: input.trigger_disabled,
+          fetchConfiguration: input.fetch_configuration,
+          expectedPlanId: input.expected_plan_id,
+        }),
+      ),
+  );
+
+  const updateInputSchema = {
+    stack_name: z.string().min(1),
+    description: z.string().max(500).optional(),
+    working_directory: z.string().min(1).max(255).optional(),
+    branch: z.string().min(1).max(255).optional(),
+    speculative_enabled: z.boolean().optional(),
+    trigger_disabled: z.boolean().optional(),
+    fetch_configuration: z.boolean().optional().default(false),
+  };
+
+  server.registerTool(
+    "terraform_stacks_plan_update",
+    {
+      description:
+        "Read current settings and preview a policy-constrained Stack update. Repository, project, execution mode and Stack name cannot be changed.",
+      inputSchema: updateInputSchema,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    async (input) =>
+      toolResult(
+        await client.planUpdateStack({
+          stackName: input.stack_name,
+          description: input.description,
+          workingDirectory: input.working_directory,
+          branch: input.branch,
+          speculativeEnabled: input.speculative_enabled,
+          triggerDisabled: input.trigger_disabled,
+          fetchConfiguration: input.fetch_configuration,
+        }),
+      ),
+  );
+
+  server.registerTool(
+    "terraform_stacks_update",
+    {
+      description:
+        "Apply exactly a previously previewed policy-constrained Stack update. Requires the exact plan hash and UPDATE_STACK confirmation.",
+      inputSchema: {
+        ...updateInputSchema,
+        expected_plan_id: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+        confirmation: z.literal("UPDATE_STACK"),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+    },
+    async (input) =>
+      toolResult(
+        await client.updateStack({
+          stackName: input.stack_name,
+          description: input.description,
+          workingDirectory: input.working_directory,
+          branch: input.branch,
+          speculativeEnabled: input.speculative_enabled,
+          triggerDisabled: input.trigger_disabled,
+          fetchConfiguration: input.fetch_configuration,
+          expectedPlanId: input.expected_plan_id,
+        }),
+      ),
+  );
 
   server.registerTool(
     "terraform_stacks_list_deployment_runs",

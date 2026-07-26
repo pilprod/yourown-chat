@@ -109,7 +109,7 @@ constraints (especially for consumer services without a public API).
 | Service | Server | Credentials |
 |---|---|---|
 | Terraform (Registry + **HCP Terraform**) | internally mirrored `hashicorp/terraform-mcp-server@sha256:67b4…` (official) — registry docs tokenless; workspaces/runs/stacks on app.terraform.io once `TFE_TOKEN` is loaded | HCP team token in Secret Manager (`mcp-terraform-hcp-token`, placeholder seeded) |
-| Terraform Stacks approvals | internally built `mcp-terraform-stacks` adapter over the official HCP Terraform Stacks API; plan inspection plus guarded run-scoped approve/cancel | same HCP team token, with Project Write or higher |
+| Terraform Stacks management | internally built `mcp-terraform-stacks` adapter over the official HCP Terraform Stacks API; guarded settings read/create/update plus deployment plan inspection and run-scoped approve/cancel | same HCP team token, with Project Maintain or higher |
 | Google Cloud (Logging, Monitoring, Trace, Error Reporting) | internally built `mcp-google-cloud` image: `@google-cloud/observability-mcp@0.2.3` (Google, preview) + `supergateway@3.4.3` | **none — keyless**: Workload Identity (`mcp-google-cloud/mcp-servers` in prod and `dev/mcp-servers` in dev → `mcp` GSA, viewer roles); quota project is `yourown-chat` |
 | WhatsApp Business | internally built adapter over the official Meta WhatsApp Cloud API | Meta system-user token, WABA ID and phone-number ID in Secret Manager |
 
@@ -228,8 +228,25 @@ The server reads the target address only from its own `TFE_ADDRESS` env
 (`https://app.terraform.io`); attempts to override it per-request are rejected,
 so chat input cannot repoint the server at another Terraform instance.
 
-The approval adapter resolves Stack IDs inside organization `papou-work` from
-the committed name allowlist:
+The adapter separates **Stack management** from **deployment approval**.
+Creation and settings updates are constrained to the committed policy:
+
+- organization `papou-work`;
+- project `prj-QuYKhn6EzLX9jB53`;
+- repository `pilprod/yourown-chat` through the existing HCP GitHub App;
+- relative working directories below `terraform/`;
+- remote execution and a trigger pattern scoped to that working directory.
+
+`terraform_stacks_plan_create` and `terraform_stacks_plan_update` are read-only
+previews that return a SHA-256 plan ID. Their mutating counterparts repeat the
+full input, recompute the plan against current HCP state, require the exact
+plan ID, and require `CREATE_STACK` or `UPDATE_STACK`. The update tool cannot
+move a Stack to another project/repository, rename it, change execution mode,
+or delete it. Creation can optionally fetch the first VCS configuration but
+does not alter the approval allowlist.
+
+Deployment approval remains narrower. Stack IDs inside organization
+`papou-work` are resolved from the committed name allowlist:
 
 - `cloudflare`;
 - `app-gcp`;
@@ -244,6 +261,19 @@ confirmation `APPROVE`. The adapter verifies that the run belongs to the named
 allowlisted Stack and has a plan step in `pending_operator`, then calls the
 run-scoped endpoint with `all_plans=false`. It never exposes deployment-group
 approval or approval of later plans.
+
+Available management tools:
+
+- `terraform_stacks_get_stack_settings`;
+- `terraform_stacks_plan_create` / `terraform_stacks_create`;
+- `terraform_stacks_plan_update` / `terraform_stacks_update`.
+
+Available delivery tools remain:
+
+- `terraform_stacks_list_deployment_runs`;
+- `terraform_stacks_inspect_deployment_run`;
+- `terraform_stacks_approve_deployment_run`;
+- `terraform_stacks_cancel_deployment_run`.
 
 Rollout order for the Google Cloud server: apply **platform-gcp first** (creates
 the `mcp` GSA + Workload Identity binding and publishes it in

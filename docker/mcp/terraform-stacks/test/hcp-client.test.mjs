@@ -21,9 +21,87 @@ function fixtureFetch({
     if (path.startsWith("/api/v2/organizations/papou-work/stacks")) {
       return jsonResponse({
         data: [
-          { id: "st-cloudflare1", attributes: { name: "cloudflare" } },
+          {
+            id: "st-cloudflare1",
+            attributes: {
+              name: "cloudflare",
+              "working-directory": "terraform/cloudflare",
+              "updated-at": "2026-07-25T00:00:00Z",
+              "vcs-repo": {
+                identifier: "pilprod/yourown-chat",
+                branch: "main",
+                "trigger-disabled": false,
+              },
+            },
+            relationships: {
+              project: {
+                data: { id: "prj-yourownchat1", type: "projects" },
+              },
+            },
+          },
           { id: "st-untrusted1", attributes: { name: "untrusted" } },
         ],
+      });
+    }
+    if (
+      path === "/api/v2/stacks/st-cloudflare1" &&
+      (options.method ?? "GET") === "GET"
+    ) {
+      return jsonResponse({
+        data: {
+          id: "st-cloudflare1",
+          attributes: {
+            name: "cloudflare",
+            description: "Cloudflare",
+            "working-directory": "terraform/cloudflare",
+            "updated-at": "2026-07-25T00:00:00Z",
+            "speculative-enabled": false,
+            "vcs-repo": {
+              identifier: "pilprod/yourown-chat",
+              branch: "main",
+              "trigger-disabled": false,
+            },
+          },
+          relationships: {
+            project: {
+              data: { id: "prj-yourownchat1", type: "projects" },
+            },
+          },
+        },
+      });
+    }
+    if (path === "/api/v2/stacks" && options.method === "POST") {
+      const body = JSON.parse(options.body);
+      return jsonResponse(
+        {
+          data: {
+            id: "st-newstack1",
+            attributes: body.data.attributes,
+            relationships: body.data.relationships,
+          },
+        },
+        201,
+      );
+    }
+    if (
+      path === "/api/v2/stacks/st-newstack1/fetch-latest-from-vcs" &&
+      options.method === "POST"
+    ) {
+      return new Response(null, { status: 204 });
+    }
+    if (
+      path === "/api/v2/stacks/st-cloudflare1" &&
+      options.method === "PATCH"
+    ) {
+      const body = JSON.parse(options.body);
+      return jsonResponse({
+        data: {
+          id: "st-cloudflare1",
+          attributes: {
+            ...body.data.attributes,
+            "updated-at": "2026-07-25T01:00:00Z",
+          },
+        },
       });
     }
     if (path.startsWith("/api/v2/stacks/st-cloudflare1/stack-deployments?")) {
@@ -125,6 +203,10 @@ function client(fetchImpl) {
       "platform-gcp",
       "agent-registry-gcp",
     ],
+    allowedProjectIds: ["prj-yourownchat1"],
+    allowedRepositories: ["pilprod/yourown-chat"],
+    allowedWorkingDirectoryPrefixes: ["terraform/"],
+    githubAppInstallationId: "ghain-installation1",
     fetchImpl,
   });
 }
@@ -218,4 +300,106 @@ test("cancels only an allowlisted non-terminal run without force", async () => {
     "/api/v2/stack-deployment-runs/sdr-run1/cancel?force=false",
   );
   assert.equal(cancellation.options.body, undefined);
+  assert.equal(
+    cancellation.options.headers["Content-Type"],
+    "application/vnd.api+json",
+  );
+});
+
+test("reads full Stack settings under the committed management policy", async () => {
+  const fixture = fixtureFetch();
+  const settings = await client(fixture.fetchImpl).stackSettings("cloudflare");
+  assert.equal(settings["working-directory"], "terraform/cloudflare");
+  assert.equal(settings.policy.approval_allowed, true);
+  assert.equal(settings.policy.management_allowed, true);
+});
+
+test("previews and creates only an allowlisted VCS-backed Stack", async () => {
+  const fixture = fixtureFetch();
+  const input = {
+    name: "agent-registry-gcp",
+    description: "Google Agent Registry",
+    projectId: "prj-yourownchat1",
+    repository: "pilprod/yourown-chat",
+    workingDirectory: "terraform/agent-registry-gcp",
+    branch: "main",
+    speculativeEnabled: false,
+    triggerDisabled: false,
+    fetchConfiguration: true,
+  };
+  const plan = await client(fixture.fetchImpl).planCreateStack(input);
+  assert.match(plan.plan_id, /^sha256:[a-f0-9]{64}$/);
+  assert.deepEqual(plan.attributes["trigger-patterns"], [
+    "/terraform/agent-registry-gcp/**",
+  ]);
+  assert.equal(plan.approval_after_creation, true);
+
+  const result = await client(fixture.fetchImpl).createStack({
+    ...input,
+    expectedPlanId: plan.plan_id,
+  });
+  assert.equal(result.created, true);
+  assert.equal(result.fetched_configuration, true);
+  assert.equal(result.approval_allowed, true);
+  assert.ok(
+    fixture.calls.some(
+      ({ path, options }) =>
+        path === "/api/v2/stacks" && options.method === "POST",
+    ),
+  );
+  assert.ok(
+    fixture.calls.some(({ path }) =>
+      path.endsWith("/fetch-latest-from-vcs"),
+    ),
+  );
+});
+
+test("rejects stale creates and paths outside terraform", async () => {
+  const fixture = fixtureFetch();
+  const base = {
+    name: "new-stack",
+    projectId: "prj-yourownchat1",
+    repository: "pilprod/yourown-chat",
+    workingDirectory: "terraform/new-stack",
+  };
+  await assert.rejects(
+    client(fixture.fetchImpl).createStack({
+      ...base,
+      expectedPlanId: `sha256:${"0".repeat(64)}`,
+    }),
+    /Refusing stale create/,
+  );
+  await assert.rejects(
+    client(fixture.fetchImpl).planCreateStack({
+      ...base,
+      workingDirectory: "../private",
+    }),
+    /relative POSIX path/,
+  );
+});
+
+test("previews and applies a constrained Stack settings update", async () => {
+  const fixture = fixtureFetch();
+  const input = {
+    stackName: "cloudflare",
+    description: "Cloudflare DNS and Zero Trust",
+    speculativeEnabled: true,
+    fetchConfiguration: false,
+  };
+  const plan = await client(fixture.fetchImpl).planUpdateStack(input);
+  const result = await client(fixture.fetchImpl).updateStack({
+    ...input,
+    expectedPlanId: plan.plan_id,
+  });
+  assert.equal(result.updated, true);
+  const update = fixture.calls.find(
+    ({ path, options }) =>
+      path === "/api/v2/stacks/st-cloudflare1" &&
+      options.method === "PATCH",
+  );
+  assert.deepEqual(JSON.parse(update.options.body).data.attributes, {
+    name: "cloudflare",
+    description: "Cloudflare DNS and Zero Trust",
+    "speculative-enabled": true,
+  });
 });

@@ -130,3 +130,31 @@ the auth state.
 The connector does not attempt to scrape or interpret WhatsApp account-warning
 screens. A `forbidden` disconnect activates the persistent stop; any warning
 visible on the phone must be treated as a manual emergency-stop signal.
+
+## Why Cloudflare WARP does not replace the proxy
+
+Consumer WARP and the default Cloudflare Zero Trust Gateway egress use shared
+Cloudflare network addresses. They do not make a GKE workload appear to use the
+phone's residential/mobile address, do not promise one account-stable source
+IP, and therefore do not satisfy this connector's static residential/mobile
+egress requirement.
+
+Cloudflare dedicated egress IPs are static, but they are Cloudflare data-center
+addresses and are available only as a Zero Trust Enterprise add-on. They solve
+SaaS IP allowlisting, not residential/mobile reputation. Running the Linux
+Cloudflare One Client in the pod would additionally require a tunnel daemon and
+network-interface privileges that conflict with this workload's non-root,
+read-only, capability-dropped security context.
+
+Cloudflare source-IP anchoring can send WARP traffic through a `cloudflared`
+connector at a location whose public address should be preserved. A connector
+running on an always-on home network could therefore retain the home ISP egress
+IP, but it adds a WARP client, Gateway policy, home connector, and another
+availability dependency. It is not simpler than the current single static
+proxy endpoint.
+
+The preferred no-rented-proxy future option is an operator-owned always-on home
+or mobile gateway that exposes one authenticated static SOCKS5H endpoint to
+this pod. The endpoint may use a private overlay underneath, but WhatsApp must
+ultimately see the stable home/mobile egress address. Until that gateway is
+designed and tested, the current proxy contract remains unchanged.
