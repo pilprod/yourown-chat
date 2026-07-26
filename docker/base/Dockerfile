@@ -1,13 +1,10 @@
-FROM debian:trixie-slim@sha256:020c0d20b9880058cbe785a9db107156c3c75c2ac944a6aa7ab59f2add76a7bd
+FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
 
-RUN apt-get update \
-    && apt-get upgrade --yes --no-install-recommends \
-    && apt-get install --yes --no-install-recommends \
-      ca-certificates libatomic1 libstdc++6 \
-    && groupadd --gid 65532 nonroot \
-    && useradd --uid 65532 --gid 65532 --home-dir /tmp \
-      --shell /usr/sbin/nologin nonroot \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk upgrade --no-cache \
+    && apk add --no-cache ca-certificates libatomic libstdc++ \
+    && addgroup -g 65532 -S nonroot \
+    && adduser -u 65532 -S -D -H -G nonroot \
+      -s /sbin/nologin nonroot
 
 # Keep project-wide runtime policy here so derived language images cannot
 # drift. Language runtimes are added only by the child image that needs them.

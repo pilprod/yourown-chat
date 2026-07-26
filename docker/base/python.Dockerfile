@@ -7,12 +7,13 @@ FROM ${BASE_IMAGE}
 
 USER root
 
-RUN apt-get update \
-    && apt-get install --yes --no-install-recommends python3 \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache python3
 
 # Copy the official standalone binaries. A runtime Python image does not need
 # pip, setuptools, wheel, or a virtualenv containing their vulnerable metadata.
 COPY --from=uv-runtime /uv /uvx /usr/local/bin/
+
+RUN python3 --version \
+    && uv --version
 
 USER 65532:65532

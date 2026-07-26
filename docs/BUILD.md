@@ -129,7 +129,7 @@ tag used to resolve the newest approved digest. The runtime dependency graph
 is:
 
 ```text
-base (pinned Debian)
+base (pinned Alpine)
 ├── node
 │   ├── mcp-google-cloud
 │   ├── mcp-whatsapp-business

@@ -1,4 +1,4 @@
-ARG NODE_IMAGE=node:22.23.1-bookworm-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3
+ARG NODE_IMAGE=node:22.23.1-alpine3.24@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2
 ARG BASE_IMAGE=base:local
 
 FROM ${NODE_IMAGE} AS language-runtime
@@ -14,5 +14,7 @@ COPY --from=language-runtime /usr/local/bin/node /usr/local/bin/node
 
 ENV NODE_ENV=production \
     NODE_VERSION=22.23.1
+
+RUN node --version
 
 USER 65532:65532

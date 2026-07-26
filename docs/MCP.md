@@ -235,7 +235,7 @@ database changes. A rebuild is required only to consume fixed base packages or
 an updated npm lock.
 
 `docker/base/Dockerfile` produces the internally scanned
-`base` image from a pinned Debian 13 digest and installs all available package
+`base` image from a pinned Alpine digest and installs all available package
 updates during the build.
 `docker/base/node.Dockerfile` and `docker/base/python.Dockerfile` create the
 language runtimes on top; application Dockerfiles consume only

@@ -5,10 +5,22 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 node_runtime="${repo_root}/docker/base/node.Dockerfile"
 python_runtime="${repo_root}/docker/base/python.Dockerfile"
+base_runtime="${repo_root}/docker/base/Dockerfile"
 cloudflared_runtime="${repo_root}/docker/mcp/cloudflared/Dockerfile"
 catalog="${repo_root}/docker/images.tsv"
 upstreams="${repo_root}/docker/mcp/upstreams.env"
 
+grep -Fq \
+  'alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b' \
+  "${base_runtime}"
+if grep -Eq 'debian:|apt-get|perl' "${base_runtime}"; then
+  printf 'Shared runtime base must not publish Debian or Perl packages\n' >&2
+  exit 1
+fi
+
+grep -Fq \
+  'node:22.23.1-alpine3.24@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2' \
+  "${node_runtime}"
 grep -Fq \
   'COPY --from=language-runtime /usr/local/bin/node /usr/local/bin/node' \
   "${node_runtime}"
