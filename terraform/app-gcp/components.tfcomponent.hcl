@@ -83,6 +83,7 @@ component "clouddeploy_mcp" {
       mcp_terraform_gsa         = lookup(var.workload_identity_emails, "mcp-terraform", "")
       mcp_terraform_stacks_gsa  = lookup(var.workload_identity_emails, "mcp-terraform-stacks", "")
       mcp_whatsapp_gsa          = lookup(var.workload_identity_emails, "mcp-whatsapp", "")
+      mcp_whatsapp_personal_gsa = lookup(var.workload_identity_emails, "mcp-whatsapp-personal", "")
       mcp_tunnel_gsa            = lookup(var.workload_identity_emails, "mcp-tunnel", "")
     }
 
@@ -171,6 +172,13 @@ component "secrets" {
         length    = 48
         accessors = [var.workload_identity_members["mcp-whatsapp"]]
       }
+      # Static proxy credentials for the separate QR-linked personal client.
+      # Replace the seeded value with a socks5h:// or https:// URL through a
+      # new Secret Manager version before linking the device.
+      "mcp-whatsapp-personal-proxy-url" = {
+        value     = "REPLACE_ME_STATIC_SOCKS5H_OR_HTTPS_PROXY_URL"
+        accessors = [var.workload_identity_members["mcp-whatsapp-personal"]]
+      }
     }
   }
 
@@ -226,6 +234,7 @@ component "cluster_secrets" {
         mcp-terraform-stacks = { labels = { tier = "prod", "part-of" = "yourown-chat", "mcp-server" = "terraform-stacks" } }
         mcp-google-cloud     = { labels = { tier = "prod", "part-of" = "yourown-chat", "mcp-server" = "google-cloud" } }
         mcp-whatsapp-business = { labels = { tier = "prod", "part-of" = "yourown-chat", "mcp-server" = "whatsapp-business" } }
+        mcp-whatsapp-personal = { labels = { tier = "prod", "part-of" = "yourown-chat", "mcp-server" = "whatsapp-personal" } }
         mcp-tunnel           = { labels = { tier = "prod", "part-of" = "yourown-chat", "mcp-component" = "tunnel" } }
       },
       var.matterbridge_enabled ? {
@@ -233,6 +242,18 @@ component "cluster_secrets" {
       } : {},
     )
     adopt_existing_namespaces = var.adopt_existing_namespaces
+
+    storage_classes = {
+      mcp-sensitive = {
+        provisioner = "pd.csi.storage.gke.io"
+        parameters = merge(
+          { type = "pd-balanced" },
+          var.cmek_key_id != null ? {
+            "disk-encryption-kms-key" = var.cmek_key_id
+          } : {},
+        )
+      }
+    }
 
     secrets = merge(
       {

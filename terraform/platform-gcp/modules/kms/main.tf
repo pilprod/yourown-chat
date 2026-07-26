@@ -115,3 +115,11 @@ resource "google_kms_crypto_key_iam_member" "gke" {
   role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
   member        = "serviceAccount:service-${var.project_number}@container-engine-robot.iam.gserviceaccount.com"
 }
+
+resource "google_kms_crypto_key_iam_member" "compute_engine" {
+  count = var.grant_compute_engine ? 1 : 0
+
+  crypto_key_id = google_kms_crypto_key.this.id
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+  member        = "serviceAccount:service-${var.project_number}@compute-system.iam.gserviceaccount.com"
+}

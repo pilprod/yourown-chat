@@ -63,14 +63,20 @@ variable "grant_gke" {
   default     = false
 }
 
+variable "grant_compute_engine" {
+  type        = bool
+  description = "Grant the Compute Engine service agent encrypterDecrypter so the GKE PD CSI driver can create CMEK-encrypted persistent disks."
+  default     = false
+}
+
 variable "project_number" {
   type        = string
-  description = "Numeric project number, used to build the GKE service-agent email for grant_gke. Only required when grant_gke = true."
+  description = "Numeric project number, used to build GKE and Compute Engine service-agent emails. Required when either corresponding grant is enabled."
   default     = ""
 
   validation {
-    condition     = !var.grant_gke || can(regex("^[0-9]+$", var.project_number))
-    error_message = "project_number must be the numeric project number when grant_gke = true."
+    condition     = !(var.grant_gke || var.grant_compute_engine) || can(regex("^[0-9]+$", var.project_number))
+    error_message = "project_number must be numeric when grant_gke or grant_compute_engine is true."
   }
 }
 

@@ -25,6 +25,20 @@ resource "kubernetes_namespace" "this" {
   }
 }
 
+resource "kubernetes_storage_class_v1" "this" {
+  for_each = var.storage_classes
+
+  metadata {
+    name = each.key
+  }
+
+  storage_provisioner    = each.value.provisioner
+  parameters             = each.value.parameters
+  reclaim_policy         = each.value.reclaim_policy
+  volume_binding_mode    = each.value.volume_binding_mode
+  allow_volume_expansion = each.value.allow_volume_expansion
+}
+
 locals {
   # var.secrets is sensitive (its `data` values are), and for_each cannot take a
   # sensitive collection. The KEYS (logical secret names) are NOT secret, so

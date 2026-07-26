@@ -12,3 +12,5 @@ servers:
     enabled: false
   whatsapp-business:
     enabled: false
+  whatsapp-personal:
+    enabled: false

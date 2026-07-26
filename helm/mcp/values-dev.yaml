@@ -27,6 +27,28 @@ servers:
     volumes:
       - name: data
         emptyDir: {}
+  # Never open a second linked-device connection from the disposable dev
+  # release. It validates the MCP process/protocol only; QR linking is prod-only.
+  whatsapp-personal:
+    env:
+      PORT: "3000"
+      WHATSAPP_PERSONAL_CONNECT_ENABLED: "false"
+      WHATSAPP_PERSONAL_DATA_DIR: /var/lib/whatsapp-personal
+      WHATSAPP_PERSONAL_MESSAGE_RETENTION: "100"
+      WHATSAPP_PERSONAL_HOURLY_LIMIT: "6"
+      WHATSAPP_PERSONAL_DAILY_LIMIT: "20"
+      WHATSAPP_PERSONAL_MINIMUM_INTERVAL_SECONDS: "30"
+      WHATSAPP_PERSONAL_MAXIMUM_UNANSWERED: "2"
+    secretProvider:
+      enabled: false
+    persistence:
+      enabled: false
+    volumeMounts:
+      - name: data
+        mountPath: /var/lib/whatsapp-personal
+    volumes:
+      - name: data
+        emptyDir: {}
 
 tunnel:
   enabled: false

@@ -1,4 +1,4 @@
-# whatsapp-business-only release in namespace mcp-whatsapp-business.
+# Personal QR-linked WhatsApp MCP only.
 tunnel:
   enabled: false
 
@@ -12,5 +12,5 @@ servers:
     enabled: false
   google-cloud:
     enabled: false
-  whatsapp-personal:
+  whatsapp-business:
     enabled: false

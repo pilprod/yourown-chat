@@ -17,6 +17,7 @@ locals {
     mcp-terraform       = { namespace = "mcp-terraform", ksa = "mcp-terraform" }
     mcp-terraform-stacks = { namespace = "mcp-terraform-stacks", ksa = "mcp-terraform-stacks" }
     mcp-whatsapp        = { namespace = "mcp-whatsapp-business", ksa = "mcp-whatsapp-business" }
+    mcp-whatsapp-personal = { namespace = "mcp-whatsapp-personal", ksa = "mcp-whatsapp-personal" }
     mcp-tunnel          = { namespace = "mcp-tunnel", ksa = "mcp-tunnel" }
   }
 
@@ -214,6 +215,25 @@ component "workload_identity_mcp_whatsapp" {
   depends_on = [component.gke]
 }
 
+component "workload_identity_mcp_whatsapp_personal" {
+  source = "./modules/workload-identity"
+
+  inputs = {
+    project_id   = component.project_services.project_id
+    account_id   = "mcp-wa-personal"
+    display_name = "Personal WhatsApp MCP proxy-secret identity"
+    namespace    = local.ns["mcp-whatsapp-personal"].namespace
+    ksa_name     = local.ns["mcp-whatsapp-personal"].ksa
+    additional_ksa_bindings = [{
+      namespace = local.ns.dev.namespace
+      ksa_name  = local.ns["mcp-whatsapp-personal"].ksa
+    }]
+  }
+
+  providers = { google = provider.google.this }
+  depends_on = [component.gke]
+}
+
 component "workload_identity_mcp_tunnel" {
   source = "./modules/workload-identity"
 
@@ -267,6 +287,7 @@ component "kms" {
 
     grant_artifact_registry = false
     grant_gke               = true
+    grant_compute_engine    = true
     project_number          = var.project_number
   }
 

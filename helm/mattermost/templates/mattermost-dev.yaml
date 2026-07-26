@@ -77,7 +77,7 @@ spec:
             - name: MM_SERVICESETTINGS_SITEURL
               value: https://dev.yourown.chat
             # Mattermost blocks RFC1918 destinations for user-controlled
-            # integrations by default. Allow only our four exact in-cluster
+            # integrations by default. Allow only our exact in-cluster
             # MCP service names, never the cluster CIDR.
             - name: MM_SERVICESETTINGS_ALLOWEDUNTRUSTEDINTERNALCONNECTIONS
               value: >-
@@ -85,6 +85,7 @@ spec:
                 dev-mcp-terraform-stacks.dev.svc.cluster.local
                 dev-mcp-google-cloud.dev.svc.cluster.local
                 dev-mcp-whatsapp-business.dev.svc.cluster.local
+                dev-mcp-whatsapp-personal.dev.svc.cluster.local
           ports:
             - containerPort: 8065
           resources:

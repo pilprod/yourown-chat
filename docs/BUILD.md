@@ -114,7 +114,8 @@ docker/                         # one Artifact Registry repository
 ├── mcp-cloudflared
 ├── mcp-google-cloud
 ├── mcp-terraform
-└── mcp-whatsapp-business
+├── mcp-whatsapp-business
+└── mcp-whatsapp-personal
 ```
 
 Each internal package gets an immutable `<git-sha>` tag and a moving `runtime`
@@ -125,7 +126,8 @@ is:
 base (pinned Debian)
 ├── node
 │   ├── mcp-google-cloud
-│   └── mcp-whatsapp-business
+│   ├── mcp-whatsapp-business
+│   └── mcp-whatsapp-personal
 └── python
 ```
 

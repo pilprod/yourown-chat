@@ -22,3 +22,15 @@ variable "secrets" {
   description = "Credential Secrets to create. `data` values are plaintext (the provider base64-encodes them). Sensitive."
   sensitive   = true
 }
+
+variable "storage_classes" {
+  type = map(object({
+    provisioner            = string
+    parameters             = optional(map(string), {})
+    reclaim_policy         = optional(string, "Delete")
+    volume_binding_mode    = optional(string, "WaitForFirstConsumer")
+    allow_volume_expansion = optional(bool, true)
+  }))
+  description = "Storage classes required by sensitive stateful workloads."
+  default     = {}
+}

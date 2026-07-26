@@ -87,6 +87,7 @@ output "workload_identity_emails" {
     mcp-terraform       = component.workload_identity_mcp_terraform.email
     mcp-terraform-stacks = component.workload_identity_mcp_terraform_stacks.email
     mcp-whatsapp        = component.workload_identity_mcp_whatsapp.email
+    mcp-whatsapp-personal = component.workload_identity_mcp_whatsapp_personal.email
     mcp-tunnel          = component.workload_identity_mcp_tunnel.email
   }
 }
@@ -102,6 +103,7 @@ output "workload_identity_members" {
     mcp-terraform       = component.workload_identity_mcp_terraform.iam_member
     mcp-terraform-stacks = component.workload_identity_mcp_terraform_stacks.iam_member
     mcp-whatsapp        = component.workload_identity_mcp_whatsapp.iam_member
+    mcp-whatsapp-personal = component.workload_identity_mcp_whatsapp_personal.iam_member
     mcp-tunnel          = component.workload_identity_mcp_tunnel.iam_member
   }
 }

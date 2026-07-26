@@ -10,7 +10,7 @@ The platform consumes MCP (Model Context Protocol) servers in two ways:
    `http://mcp-<name>.mcp-<name>.svc.cluster.local:<port>/mcp`. Every server
    has its own default-deny namespace (`mcp-terraform`,
    `mcp-terraform-stacks`, `mcp-google-cloud`, or
-   `mcp-whatsapp-business`), so a compromised server
+   `mcp-whatsapp-business`, or `mcp-whatsapp-personal`), so a compromised server
    cannot initiate traffic to another MCP server. Each server admits only Mattermost and the Cloudflare
    Tunnel connector in the separate `mcp-tunnel` namespace. Egress is limited
    to cluster DNS plus encrypted external API/Tunnel traffic.
@@ -27,6 +27,11 @@ The platform consumes MCP (Model Context Protocol) servers in two ways:
    PriorityClass and the tenant's default-deny/intra-namespace policies. Each
    dev server keeps its own KSA and the same per-server Secret Manager IAM
    boundary as production.
+
+   The QR-linked personal WhatsApp exception stores its mutable auth state on
+   a dedicated CMEK-encrypted PVC because it cannot live in immutable Secret
+   Manager versions. Its static proxy credential still uses Secret Manager
+   CSI. See [WHATSAPP_PERSONAL_MCP.md](WHATSAPP_PERSONAL_MCP.md).
 
 2. **Vendor-hosted (remote)** — the vendor runs the MCP endpoint; agents
    connect to its URL with OAuth. Nothing to deploy or operate on our side.
@@ -390,6 +395,21 @@ message being opened in the phone app. Consequently, `unread_count` is a local
 best-effort value: it is accurate for imported history state and messages
 marked read through this MCP, but a phone-only read may remain locally unread.
 
+#### Personal WhatsApp over a QR-linked device
+
+The separate `mcp-whatsapp-personal` server uses a pinned Baileys client for
+one personal, low-volume account. This is an unofficial WhatsApp Web client
+and can violate WhatsApp Terms of Service; it has no no-ban guarantee. It is
+not a replacement for the official Business Cloud API.
+
+The implementation requires a static proxy, persists the QR auth state on a
+CMEK-backed PVC, excludes groups/broadcast/status traffic, exposes no bulk
+tool, permits sends only to dialogs with captured inbound history, enforces
+hard persisted send limits, and provides an emergency stop. Dev releases keep
+the client disabled so only the production pod can own the linked session.
+Setup, QR instructions, exact tools, limitations, and the mandatory disclaimer
+are in [WHATSAPP_PERSONAL_MCP.md](WHATSAPP_PERSONAL_MCP.md).
+
 For Facebook Messenger and Instagram messaging, reuse the official Meta Graph
 APIs rather than treating Developer Tools MCP as a messaging gateway. The
 recommended evolution is one reviewed `mcp-meta` codebase/image with shared
@@ -651,6 +671,9 @@ service account, so it creates no pod in GKE. Each verifier Job runs in
 - a real read-only `whatsapp_get_phone_number` Meta API call;
 - a read-only `whatsapp_list_messages` call against the mounted production
   message index, ensuring the PVC-backed JSON store is readable through MCP;
+- a read-only `whatsapp_personal_status` call; verification fails while its
+  mandatory static proxy is unconfigured, but QR linking itself remains a
+  post-deploy operator action;
 - official Gmail, Calendar, and Drive MCP credentials are deliberately not
   impersonated by CI; each Mattermost user verifies the remote connection
   after their own OAuth consent.
@@ -680,6 +703,9 @@ curl -i http://127.0.0.1:18081/healthz
 
 kubectl port-forward -n mcp-whatsapp-business svc/mcp-whatsapp-business 18083:3000
 curl -i http://127.0.0.1:18083/health
+
+kubectl port-forward -n mcp-whatsapp-personal svc/mcp-whatsapp-personal 18084:3000
+curl -i http://127.0.0.1:18084/health
 ```
 
 Then validate the external path:

@@ -13,12 +13,14 @@ mcp_terraform_image: ""
 mcp_terraform_stacks_image: ""
 mcp_google_cloud_image: ""
 mcp_whatsapp_business_image: ""
+mcp_whatsapp_personal_image: ""
 mcp_tunnel_image: ""
 mcp_secret_project: ""
 mcp_google_cloud_gsa: ""
 mcp_terraform_gsa: ""
 mcp_terraform_stacks_gsa: ""
 mcp_whatsapp_gsa: ""
+mcp_whatsapp_personal_gsa: ""
 mcp_tunnel_gsa: ""
 
 # Ephemeral development releases use `dev-`; production keeps this empty.
@@ -247,5 +249,49 @@ servers:
       limits:
         cpu: 250m
         memory: 256Mi
+    health:
+      path: /health
+
+  # Personal WhatsApp linked-device client. Unlike whatsapp-business this uses
+  # an unofficial WhatsApp Web implementation and a QR-linked session. The
+  # mutable auth state is a long-lived credential on its dedicated PVC.
+  whatsapp-personal:
+    enabled: true
+    replicaCount: 1
+    strategy:
+      type: Recreate
+    serviceAccountName: mcp-whatsapp-personal
+    gcpServiceAccountDeployParameter: mcp_whatsapp_personal_gsa
+    image:
+      deployParameter: mcp_whatsapp_personal_image
+      pullPolicy: IfNotPresent
+    port: 3000
+    env:
+      PORT: "3000"
+      WHATSAPP_PERSONAL_CONNECT_ENABLED: "true"
+      WHATSAPP_PERSONAL_PROXY_URL_FILE: /var/run/secrets/mcp/proxy-url
+      WHATSAPP_PERSONAL_DATA_DIR: /var/lib/whatsapp-personal
+      WHATSAPP_PERSONAL_MESSAGE_RETENTION: "5000"
+      WHATSAPP_PERSONAL_HOURLY_LIMIT: "6"
+      WHATSAPP_PERSONAL_DAILY_LIMIT: "20"
+      WHATSAPP_PERSONAL_MINIMUM_INTERVAL_SECONDS: "30"
+      WHATSAPP_PERSONAL_MAXIMUM_UNANSWERED: "2"
+    secretProvider:
+      enabled: true
+      files:
+        - secretName: mcp-whatsapp-personal-proxy-url
+          path: proxy-url
+    persistence:
+      enabled: true
+      mountPath: /var/lib/whatsapp-personal
+      size: 1Gi
+      storageClassName: mcp-sensitive
+    resources:
+      requests:
+        cpu: 20m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
     health:
       path: /health

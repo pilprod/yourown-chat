@@ -12,6 +12,7 @@ variable "mcp_dev_deployments" {
     "dev-mcp-terraform-stacks",
     "dev-mcp-google-cloud",
     "dev-mcp-whatsapp-business",
+    "dev-mcp-whatsapp-personal",
   ]
 }
 

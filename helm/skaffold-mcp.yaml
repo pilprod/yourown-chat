@@ -47,6 +47,14 @@ profiles:
               - mcp/values.yaml
               - mcp/values-dev.yaml
               - mcp/values-whatsapp-business.yaml
+          - name: dev-mcp-whatsapp-personal
+            chartPath: mcp
+            namespace: dev
+            createNamespace: false
+            valuesFiles:
+              - mcp/values.yaml
+              - mcp/values-dev.yaml
+              - mcp/values-whatsapp-personal.yaml
 
   - name: mcp-prod
     manifests:
@@ -87,6 +95,13 @@ profiles:
             valuesFiles:
               - mcp/values.yaml
               - mcp/values-whatsapp-business.yaml
+          - name: mcp-whatsapp-personal
+            chartPath: mcp
+            namespace: mcp-whatsapp-personal
+            createNamespace: false
+            valuesFiles:
+              - mcp/values.yaml
+              - mcp/values-whatsapp-personal.yaml
     verify:
       - name: mcp-smoke-test
         container:
@@ -105,6 +120,8 @@ profiles:
                 http://mcp-google-cloud.mcp-google-cloud.svc.cluster.local:8080/healthz
               curl -sSf $retry \
                 http://mcp-whatsapp-business.mcp-whatsapp-business.svc.cluster.local:3000/health
+              curl -sSf $retry \
+                http://mcp-whatsapp-personal.mcp-whatsapp-personal.svc.cluster.local:3000/health
 
               init='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"cloud-deploy-prod-smoke","version":"1.0"}}}'
 
@@ -201,6 +218,17 @@ profiles:
               mcp_api_smoke whatsapp-message-store \
                 http://mcp-whatsapp-business.mcp-whatsapp-business.svc.cluster.local:3000/mcp \
                 whatsapp_list_messages '{"limit":1}'
+              # QR linking is an explicit post-deploy operator action. Verify
+              # the MCP protocol and persistent kill-switch/status layer
+              # without sending a message or requiring a linked account.
+              mcp_api_smoke whatsapp-personal \
+                http://mcp-whatsapp-personal.mcp-whatsapp-personal.svc.cluster.local:3000/mcp \
+                whatsapp_personal_status '{}'
+              if grep -q '"configuration_error"' /tmp/whatsapp-personal.body; then
+                echo "[whatsapp-personal] static proxy is not configured" >&2
+                cat /tmp/whatsapp-personal.body >&2
+                exit 1
+              fi
 
         executionMode:
           kubernetesCluster:
@@ -228,3 +256,4 @@ customActions:
             kubectl --namespace dev scale deployment/dev-mcp-terraform-stacks --replicas=0
             kubectl --namespace dev scale deployment/dev-mcp-google-cloud --replicas=0
             kubectl --namespace dev scale deployment/dev-mcp-whatsapp-business --replicas=0
+            kubectl --namespace dev scale deployment/dev-mcp-whatsapp-personal --replicas=0
