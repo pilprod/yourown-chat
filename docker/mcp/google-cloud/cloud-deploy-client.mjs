@@ -177,7 +177,16 @@ export class CloudDeployClient {
       body: body ? JSON.stringify(body) : undefined,
     });
     const text = await response.text();
-    const payload = text ? JSON.parse(text) : {};
+    let payload = {};
+    if (text) {
+      try {
+        payload = JSON.parse(text);
+      } catch {
+        throw new Error(
+          `Cloud Deploy ${method} ${url.pathname} returned non-JSON (${response.status}, ${response.headers.get("content-type") ?? "unknown content type"}): ${text.slice(0, 256)}`,
+        );
+      }
+    }
     if (!response.ok) {
       throw new Error(
         `Cloud Deploy ${method} ${url.pathname} failed (${response.status}): ${
@@ -357,12 +366,14 @@ export class CloudDeployClient {
       );
     }
     const payload = await this.request(
-      `${this.releasePath(pipeline, release)}:promote`,
+      `${this.releasePath(pipeline, release)}/rollouts`,
       {
         method: "POST",
-        body: {
-          toTarget: target,
+        query: {
           rolloutId: plan.rollout_id,
+        },
+        body: {
+          targetId: target,
           annotations: {
             "yourown-chat-mcp-reason": reason.slice(0, 256),
           },

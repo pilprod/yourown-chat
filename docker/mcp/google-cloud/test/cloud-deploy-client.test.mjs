@@ -211,6 +211,56 @@ test("promote requires the exact freshly recomputed plan hash", async () => {
   );
 });
 
+test("promotion creates a rollout through the current Cloud Deploy API", async () => {
+  const calls = [];
+  const client = new CloudDeployClient({
+    project: "yourown-chat",
+    location: "europe-west3",
+    pipelineTargets,
+    auth,
+    fetchImpl: sequenceFetch(
+      [
+        { body: { renderState: "SUCCEEDED", etag: "release-etag" } },
+        { body: { rollouts: [] } },
+        { body: { name: "operations/promote" } },
+      ],
+      calls,
+    ),
+  });
+
+  const expected = await new CloudDeployClient({
+    project: "yourown-chat",
+    location: "europe-west3",
+    pipelineTargets,
+    auth,
+    fetchImpl: sequenceFetch([
+      { body: { renderState: "SUCCEEDED", etag: "release-etag" } },
+      { body: { rollouts: [] } },
+    ]),
+  }).planPromote({
+    pipeline: "mcp",
+    release: "mcp-1-0-0",
+    target: "mcp-prod",
+  });
+
+  const result = await client.promote({
+    pipeline: "mcp",
+    release: "mcp-1-0-0",
+    target: "mcp-prod",
+    expectedPlanId: expected.plan_id,
+    reason: "release smoke passed",
+  });
+
+  assert.equal(result.result.name, "operations/promote");
+  assert.equal(calls[2].method, "POST");
+  assert.match(
+    calls[2].url,
+    /\/releases\/mcp-1-0-0\/rollouts\?rolloutId=mcp-1-0-0-to-mcp-prod-0001$/,
+  );
+  assert.equal(calls[2].body.targetId, "mcp-prod");
+  assert.equal(calls[2].body.rolloutId, undefined);
+});
+
 test("approval verifies current etag and pending approval state", async () => {
   const calls = [];
   const client = new CloudDeployClient({
