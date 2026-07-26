@@ -1,0 +1,22 @@
+{
+  "name": "@yourown-chat/mcp-oauth-proxy",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --format=esm --platform=browser --conditions=workerd,worker,browser --target=es2022 --external:cloudflare:* --outfile=dist/worker.js",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@cloudflare/workers-oauth-provider": "0.8.1",
+    "jose": "6.1.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20260726.1",
+    "@types/node": "26.0.1",
+    "esbuild": "0.25.8",
+    "typescript": "6.0.3",
+    "vitest": "3.2.7"
+  }
+}

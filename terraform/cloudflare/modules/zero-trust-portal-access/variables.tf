@@ -8,12 +8,7 @@ variable "hostname" {
   description = "MCP Portal hostname secured by this type=mcp_portal Access application."
 }
 
-variable "allowed_emails" {
-  type        = list(string)
-  description = "Emails allowed to authenticate to the MCP Portal."
-
-  validation {
-    condition     = length(var.allowed_emails) > 0
-    error_message = "Provide at least one allowed email -- an empty include list would lock everyone out."
-  }
+variable "service_token_id" {
+  type        = string
+  description = "Access service-token ID used only by the OAuth compatibility Worker to reach the Portal origin."
 }

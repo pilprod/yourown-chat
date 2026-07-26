@@ -96,6 +96,7 @@ component "zero_trust" {
     account_id       = one([for c in component.cloudflare : c.account_id])
     zone_id          = one([for c in component.cloudflare : c.zone_id])
     domain           = var.domain
+    team_name        = var.zero_trust_team_name
     upstreams        = var.zero_trust_upstreams
     public_upstreams = var.zero_trust_public_upstreams
     allowed_emails   = var.zero_trust_allowed_emails
@@ -118,7 +119,9 @@ component "zero_trust_portal_access" {
   inputs = {
     account_id     = one([for c in component.cloudflare : c.account_id])
     hostname       = one([for z in component.zero_trust : z.mcp_portal_hostname])
-    allowed_emails = var.zero_trust_allowed_emails
+    service_token_id = one([
+      for z in component.zero_trust : z.mcp_portal_service_token_id
+    ])
   }
 
   providers = {

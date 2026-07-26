@@ -64,7 +64,7 @@ variable "cloudflare_api_token" {
   type        = string
   ephemeral   = true
   sensitive   = true
-  description = "Cloudflare API token scoped to the yourown.chat zone (Zone:Read, DNS:Edit, Zone Settings:Edit, Single Redirect:Edit; + SSL and Certificates:Edit if managing origin cert/AOP). Zero Trust additionally needs account-level Cloudflare Tunnel:Edit, Access Apps and Policies:Edit, Access Organizations Identity Providers and Groups:Edit, and MCP Portals:Edit. Ephemeral: never persisted to state. Sourced from an HCP variable set (see README.md)."
+  description = "Cloudflare API token scoped to the yourown.chat zone (Zone:Read, DNS:Edit, Zone Settings:Edit, Single Redirect:Edit; + SSL and Certificates:Edit if managing origin cert/AOP). Zero Trust additionally needs account-level Cloudflare Tunnel:Edit, Access Apps and Policies:Edit, Access Organizations Identity Providers and Groups:Edit, MCP Portals:Edit, Workers Scripts:Edit, Workers KV Storage:Edit, and Workers Routes:Edit. Ephemeral: never persisted to state. Sourced from an HCP variable set (see README.md)."
 }
 
 variable "domain" {
@@ -185,7 +185,7 @@ variable "cloudflare_manage_origin_cert" {
 # --- Zero Trust (flagged) ------------------------------------------------------
 variable "zero_trust_enabled" {
   type        = bool
-  description = "Expose private in-cluster services through Cloudflare Zero Trust: Access email allow-list -> Tunnel -> ClusterIP. Provider v5 manages human-client OAuth, AI Controls registrations and the MCP Portal. Requires account-level Cloudflare Tunnel:Edit, Access Apps and Policies:Edit, Access Organizations Identity Providers and Groups:Edit, and MCP Portals:Edit."
+  description = "Expose private in-cluster services through Cloudflare Zero Trust: OAuth Worker -> service-token Portal -> Tunnel -> ClusterIP. Provider v5 manages Access for SaaS, Workers KV/route/script, AI Controls registrations and the MCP Portal origin."
   default     = false
 }
 

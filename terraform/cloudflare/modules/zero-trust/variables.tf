@@ -18,6 +18,11 @@ variable "domain" {
   description = "Zone apex; each upstream key becomes <key>.<domain>."
 }
 
+variable "team_name" {
+  type        = string
+  description = "Cloudflare Access team name used to derive the Access for SaaS OIDC issuer."
+}
+
 variable "upstreams" {
   type        = map(string)
   description = "Hostname label => private in-cluster service URL (e.g. mcp-terraform => http://mcp-terraform.mcp-terraform.svc.cluster.local:8080). One tunnel ingress rule, DNS record and Access app per entry."

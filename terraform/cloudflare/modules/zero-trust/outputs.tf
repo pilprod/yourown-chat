@@ -10,13 +10,18 @@ output "hostnames" {
 }
 
 output "mcp_portal_url" {
-  description = "Single Managed OAuth endpoint for Claude, ChatGPT and other remote MCP clients."
-  value       = "https://${cloudflare_zero_trust_access_ai_controls_mcp_portal.this.hostname}/mcp"
+  description = "Stable OAuth compatibility endpoint for Claude, ChatGPT, Codex and other remote MCP clients."
+  value       = "https://mcp.${var.domain}/mcp"
 }
 
 output "mcp_portal_hostname" {
-  description = "Hostname secured by the explicitly managed Portal Access application."
+  description = "Internal Cloudflare Portal origin hostname secured by a service-token-only Access application."
   value       = cloudflare_zero_trust_access_ai_controls_mcp_portal.this.hostname
+}
+
+output "mcp_portal_service_token_id" {
+  description = "Machine identity admitted by the Portal origin Access application."
+  value       = cloudflare_zero_trust_access_service_token.ai_controls.id
 }
 
 output "mcp_server_ids" {

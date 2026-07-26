@@ -65,4 +65,6 @@ pnpm-debug.log*
 .env.*
 !.env.example
 **/dist/
+!workers/mcp-oauth-proxy/dist/
+!workers/mcp-oauth-proxy/dist/worker.js
 **/build/

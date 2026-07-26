@@ -58,11 +58,11 @@ deployment "yourown-chat" {
     # cannot do: the varset API token must carry ACCOUNT permissions (Cloudflare
     # Tunnel:Edit + Access: Apps and Policies:Edit + Access: Service
     # Tokens:Edit + Access: Organizations, Identity Providers, and
-    # Groups:Edit + MCP Portals:Edit) before applying.
+    # Groups:Edit + MCP Portals:Edit + Workers Scripts:Edit + Workers KV
+    # Storage:Edit + Workers Routes:Edit) before applying.
     # The flag is the kill switch for the external private-service path. Human
-    # MCP clients also require Managed OAuth. Migrate this stack and its state
-    # to provider 5.x before managing that setting and the MCP Portal in IaC
-    # (docs/MCP.md).
+    # MCP clients authenticate through the Terraform-managed OAuth Worker and
+    # Access for SaaS application in front of the Portal origin (docs/MCP.md).
     zero_trust_enabled        = true
     zero_trust_team_name      = "yourown-chat"
     zero_trust_allowed_emails = ["ilya@papou.email"]
@@ -109,6 +109,6 @@ publish_output "mcp_capability_sync_ready" {
 }
 
 publish_output "mcp_portal_url" {
-  description = "Single Cloudflare Managed OAuth endpoint for Claude, ChatGPT and other remote MCP clients."
+  description = "Single OAuth compatibility endpoint for Claude, Codex, ChatGPT and other remote MCP clients."
   value       = deployment.yourown-chat.mcp_portal_url
 }

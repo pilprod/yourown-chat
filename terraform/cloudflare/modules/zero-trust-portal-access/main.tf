@@ -1,43 +1,26 @@
-locals {
-  managed_oauth_access_token_lifetime = "15m"
-  managed_oauth_session_duration      = "336h"
-
-  managed_oauth_allowed_uris = [
-    "https://claude.ai/api/mcp/auth_callback",
-    "https://chatgpt.com/*",
-    "https://playground.ai.cloudflare.com/*",
-    "https://oauth-callbacks.cloudflareaccess.com/cdn-cgi/access/outbound-oauth-callback",
-  ]
-}
-
 resource "cloudflare_zero_trust_access_application" "this" {
-  account_id = var.account_id
-  name       = "yourown-chat"
-  domain     = var.hostname
-  type       = "mcp_portal"
-  # Keep the Access and grant expirations identical so a refresh never depends
-  # on an earlier application-session expiry.
-  session_duration = local.managed_oauth_session_duration
+  account_id       = var.account_id
+  name             = "yourown-chat Portal origin"
+  domain           = var.hostname
+  type             = "mcp_portal"
+  session_duration = "24h"
 
+  # End-user OAuth terminates at the compatibility Worker on
+  # mcp.yourown.chat. The Cloudflare Portal origin accepts only the Worker's
+  # machine identity so Managed OAuth cannot rotate/revoke client grants.
   oauth_configuration = {
-    enabled = true
-    dynamic_client_registration = {
-      enabled                = true
-      allow_any_on_localhost = true
-      allow_any_on_loopback  = true
-      allowed_uris           = local.managed_oauth_allowed_uris
-    }
-    grant = {
-      access_token_lifetime = local.managed_oauth_access_token_lifetime
-      session_duration      = local.managed_oauth_session_duration
-    }
+    enabled = false
   }
 
   policies = [{
-    name       = "allowed-emails"
+    name       = "oauth-worker-service-token"
     precedence = 1
-    decision   = "allow"
-    include    = [for email in var.allowed_emails : { email = { email = email } }]
+    decision   = "non_identity"
+    include = [{
+      service_token = {
+        token_id = var.service_token_id
+      }
+    }]
   }]
 
   lifecycle {

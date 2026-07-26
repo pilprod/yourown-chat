@@ -660,20 +660,28 @@ is derived from the zone lookup. The flags are the kill switch for the
 external private-service path. Mattermost continues to use in-cluster Service
 URLs and does not traverse Cloudflare.
 
-### Human clients use Portal OAuth; Cloudflare uses a service token upstream
+### Human clients use the OAuth Worker; Cloudflare uses service tokens upstream
 
-Claude and ChatGPT connect only to the MCP Portal. Terraform enables Managed
-OAuth and dynamic client registration on the Portal's `type = "mcp_portal"`
-Access application. It permits loopback callbacks plus the hosted Claude,
-ChatGPT, Cloudflare Playground, and shared Cloudflare callback URIs. Access
+Claude, Codex, and ChatGPT connect to the stable
+`https://mcp.yourown.chat/mcp` URL. A Cloudflare Worker terminates OAuth 2.1,
+performs dynamic client registration and PKCE, and proxies authenticated MCP
+traffic to the AI Controls Portal at `mcp-origin.yourown.chat`. Access for SaaS
+authenticates the operator against the existing Access policy. Worker access
 tokens last 15 minutes and grants last two weeks.
+
+This replaces Portal Managed OAuth because its rotating refresh token could be
+lost at the first 15-minute refresh boundary in both Claude and Codex. The
+official Workers OAuth provider deliberately keeps the current and immediately
+previous refresh tokens valid and the Worker preserves independent grants for
+concurrent sessions. It does not extend access-token lifetime or conceal a
+refresh failure.
 
 Do **not** distribute `CF-Access-Client-Id` /
 `CF-Access-Client-Secret` to ChatGPT, Claude, phones, or user laptops. Access
 service tokens are shared machine identities. Terraform creates one temporary
 shared token for Cloudflare AI Controls itself and stores its headers in the
-upstream server registrations. Interactive clients use the Portal browser
-login and receive an opaque, refreshable user token.
+upstream server registrations. Interactive clients use the Worker browser
+login and receive an opaque, MCP-resource-bound, refreshable user token.
 
 The direct MCP hostnames remain `self_hosted` Access applications. They do
 not expose Managed OAuth to clients: AI Controls reaches them with the service
@@ -682,13 +690,13 @@ downstream identity used by a server: Google Cloud MCP still calls Google
 Cloud through its shared GKE Workload Identity service account, while
 Terraform MCP still uses its configured HCP credential.
 
-The Cloudflare stack uses provider 5.22.x, registers every configured server in AI
-Controls, and creates a single `https://mcp.yourown.chat/mcp` MCP Portal. This
-matters for Claude Free, which permits one custom connector: one portal exposes
-all servers through that connector. The Portal uses Managed OAuth and a
-proxied CNAME to `gateway.agents.cloudflare.com`. Terraform explicitly manages
-the Portal's `type = "mcp_portal"` Access application, policy, and Managed
-OAuth; do not create a second Stack that owns the same objects.
+The Cloudflare stack uses provider 5.22.x, registers every configured server in
+AI Controls, creates the internal Portal origin, and routes the single public
+hostname through the OAuth Worker. This matters for Claude Free, which permits
+one custom connector: one portal exposes all servers through that connector.
+Terraform explicitly manages the Worker, KV namespace, Access for SaaS app,
+Portal origin, service-token policy, and route; do not create a second Stack
+that owns the same objects.
 
 Client availability is not identical:
 
@@ -706,33 +714,34 @@ Client availability is not identical:
 1. **Prerequisite Terraform cannot do**: edit or re-issue the Cloudflare API
    token with ACCOUNT permissions `Cloudflare Tunnel:Edit` + `Access: Apps and
    Policies:Edit` + `Access: Service Tokens:Edit` + `Access: Organizations,
-   Identity Providers, and Groups:Edit` + `MCP Portals:Edit` (keep the existing
-   zone permissions), update the varset — BEFORE applying, or the cloudflare
-   apply fails on authorization. The stack adopts the existing Zero Trust
+   Identity Providers, and Groups:Edit` + `MCP Portals:Edit` + `Workers
+   Scripts:Edit` + `Workers KV Storage:Edit` + `Workers Routes:Edit` (keep the
+   existing zone permissions), update the varset — BEFORE applying, or the
+   cloudflare apply fails on authorization. The stack adopts the existing Zero Trust
    organization and renames its team/domain to `yourown-chat` /
    `yourown-chat.cloudflareaccess.com`; clients using the old
    `yellow-sunset-672e.cloudflareaccess.com` domain must be updated.
 2. Apply **platform-gcp**: create one Workload Identity per MCP runtime.
-3. Apply **cloudflare**: create/update the tunnel, its Secret Manager token,
-   DNS and Access apps. It also copies the dedicated account token carrying
+3. Apply **cloudflare**: create/update the tunnel, OAuth Worker + KV, Portal
+   origin, its Secret Manager token, DNS and Access apps. It also copies the dedicated account token carrying
    only `MCP Portals:Edit` into the CMEK-encrypted
    `cloudflare-mcp-capability-sync` secret through the Google provider's
    write-only argument; the token remains absent from Terraform state. Only
    the `deploy-mcp` Cloud Deploy identity can read this copy.
 4. Apply **app-gcp**: grant Terraform/WhatsApp identities access to their own
-   Secret Manager containers and create the MCP namespaces. The
-   capability-sync action remains available for controlled recovery but is not
-   attached to routine production rollouts.
+   Secret Manager containers, create the MCP namespaces, and enable the
+   capability-sync postdeploy action after the cloudflare stack publishes its
+   readiness output.
 5. Release: Cloud Deploy creates KSAs + SecretProviderClasses and the pods
    mount `versions/latest` directly. A release racing ahead of the IAM steps
    waits in `ContainerCreating`; re-run it after the stack applies.
 6. Terraform supplies the Access service-token headers to all AI Controls
-   registrations. No upstream browser authorization is required. Cloudflare
-   refreshes the capability catalog in the background approximately every two
-   hours. The normal Cloud Deploy path does not force an account-level sync
-   after runtime-only rollouts because that shared mutation has coincided with
-   invalidated Claude and Codex grants. Use manual **Sync capabilities** only as
-   a controlled recovery path; see [`CLOUDFLARE.md`](CLOUDFLARE.md).
+   registrations. No upstream browser authorization is required. After prod
+   verify, Cloud Deploy calls Cloudflare's capability-sync API for every
+   registered server and waits up to two minutes for each one to reach
+   `Ready`. A sync failure fails POSTDEPLOY instead of leaving clients on a
+   stale tool catalog. Manual **Sync capabilities** is only a recovery path;
+   see [`CLOUDFLARE.md`](CLOUDFLARE.md).
 
 ### Connect personal clients
 
@@ -748,9 +757,9 @@ For Claude Free, Pro, or Max:
 2. Select **+ → Add custom connector**.
 3. Name it `yourown-chat`, paste the Portal URL, and leave optional static
    OAuth client credentials empty.
-4. Select **Connect** and complete the single Cloudflare Access login for the
-   Portal. Upstream servers use the administrator credential and do not prompt
-   the client for another authorization.
+4. Select **Connect**, approve the MCP client, and complete the single
+   Cloudflare Access login. The Portal and upstream servers use machine
+   identities and do not prompt the client for another authorization.
 5. Enable the connector for a conversation from **+ → Connectors**. The same
    account connection is then usable from Claude Desktop and mobile; a new
    connector cannot be added from mobile itself.
@@ -834,7 +843,7 @@ Then validate the external path:
 
 0. In Mattermost connect Gmail, Calendar, and Drive, then run one read-only
    request against each service.
-1. Confirm that the unauthenticated Portal returns `401` with
+1. Confirm that the unauthenticated Worker returns `401` with
    `WWW-Authenticate` and OAuth discovery returns JSON. A direct MCP hostname
    without the Terraform-managed service-token headers is expected to be
    rejected by Access (commonly with a browser-login redirect):
@@ -843,13 +852,18 @@ Then validate the external path:
    curl -i https://mcp.yourown.chat/mcp
    curl -sS \
      https://mcp.yourown.chat/.well-known/oauth-authorization-server
+   curl -sS \
+     https://mcp.yourown.chat/.well-known/oauth-protected-resource/mcp
    curl -i https://mcp-google-cloud.yourown.chat/mcp/
    ```
 
-2. Confirm all AI Controls server entries are `Ready`, then add the Portal URL
+2. Confirm all AI Controls server entries are `Ready`, then add the public URL
    to Claude and ChatGPT using **Connect personal clients** above.
 3. In each client, verify that Terraform, Terraform Stacks, and Google Cloud
    tools are listed and run one read-only request against each.
+4. Keep Claude and Codex connected for more than 15 minutes. Require a second
+   read-only call from both and confirm Worker logs contain
+   `oauth_token_exchange` with `grant_type=refresh_token`.
 
 ## Adding an in-cluster server
 

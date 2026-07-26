@@ -284,14 +284,12 @@ profiles:
             jobManifestPath: mcp/verify/prod-whatsapp-personal-job.yaml
 
 # Cloud Deploy executes these lifecycle actions in Cloud Build, not as pods in
-# GKE. PREDEPLOY cleanup uses its dedicated cleanup identity. The capability
-# sync action remains defined for controlled recovery, but routine production
-# rollouts do not attach it while the shared Portal OAuth incident is under
-# investigation.
+# GKE. PREDEPLOY cleanup uses its dedicated cleanup identity; POSTDEPLOY
+# capability sync uses the normal MCP execution identity.
 customActions:
-  # When explicitly enabled for recovery, run only after protocol/credential
-  # verify succeeds. The execution SA reads one narrowly scoped Secret Manager
-  # value; the Cloudflare token never enters Kubernetes or rendered manifests.
+  # Run only after the production rollout and its protocol/credential verify
+  # succeed. The execution SA reads one narrowly scoped Secret Manager value;
+  # the Cloudflare token never enters Kubernetes or the rendered manifests.
   - name: sync-cloudflare-mcp-capabilities
     containers:
       - name: sync-cloudflare-mcp-capabilities

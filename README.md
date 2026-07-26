@@ -595,10 +595,9 @@ The cloudflare stack manages the `yourown.chat` zone. Cloudflare has no
 Workload Identity path, so its API credential is a static secret.
 `cloudflare_api_token` is used ephemerally by the provider. Cloud Deploy reads
 the same credential from the CMEK-encrypted
-`cloudflare-mcp-capability-sync` Secret Manager secret only for a controlled
-capability-sync recovery. Routine rollouts rely on Cloudflare's background
-catalog refresh and do not mutate shared Portal state. Payload versions stay
-outside Terraform state; Terraform manages the secret metadata and IAM only.
+`cloudflare-mcp-capability-sync` Secret Manager secret to refresh the AI
+Controls catalog after a verified MCP rollout. Payload versions stay outside
+Terraform state; Terraform manages the secret metadata and IAM only.
 
 #### 10.1 Scope the token
 
@@ -619,17 +618,20 @@ owning Cloudflare account:
 | Account → Access: Service Tokens | Edit | only if `zero_trust_enabled = true` (AI Controls → protected MCP upstreams) |
 | Account → Access: Organizations, Identity Providers, and Groups | Edit | only if `zero_trust_enabled = true` (read/update the Zero Trust team name and domain) |
 | Account → MCP Portals | Edit | only if `zero_trust_enabled = true` (AI Controls MCP servers and Portal) |
+| Account → Workers Scripts | Edit | only if `zero_trust_enabled = true` (MCP OAuth compatibility Worker) |
+| Account → Workers KV Storage | Edit | only if `zero_trust_enabled = true` (OAuth grants, refresh tokens, and one-time state) |
+| Zone → Workers Routes | Edit | only if `zero_trust_enabled = true` (route `mcp.yourown.chat/*` to the Worker) |
 
 **Zone Resources**: `Include → Specific zone → yourown.chat`.
-**Account Resources** (only for the five Zero Trust rows above): `Include →
+**Account Resources** (only for the account-scoped Zero Trust rows above): `Include →
 Specific account → your account`. Without these ACCOUNT-scoped permissions the
 Zero Trust resources fail with **error 10000 (Authentication error)** or
 **failed to read Access Organization state** — tunnels, Access apps, and the
 organization/team settings and MCP Portal catalog are account-level, not
 zone-level.
 
-If the token predates Zero Trust or MCP Portal management, edit it to add all
-four account permissions. If you create or roll the token instead, replace
+If the token predates the OAuth compatibility Worker, edit it to add all
+required account and Workers permissions. If you create or roll the token instead, replace
 `cloudflare_api_token` in the HCP variable set before retrying the plan; HCP
 does not learn a newly generated token secret automatically.
 
