@@ -95,13 +95,6 @@ profiles:
             valuesFiles:
               - mcp/values.yaml
               - mcp/values-whatsapp-business.yaml
-          - name: mcp-whatsapp-personal
-            chartPath: mcp
-            namespace: mcp-whatsapp-personal
-            createNamespace: false
-            valuesFiles:
-              - mcp/values.yaml
-              - mcp/values-whatsapp-personal.yaml
     verify:
       - name: mcp-smoke-test
         container:
@@ -120,8 +113,6 @@ profiles:
                 http://mcp-google-cloud.mcp-google-cloud.svc.cluster.local:8080/healthz
               curl -sSf $retry \
                 http://mcp-whatsapp-business.mcp-whatsapp-business.svc.cluster.local:3000/health
-              curl -sSf $retry \
-                http://mcp-whatsapp-personal.mcp-whatsapp-personal.svc.cluster.local:3000/health
 
               init='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"cloud-deploy-prod-smoke","version":"1.0"}}}'
 
@@ -221,21 +212,76 @@ profiles:
               mcp_api_smoke whatsapp-message-store \
                 http://mcp-whatsapp-business.mcp-whatsapp-business.svc.cluster.local:3000/mcp \
                 whatsapp_list_messages '{"limit":1}'
-              # QR linking is an explicit post-deploy operator action. Verify
-              # the MCP protocol and persistent kill-switch/status layer
-              # without sending a message or requiring a linked account.
-              mcp_api_smoke whatsapp-personal \
-                http://mcp-whatsapp-personal.mcp-whatsapp-personal.svc.cluster.local:3000/mcp \
-                whatsapp_personal_status '{}'
-              if grep -q '"configuration_error"' /tmp/whatsapp-personal.body; then
-                echo "[whatsapp-personal] static proxy is not configured" >&2
-                cat /tmp/whatsapp-personal.body >&2
-                exit 1
-              fi
 
         executionMode:
           kubernetesCluster:
             jobManifestPath: mcp/verify/prod-job.yaml
+
+  # Opt-in production profile for the unofficial QR-linked personal client.
+  # Keep it outside mcp-prod until a static residential/mobile proxy secret is
+  # configured. Enabling it adds both the workload and its credential smoke.
+  - name: mcp-whatsapp-personal-prod
+    manifests:
+      helm:
+        releases:
+          - name: mcp-whatsapp-personal
+            chartPath: mcp
+            namespace: mcp-whatsapp-personal
+            createNamespace: false
+            valuesFiles:
+              - mcp/values.yaml
+              - mcp/values-whatsapp-personal.yaml
+    verify:
+      - name: mcp-whatsapp-personal-smoke-test
+        container:
+          name: whatsapp-personal-smoke-test
+          image: curlimages/curl:8.10.1
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              retry='--retry 30 --retry-all-errors --retry-delay 5'
+              url=http://mcp-whatsapp-personal.mcp-whatsapp-personal.svc.cluster.local:3000
+              curl -sSf $retry "$url/health"
+
+              init='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"cloud-deploy-prod-smoke","version":"1.0"}}}'
+              headers=/tmp/whatsapp-personal.headers
+              body=/tmp/whatsapp-personal.body
+              curl -sS --fail-with-body --connect-timeout 5 --max-time 45 \
+                -D "$headers" -o "$body" -X POST \
+                -H 'Content-Type: application/json' \
+                -H 'Accept: application/json, text/event-stream' \
+                -H 'Origin: https://yourown.chat' \
+                --data "$init" "$url/mcp"
+              session_id="$(grep -i '^mcp-session-id:' "$headers" |
+                tail -n1 | cut -d: -f2- | tr -d ' \r')"
+              test -n "$session_id"
+              curl -sS --fail-with-body --connect-timeout 5 --max-time 45 \
+                -o "$body" -X POST \
+                -H 'Content-Type: application/json' \
+                -H 'Accept: application/json, text/event-stream' \
+                -H 'Origin: https://yourown.chat' \
+                -H "Mcp-Session-Id: $session_id" \
+                --data '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+                "$url/mcp"
+              curl -sS --fail-with-body --connect-timeout 5 --max-time 45 \
+                -o "$body" -X POST \
+                -H 'Content-Type: application/json' \
+                -H 'Accept: application/json, text/event-stream' \
+                -H 'Origin: https://yourown.chat' \
+                -H "Mcp-Session-Id: $session_id" \
+                --data '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"whatsapp_personal_status","arguments":{}}}' \
+                "$url/mcp"
+              if ! grep -q '"result"' "$body" ||
+                grep -Eq '"isError"[[:space:]]*:[[:space:]]*true|"error"[[:space:]]*:' "$body" ||
+                grep -q '"configuration_error"' "$body"; then
+                echo "[whatsapp-personal] protocol or static proxy credential smoke failed" >&2
+                cat "$body" >&2
+                exit 1
+              fi
+        executionMode:
+          kubernetesCluster:
+            jobManifestPath: mcp/verify/prod-whatsapp-personal-job.yaml
 
 # Cloud Deploy executes this PREDEPLOY action in Cloud Build under the
 # dedicated cleanup service account, not as a pod in GKE.

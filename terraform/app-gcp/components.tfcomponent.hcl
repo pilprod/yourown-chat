@@ -76,7 +76,10 @@ component "clouddeploy_mcp" {
       },
       {
         name              = "prod"
-        profiles          = ["mcp-prod"]
+        profiles = concat(
+          ["mcp-prod"],
+          var.mcp_whatsapp_personal_enabled ? ["mcp-whatsapp-personal-prod"] : [],
+        )
         require_approval  = true
         verify            = true
         predeploy_actions = ["cleanup-mcp-dev"]

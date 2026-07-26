@@ -63,6 +63,9 @@ deployment "eu" {
 
     # Per-server on/off lives in helm/mcp/values.yaml.
     mcp_servers_enabled = true
+    # Keep the unofficial QR client out of production until its Secret Manager
+    # value contains a working static residential/mobile proxy URL.
+    mcp_whatsapp_personal_enabled = false
 
     # Derived from the cloudflare stack's published outputs -- origin_tls_ready
     # and zero_trust_ready are true when Secret Manager versions exist.

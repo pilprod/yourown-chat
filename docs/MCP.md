@@ -461,6 +461,14 @@ CMEK-backed PVC, excludes groups/broadcast/status traffic, exposes no bulk
 tool, permits sends only to dialogs with captured inbound history, enforces
 hard persisted send limits, and provides an emergency stop. Dev releases keep
 the client disabled so only the production pod can own the linked session.
+Production delivery is also opt-in through
+`mcp_whatsapp_personal_enabled` in
+`terraform/app-gcp/app.tfdeploy.hcl`. It remains `false` while the proxy
+secret contains its seeded placeholder, so unrelated MCP releases can reach
+production without deploying an unusable personal client. Setting it to
+`true` appends the `mcp-whatsapp-personal-prod` Skaffold profile and its
+blocking protocol plus static-proxy credential smoke; the smoke is not
+bypassed or weakened.
 Setup, QR instructions, exact tools, limitations, and the mandatory disclaimer
 are in [WHATSAPP_PERSONAL_MCP.md](WHATSAPP_PERSONAL_MCP.md).
 
@@ -725,9 +733,10 @@ service account, so it creates no pod in GKE. Each verifier Job runs in
 - a real read-only `whatsapp_get_phone_number` Meta API call;
 - a read-only `whatsapp_list_messages` call against the mounted production
   message index, ensuring the PVC-backed JSON store is readable through MCP;
-- a read-only `whatsapp_personal_status` call; verification fails while its
-  mandatory static proxy is unconfigured, but QR linking itself remains a
-  post-deploy operator action;
+- when `mcp_whatsapp_personal_enabled=true`, a separate read-only
+  `whatsapp_personal_status` verification; it fails while the mandatory
+  static proxy is unconfigured, but QR linking itself remains a post-deploy
+  operator action;
 - official Gmail, Calendar, and Drive MCP credentials are deliberately not
   impersonated by CI; each Mattermost user verifies the remote connection
   after their own OAuth consent.
