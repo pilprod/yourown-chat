@@ -66,6 +66,8 @@ git push origin v9.11.3-patched
 ```
 
 This path needs no second tag in `yourown-chat`.
+Its Cloud Deploy release ID is derived from the image version, without the
+source-only `v` and `-patched` markers: `mattermost-11-9-0-img`.
 
 ### A unified platform tag
 

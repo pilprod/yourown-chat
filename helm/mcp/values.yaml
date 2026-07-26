@@ -207,7 +207,7 @@ servers:
         cpu: 500m
         # Logging responses are materialized by both the child and gateway.
         # The session TTL bounds retained children; this covers response bursts.
-        memory: 1Gi
+        memory: 2Gi
     health:
       path: /healthz
 

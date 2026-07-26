@@ -155,19 +155,15 @@ resource "google_cloudbuild_trigger" "this" {
       args = [
         "-ceu",
         <<-EOT
-          version_slug="$$(printf '%s' '$TAG_NAME' |
-            sed -E 's/^v//; s/-patched$$//' |
-            tr -c '[:alnum:]-' '-' |
-            cut -c1-16 |
-            sed -E 's/-+$$//')"
-          short_build="$$(printf '%s' '$BUILD_ID' | cut -c1-8)"
           image="${local.image_repo_path}:$TAG_NAME"
           digest="$$(gcloud artifacts docker images describe "$$image" --format='value(image_summary.digest)')"
 
-          # Cloud Deploy appends "-to-mattermost-dev-0001" to this value for
-          # the rollout ID. Keep the release ID short enough that the combined
-          # resource ID always remains within the 63-character API limit.
-          release_id="mm-$$version_slug-$SHORT_SHA-$$short_build"
+          # An immutable image tag maps to one readable Cloud Deploy release.
+          # The helper strips v/-patched and only falls back to mm- when the
+          # derived production rollout would exceed the 63-character limit.
+          release_id="$$(bash \
+            /workspace/yourown-chat/helm/mattermost-release-id.sh \
+            "$TAG_NAME")"
 
           # Chart.appVersion describes the exact immutable image promoted by
           # this release. The deploy repository keeps a neutral placeholder;
