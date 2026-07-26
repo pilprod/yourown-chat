@@ -595,9 +595,10 @@ The cloudflare stack manages the `yourown.chat` zone. Cloudflare has no
 Workload Identity path, so its API credential is a static secret.
 `cloudflare_api_token` is used ephemerally by the provider. Cloud Deploy reads
 the same credential from the CMEK-encrypted
-`cloudflare-mcp-capability-sync` Secret Manager secret to refresh the AI
-Controls catalog after a verified MCP rollout. Payload versions stay outside
-Terraform state; Terraform manages the secret metadata and IAM only.
+`cloudflare-mcp-capability-sync` Secret Manager secret only for a controlled
+capability-sync recovery. Routine rollouts rely on Cloudflare's background
+catalog refresh and do not mutate shared Portal state. Payload versions stay
+outside Terraform state; Terraform manages the secret metadata and IAM only.
 
 #### 10.1 Scope the token
 

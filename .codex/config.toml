@@ -1,2 +1,2 @@
 [mcp_servers.yourown-chat]
-required = true
+required = false

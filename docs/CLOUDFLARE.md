@@ -37,11 +37,14 @@ This repository makes the `yourown-chat` MCP server required in
 cannot initialize instead of silently continuing without its operational
 tools.
 
-Managed OAuth access tokens last 15 minutes and grants last two weeks. When a
-grant expires or its refresh token is revoked, Codex can retain stale
-credentials and still display `Authenticated` even though MCP initialization
-fails with `invalid_grant: Invalid refresh token`. Restarting Codex does not
-repair that credential. Reauthorize it explicitly:
+Managed OAuth access tokens last 15 minutes. The Portal Access session and its
+refresh grant both last two weeks (`336h`); keep these values identical so an
+otherwise-valid refresh grant is not invalidated by an earlier Access-session
+expiry. Claude, Codex, and other clients should rotate their access tokens
+automatically throughout that period.
+
+When the full two-week grant expires, its refresh token is revoked, or the user
+selects **Sign out** on the Portal homepage, reauthorize the client explicitly:
 
 ```bash
 codex mcp logout yourown-chat
@@ -73,12 +76,19 @@ for Terraform or Google Cloud. The MCP processes still use their own
 in-cluster workload credentials for calls to HCP Terraform and Google Cloud.
 
 Continue only after both AI Controls entries show `Ready` and a non-zero tool
-count. `Waiting` means Cloudflare cannot yet initialize the upstream MCP
-session: inspect the status error, verify the direct hostname and Access
-policy, then select **… → Sync capabilities**. The service token lasts one
-year (`8760h`); rotate it before expiry by replacing the resource through
-Terraform. The temporary shared token is intentional—split it into one token
-and least-privilege policy per MCP server when the role model is implemented.
+count. Cloudflare refreshes capabilities in the background approximately every
+two hours. The release pipeline deliberately does not force the account-level
+sync endpoint after routine runtime rollouts: forced sync has coincided with
+invalidated end-user grants in both Claude and Codex and remains quarantined
+until Access logs disprove that relationship. `Waiting` means Cloudflare cannot
+yet initialize the upstream MCP session; inspect the status error and verify the
+direct hostname and Access policy. Use **… → Sync capabilities** only as a
+controlled recovery action.
+
+The service token lasts one year (`8760h`); rotate it before expiry by replacing
+the resource through Terraform. The temporary shared token is intentional—split
+it into one token and least-privilege policy per MCP server when the role model
+is implemented.
 
 ## DNSSEC
 

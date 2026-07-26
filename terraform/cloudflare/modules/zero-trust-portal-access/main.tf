@@ -1,4 +1,7 @@
 locals {
+  managed_oauth_access_token_lifetime = "15m"
+  managed_oauth_session_duration      = "336h"
+
   managed_oauth_allowed_uris = [
     "https://claude.ai/api/mcp/auth_callback",
     "https://chatgpt.com/*",
@@ -8,11 +11,13 @@ locals {
 }
 
 resource "cloudflare_zero_trust_access_application" "this" {
-  account_id       = var.account_id
-  name             = "yourown-chat"
-  domain           = var.hostname
-  type             = "mcp_portal"
-  session_duration = "24h"
+  account_id = var.account_id
+  name       = "yourown-chat"
+  domain     = var.hostname
+  type       = "mcp_portal"
+  # Keep the Access and grant expirations identical so a refresh never depends
+  # on an earlier application-session expiry.
+  session_duration = local.managed_oauth_session_duration
 
   oauth_configuration = {
     enabled = true
@@ -23,8 +28,8 @@ resource "cloudflare_zero_trust_access_application" "this" {
       allowed_uris           = local.managed_oauth_allowed_uris
     }
     grant = {
-      access_token_lifetime = "15m"
-      session_duration      = "336h"
+      access_token_lifetime = local.managed_oauth_access_token_lifetime
+      session_duration      = local.managed_oauth_session_duration
     }
   }
 

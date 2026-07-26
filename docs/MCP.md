@@ -720,19 +720,19 @@ Client availability is not identical:
    write-only argument; the token remains absent from Terraform state. Only
    the `deploy-mcp` Cloud Deploy identity can read this copy.
 4. Apply **app-gcp**: grant Terraform/WhatsApp identities access to their own
-   Secret Manager containers, create the MCP namespaces, and enable the
-   capability-sync postdeploy action after the cloudflare stack publishes its
-   readiness output.
+   Secret Manager containers and create the MCP namespaces. The
+   capability-sync action remains available for controlled recovery but is not
+   attached to routine production rollouts.
 5. Release: Cloud Deploy creates KSAs + SecretProviderClasses and the pods
    mount `versions/latest` directly. A release racing ahead of the IAM steps
    waits in `ContainerCreating`; re-run it after the stack applies.
 6. Terraform supplies the Access service-token headers to all AI Controls
-   registrations. No upstream browser authorization is required. After prod
-   verify, Cloud Deploy calls Cloudflare's capability-sync API for every
-   registered server and waits up to two minutes for each one to reach
-   `Ready`. A sync failure fails POSTDEPLOY instead of leaving clients on a
-   stale tool catalog. Manual **Sync capabilities** is only a recovery path;
-   see [`CLOUDFLARE.md`](CLOUDFLARE.md).
+   registrations. No upstream browser authorization is required. Cloudflare
+   refreshes the capability catalog in the background approximately every two
+   hours. The normal Cloud Deploy path does not force an account-level sync
+   after runtime-only rollouts because that shared mutation has coincided with
+   invalidated Claude and Codex grants. Use manual **Sync capabilities** only as
+   a controlled recovery path; see [`CLOUDFLARE.md`](CLOUDFLARE.md).
 
 ### Connect personal clients
 
