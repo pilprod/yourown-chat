@@ -8,21 +8,10 @@ variable "secret_id" {
   description = "Secret Manager secret ID."
 }
 
-variable "secret_data" {
-  type        = string
-  ephemeral   = true
-  sensitive   = true
-  description = "Write-only secret payload. It is sent to Google and never persisted in Terraform state."
-}
-
-variable "secret_data_version" {
-  type        = number
-  description = "Operator-controlled write-only value version. Increment when secret_data rotates."
-
-  validation {
-    condition     = var.secret_data_version >= 1 && floor(var.secret_data_version) == var.secret_data_version
-    error_message = "secret_data_version must be a positive integer."
-  }
+variable "adopt_existing" {
+  type        = bool
+  description = "Import a secret created during the one-time write-only bootstrap."
+  default     = false
 }
 
 variable "replica_locations" {

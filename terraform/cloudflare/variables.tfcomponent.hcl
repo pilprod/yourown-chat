@@ -67,24 +67,6 @@ variable "cloudflare_api_token" {
   description = "Cloudflare API token scoped to the yourown.chat zone (Zone:Read, DNS:Edit, Zone Settings:Edit, Single Redirect:Edit; + SSL and Certificates:Edit if managing origin cert/AOP). Zero Trust additionally needs account-level Cloudflare Tunnel:Edit, Access Apps and Policies:Edit, Access Organizations Identity Providers and Groups:Edit, and MCP Portals:Edit. Ephemeral: never persisted to state. Sourced from an HCP variable set (see README.md)."
 }
 
-variable "cloudflare_mcp_sync_api_token" {
-  type        = string
-  ephemeral   = true
-  sensitive   = true
-  description = "Cloudflare API token copied write-only into Secret Manager for Cloud Deploy capability synchronization. The deployment currently supplies the existing account-scoped provider token."
-}
-
-variable "cloudflare_mcp_sync_api_token_version" {
-  type        = number
-  description = "Operator-controlled write-only Secret Manager version for the MCP capability-sync credential. Increment whenever the shared Cloudflare token rotates."
-  default     = 1
-
-  validation {
-    condition     = var.cloudflare_mcp_sync_api_token_version >= 1 && floor(var.cloudflare_mcp_sync_api_token_version) == var.cloudflare_mcp_sync_api_token_version
-    error_message = "cloudflare_mcp_sync_api_token_version must be a positive integer."
-  }
-}
-
 variable "domain" {
   type        = string
   description = "Cloudflare zone / apex domain fronting the origin."

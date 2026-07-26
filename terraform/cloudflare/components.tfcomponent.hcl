@@ -172,28 +172,23 @@ component "zero_trust_secrets" {
   }
 }
 
-# Copy the existing account-scoped provider token into Secret Manager. A
-# dedicated module is required because the token is ephemeral: secret_data_wo
-# sends it without persisting it in Terraform state. Cloud Deploy reads this
-# one secret from Cloud Build, never from GKE.
+# The one-time write-only bootstrap created this CMEK secret and its versions,
+# but Terraform Stacks currently cannot serialize an ephemeral component input
+# after apply. Adopt only the stable secret metadata/IAM here; payload versions
+# stay outside Terraform state. Cloud Deploy reads the latest version from
+# Cloud Build, never from GKE.
 component "mcp_capability_sync_secret" {
   for_each = var.zero_trust_enabled ? toset(["default"]) : toset([])
 
-  source = "./modules/write-only-secret"
+  source = "./modules/adopted-secret"
 
   inputs = {
+    adopt_existing     = true
     project_id        = var.project_id
     replica_locations = [var.region]
     labels            = local.common_labels
     kms_key_name      = var.cmek_key_id
     secret_id         = "cloudflare-mcp-capability-sync"
-    secret_data = jsonencode({
-      account_id = one([for c in component.cloudflare : c.account_id])
-      api_token  = var.cloudflare_mcp_sync_api_token
-      server_ids = sort(values(one([for z in component.zero_trust : z.mcp_server_ids])))
-    })
-    # Prevent an identical new Secret Manager version on every Terraform run.
-    secret_data_version = var.cloudflare_mcp_sync_api_token_version
     accessors = [
       "serviceAccount:deploy-mcp@${var.project_id}.iam.gserviceaccount.com",
     ]

@@ -2,6 +2,13 @@ locals {
   accessor_bindings = toset(var.accessors)
 }
 
+import {
+  for_each = var.adopt_existing ? toset(["this"]) : toset([])
+
+  to = google_secret_manager_secret.this
+  id = "projects/${var.project_id}/secrets/${var.secret_id}"
+}
+
 resource "google_secret_manager_secret" "this" {
   project   = var.project_id
   secret_id = var.secret_id
@@ -23,16 +30,6 @@ resource "google_secret_manager_secret" "this" {
         }
       }
     }
-  }
-}
-
-resource "google_secret_manager_secret_version" "this" {
-  secret                 = google_secret_manager_secret.this.id
-  secret_data_wo         = var.secret_data
-  secret_data_wo_version = var.secret_data_version
-
-  lifecycle {
-    create_before_destroy = true
   }
 }
 

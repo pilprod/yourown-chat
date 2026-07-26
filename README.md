@@ -593,11 +593,11 @@ Then:
 
 The cloudflare stack manages the `yourown.chat` zone. Cloudflare has no
 Workload Identity path, so its API credential is a static secret.
-`cloudflare_api_token` is used ephemerally by the provider and copied through
-a write-only provider argument to the CMEK-encrypted
-`cloudflare-mcp-capability-sync` Secret Manager secret. The value never enters
-Terraform state. Cloud Deploy reads that secret to refresh the AI Controls
-catalog after a verified MCP rollout.
+`cloudflare_api_token` is used ephemerally by the provider. Cloud Deploy reads
+the same credential from the CMEK-encrypted
+`cloudflare-mcp-capability-sync` Secret Manager secret to refresh the AI
+Controls catalog after a verified MCP rollout. Payload versions stay outside
+Terraform state; Terraform manages the secret metadata and IAM only.
 
 #### 10.1 Scope the token
 
@@ -653,11 +653,11 @@ with a fixed NAT egress.
 
 #### 10.3 Rotating
 
-Update `cloudflare_api_token` in the varset, increment
-`cloudflare_mcp_sync_api_token_version` in
-`terraform/cloudflare/cloudflare.tfdeploy.hcl`, and apply the cloudflare stack.
-The explicit version bump creates one new write-only Secret Manager version;
-the shared secret value still never enters Terraform state.
+Update `cloudflare_api_token` in the varset, then add a new JSON payload version
+to the `cloudflare-mcp-capability-sync` Secret Manager secret. The JSON keys
+are `account_id`, `api_token`, and `server_ids`; payload versions deliberately
+remain outside Terraform because HCP Terraform Stacks currently fails while
+recording an ephemeral component input after `secret_data_wo` succeeds.
 
 #### 10.4 Origin TLS
 
