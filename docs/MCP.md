@@ -108,8 +108,8 @@ constraints (especially for consumer services without a public API).
 
 | Service | Server | Credentials |
 |---|---|---|
-| Terraform (Registry + **HCP Terraform**) | internally mirrored `hashicorp/terraform-mcp-server@sha256:67b4…` (official) — registry docs tokenless; workspaces/runs/stacks on app.terraform.io once `TFE_TOKEN` is loaded | HCP team token in Secret Manager (`mcp-terraform-hcp-token`, placeholder seeded) |
-| Terraform Stacks management | internally built `mcp-terraform-stacks` adapter over the official HCP Terraform Stacks API; guarded settings read/create/update plus deployment plan inspection and run-scoped approve/cancel | same HCP team token, with Project Maintain or higher |
+| Terraform (Registry + **HCP Terraform**) | internally mirrored `hashicorp/terraform-mcp-server@sha256:67b4…` (official) — registry docs tokenless; workspaces/runs/stacks on app.terraform.io once `TFE_TOKEN` is loaded | HCP user token in Secret Manager (`mcp-terraform-hcp-token`, placeholder seeded) |
+| Terraform Stacks management | internally built `mcp-terraform-stacks` adapter over the official HCP Terraform Stacks API; guarded settings read/create/update plus deployment plan inspection and run-scoped approve/cancel | same HCP user token, with Project Maintain or higher and its owner authorized for the repository's HCP GitHub App |
 | Google Cloud (Observability + guarded Cloud Deploy lifecycle) | internally built `mcp-google-cloud` image: `@google-cloud/observability-mcp@0.2.3` (Google, preview), a thin tool aggregator, and `supergateway@3.4.3` | **none — keyless**: separate Workload Identity principals for prod lifecycle and disposable observability-only dev; quota project is `yourown-chat` |
 | WhatsApp Business | internally built adapter over the official Meta WhatsApp Cloud API | Meta system-user token, WABA ID and phone-number ID in Secret Manager |
 
@@ -237,13 +237,18 @@ Artifact Registry `@sha256` reference.
 
 #### HCP Terraform token
 
-Create a **team token** in HCP Terraform scoped to the `yourown-chat` project
-(least privilege — the token is a shared identity for every chat user of this
-server), then:
+Create a **user API token** in HCP Terraform for a dedicated operator whose
+account has Project Maintain (or higher) on `yourown-chat` and has authorized
+the HCP Terraform GitHub App used by `pilprod/yourown-chat`. HCP rejects
+GitHub App-backed Stack creation/update with team or organization API tokens,
+even when their project permissions are otherwise sufficient. This token is a
+shared runtime identity for every chat user of the server, so the MCP's
+committed project/repository/directory allowlists remain mandatory. Then add a
+new Secret Manager version:
 
 ```bash
-printf '%s' "<team-token>" | gcloud secrets versions add mcp-terraform-hcp-token --data-file=-
-# Re-apply app-gcp, then restart both consumers:
+printf '%s' "<user-api-token>" | gcloud secrets versions add mcp-terraform-hcp-token --data-file=-
+# No Terraform apply or release is required; restart both CSI consumers:
 kubectl -n mcp-terraform rollout restart deploy/mcp-terraform
 kubectl -n mcp-terraform-stacks rollout restart deploy/mcp-terraform-stacks
 ```
@@ -508,7 +513,7 @@ For Terraform use:
 - Headers: empty
 - OAuth credentials: empty
 
-The HCP Terraform team token is already injected into the server from its
+The HCP Terraform user token is already injected into the server from its
 Kubernetes Secret; never paste it into Mattermost. After saving, enable the
 Terraform tools for the agent and test with a read-only request such as listing
 the accessible HCP Terraform workspaces.
