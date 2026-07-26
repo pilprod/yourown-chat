@@ -6,6 +6,7 @@
 !/terraform/platform-gcp/.terraform.lock.hcl
 !/terraform/app-gcp/.terraform.lock.hcl
 !/terraform/cloudflare/.terraform.lock.hcl
+!/terraform/agent-registry-gcp/.terraform.lock.hcl
 *.tfstate
 *.tfstate.*
 *.tfplan

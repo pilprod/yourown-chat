@@ -291,7 +291,7 @@ export class HcpStacksClient {
         "working-directory": directory,
         "execution-mode": "remote",
         "speculative-enabled": speculativeEnabled,
-        "trigger-patterns": [`/${directory}/**`],
+        "trigger-patterns": [`${directory}/*`, `${directory}/**/*`],
         "vcs-repo": {
           identifier: repository,
           "display-identifier": repository,
@@ -365,7 +365,10 @@ export class HcpStacksClient {
     if (workingDirectory !== undefined) {
       const directory = this.normalizedWorkingDirectory(workingDirectory);
       attributes["working-directory"] = directory;
-      attributes["trigger-patterns"] = [`/${directory}/**`];
+      attributes["trigger-patterns"] = [
+        `${directory}/*`,
+        `${directory}/**/*`,
+      ];
     }
     if (branch !== undefined || triggerDisabled !== undefined) {
       const vcs = current["vcs-repo"];

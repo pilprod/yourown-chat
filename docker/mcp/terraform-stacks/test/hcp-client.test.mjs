@@ -330,7 +330,8 @@ test("previews and creates only an allowlisted VCS-backed Stack", async () => {
   const plan = await client(fixture.fetchImpl).planCreateStack(input);
   assert.match(plan.plan_id, /^sha256:[a-f0-9]{64}$/);
   assert.deepEqual(plan.attributes["trigger-patterns"], [
-    "/terraform/agent-registry-gcp/**",
+    "terraform/agent-registry-gcp/*",
+    "terraform/agent-registry-gcp/**/*",
   ]);
   assert.equal(plan.approval_after_creation, true);
 
