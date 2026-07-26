@@ -78,6 +78,42 @@ test("pipeline and target allowlists reject out-of-scope access", async () => {
   );
 });
 
+test("list endpoints sort each page locally without unsupported orderBy", async () => {
+  const calls = [];
+  const client = new CloudDeployClient({
+    project: "yourown-chat",
+    location: "europe-west3",
+    pipelineTargets,
+    auth,
+    fetchImpl: sequenceFetch(
+      [
+        {
+          body: {
+            releases: [
+              {
+                name: "projects/p/locations/l/deliveryPipelines/mcp/releases/older",
+                createTime: "2026-07-25T00:00:00Z",
+              },
+              {
+                name: "projects/p/locations/l/deliveryPipelines/mcp/releases/newer",
+                createTime: "2026-07-26T00:00:00Z",
+              },
+            ],
+          },
+        },
+      ],
+      calls,
+    ),
+  });
+
+  const result = await client.listReleases({ pipeline: "mcp", pageSize: 5 });
+  assert.deepEqual(
+    result.releases.map((release) => release.name),
+    ["newer", "older"],
+  );
+  assert.doesNotMatch(calls[0].url, /orderBy/);
+});
+
 test("promotion plan is deterministic and chooses the next rollout id", async () => {
   const fetchImpl = sequenceFetch([
     {

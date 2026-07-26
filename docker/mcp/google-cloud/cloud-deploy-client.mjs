@@ -167,11 +167,17 @@ export class CloudDeployClient {
       query: {
         pageSize: Math.min(Math.max(pageSize, 1), 100),
         pageToken,
-        orderBy: "createTime desc",
       },
     });
     return {
-      releases: (payload.releases ?? []).map(summarizeRelease),
+      // Cloud Deploy's list endpoints currently reject createTime/orderBy
+      // even though many Google APIs accept it. Preserve deterministic
+      // newest-first output by sorting the returned page locally.
+      releases: (payload.releases ?? [])
+        .map(summarizeRelease)
+        .sort((left, right) =>
+          (right.create_time ?? "").localeCompare(left.create_time ?? ""),
+        ),
       next_page_token: payload.nextPageToken,
     };
   }
@@ -192,12 +198,15 @@ export class CloudDeployClient {
         query: {
           pageSize: Math.min(Math.max(pageSize, 1), 100),
           pageToken,
-          orderBy: "createTime desc",
         },
       },
     );
     return {
-      rollouts: (payload.rollouts ?? []).map(summarizeRollout),
+      rollouts: (payload.rollouts ?? [])
+        .map(summarizeRollout)
+        .sort((left, right) =>
+          (right.create_time ?? "").localeCompare(left.create_time ?? ""),
+        ),
       next_page_token: payload.nextPageToken,
     };
   }
