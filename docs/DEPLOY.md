@@ -177,6 +177,58 @@ gcloud builds submit \
 Direct Kubernetes application is only a debugging fallback because it bypasses
 Cloud Deploy parameters, verification, cleanup, approval, and release history.
 
+## Helm rendering and component retirement
+
+The entries under `manifests.helm.releases` are render units, not Helm releases
+installed in the cluster. Cloud Deploy calls `skaffold render`, freezes the
+resulting Kubernetes manifests into the release, and applies them with
+`kubectl`. Consequently:
+
+- `helm list` does not show Mattermost or the MCP servers;
+- `helm uninstall` cannot remove them;
+- manually deleting a rendered workload is drift and the next Cloud Deploy
+  rollout recreates it.
+
+This is intentional. Native GKE targets in Cloud Deploy support Helm as a
+renderer but use `kubectl` for deployment. Getting Helm release state would
+require replacing both GKE targets with a custom target implementation that
+runs `helm upgrade --install`. That would also require custom rollback,
+cluster access and verification handling, so it is not justified merely to
+support occasional component removal.
+
+Retirement therefore uses the existing pipelines:
+
+1. remove or disable the component in its chart/Skaffold profile;
+2. add an explicit, idempotent cleanup action for the exact namespaced
+   resources formerly owned by that component;
+3. cut a normal platform tag and let routing select `mattermost` or `mcp`;
+4. verify the disposable dev stage, approve production, then let the cleanup
+   and desired manifests run in the audited rollout;
+5. remove the one-release cleanup action after production no longer contains
+   the retired component.
+
+For an MCP server, keep its namespace, Secret Manager values and any PVC until
+the retirement rollout has succeeded; deleting those is a separate Terraform
+change. For Mattermost, delete only the Mattermost custom resource and its
+application ServiceAccount. Cloud SQL, object storage, TLS and Terraform-owned
+Secrets are long-lived dependencies and must never be part of application
+retirement.
+
+An emergency manual deletion remains possible, but it is not a release:
+
+```bash
+# Example only: stops one MCP workload while preserving its PVC and secrets.
+kubectl --namespace mcp-google-cloud delete \
+  deployment/mcp-google-cloud service/mcp-google-cloud
+
+# Stops Mattermost through its operator without deleting external data.
+kubectl --namespace mattermost delete \
+  mattermost.installation.mattermost.com/mattermost
+```
+
+Record an emergency deletion and follow it with a versioned retirement change,
+otherwise the next rollout restores the component.
+
 ## One-time apply and migration
 
 Apply `platform-gcp` first, then `cloudflare` and `app-gcp`. Apply the
