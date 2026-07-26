@@ -120,22 +120,23 @@ to become Ready before retiring the old instance. Do not change the production
 strategy to `Recreate`; confirm the generated rollout before approving a
 version that changes the operator or CR schema.
 
-Approve from Cloud Deploy, or:
+Agents operate Cloud Build and Cloud Deploy through the production Google
+Cloud MCP, not through the Cloud SDK:
 
-```bash
-gcloud deploy releases promote \
-  --release=RELEASE \
-  --delivery-pipeline=mattermost \
-  --region=europe-west3
-```
+1. inspect the tag build with `google_cloud_build_inspect_build`;
+2. inspect the frozen release and successful dev rollout/job runs;
+3. call `google_cloud_deploy_plan_promote`, then pass its exact plan ID to
+   `google_cloud_deploy_promote`;
+4. inspect the production rollout etag and dev verification state;
+5. call `google_cloud_deploy_approve_rollout`.
 
-Rollback:
-
-```bash
-gcloud deploy targets rollback mattermost-prod \
-  --delivery-pipeline=mattermost \
-  --region=europe-west3
-```
+Rollback stays inside Cloud Deploy. Call
+`google_cloud_deploy_plan_rollback` with a unique rollout ID and optionally an
+exact previous release, review the validated configuration, then call
+`google_cloud_deploy_rollback` with its exact plan ID. Cloud Deploy creates a
+new auditable rollout from the previous frozen release and preserves rollout
+history, deploy parameters, policy checks, and notifications. Do not use
+`helm rollback`: native GKE targets have no installed Helm release state.
 
 ## MCP verification
 
@@ -153,12 +154,8 @@ Business MCP. Official Gmail, Calendar, and Drive MCP connections are
 vendor-hosted and are verified by each Mattermost user after OAuth consent
 rather than by the GKE delivery pipeline.
 
-```bash
-gcloud deploy releases promote \
-  --release=RELEASE \
-  --delivery-pipeline=mcp \
-  --region=europe-west3
-```
+Use the same MCP plan/promote, inspect/approve, and plan/rollback flows with
+pipeline `mcp` and targets `mcp-dev` / `mcp-prod`.
 
 ## Manual release fallback
 

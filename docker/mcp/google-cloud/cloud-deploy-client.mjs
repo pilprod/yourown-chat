@@ -81,6 +81,27 @@ function summarizeRollout(rollout) {
   };
 }
 
+function summarizeJobRun(jobRun) {
+  return {
+    name: basename(jobRun.name),
+    resource_name: jobRun.name,
+    uid: jobRun.uid,
+    state: jobRun.state,
+    create_time: jobRun.createTime,
+    start_time: jobRun.startTime,
+    end_time: jobRun.endTime,
+    phase_id: jobRun.phaseId,
+    job_id: jobRun.jobId,
+    etag: jobRun.etag,
+    deploy_job_run: jobRun.deployJobRun,
+    verify_job_run: jobRun.verifyJobRun,
+    predeploy_job_run: jobRun.predeployJobRun,
+    postdeploy_job_run: jobRun.postdeployJobRun,
+    create_child_rollout_job_run: jobRun.createChildRolloutJobRun,
+    advance_child_rollout_job_run: jobRun.advanceChildRolloutJobRun,
+  };
+}
+
 export class CloudDeployClient {
   constructor({
     project,
@@ -130,6 +151,11 @@ export class CloudDeployClient {
   rolloutPath(pipeline, release, rollout) {
     this.assertName("rollout", rollout);
     return `${this.releasePath(pipeline, release)}/rollouts/${rollout}`;
+  }
+
+  jobRunPath(pipeline, release, rollout, jobRun) {
+    this.assertName("job run", jobRun);
+    return `${this.rolloutPath(pipeline, release, rollout)}/jobRuns/${jobRun}`;
   }
 
   async request(path, { method = "GET", query, body } = {}) {
@@ -186,6 +212,25 @@ export class CloudDeployClient {
     return this.request(this.releasePath(pipeline, release));
   }
 
+  async inspectRelease({ pipeline, release }) {
+    const value = await this.getRelease(pipeline, release);
+    return {
+      ...summarizeRelease(value),
+      description: value.description,
+      annotations: value.annotations ?? {},
+      target_artifacts: value.targetArtifacts ?? {},
+      deploy_parameters: value.deployParameters ?? [],
+      skaffold_config_uri: value.skaffoldConfigUri,
+      skaffold_config_path: value.skaffoldConfigPath,
+      build_artifacts: value.buildArtifacts ?? [],
+      delivery_pipeline_snapshot: value.deliveryPipelineSnapshot,
+      target_snapshots: value.targetSnapshots ?? [],
+      render_start_time: value.renderStartTime,
+      render_end_time: value.renderEndTime,
+      condition: value.condition,
+    };
+  }
+
   async listRollouts({
     pipeline,
     release,
@@ -214,6 +259,34 @@ export class CloudDeployClient {
   async inspectRollout({ pipeline, release, rollout }) {
     return summarizeRollout(
       await this.request(this.rolloutPath(pipeline, release, rollout)),
+    );
+  }
+
+  async listJobRuns({
+    pipeline,
+    release,
+    rollout,
+    pageSize = 50,
+    pageToken,
+  }) {
+    const payload = await this.request(
+      `${this.rolloutPath(pipeline, release, rollout)}/jobRuns`,
+      {
+        query: {
+          pageSize: Math.min(Math.max(pageSize, 1), 100),
+          pageToken,
+        },
+      },
+    );
+    return {
+      job_runs: (payload.jobRuns ?? []).map(summarizeJobRun),
+      next_page_token: payload.nextPageToken,
+    };
+  }
+
+  async inspectJobRun({ pipeline, release, rollout, jobRun }) {
+    return summarizeJobRun(
+      await this.request(this.jobRunPath(pipeline, release, rollout, jobRun)),
     );
   }
 
@@ -334,6 +407,75 @@ export class CloudDeployClient {
       target: current.target_id,
       inspected_etag: expectedEtag,
       reason,
+    };
+  }
+
+  async planRollback({
+    pipeline,
+    target,
+    rolloutId,
+    release,
+  }) {
+    this.assertTarget(pipeline, target);
+    this.assertName("rollback rollout", rolloutId);
+    if (release !== undefined) this.assertName("release", release);
+    const request = {
+      targetId: target,
+      rolloutId,
+      ...(release ? { releaseId: release } : {}),
+      validateOnly: true,
+    };
+    const validation = await this.request(
+      `${this.pipelinePath(pipeline)}:rollbackTarget`,
+      { method: "POST", body: request },
+    );
+    const plan = {
+      action: "rollback",
+      project: this.project,
+      location: this.location,
+      pipeline,
+      target,
+      rollout_id: rolloutId,
+      requested_release: release ?? null,
+      rollback_config: validation.rollbackConfig,
+    };
+    return { ...plan, plan_id: planId(plan) };
+  }
+
+  async rollback({
+    pipeline,
+    target,
+    rolloutId,
+    release,
+    expectedPlanId,
+    reason,
+  }) {
+    const plan = await this.planRollback({
+      pipeline,
+      target,
+      rolloutId,
+      release,
+    });
+    if (plan.plan_id !== expectedPlanId) {
+      throw new Error(
+        `Rollback plan changed: expected ${expectedPlanId}, current ${plan.plan_id}`,
+      );
+    }
+    const result = await this.request(
+      `${this.pipelinePath(pipeline)}:rollbackTarget`,
+      {
+        method: "POST",
+        body: {
+          targetId: target,
+          rolloutId,
+          ...(release ? { releaseId: release } : {}),
+        },
+      },
+    );
+    return {
+      plan,
+      reason,
+      result,
     };
   }
 }

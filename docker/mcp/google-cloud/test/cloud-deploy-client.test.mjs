@@ -246,3 +246,113 @@ test("approval verifies current etag and pending approval state", async () => {
   assert.deepEqual(calls[1].body, { approved: true });
   assert.match(calls[1].url, /:approve$/);
 });
+
+test("release and job-run inspection expose frozen delivery details", async () => {
+  const client = new CloudDeployClient({
+    project: "yourown-chat",
+    location: "europe-west3",
+    pipelineTargets,
+    auth,
+    fetchImpl: sequenceFetch([
+      {
+        body: {
+          name: "projects/p/locations/l/deliveryPipelines/mcp/releases/mcp-1",
+          renderState: "SUCCEEDED",
+          targetArtifacts: { "mcp-prod": { manifestPath: "stable.yaml" } },
+          deployParameters: [{ values: { image: "digest" } }],
+        },
+      },
+      {
+        body: {
+          jobRuns: [
+            {
+              name: "projects/p/locations/l/deliveryPipelines/mcp/releases/mcp-1/rollouts/rollout-1/jobRuns/job-1",
+              state: "SUCCEEDED",
+              phaseId: "stable",
+              jobId: "verify",
+              verifyJobRun: { build: "projects/p/locations/l/builds/build-1" },
+            },
+          ],
+        },
+      },
+    ]),
+  });
+  const release = await client.inspectRelease({
+    pipeline: "mcp",
+    release: "mcp-1",
+  });
+  assert.equal(release.target_artifacts["mcp-prod"].manifestPath, "stable.yaml");
+  const jobs = await client.listJobRuns({
+    pipeline: "mcp",
+    release: "mcp-1",
+    rollout: "rollout-1",
+  });
+  assert.equal(jobs.job_runs[0].job_id, "verify");
+  assert.equal(jobs.job_runs[0].state, "SUCCEEDED");
+});
+
+test("rollback requires a freshly validated exact plan", async () => {
+  const validation = {
+    rollbackConfig: {
+      rollout: {
+        name: "projects/p/locations/l/deliveryPipelines/mcp/releases/mcp-previous/rollouts/rb-mcp-prod-01",
+        targetId: "mcp-prod",
+      },
+      startingPhaseId: "stable",
+    },
+  };
+  const client = new CloudDeployClient({
+    project: "yourown-chat",
+    location: "europe-west3",
+    pipelineTargets,
+    auth,
+    fetchImpl: sequenceFetch([
+      { body: validation },
+      { body: validation },
+      { body: { rollbackConfig: validation.rollbackConfig } },
+    ]),
+  });
+  const plan = await client.planRollback({
+    pipeline: "mcp",
+    target: "mcp-prod",
+    rolloutId: "rb-mcp-prod-01",
+  });
+  assert.match(plan.plan_id, /^sha256:[a-f0-9]{64}$/);
+  const result = await client.rollback({
+    pipeline: "mcp",
+    target: "mcp-prod",
+    rolloutId: "rb-mcp-prod-01",
+    expectedPlanId: plan.plan_id,
+    reason: "restore last successful release",
+  });
+  assert.equal(result.plan.plan_id, plan.plan_id);
+  assert.equal(result.result.rollbackConfig.startingPhaseId, "stable");
+});
+
+test("rollback refuses a stale plan hash", async () => {
+  const client = new CloudDeployClient({
+    project: "yourown-chat",
+    location: "europe-west3",
+    pipelineTargets,
+    auth,
+    fetchImpl: sequenceFetch([
+      {
+        body: {
+          rollbackConfig: {
+            rollout: { targetId: "mcp-prod" },
+          },
+        },
+      },
+    ]),
+  });
+  await assert.rejects(
+    client.rollback({
+      pipeline: "mcp",
+      target: "mcp-prod",
+      rolloutId: "rb-mcp-prod-02",
+      expectedPlanId: `sha256:${"0".repeat(64)}`,
+      reason: "restore last successful release",
+    }),
+    /Rollback plan changed/,
+  );
+});

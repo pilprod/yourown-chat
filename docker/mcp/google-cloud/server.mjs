@@ -8,6 +8,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 
 import { artifactVulnerabilityClientFromEnv } from "./artifact-vulnerability-client.mjs";
+import { cloudBuildClientFromEnv } from "./cloud-build-client.mjs";
 import { cloudDeployClientFromEnv } from "./cloud-deploy-client.mjs";
 import { toolError, toolResult } from "./tool-result.mjs";
 
@@ -29,7 +30,75 @@ const officialTools = (await observability.listTools()).tools;
 const deployEnabled =
   (process.env.GOOGLE_CLOUD_DEPLOY_ENABLED ?? "true").toLowerCase() === "true";
 const deploy = deployEnabled ? cloudDeployClientFromEnv() : null;
+const builds = deployEnabled ? cloudBuildClientFromEnv() : null;
 const security = artifactVulnerabilityClientFromEnv();
+
+const buildTools = [
+  {
+    name: "google_cloud_build_list_builds",
+    description:
+      "List recent regional Cloud Build executions with status, trigger substitutions, source, images and per-step state.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        page_size: { type: "integer", minimum: 1, maximum: 100, default: 20 },
+        page_token: { type: "string" },
+      },
+      additionalProperties: false,
+    },
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+  },
+  {
+    name: "google_cloud_build_inspect_build",
+    description:
+      "Inspect one Cloud Build execution, including every step, timing, source provenance, produced images, warnings and failure information.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        build_id: { type: "string" },
+      },
+      required: ["build_id"],
+      additionalProperties: false,
+    },
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+  },
+  {
+    name: "google_cloud_build_list_build_logs",
+    description:
+      "Read ordered Cloud Logging entries for one Cloud Build execution, including text, JSON/proto payloads, severity and timestamps.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        build_id: { type: "string" },
+        page_size: {
+          type: "integer",
+          minimum: 1,
+          maximum: 1000,
+          default: 200,
+        },
+        page_token: { type: "string" },
+      },
+      required: ["build_id"],
+      additionalProperties: false,
+    },
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+  },
+];
 
 const deployTools = [
   {
@@ -44,6 +113,26 @@ const deployTools = [
         page_token: { type: "string" },
       },
       required: ["pipeline"],
+      additionalProperties: false,
+    },
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+  },
+  {
+    name: "google_cloud_deploy_inspect_release",
+    description:
+      "Inspect a frozen Cloud Deploy release, including target artifacts, deploy parameters, image artifacts, render condition and pipeline/target snapshots.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        pipeline: { type: "string" },
+        release: { type: "string" },
+      },
+      required: ["pipeline", "release"],
       additionalProperties: false,
     },
     annotations: {
@@ -87,6 +176,51 @@ const deployTools = [
         rollout: { type: "string" },
       },
       required: ["pipeline", "release", "rollout"],
+      additionalProperties: false,
+    },
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+  },
+  {
+    name: "google_cloud_deploy_list_job_runs",
+    description:
+      "List deploy, verify, predeploy and postdeploy job runs for one rollout with their exact states and execution details.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        pipeline: { type: "string" },
+        release: { type: "string" },
+        rollout: { type: "string" },
+        page_size: { type: "integer", minimum: 1, maximum: 100, default: 50 },
+        page_token: { type: "string" },
+      },
+      required: ["pipeline", "release", "rollout"],
+      additionalProperties: false,
+    },
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+  },
+  {
+    name: "google_cloud_deploy_inspect_job_run",
+    description:
+      "Inspect one Cloud Deploy job run, including deploy/verify/custom-action failure causes, build identifiers and execution timestamps.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        pipeline: { type: "string" },
+        release: { type: "string" },
+        rollout: { type: "string" },
+        job_run: { type: "string" },
+      },
+      required: ["pipeline", "release", "rollout", "job_run"],
       additionalProperties: false,
     },
     annotations: {
@@ -170,6 +304,71 @@ const deployTools = [
         "release",
         "rollout",
         "expected_etag",
+        "reason",
+        "confirmation",
+      ],
+      additionalProperties: false,
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
+  },
+  {
+    name: "google_cloud_deploy_plan_rollback",
+    description:
+      "Validate a Cloud Deploy rollback without changing the target. Returns the exact validated release/configuration and plan hash required by rollback.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        pipeline: { type: "string" },
+        target: { type: "string" },
+        rollout_id: {
+          type: "string",
+          description:
+            "Caller-selected unique rollout ID, for example rb-mattermost-prod-20260726-01.",
+        },
+        release: {
+          type: "string",
+          description:
+            "Optional exact previous release. Omit to use Cloud Deploy's last successful release for the target.",
+        },
+      },
+      required: ["pipeline", "target", "rollout_id"],
+      additionalProperties: false,
+    },
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+  },
+  {
+    name: "google_cloud_deploy_rollback",
+    description:
+      "Create the exact previously validated Cloud Deploy rollback rollout. Requires the plan hash and ROLLBACK confirmation.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        pipeline: { type: "string" },
+        target: { type: "string" },
+        rollout_id: { type: "string" },
+        release: { type: "string" },
+        expected_plan_id: {
+          type: "string",
+          pattern: "^sha256:[a-f0-9]{64}$",
+        },
+        reason: { type: "string", minLength: 8, maxLength: 500 },
+        confirmation: { type: "string", const: "ROLLBACK" },
+      },
+      required: [
+        "pipeline",
+        "target",
+        "rollout_id",
+        "expected_plan_id",
         "reason",
         "confirmation",
       ],
@@ -277,7 +476,7 @@ const securityTools = [
 
 const enabledCustomTools = [
   ...securityTools,
-  ...(deployEnabled ? deployTools : []),
+  ...(deployEnabled ? [...buildTools, ...deployTools] : []),
 ];
 const customNames = new Set(enabledCustomTools.map((tool) => tool.name));
 const duplicate = officialTools.find((tool) => customNames.has(tool.name));
@@ -287,12 +486,27 @@ if (duplicate) {
 
 async function callCustom(name, input) {
   switch (name) {
+    case "google_cloud_build_list_builds":
+      return builds.listBuilds({
+        pageSize: input.page_size,
+        pageToken: input.page_token,
+      });
+    case "google_cloud_build_inspect_build":
+      return builds.inspectBuild({ buildId: input.build_id });
+    case "google_cloud_build_list_build_logs":
+      return builds.listBuildLogs({
+        buildId: input.build_id,
+        pageSize: input.page_size,
+        pageToken: input.page_token,
+      });
     case "google_cloud_deploy_list_releases":
       return deploy.listReleases({
         pipeline: input.pipeline,
         pageSize: input.page_size,
         pageToken: input.page_token,
       });
+    case "google_cloud_deploy_inspect_release":
+      return deploy.inspectRelease(input);
     case "google_cloud_deploy_list_rollouts":
       return deploy.listRollouts({
         pipeline: input.pipeline,
@@ -302,6 +516,21 @@ async function callCustom(name, input) {
       });
     case "google_cloud_deploy_inspect_rollout":
       return deploy.inspectRollout(input);
+    case "google_cloud_deploy_list_job_runs":
+      return deploy.listJobRuns({
+        pipeline: input.pipeline,
+        release: input.release,
+        rollout: input.rollout,
+        pageSize: input.page_size,
+        pageToken: input.page_token,
+      });
+    case "google_cloud_deploy_inspect_job_run":
+      return deploy.inspectJobRun({
+        pipeline: input.pipeline,
+        release: input.release,
+        rollout: input.rollout,
+        jobRun: input.job_run,
+      });
     case "google_cloud_deploy_plan_promote":
       return deploy.planPromote(input);
     case "google_cloud_deploy_promote":
@@ -318,6 +547,22 @@ async function callCustom(name, input) {
         release: input.release,
         rollout: input.rollout,
         expectedEtag: input.expected_etag,
+        reason: input.reason,
+      });
+    case "google_cloud_deploy_plan_rollback":
+      return deploy.planRollback({
+        pipeline: input.pipeline,
+        target: input.target,
+        rolloutId: input.rollout_id,
+        release: input.release,
+      });
+    case "google_cloud_deploy_rollback":
+      return deploy.rollback({
+        pipeline: input.pipeline,
+        target: input.target,
+        rolloutId: input.rollout_id,
+        release: input.release,
+        expectedPlanId: input.expected_plan_id,
         reason: input.reason,
       });
     case "google_cloud_security_list_images":

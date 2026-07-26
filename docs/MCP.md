@@ -172,45 +172,62 @@ Keep Observability calls bounded even with this headroom:
 - bound monitoring and trace calls with narrow time intervals and small page
   sizes as well.
 
-Cloud Deploy management is deliberately narrower than general Google Cloud
-administration:
+Cloud Build and Cloud Deploy management are deliberately narrower than general
+Google Cloud administration:
 
 - fixed project `yourown-chat` and location `europe-west3`;
+- Cloud Build access is read-only: list builds, inspect complete step/result
+  state, and read build-scoped Cloud Logging entries;
 - only the `mattermost` and `mcp` pipelines and their committed dev/prod
   targets are accepted;
-- list and inspect tools are read-only;
+- releases, rollouts, phases, and their deploy/verify/pre/post job runs can be
+  listed and inspected without the Cloud SDK;
 - promotion is a two-call `plan_promote` → `promote` flow and requires the
   exact SHA-256 plan ID plus literal `PROMOTE`;
 - approval requires a fresh rollout inspection, its exact etag, a reason, and
   literal `APPROVE`;
+- rollback is a two-call `plan_rollback` → `rollback` flow. The plan uses
+  Cloud Deploy's `validateOnly` API, and execution requires its exact SHA-256
+  plan ID plus literal `ROLLBACK`;
 - an existing pending, active, or successful rollout for the same
   release/target blocks another promotion.
 
-The Workload Identity GSA has `roles/clouddeploy.releaser` and
-`roles/clouddeploy.approver`. Terraform grants it `serviceAccountUser` only on
-the two pipeline execution/cleanup identities; the MCP cannot impersonate
+The Workload Identity GSA has the read-only
+`roles/cloudbuild.builds.viewer`, plus `roles/clouddeploy.releaser` and
+`roles/clouddeploy.approver`. Existing `roles/logging.viewer` grants access to
+the build's Cloud Logging records. Terraform grants `serviceAccountUser` only
+on the two pipeline execution/cleanup identities; the MCP cannot impersonate
 unrelated service accounts. Release creation remains owned by the tag-triggered
 Cloud Build pipeline. The dev pod uses `mcp-observability-dev`, which has only
 Logging, Monitoring, Trace, Artifact Registry, and Artifact Analysis read
-access; its mutating lifecycle tools are not advertised.
+access; build and mutating lifecycle tools are not advertised.
+
+Operational agents must use these MCP tools for build/deploy state and actions:
+
+1. `google_cloud_build_list_builds` and
+   `google_cloud_build_inspect_build`;
+2. `google_cloud_build_list_build_logs` for failed or incomplete steps;
+3. `google_cloud_deploy_list_releases` and
+   `google_cloud_deploy_inspect_release`;
+4. `google_cloud_deploy_list_rollouts`,
+   `google_cloud_deploy_inspect_rollout`, and
+   `google_cloud_deploy_list_job_runs`;
+5. guarded plan/promote, inspect/approve, or plan/rollback flows.
+
+The Cloud SDK remains only a human bootstrap/debugging fallback. Agents must
+not use `gcloud builds ...` or `gcloud deploy ...` when the production Google
+Cloud MCP is available.
 
 Google's preview server has no environment variable for a global page-size or
 time-range ceiling, so callers must currently supply these constraints. A
 first-party transport wrapper can clamp arguments later if stricter
 multi-client enforcement becomes necessary.
 
-Inspect the deployed digest and its current package findings:
-
-```bash
-IMAGE_ID="$(kubectl -n mcp-google-cloud get pod \
-  -l app=mcp-google-cloud \
-  -o jsonpath='{.items[0].status.containerStatuses[0].imageID}')"
-printf '%s\n' "$IMAGE_ID"
-
-gcloud artifacts docker images describe \
-  "${IMAGE_ID#docker-pullable://}" \
-  --show-package-vulnerability
-```
+Inspect deployed image digests and findings with
+`google_cloud_security_list_images`, then pass the selected immutable URI to
+`google_cloud_security_list_vulnerabilities`. Use
+`google_cloud_security_get_vulnerability` for the complete occurrence and
+provider advisory.
 
 Artifact Analysis updates findings for an existing digest as its vulnerability
 database changes. A rebuild is required only to consume fixed base packages or

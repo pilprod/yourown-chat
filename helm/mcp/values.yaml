@@ -196,6 +196,8 @@ servers:
       GOOGLE_CLOUD_DEPLOY_PROJECT: "yourown-chat"
       GOOGLE_CLOUD_DEPLOY_LOCATION: "europe-west3"
       GOOGLE_CLOUD_DEPLOY_PIPELINE_TARGETS: "mattermost=mattermost-dev|mattermost-prod,mcp=mcp-dev|mcp-prod"
+      GOOGLE_CLOUD_BUILD_PROJECT: "yourown-chat"
+      GOOGLE_CLOUD_BUILD_LOCATION: "europe-west3"
       HOME: /tmp
     resources:
       requests:

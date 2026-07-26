@@ -3,6 +3,7 @@
 !package.json
 !package-lock.json
 !artifact-vulnerability-client.mjs
+!cloud-build-client.mjs
 !cloud-deploy-client.mjs
 !server.mjs
 !tool-result.mjs

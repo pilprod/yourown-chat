@@ -143,6 +143,7 @@ component "workload_identity_mcp" {
       "roles/cloudtrace.user",
       "roles/artifactregistry.reader",
       "roles/containeranalysis.occurrences.viewer",
+      "roles/cloudbuild.builds.viewer",
       "roles/clouddeploy.releaser",
       "roles/clouddeploy.approver",
     ]

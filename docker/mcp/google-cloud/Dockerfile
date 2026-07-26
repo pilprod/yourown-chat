@@ -9,7 +9,8 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund \
     && npm cache clean --force
 
-COPY artifact-vulnerability-client.mjs cloud-deploy-client.mjs server.mjs tool-result.mjs ./
+COPY artifact-vulnerability-client.mjs cloud-build-client.mjs \
+  cloud-deploy-client.mjs server.mjs tool-result.mjs ./
 
 USER 65532:65532
 
