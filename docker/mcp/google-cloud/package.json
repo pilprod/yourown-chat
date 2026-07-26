@@ -4,8 +4,14 @@
   "private": true,
   "description": "Reproducible Streamable HTTP image for Google Cloud Observability MCP",
   "license": "UNLICENSED",
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  },
   "dependencies": {
     "@google-cloud/observability-mcp": "0.2.3",
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "google-auth-library": "10.9.1",
     "supergateway": "3.4.3"
   },
   "overrides": {

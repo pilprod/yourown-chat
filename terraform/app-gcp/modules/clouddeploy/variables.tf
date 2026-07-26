@@ -73,6 +73,20 @@ variable "execution_sa_roles" {
   ]
 }
 
+variable "release_manager_members" {
+  type        = set(string)
+  description = "Narrowly scoped principals allowed to promote existing releases and therefore impersonate the target execution identities. Cloud Deploy API permissions are granted separately."
+  default     = []
+
+  validation {
+    condition = alltrue([
+      for member in var.release_manager_members :
+      can(regex("^(serviceAccount|user|group):.+$", member))
+    ])
+    error_message = "release_manager_members entries must be IAM member strings."
+  }
+}
+
 variable "labels" {
   type        = map(string)
   description = "Labels applied to Cloud Deploy resources."

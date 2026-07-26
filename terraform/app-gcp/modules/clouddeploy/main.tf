@@ -61,6 +61,22 @@ resource "google_service_account_iam_member" "agent_act_as_cleanup" {
   member             = "serviceAccount:${google_project_service_identity.clouddeploy.email}"
 }
 
+resource "google_service_account_iam_member" "release_manager_act_as_exec" {
+  for_each = var.release_manager_members
+
+  service_account_id = google_service_account.exec.id
+  role               = "roles/iam.serviceAccountUser"
+  member             = each.value
+}
+
+resource "google_service_account_iam_member" "release_manager_act_as_cleanup" {
+  for_each = local.cleanup_enabled ? var.release_manager_members : toset([])
+
+  service_account_id = google_service_account.cleanup[0].id
+  role               = "roles/iam.serviceAccountUser"
+  member             = each.value
+}
+
 # One target per stage. Every target points at the same cluster; Skaffold
 # profiles select the workload set for each stage.
 resource "google_clouddeploy_target" "stage" {
@@ -97,6 +113,8 @@ resource "google_clouddeploy_target" "stage" {
     google_project_iam_member.exec,
     google_project_iam_member.cleanup,
     google_service_account_iam_member.agent_act_as_cleanup,
+    google_service_account_iam_member.release_manager_act_as_exec,
+    google_service_account_iam_member.release_manager_act_as_cleanup,
   ]
 }
 

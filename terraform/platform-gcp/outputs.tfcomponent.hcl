@@ -84,6 +84,7 @@ output "workload_identity_emails" {
     matterbridge        = component.workload_identity_matterbridge.email
     dev                 = component.workload_identity_dev.email
     mcp                 = component.workload_identity_mcp.email
+    mcp-dev             = component.workload_identity_mcp_dev.email
     mcp-terraform       = component.workload_identity_mcp_terraform.email
     mcp-terraform-stacks = component.workload_identity_mcp_terraform_stacks.email
     mcp-whatsapp        = component.workload_identity_mcp_whatsapp.email
@@ -100,6 +101,7 @@ output "workload_identity_members" {
     matterbridge        = component.workload_identity_matterbridge.iam_member
     dev                 = component.workload_identity_dev.iam_member
     mcp                 = component.workload_identity_mcp.iam_member
+    mcp-dev             = component.workload_identity_mcp_dev.iam_member
     mcp-terraform       = component.workload_identity_mcp_terraform.iam_member
     mcp-terraform-stacks = component.workload_identity_mcp_terraform_stacks.iam_member
     mcp-whatsapp        = component.workload_identity_mcp_whatsapp.iam_member

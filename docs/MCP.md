@@ -110,7 +110,7 @@ constraints (especially for consumer services without a public API).
 |---|---|---|
 | Terraform (Registry + **HCP Terraform**) | internally mirrored `hashicorp/terraform-mcp-server@sha256:67b4…` (official) — registry docs tokenless; workspaces/runs/stacks on app.terraform.io once `TFE_TOKEN` is loaded | HCP team token in Secret Manager (`mcp-terraform-hcp-token`, placeholder seeded) |
 | Terraform Stacks management | internally built `mcp-terraform-stacks` adapter over the official HCP Terraform Stacks API; guarded settings read/create/update plus deployment plan inspection and run-scoped approve/cancel | same HCP team token, with Project Maintain or higher |
-| Google Cloud (Logging, Monitoring, Trace, Error Reporting) | internally built `mcp-google-cloud` image: `@google-cloud/observability-mcp@0.2.3` (Google, preview) + `supergateway@3.4.3` | **none — keyless**: Workload Identity (`mcp-google-cloud/mcp-servers` in prod and `dev/mcp-servers` in dev → `mcp` GSA, viewer roles); quota project is `yourown-chat` |
+| Google Cloud (Observability + guarded Cloud Deploy lifecycle) | internally built `mcp-google-cloud` image: `@google-cloud/observability-mcp@0.2.3` (Google, preview), a thin tool aggregator, and `supergateway@3.4.3` | **none — keyless**: separate Workload Identity principals for prod lifecycle and disposable observability-only dev; quota project is `yourown-chat` |
 | WhatsApp Business | internally built adapter over the official Meta WhatsApp Cloud API | Meta system-user token, WABA ID and phone-number ID in Secret Manager |
 
 The Google Cloud server is published as an npm/stdio package, not a container
@@ -118,6 +118,8 @@ with native HTTP transport. The platform therefore builds
 `docker/mcp/google-cloud/Dockerfile` itself. Its committed
 `package-lock.json` pins the complete dependency graph; the image contains the
 official package and starts supergateway in stateful Streamable HTTP mode.
+The local aggregator proxies the official tool catalog unchanged and adds
+Cloud Deploy lifecycle tools; it does not fork or patch Google's package.
 There is no package download, writable npm cache, or init container at runtime.
 
 When `docker/mcp/google-cloud/**` or the shared `docker/base/**` changes, the
@@ -151,6 +153,28 @@ Keep Observability calls bounded even with this headroom:
   known log name or resource type;
 - bound monitoring and trace calls with narrow time intervals and small page
   sizes as well.
+
+Cloud Deploy management is deliberately narrower than general Google Cloud
+administration:
+
+- fixed project `yourown-chat` and location `europe-west3`;
+- only the `mattermost` and `mcp` pipelines and their committed dev/prod
+  targets are accepted;
+- list and inspect tools are read-only;
+- promotion is a two-call `plan_promote` → `promote` flow and requires the
+  exact SHA-256 plan ID plus literal `PROMOTE`;
+- approval requires a fresh rollout inspection, its exact etag, a reason, and
+  literal `APPROVE`;
+- an existing pending, active, or successful rollout for the same
+  release/target blocks another promotion.
+
+The Workload Identity GSA has `roles/clouddeploy.releaser` and
+`roles/clouddeploy.approver`. Terraform grants it `serviceAccountUser` only on
+the two pipeline execution/cleanup identities; the MCP cannot impersonate
+unrelated service accounts. Release creation remains owned by the tag-triggered
+Cloud Build pipeline. The dev pod uses `mcp-observability-dev`, which has only
+Logging, Monitoring, and Trace read access, and its lifecycle tools are not
+advertised.
 
 Google's preview server has no environment variable for a global page-size or
 time-range ceiling, so callers must currently supply these constraints. A

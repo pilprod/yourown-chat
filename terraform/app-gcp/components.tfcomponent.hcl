@@ -18,6 +18,9 @@ component "clouddeploy" {
     region         = var.region
     gke_cluster_id = var.gke_cluster_id
     pipeline_name  = "mattermost"
+    release_manager_members = [
+      var.workload_identity_members.mcp,
+    ]
 
     stages = [
       {
@@ -60,6 +63,9 @@ component "clouddeploy_mcp" {
     region         = var.region
     gke_cluster_id = var.gke_cluster_id
     pipeline_name  = "mcp"
+    release_manager_members = [
+      var.workload_identity_members.mcp,
+    ]
 
     stages = [
       {
@@ -80,6 +86,7 @@ component "clouddeploy_mcp" {
     deploy_parameters = {
       mcp_secret_project        = var.project_id
       mcp_google_cloud_gsa      = lookup(var.workload_identity_emails, "mcp", "")
+      mcp_google_cloud_dev_gsa  = lookup(var.workload_identity_emails, "mcp-dev", "")
       mcp_terraform_gsa         = lookup(var.workload_identity_emails, "mcp-terraform", "")
       mcp_terraform_stacks_gsa  = lookup(var.workload_identity_emails, "mcp-terraform-stacks", "")
       mcp_whatsapp_gsa          = lookup(var.workload_identity_emails, "mcp-whatsapp", "")

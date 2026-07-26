@@ -16,6 +16,12 @@ defaults:
     tunnelNamespace: mcp-tunnel
 
 servers:
+  # The disposable server has a separate observability-only GSA. It cannot
+  # promote or approve production releases, even if the pod is compromised.
+  google-cloud:
+    gcpServiceAccountDeployParameter: mcp_google_cloud_dev_gsa
+    env:
+      GOOGLE_CLOUD_DEPLOY_ENABLED: "false"
   # Dev webhook data is disposable and disappears with the pod. Production
   # keeps the bounded message index on its dedicated PVC.
   whatsapp-business:

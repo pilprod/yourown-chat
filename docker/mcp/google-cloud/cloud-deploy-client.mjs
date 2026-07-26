@@ -1,0 +1,347 @@
+import { createHash } from "node:crypto";
+
+import { GoogleAuth } from "google-auth-library";
+
+const API_ROOT = "https://clouddeploy.googleapis.com/v1";
+const NAME = /^[a-z][a-z0-9-]{0,62}$/;
+
+function requiredEnv(env, name) {
+  const value = env[name]?.trim();
+  if (!value) {
+    throw new Error(`${name} is required`);
+  }
+  return value;
+}
+
+function parsePipelineTargets(value) {
+  const result = new Map();
+  for (const entry of value.split(",")) {
+    const [pipeline, targetsText, ...extra] = entry.split("=");
+    if (!pipeline || !targetsText || extra.length > 0 || !NAME.test(pipeline)) {
+      throw new Error(
+        "GOOGLE_CLOUD_DEPLOY_PIPELINE_TARGETS must use pipeline=target|target entries",
+      );
+    }
+    const targets = targetsText.split("|");
+    if (targets.some((target) => !NAME.test(target))) {
+      throw new Error(`Invalid target allowlist for pipeline ${pipeline}`);
+    }
+    result.set(pipeline, new Set(targets));
+  }
+  return result;
+}
+
+function canonical(value) {
+  if (Array.isArray(value)) {
+    return `[${value.map(canonical).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function planId(value) {
+  return `sha256:${createHash("sha256").update(canonical(value)).digest("hex")}`;
+}
+
+function basename(resourceName) {
+  return resourceName?.split("/").at(-1) ?? null;
+}
+
+function summarizeRelease(release) {
+  return {
+    name: basename(release.name),
+    resource_name: release.name,
+    create_time: release.createTime,
+    render_state: release.renderState,
+    abandoned: release.abandoned ?? false,
+    etag: release.etag,
+    labels: release.labels ?? {},
+  };
+}
+
+function summarizeRollout(rollout) {
+  return {
+    name: basename(rollout.name),
+    resource_name: rollout.name,
+    target_id: rollout.targetId,
+    state: rollout.state,
+    approval_state: rollout.approvalState,
+    create_time: rollout.createTime,
+    deploy_start_time: rollout.deployStartTime,
+    deploy_end_time: rollout.deployEndTime,
+    failure_reason: rollout.failureReason,
+    etag: rollout.etag,
+    phases: rollout.phases ?? [],
+    annotations: rollout.annotations ?? {},
+  };
+}
+
+export class CloudDeployClient {
+  constructor({
+    project,
+    location,
+    pipelineTargets,
+    auth = new GoogleAuth({
+      scopes: ["https://www.googleapis.com/auth/cloud-platform"],
+    }),
+    fetchImpl = fetch,
+  }) {
+    this.project = project;
+    this.location = location;
+    this.pipelineTargets = pipelineTargets;
+    this.auth = auth;
+    this.fetchImpl = fetchImpl;
+  }
+
+  assertPipeline(pipeline) {
+    if (!NAME.test(pipeline) || !this.pipelineTargets.has(pipeline)) {
+      throw new Error(`Pipeline ${pipeline} is not allowlisted`);
+    }
+  }
+
+  assertTarget(pipeline, target) {
+    this.assertPipeline(pipeline);
+    if (!NAME.test(target) || !this.pipelineTargets.get(pipeline).has(target)) {
+      throw new Error(`Target ${target} is not allowlisted for ${pipeline}`);
+    }
+  }
+
+  assertName(kind, value) {
+    if (!NAME.test(value)) {
+      throw new Error(`Invalid ${kind}: ${value}`);
+    }
+  }
+
+  pipelinePath(pipeline) {
+    this.assertPipeline(pipeline);
+    return `projects/${this.project}/locations/${this.location}/deliveryPipelines/${pipeline}`;
+  }
+
+  releasePath(pipeline, release) {
+    this.assertName("release", release);
+    return `${this.pipelinePath(pipeline)}/releases/${release}`;
+  }
+
+  rolloutPath(pipeline, release, rollout) {
+    this.assertName("rollout", rollout);
+    return `${this.releasePath(pipeline, release)}/rollouts/${rollout}`;
+  }
+
+  async request(path, { method = "GET", query, body } = {}) {
+    const url = new URL(`${API_ROOT}/${path}`);
+    for (const [key, value] of Object.entries(query ?? {})) {
+      if (value !== undefined && value !== null && value !== "") {
+        url.searchParams.set(key, String(value));
+      }
+    }
+    const authClient = await this.auth.getClient();
+    const authHeaders = await authClient.getRequestHeaders(url.toString());
+    const response = await this.fetchImpl(url, {
+      method,
+      headers: {
+        ...Object.fromEntries(authHeaders),
+        accept: "application/json",
+        ...(body ? { "content-type": "application/json" } : {}),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const text = await response.text();
+    const payload = text ? JSON.parse(text) : {};
+    if (!response.ok) {
+      throw new Error(
+        `Cloud Deploy ${method} ${url.pathname} failed (${response.status}): ${
+          payload.error?.message ?? text
+        }`,
+      );
+    }
+    return payload;
+  }
+
+  async listReleases({ pipeline, pageSize = 20, pageToken } = {}) {
+    const payload = await this.request(`${this.pipelinePath(pipeline)}/releases`, {
+      query: {
+        pageSize: Math.min(Math.max(pageSize, 1), 100),
+        pageToken,
+        orderBy: "createTime desc",
+      },
+    });
+    return {
+      releases: (payload.releases ?? []).map(summarizeRelease),
+      next_page_token: payload.nextPageToken,
+    };
+  }
+
+  async getRelease(pipeline, release) {
+    return this.request(this.releasePath(pipeline, release));
+  }
+
+  async listRollouts({
+    pipeline,
+    release,
+    pageSize = 20,
+    pageToken,
+  } = {}) {
+    const payload = await this.request(
+      `${this.releasePath(pipeline, release)}/rollouts`,
+      {
+        query: {
+          pageSize: Math.min(Math.max(pageSize, 1), 100),
+          pageToken,
+          orderBy: "createTime desc",
+        },
+      },
+    );
+    return {
+      rollouts: (payload.rollouts ?? []).map(summarizeRollout),
+      next_page_token: payload.nextPageToken,
+    };
+  }
+
+  async inspectRollout({ pipeline, release, rollout }) {
+    return summarizeRollout(
+      await this.request(this.rolloutPath(pipeline, release, rollout)),
+    );
+  }
+
+  async planPromote({ pipeline, release, target }) {
+    this.assertTarget(pipeline, target);
+    const currentRelease = await this.getRelease(pipeline, release);
+    if (currentRelease.abandoned || currentRelease.renderState !== "SUCCEEDED") {
+      throw new Error(
+        `Release ${release} is not promotable: render=${currentRelease.renderState}, abandoned=${currentRelease.abandoned ?? false}`,
+      );
+    }
+
+    const rollouts = await this.listRollouts({
+      pipeline,
+      release,
+      pageSize: 100,
+    });
+    const targetRollouts = rollouts.rollouts.filter(
+      (rollout) => rollout.target_id === target,
+    );
+    const blockingStates = new Set([
+      "PENDING_APPROVAL",
+      "PENDING",
+      "IN_PROGRESS",
+      "SUCCEEDED",
+    ]);
+    const existing = targetRollouts.find((rollout) =>
+      blockingStates.has(rollout.state),
+    );
+    if (existing) {
+      throw new Error(
+        `Release ${release} already has rollout ${existing.name} for ${target} in state ${existing.state}`,
+      );
+    }
+
+    const prefix = `${release}-to-${target}-`;
+    const nextSequence =
+      targetRollouts.reduce((max, rollout) => {
+        if (!rollout.name.startsWith(prefix)) return max;
+        const value = Number.parseInt(rollout.name.slice(prefix.length), 10);
+        return Number.isFinite(value) ? Math.max(max, value) : max;
+      }, 0) + 1;
+    const rolloutId = `${prefix}${String(nextSequence).padStart(4, "0")}`;
+    const plan = {
+      action: "promote",
+      project: this.project,
+      location: this.location,
+      pipeline,
+      release,
+      release_etag: currentRelease.etag,
+      target,
+      rollout_id: rolloutId,
+    };
+    return { ...plan, plan_id: planId(plan) };
+  }
+
+  async promote({
+    pipeline,
+    release,
+    target,
+    expectedPlanId,
+    reason,
+  }) {
+    const plan = await this.planPromote({ pipeline, release, target });
+    if (plan.plan_id !== expectedPlanId) {
+      throw new Error(
+        `Promotion plan changed: expected ${expectedPlanId}, current ${plan.plan_id}`,
+      );
+    }
+    const payload = await this.request(
+      `${this.releasePath(pipeline, release)}:promote`,
+      {
+        method: "POST",
+        body: {
+          toTarget: target,
+          rolloutId: plan.rollout_id,
+          annotations: {
+            "yourown-chat-mcp-reason": reason.slice(0, 256),
+          },
+          labels: {
+            managed_by: "yourown_chat_mcp",
+          },
+        },
+      },
+    );
+    return { plan, result: payload };
+  }
+
+  async approve({
+    pipeline,
+    release,
+    rollout,
+    expectedEtag,
+    reason,
+  }) {
+    const current = await this.inspectRollout({ pipeline, release, rollout });
+    this.assertTarget(pipeline, current.target_id);
+    if (current.etag !== expectedEtag) {
+      throw new Error(
+        `Rollout etag changed: expected ${expectedEtag}, current ${current.etag}`,
+      );
+    }
+    if (
+      current.approval_state !== "NEEDS_APPROVAL" &&
+      current.approval_state !== "PENDING_APPROVAL"
+    ) {
+      throw new Error(
+        `Rollout ${rollout} is not waiting for approval: ${current.approval_state}`,
+      );
+    }
+    await this.request(`${current.resource_name}:approve`, {
+      method: "POST",
+      body: { approved: true },
+    });
+    return {
+      approved: true,
+      rollout: current.resource_name,
+      target: current.target_id,
+      inspected_etag: expectedEtag,
+      reason,
+    };
+  }
+}
+
+export function cloudDeployClientFromEnv(env = process.env, options = {}) {
+  const project = requiredEnv(env, "GOOGLE_CLOUD_DEPLOY_PROJECT");
+  const location = requiredEnv(env, "GOOGLE_CLOUD_DEPLOY_LOCATION");
+  if (!NAME.test(project) || !NAME.test(location)) {
+    throw new Error("Invalid Cloud Deploy project or location");
+  }
+  const pipelineTargets = parsePipelineTargets(
+    requiredEnv(env, "GOOGLE_CLOUD_DEPLOY_PIPELINE_TARGETS"),
+  );
+  return new CloudDeployClient({
+    project,
+    location,
+    pipelineTargets,
+    ...options,
+  });
+}

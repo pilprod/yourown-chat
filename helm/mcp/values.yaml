@@ -174,7 +174,7 @@ servers:
     port: 8080
     args:
       - "--stdio"
-      - "node /app/node_modules/@google-cloud/observability-mcp/dist/bundle.js"
+      - "node /app/server.mjs"
       - "--outputTransport"
       - "streamableHttp"
       - "--stateful"
@@ -189,6 +189,10 @@ servers:
     env:
       GOOGLE_CLOUD_PROJECT: "yourown-chat"
       GOOGLE_CLOUD_QUOTA_PROJECT: "yourown-chat"
+      GOOGLE_CLOUD_DEPLOY_ENABLED: "true"
+      GOOGLE_CLOUD_DEPLOY_PROJECT: "yourown-chat"
+      GOOGLE_CLOUD_DEPLOY_LOCATION: "europe-west3"
+      GOOGLE_CLOUD_DEPLOY_PIPELINE_TARGETS: "mattermost=mattermost-dev|mattermost-prod,mcp=mcp-dev|mcp-prod"
       HOME: /tmp
     resources:
       requests:

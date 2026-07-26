@@ -125,8 +125,8 @@ component "workload_identity_dev" {
   depends_on = [component.gke]
 }
 
-# Keyless read-only observability for the google-cloud MCP server (ADC resolves
-# to this GSA via Workload Identity -- no key, no secret).
+# Keyless observability plus guarded release lifecycle for the google-cloud MCP
+# server (ADC resolves to this GSA via Workload Identity -- no key, no secret).
 component "workload_identity_mcp" {
   source = "./modules/workload-identity"
 
@@ -136,12 +136,33 @@ component "workload_identity_mcp" {
     display_name = "Google Cloud MCP workload identity"
     namespace    = local.ns.mcp.namespace
     ksa_name     = local.ns.mcp.ksa
-    additional_ksa_bindings = [
-      {
-        namespace = local.ns.dev.namespace
-        ksa_name  = "mcp-servers"
-      },
+    project_roles = [
+      "roles/logging.viewer",
+      "roles/monitoring.viewer",
+      "roles/cloudtrace.user",
+      "roles/clouddeploy.releaser",
+      "roles/clouddeploy.approver",
     ]
+  }
+
+  providers = {
+    google = provider.google.this
+  }
+
+  depends_on = [component.gke]
+}
+
+# Disposable dev Google Cloud MCP can inspect observability data but cannot
+# promote or approve Cloud Deploy releases.
+component "workload_identity_mcp_dev" {
+  source = "./modules/workload-identity"
+
+  inputs = {
+    project_id   = component.project_services.project_id
+    account_id   = "mcp-observability-dev"
+    display_name = "Dev Google Cloud MCP observability identity"
+    namespace    = local.ns.dev.namespace
+    ksa_name     = "mcp-servers"
     project_roles = [
       "roles/logging.viewer",
       "roles/monitoring.viewer",
