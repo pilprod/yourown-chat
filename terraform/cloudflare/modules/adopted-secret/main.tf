@@ -33,6 +33,24 @@ resource "google_secret_manager_secret" "this" {
   }
 }
 
+# Preserve the bootstrap version already tracked at this address. The actual
+# payload was written through secret_data_wo and is intentionally unavailable
+# to Terraform now; later rotations are added out-of-band and consumed through
+# Secret Manager's `latest` alias.
+resource "google_secret_manager_secret_version" "this" {
+  secret                 = google_secret_manager_secret.this.id
+  secret_data_wo         = "managed-out-of-band"
+  secret_data_wo_version = 1
+
+  lifecycle {
+    ignore_changes = [
+      secret_data_wo,
+      secret_data_wo_version,
+    ]
+    prevent_destroy = true
+  }
+}
+
 resource "google_secret_manager_secret_iam_member" "accessor" {
   for_each = local.accessor_bindings
 
