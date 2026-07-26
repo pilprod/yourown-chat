@@ -2,3 +2,6 @@
 !Dockerfile
 !package.json
 !package-lock.json
+!cloud-deploy-client.mjs
+!server.mjs
+!tool-result.mjs
