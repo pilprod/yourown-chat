@@ -105,20 +105,56 @@ async function sendAndRecord({ to, type, text, body }) {
   return result;
 }
 
+const readOnlyLocal = {
+  readOnlyHint: true,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+};
+const readOnlyExternal = {
+  ...readOnlyLocal,
+  openWorldHint: true,
+};
+const writeExternal = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: false,
+  openWorldHint: true,
+};
+
+function toolDefinition(title, description, inputSchema, annotations) {
+  return {
+    title,
+    description,
+    inputSchema,
+    annotations: {
+      ...annotations,
+      title,
+    },
+  };
+}
+
 function createServer() {
   const server = new McpServer({
     name: "yourown-chat-whatsapp-business",
     version: "1.0.0",
   });
 
-  server.tool(
+  server.registerTool(
     "whatsapp_send_text",
-    "Send a text message through the official WhatsApp Business Cloud API.",
-    {
-      to: z.string().min(6).describe("Recipient number in international format"),
-      body: z.string().min(1).max(4096),
-      preview_url: z.boolean().optional().default(false),
-    },
+    toolDefinition(
+      "Send text",
+      "Send a text message through the official WhatsApp Business Cloud API.",
+      {
+        to: z
+          .string()
+          .min(6)
+          .describe("Recipient number in international format"),
+        body: z.string().min(1).max(4096),
+        preview_url: z.boolean().optional().default(false),
+      },
+      writeExternal,
+    ),
     async ({ to, body, preview_url }) =>
       toolResult(
         await sendAndRecord({
@@ -136,15 +172,19 @@ function createServer() {
       ),
   );
 
-  server.tool(
+  server.registerTool(
     "whatsapp_send_template",
-    "Send an approved WhatsApp Business message template.",
-    {
-      to: z.string().min(6),
-      name: z.string().min(1),
-      language_code: z.string().min(2).default("en_US"),
-      components: z.array(z.record(z.unknown())).optional(),
-    },
+    toolDefinition(
+      "Send template",
+      "Send an approved WhatsApp Business message template.",
+      {
+        to: z.string().min(6),
+        name: z.string().min(1),
+        language_code: z.string().min(2).default("en_US"),
+        components: z.array(z.record(z.unknown())).optional(),
+      },
+      writeExternal,
+    ),
     async ({ to, name, language_code, components }) =>
       toolResult(
         await sendAndRecord({
@@ -165,16 +205,20 @@ function createServer() {
       ),
   );
 
-  server.tool(
+  server.registerTool(
     "whatsapp_send_media_link",
-    "Send image, video, audio, or document media by HTTPS URL.",
-    {
-      to: z.string().min(6),
-      media_type: z.enum(["image", "video", "audio", "document"]),
-      link: z.string().url(),
-      caption: z.string().max(1024).optional(),
-      filename: z.string().max(240).optional(),
-    },
+    toolDefinition(
+      "Send media link",
+      "Send image, video, audio, or document media by HTTPS URL.",
+      {
+        to: z.string().min(6),
+        media_type: z.enum(["image", "video", "audio", "document"]),
+        link: z.string().url(),
+        caption: z.string().max(1024).optional(),
+        filename: z.string().max(240).optional(),
+      },
+      writeExternal,
+    ),
     async ({ to, media_type, link, caption, filename }) => {
       const media = {
         link,
@@ -197,40 +241,52 @@ function createServer() {
     },
   );
 
-  server.tool(
+  server.registerTool(
     "whatsapp_list_messages",
-    "Read recently received and sent WhatsApp Business messages captured through the verified Meta webhook.",
-    {
-      phone: z
-        .string()
-        .min(6)
-        .optional()
-        .describe("Filter by either participant"),
-      from: z.string().min(6).optional().describe("Filter by sender number"),
-      direction: z.enum(["inbound", "outbound"]).optional(),
-      source: z
-        .enum(["cloud_api", "business_app", "history", "cloud_api_status"])
-        .optional(),
-      status: z.string().min(1).optional(),
-      since: z.string().datetime().optional(),
-      limit: z.number().int().min(1).max(200).optional().default(50),
-    },
+    toolDefinition(
+      "List messages",
+      "Read recently received and sent WhatsApp Business messages captured through the verified Meta webhook.",
+      {
+        phone: z
+          .string()
+          .min(6)
+          .optional()
+          .describe("Filter by either participant"),
+        from: z.string().min(6).optional().describe("Filter by sender number"),
+        direction: z.enum(["inbound", "outbound"]).optional(),
+        source: z
+          .enum(["cloud_api", "business_app", "history", "cloud_api_status"])
+          .optional(),
+        status: z.string().min(1).optional(),
+        since: z.string().datetime().optional(),
+        limit: z.number().int().min(1).max(200).optional().default(50),
+      },
+      readOnlyLocal,
+    ),
     async (filters) => toolResult(await messageStore.list(filters)),
   );
 
-  server.tool(
+  server.registerTool(
     "whatsapp_list_conversations",
-    "List WhatsApp conversations assembled from webhook, Coexistence history, and WhatsApp Business app echo events.",
-    {
-      limit: z.number().int().min(1).max(200).optional().default(50),
-    },
+    toolDefinition(
+      "List conversations",
+      "List WhatsApp conversations assembled from webhook, Coexistence history, and WhatsApp Business app echo events.",
+      {
+        limit: z.number().int().min(1).max(200).optional().default(50),
+      },
+      readOnlyLocal,
+    ),
     async (filters) => toolResult(await messageStore.conversations(filters)),
   );
 
-  server.tool(
+  server.registerTool(
     "whatsapp_get_message",
-    "Read one captured WhatsApp Business message by its wamid.",
-    { message_id: z.string().min(1) },
+    toolDefinition(
+      "Get message",
+      "Read one captured WhatsApp Business message by its wamid.",
+      { message_id: z.string().min(1) },
+      readOnlyLocal,
+    ),
     async ({ message_id }) => {
       const message = await messageStore.get(message_id);
       if (!message) {
@@ -240,10 +296,17 @@ function createServer() {
     },
   );
 
-  server.tool(
+  server.registerTool(
     "whatsapp_mark_message_read",
-    "Mark a WhatsApp message as read.",
-    { message_id: z.string().min(1) },
+    toolDefinition(
+      "Mark message read",
+      "Mark a WhatsApp message as read.",
+      { message_id: z.string().min(1) },
+      {
+        ...writeExternal,
+        idempotentHint: true,
+      },
+    ),
     async ({ message_id }) => {
       const result = await graphRequest(
         `${requiredEnv("WHATSAPP_PHONE_NUMBER_ID")}/messages`,
@@ -264,10 +327,14 @@ function createServer() {
     },
   );
 
-  server.tool(
+  server.registerTool(
     "whatsapp_get_business_profile",
-    "Read the WhatsApp Business profile attached to the configured phone number.",
-    {},
+    toolDefinition(
+      "Get business profile",
+      "Read the WhatsApp Business profile attached to the configured phone number.",
+      {},
+      readOnlyExternal,
+    ),
     async () =>
       toolResult(
         await graphRequest(
@@ -276,10 +343,14 @@ function createServer() {
       ),
   );
 
-  server.tool(
+  server.registerTool(
     "whatsapp_get_phone_number",
-    "Read the configured WhatsApp Business phone-number metadata and quality rating.",
-    {},
+    toolDefinition(
+      "Get phone number",
+      "Read the configured WhatsApp Business phone-number metadata and quality rating.",
+      {},
+      readOnlyExternal,
+    ),
     async () =>
       toolResult(
         await graphRequest(
@@ -288,10 +359,14 @@ function createServer() {
       ),
   );
 
-  server.tool(
+  server.registerTool(
     "whatsapp_list_message_templates",
-    "List approved and pending WhatsApp Business message templates.",
-    { limit: z.number().int().min(1).max(100).optional().default(25) },
+    toolDefinition(
+      "List message templates",
+      "List approved and pending WhatsApp Business message templates.",
+      { limit: z.number().int().min(1).max(100).optional().default(25) },
+      readOnlyExternal,
+    ),
     async ({ limit }) =>
       toolResult(
         await graphRequest(

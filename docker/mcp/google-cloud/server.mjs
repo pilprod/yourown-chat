@@ -32,6 +32,61 @@ const observability = new Client(
 await observability.connect(childTransport);
 const officialTools = (await observability.listTools()).tools;
 
+const observabilityTitles = {
+  list_log_entries: "Logging: List entries",
+  list_log_names: "Logging: List log names",
+  list_buckets: "Logging: List buckets",
+  list_views: "Logging: List views",
+  list_sinks: "Logging: List sinks",
+  list_log_scopes: "Logging: List scopes",
+  list_metric_descriptors: "Monitoring: List metric descriptors",
+  list_time_series: "Monitoring: List time series",
+  list_alert_policies: "Monitoring: List alert policies",
+  list_alerts: "Monitoring: List alerts",
+  list_traces: "Trace: List traces",
+  get_trace: "Trace: Get trace",
+  list_group_stats: "Error Reporting: List group stats",
+};
+
+function humanize(value) {
+  const words = value.split("_").filter(Boolean).join(" ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+function customToolTitle(name) {
+  for (const [prefix, group] of [
+    ["google_cloud_build_", "Build"],
+    ["google_cloud_deploy_", "Deploy"],
+    ["google_cloud_security_", "Security"],
+  ]) {
+    if (name.startsWith(prefix)) {
+      return `${group}: ${humanize(name.slice(prefix.length))}`;
+    }
+  }
+  return humanize(name.replace(/^google_cloud_/, ""));
+}
+
+function displayTool(tool, title, annotationDefaults = {}) {
+  return {
+    ...tool,
+    title,
+    annotations: {
+      ...annotationDefaults,
+      ...tool.annotations,
+      title,
+    },
+  };
+}
+
+const exposedOfficialTools = officialTools.map((tool) =>
+  displayTool(tool, observabilityTitles[tool.name] ?? humanize(tool.name), {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+  }),
+);
+
 const deployEnabled =
   (process.env.GOOGLE_CLOUD_DEPLOY_ENABLED ?? "true").toLowerCase() === "true";
 const deploy = deployEnabled ? cloudDeployClientFromEnv() : null;
@@ -483,6 +538,9 @@ const enabledCustomTools = [
   ...securityTools,
   ...(deployEnabled ? [...buildTools, ...deployTools] : []),
 ];
+const exposedCustomTools = enabledCustomTools.map((tool) =>
+  displayTool(tool, customToolTitle(tool.name)),
+);
 const customNames = new Set(enabledCustomTools.map((tool) => tool.name));
 const duplicate = officialTools.find((tool) => customNames.has(tool.name));
 if (duplicate) {
@@ -603,7 +661,7 @@ function createServer() {
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: [...officialTools, ...enabledCustomTools],
+    tools: [...exposedOfficialTools, ...exposedCustomTools],
   }));
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {

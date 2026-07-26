@@ -48,7 +48,8 @@ test("aggregator exposes official observability and guarded deploy tools", async
 
   try {
     await client.connect(transport);
-    const names = new Set((await client.listTools()).tools.map((tool) => tool.name));
+    const tools = (await client.listTools()).tools;
+    const names = new Set(tools.map((tool) => tool.name));
     assert(names.has("list_log_entries"));
     assert(names.has("google_cloud_build_list_builds"));
     assert(names.has("google_cloud_build_inspect_build"));
@@ -63,6 +64,28 @@ test("aggregator exposes official observability and guarded deploy tools", async
     assert(names.has("google_cloud_security_list_images"));
     assert(names.has("google_cloud_security_list_vulnerabilities"));
     assert(names.has("google_cloud_security_get_vulnerability"));
+
+    const logging = tools.find((tool) => tool.name === "list_log_entries");
+    assert.equal(logging.title, "Logging: List entries");
+    assert.equal(logging.annotations.title, "Logging: List entries");
+    assert.equal(logging.annotations.readOnlyHint, true);
+    assert.equal(logging.annotations.destructiveHint, false);
+
+    const approve = tools.find(
+      (tool) => tool.name === "google_cloud_deploy_approve_rollout",
+    );
+    assert.equal(approve.title, "Deploy: Approve rollout");
+    assert.equal(approve.annotations.readOnlyHint, false);
+    assert.equal(approve.annotations.destructiveHint, true);
+
+    assert(
+      tools.every(
+        (tool) =>
+          tool.title &&
+          typeof tool.annotations?.readOnlyHint === "boolean" &&
+          typeof tool.annotations?.destructiveHint === "boolean",
+      ),
+    );
   } finally {
     await client.close();
   }
