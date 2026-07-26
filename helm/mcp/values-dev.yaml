@@ -8,6 +8,13 @@ agentRegistry:
 
 defaults:
   priorityClassName: development
+  # Dev is disposable and constrained by its namespace ResourceQuota. Replace
+  # one pod at a time instead of reserving capacity for a rolling surge.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   networkPolicy:
     enabled: true
     namespaceDefaults: false

@@ -6,6 +6,7 @@
 {{- $secretProviderEnabled := $secretProvider.enabled | default false }}
 {{- $persistence := $server.persistence | default dict }}
 {{- $persistenceEnabled := $persistence.enabled | default false }}
+{{- $strategy := $server.strategy | default $.Values.defaults.strategy }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -29,7 +30,7 @@ metadata:
   {{- end }}
 spec:
   replicas: {{ $server.replicaCount | default 1 }}
-  {{- with $server.strategy }}
+  {{- with $strategy }}
   strategy:
     {{- toYaml . | nindent 4 }}
   {{- end }}
