@@ -160,7 +160,7 @@ servers:
       path: /health
 
   # Our reproducible image contains pinned
-  # @google-cloud/observability-mcp + supergateway packages and is built by the
+  # @google-cloud/observability-mcp + native HTTP aggregator and is built by the
   # MCP release trigger into Artifact Registry. Cloud Deploy replaces the
   # marker below with the immutable image digest produced by that build.
   # Keyless: the mcp-servers KSA -> `mcp` GSA supplies ADC.
@@ -172,20 +172,6 @@ servers:
       deployParameter: mcp_google_cloud_image
       pullPolicy: IfNotPresent
     port: 8080
-    args:
-      - "--stdio"
-      - "node /app/server.mjs"
-      - "--outputTransport"
-      - "streamableHttp"
-      - "--stateful"
-      # Bound the lifetime of the per-session stdio child. Without this,
-      # short-lived Portal/client sessions accumulate until the pod is OOM.
-      - "--sessionTimeout"
-      - "60000"
-      - "--port"
-      - "8080"
-      - "--healthEndpoint"
-      - "/healthz"
     env:
       GOOGLE_CLOUD_PROJECT: "yourown-chat"
       GOOGLE_CLOUD_SECURITY_PROJECT: "yourown-chat"
@@ -205,8 +191,8 @@ servers:
         memory: 256Mi
       limits:
         cpu: 500m
-        # Logging responses are materialized by both the child and gateway.
-        # The session TTL bounds retained children; this covers response bursts.
+        # Logging responses are materialized by the aggregator and the single
+        # shared official Observability child; this covers response bursts.
         memory: 2Gi
     health:
       path: /healthz

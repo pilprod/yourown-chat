@@ -16,5 +16,4 @@ USER 65532:65532
 
 EXPOSE 8080
 
-ENTRYPOINT ["/app/node_modules/.bin/supergateway"]
-CMD ["--stdio", "node /app/server.mjs", "--outputTransport", "streamableHttp", "--stateful", "--port", "8080", "--healthEndpoint", "/healthz"]
+ENTRYPOINT ["node", "/app/server.mjs"]

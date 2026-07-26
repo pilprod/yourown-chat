@@ -110,14 +110,15 @@ constraints (especially for consumer services without a public API).
 |---|---|---|
 | Terraform (Registry + **HCP Terraform**) | internally mirrored `hashicorp/terraform-mcp-server@sha256:67b4…` (official) — registry docs tokenless; workspaces/runs/stacks on app.terraform.io once `TFE_TOKEN` is loaded | HCP user token in Secret Manager (`mcp-terraform-hcp-token`, placeholder seeded) |
 | Terraform Stacks management | internally built `mcp-terraform-stacks` adapter over the official HCP Terraform Stacks API; guarded settings read/create/update plus deployment plan inspection and run-scoped approve/cancel | same HCP user token, with Project Maintain or higher and its owner authorized for the repository's HCP GitHub App |
-| Google Cloud (Observability + Artifact Analysis + guarded Cloud Deploy lifecycle) | internally built `mcp-google-cloud` image: `@google-cloud/observability-mcp@0.2.3` (Google, preview), a thin tool aggregator, and `supergateway@3.4.3` | **none — keyless**: separate Workload Identity principals for prod lifecycle and disposable read-only dev; quota project is `yourown-chat` |
+| Google Cloud (Observability + Artifact Analysis + guarded Cloud Deploy lifecycle) | internally built `mcp-google-cloud` image: `@google-cloud/observability-mcp@0.2.3` (Google, preview) behind a native Streamable HTTP aggregator | **none — keyless**: separate Workload Identity principals for prod lifecycle and disposable read-only dev; quota project is `yourown-chat` |
 | WhatsApp Business | internally built adapter over the official Meta WhatsApp Cloud API | Meta system-user token, WABA ID and phone-number ID in Secret Manager |
 
 The Google Cloud server is published as an npm/stdio package, not a container
 with native HTTP transport. The platform therefore builds
 `docker/mcp/google-cloud/Dockerfile` itself. Its committed
 `package-lock.json` pins the complete dependency graph; the image contains the
-official package and starts supergateway in stateful Streamable HTTP mode.
+official package and exposes it through the aggregator's native Streamable HTTP
+transport.
 The local aggregator proxies the official tool catalog unchanged and adds
 Cloud Deploy lifecycle tools; it does not fork or patch Google's package.
 There is no package download, writable npm cache, or init container at runtime.
@@ -151,14 +152,14 @@ and immutable `@sha256:` digest; occurrence names must belong to the configured
 project. The identities hold only `roles/artifactregistry.reader` and
 `roles/containeranalysis.occurrences.viewer` for this feature.
 
-The Google Cloud server uses stateful Streamable HTTP, but supergateway
-sessions expire after 60 seconds. Without `--sessionTimeout`, every
-short-lived Portal session leaves its own Observability stdio child running
-indefinitely and the pod eventually reaches its memory limit. The container
-has a 1 GiB limit for temporary JSON materialization; its scheduling request
-remains 256 MiB. Swap or a writable cache volume would not solve this workload
-because the retained memory belongs to live Node.js processes and in-flight
-response objects.
+The Google Cloud aggregator terminates Streamable HTTP itself and shares one
+official Observability stdio child across all client sessions. This avoids the
+old supergateway process fan-out where every Portal/client session retained a
+separate aggregator and Observability process until timeout. The container has
+a 2 GiB limit for temporary JSON materialization; its scheduling request
+remains 256 MiB. Swap or a writable cache/PVC would not solve this workload
+because the memory belongs to live Node.js processes and in-flight response
+objects rather than reusable on-disk data.
 
 Keep Observability calls bounded even with this headroom:
 

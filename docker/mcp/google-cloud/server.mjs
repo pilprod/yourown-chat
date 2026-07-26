@@ -1,9 +1,14 @@
+import { randomUUID } from "node:crypto";
+
+import express from "express";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
   CallToolRequestSchema,
+  isInitializeRequest,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 
@@ -591,36 +596,129 @@ async function callCustom(name, input) {
   }
 }
 
-const server = new Server(
-  { name: "yourown-chat-google-cloud", version: "1.0.0" },
-  { capabilities: { tools: {} } },
-);
+function createServer() {
+  const server = new Server(
+    { name: "yourown-chat-google-cloud", version: "1.1.0" },
+    { capabilities: { tools: {} } },
+  );
 
-server.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: [...officialTools, ...enabledCustomTools],
-}));
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({
+    tools: [...officialTools, ...enabledCustomTools],
+  }));
 
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  try {
-    if (customNames.has(request.params.name)) {
-      return toolResult(
-        await callCustom(request.params.name, request.params.arguments ?? {}),
-      );
+  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    try {
+      if (customNames.has(request.params.name)) {
+        return toolResult(
+          await callCustom(request.params.name, request.params.arguments ?? {}),
+        );
+      }
+      return observability.callTool({
+        name: request.params.name,
+        arguments: request.params.arguments ?? {},
+      });
+    } catch (error) {
+      return toolError(error);
     }
-    return observability.callTool({
-      name: request.params.name,
-      arguments: request.params.arguments ?? {},
-    });
-  } catch (error) {
-    return toolError(error);
-  }
-});
+  });
+
+  return server;
+}
+
+const sessions = new Map();
+let httpListener;
+let stdioServer;
+let shuttingDown = false;
 
 async function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  const listenerClosed = httpListener
+    ? new Promise((resolve) => httpListener.close(resolve))
+    : Promise.resolve();
+  for (const { transport } of sessions.values()) {
+    await transport.close();
+  }
+  sessions.clear();
+  await stdioServer?.close();
   await observability.close();
-  await server.close();
+  await listenerClosed;
 }
-process.once("SIGTERM", shutdown);
-process.once("SIGINT", shutdown);
+process.once("SIGTERM", () => void shutdown());
+process.once("SIGINT", () => void shutdown());
 
-await server.connect(new StdioServerTransport());
+if ((process.env.MCP_TRANSPORT ?? "http") === "stdio") {
+  stdioServer = createServer();
+  await stdioServer.connect(new StdioServerTransport());
+} else {
+  const port = Number.parseInt(process.env.PORT ?? "8080", 10);
+  const app = express();
+  app.use(express.json({ limit: "1mb" }));
+
+  app.get("/healthz", (_request, response) => {
+    response.json({ status: "ok", sessions: sessions.size });
+  });
+
+  app.post("/mcp", async (request, response) => {
+    try {
+      const sessionId = request.header("mcp-session-id");
+      let session = sessionId ? sessions.get(sessionId) : undefined;
+
+      if (!session && !sessionId && isInitializeRequest(request.body)) {
+        const server = createServer();
+        const transport = new StreamableHTTPServerTransport({
+          sessionIdGenerator: () => randomUUID(),
+          onsessioninitialized: (initializedSessionId) => {
+            sessions.set(initializedSessionId, { server, transport });
+          },
+        });
+        transport.onclose = () => {
+          if (transport.sessionId) {
+            sessions.delete(transport.sessionId);
+          }
+        };
+        await server.connect(transport);
+        session = { server, transport };
+      }
+
+      if (!session) {
+        response.status(400).json({
+          jsonrpc: "2.0",
+          error: { code: -32000, message: "Invalid or missing MCP session" },
+          id: null,
+        });
+        return;
+      }
+
+      await session.transport.handleRequest(request, response, request.body);
+    } catch (error) {
+      console.error(error);
+      if (!response.headersSent) {
+        response.status(500).json({
+          jsonrpc: "2.0",
+          error: { code: -32603, message: error.message },
+          id: null,
+        });
+      }
+    }
+  });
+
+  for (const method of ["get", "delete"]) {
+    app[method]("/mcp", async (request, response) => {
+      const sessionId = request.header("mcp-session-id");
+      const session = sessionId ? sessions.get(sessionId) : undefined;
+      if (!session) {
+        response.status(400).send("Invalid or missing MCP session");
+        return;
+      }
+      await session.transport.handleRequest(request, response);
+      if (method === "delete") {
+        sessions.delete(sessionId);
+      }
+    });
+  }
+
+  httpListener = app.listen(port, "0.0.0.0", () => {
+    console.log(`Google Cloud MCP listening on 0.0.0.0:${port}`);
+  });
+}
