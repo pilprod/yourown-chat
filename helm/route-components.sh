@@ -7,7 +7,10 @@ baseline_ref="${3:-}"
 
 case "${component}" in
   mattermost)
-    workload_regex='^helm/(mattermost/|matterbridge/)'
+    # Chart.appVersion is stamped from the immutable image tag inside the
+    # Mattermost image-triggered release. Chart.yaml metadata alone must not
+    # start a second Mattermost release from the platform semver tag.
+    workload_regex='^helm/(mattermost/(templates/|values[^/]*\.yaml$|verify/)|matterbridge/)'
     config_path='helm/skaffold-mattermost.yaml'
     ;;
   mcp)
