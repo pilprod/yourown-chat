@@ -210,17 +210,6 @@ billing account; this account-scoped grant cannot be derived from project IAM.
 Without the table, profile/budget/recommendation tools remain usable and cost
 analysis returns an explicit configuration error.
 
-The previous account `01E41D-B879C6-3494D7` exports to the Terraform-managed
-EU dataset in the isolated `yourown-chat-billing-legacy` FinOps project linked
-to that legacy account. Google requires the dataset project and exported
-billing account to match, so it must not be pointed at
-`yourown-chat.billing` after `yourown-chat` has moved to the USD account. Its
-expected table is
-`yourown-chat-billing-legacy.billing.gcp_billing_export_resource_v1_01E41D_B879C6_3494D7`.
-Keep both managed export tables immutable and use a BigQuery view or `UNION
-ALL` when historical cross-account analysis is enabled. The production adapter
-currently reads only the active USD table.
-
 Detailed usage cost is the required export because it includes Standard fields
 plus resource attribution. Standard is redundant for this adapter. Pricing
 data is useful for forecast and contract-price comparisons but is not
