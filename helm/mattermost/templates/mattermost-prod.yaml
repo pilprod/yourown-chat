@@ -55,6 +55,32 @@ spec:
   deploymentTemplate:
     deploymentStrategyType: RollingUpdate
 
+  # Mattermost synchronizes and activates prepackaged plugins before opening
+  # port 8065. That regularly takes 30-45 seconds on the small general-pool
+  # node. The operator default starts liveness checks after 10 seconds, which
+  # can trap a healthy-but-still-starting process in CrashLoopBackOff. Keep
+  # readiness strict for traffic routing, but do not let liveness kill the pod
+  # during its bounded startup window.
+  probes:
+    livenessProbe:
+      httpGet:
+        path: /api/v4/system/ping
+        port: 8065
+        scheme: HTTP
+      initialDelaySeconds: 120
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+    readinessProbe:
+      httpGet:
+        path: /api/v4/system/ping
+        port: 8065
+        scheme: HTTP
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      timeoutSeconds: 5
+      failureThreshold: 24
+
   ingress:
     enabled: true
     host: "yourown.chat"
