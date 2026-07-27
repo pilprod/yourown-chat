@@ -123,13 +123,14 @@ const writeExternal = {
 };
 
 function toolDefinition(title, description, inputSchema, annotations) {
+  const displayTitle = `WhatsApp Business · ${title}`;
   return {
-    title,
+    title: displayTitle,
     description,
     inputSchema,
     annotations: {
       ...annotations,
-      title,
+      title: displayTitle,
     },
   };
 }
@@ -143,7 +144,7 @@ function createServer() {
   server.registerTool(
     "whatsapp_send_text",
     toolDefinition(
-      "Send text",
+      "Messages · Send text",
       "Send a text message through the official WhatsApp Business Cloud API.",
       {
         to: z
@@ -175,7 +176,7 @@ function createServer() {
   server.registerTool(
     "whatsapp_send_template",
     toolDefinition(
-      "Send template",
+      "Templates · Send",
       "Send an approved WhatsApp Business message template.",
       {
         to: z.string().min(6),
@@ -208,7 +209,7 @@ function createServer() {
   server.registerTool(
     "whatsapp_send_media_link",
     toolDefinition(
-      "Send media link",
+      "Messages · Send media link",
       "Send image, video, audio, or document media by HTTPS URL.",
       {
         to: z.string().min(6),
@@ -244,7 +245,7 @@ function createServer() {
   server.registerTool(
     "whatsapp_list_messages",
     toolDefinition(
-      "List messages",
+      "Messages · List",
       "Read recently received and sent WhatsApp Business messages captured through the verified Meta webhook.",
       {
         phone: z
@@ -269,7 +270,7 @@ function createServer() {
   server.registerTool(
     "whatsapp_list_conversations",
     toolDefinition(
-      "List conversations",
+      "Messages · List conversations",
       "List WhatsApp conversations assembled from webhook, Coexistence history, and WhatsApp Business app echo events.",
       {
         limit: z.number().int().min(1).max(200).optional().default(50),
@@ -282,7 +283,7 @@ function createServer() {
   server.registerTool(
     "whatsapp_get_message",
     toolDefinition(
-      "Get message",
+      "Messages · Get",
       "Read one captured WhatsApp Business message by its wamid.",
       { message_id: z.string().min(1) },
       readOnlyLocal,
@@ -299,7 +300,7 @@ function createServer() {
   server.registerTool(
     "whatsapp_mark_message_read",
     toolDefinition(
-      "Mark message read",
+      "Messages · Mark read",
       "Mark a WhatsApp message as read.",
       { message_id: z.string().min(1) },
       {
@@ -330,7 +331,7 @@ function createServer() {
   server.registerTool(
     "whatsapp_get_business_profile",
     toolDefinition(
-      "Get business profile",
+      "Account · Get business profile",
       "Read the WhatsApp Business profile attached to the configured phone number.",
       {},
       readOnlyExternal,
@@ -346,7 +347,7 @@ function createServer() {
   server.registerTool(
     "whatsapp_get_phone_number",
     toolDefinition(
-      "Get phone number",
+      "Account · Get phone number",
       "Read the configured WhatsApp Business phone-number metadata and quality rating.",
       {},
       readOnlyExternal,
@@ -362,7 +363,7 @@ function createServer() {
   server.registerTool(
     "whatsapp_list_message_templates",
     toolDefinition(
-      "List message templates",
+      "Templates · List",
       "List approved and pending WhatsApp Business message templates.",
       { limit: z.number().int().min(1).max(100).optional().default(25) },
       readOnlyExternal,

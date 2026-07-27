@@ -21,14 +21,14 @@ function createServer() {
   server.registerTool(
     "terraform_stacks_get_stack_settings",
     {
-      title: "Get stack settings",
+      title: "HCP Terraform · Stacks · Get settings",
       description:
         "Read one approval-allowlisted or management-policy-compliant Stack, including project, VCS and working-directory settings.",
       inputSchema: {
         stack_name: z.string().min(1),
       },
       annotations: {
-        title: "Get stack settings",
+        title: "HCP Terraform · Stacks · Get settings",
         readOnlyHint: true,
         destructiveHint: false,
         idempotentHint: true,
@@ -53,12 +53,12 @@ function createServer() {
   server.registerTool(
     "terraform_stacks_plan_create",
     {
-      title: "Plan stack creation",
+      title: "HCP Terraform · Stacks · Plan creation",
       description:
         "Validate and preview creation of one VCS-backed Stack against committed project, repository and directory policies. Makes no changes.",
       inputSchema: createInputSchema,
       annotations: {
-        title: "Plan stack creation",
+        title: "HCP Terraform · Stacks · Plan creation",
         readOnlyHint: true,
         destructiveHint: false,
         idempotentHint: true,
@@ -84,7 +84,7 @@ function createServer() {
   server.registerTool(
     "terraform_stacks_create",
     {
-      title: "Create stack",
+      title: "HCP Terraform · Stacks · Create",
       description:
         "Create exactly the previously previewed VCS-backed Stack. The plan hash and literal CREATE_STACK confirmation are mandatory. Creation never modifies the separate approval allowlist.",
       inputSchema: {
@@ -93,7 +93,7 @@ function createServer() {
         confirmation: z.literal("CREATE_STACK"),
       },
       annotations: {
-        title: "Create stack",
+        title: "HCP Terraform · Stacks · Create",
         readOnlyHint: false,
         destructiveHint: true,
         idempotentHint: false,
@@ -130,12 +130,12 @@ function createServer() {
   server.registerTool(
     "terraform_stacks_plan_update",
     {
-      title: "Plan stack update",
+      title: "HCP Terraform · Stacks · Plan update",
       description:
         "Read current settings and preview a policy-constrained Stack update. Repository, project, execution mode and Stack name cannot be changed.",
       inputSchema: updateInputSchema,
       annotations: {
-        title: "Plan stack update",
+        title: "HCP Terraform · Stacks · Plan update",
         readOnlyHint: true,
         destructiveHint: false,
         idempotentHint: true,
@@ -159,7 +159,7 @@ function createServer() {
   server.registerTool(
     "terraform_stacks_update",
     {
-      title: "Update stack",
+      title: "HCP Terraform · Stacks · Update",
       description:
         "Apply exactly a previously previewed policy-constrained Stack update. Requires the exact plan hash and UPDATE_STACK confirmation.",
       inputSchema: {
@@ -168,7 +168,7 @@ function createServer() {
         confirmation: z.literal("UPDATE_STACK"),
       },
       annotations: {
-        title: "Update stack",
+        title: "HCP Terraform · Stacks · Update",
         readOnlyHint: false,
         destructiveHint: true,
         idempotentHint: false,
@@ -193,7 +193,7 @@ function createServer() {
   server.registerTool(
     "terraform_stacks_list_deployment_runs",
     {
-      title: "List deployment runs",
+      title: "HCP Terraform · Stacks · List deployments",
       description:
         "List deployment runs from the explicitly allowed HCP Terraform Stacks.",
       inputSchema: {
@@ -201,7 +201,7 @@ function createServer() {
         pending_only: z.boolean().optional().default(true),
       },
       annotations: {
-        title: "List deployment runs",
+        title: "HCP Terraform · Stacks · List deployments",
         readOnlyHint: true,
         destructiveHint: false,
         idempotentHint: true,
@@ -220,7 +220,7 @@ function createServer() {
   server.registerTool(
     "terraform_stacks_inspect_deployment_run",
     {
-      title: "Inspect deployment run",
+      title: "HCP Terraform · Stacks · Inspect deployment",
       description:
         "Read a Stack deployment run, every plan/apply step, diagnostics, and plan description before approval.",
       inputSchema: {
@@ -228,7 +228,7 @@ function createServer() {
         run_id: z.string().regex(/^sdr-[A-Za-z0-9]+$/),
       },
       annotations: {
-        title: "Inspect deployment run",
+        title: "HCP Terraform · Stacks · Inspect deployment",
         readOnlyHint: true,
         destructiveHint: false,
         idempotentHint: true,
@@ -242,7 +242,7 @@ function createServer() {
   server.registerTool(
     "terraform_stacks_approve_deployment_run",
     {
-      title: "Approve deployment run",
+      title: "HCP Terraform · Stacks · Approve deployment",
       description:
         "Approve only the currently pending plan in one allowlisted Stack deployment run. Inspect first, then pass its exact configuration ID and APPROVE confirmation.",
       inputSchema: {
@@ -253,7 +253,7 @@ function createServer() {
         confirmation: z.literal("APPROVE"),
       },
       annotations: {
-        title: "Approve deployment run",
+        title: "HCP Terraform · Stacks · Approve deployment",
         readOnlyHint: false,
         destructiveHint: true,
         idempotentHint: false,
@@ -279,7 +279,7 @@ function createServer() {
   server.registerTool(
     "terraform_stacks_cancel_deployment_run",
     {
-      title: "Cancel deployment run",
+      title: "HCP Terraform · Stacks · Cancel deployment",
       description:
         "Cancel one non-terminal deployment run belonging to an allowlisted Stack. This never force-cancels.",
       inputSchema: {
@@ -289,7 +289,7 @@ function createServer() {
         confirmation: z.literal("CANCEL"),
       },
       annotations: {
-        title: "Cancel deployment run",
+        title: "HCP Terraform · Stacks · Cancel deployment",
         readOnlyHint: false,
         destructiveHint: true,
         idempotentHint: false,

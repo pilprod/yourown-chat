@@ -33,19 +33,19 @@ await observability.connect(childTransport);
 const officialTools = (await observability.listTools()).tools;
 
 const observabilityTitles = {
-  list_log_entries: "Logging: List entries",
-  list_log_names: "Logging: List log names",
-  list_buckets: "Logging: List buckets",
-  list_views: "Logging: List views",
-  list_sinks: "Logging: List sinks",
-  list_log_scopes: "Logging: List scopes",
-  list_metric_descriptors: "Monitoring: List metric descriptors",
-  list_time_series: "Monitoring: List time series",
-  list_alert_policies: "Monitoring: List alert policies",
-  list_alerts: "Monitoring: List alerts",
-  list_traces: "Trace: List traces",
-  get_trace: "Trace: Get trace",
-  list_group_stats: "Error Reporting: List group stats",
+  list_log_entries: "Logging · List entries",
+  list_log_names: "Logging · List log names",
+  list_buckets: "Logging · List buckets",
+  list_views: "Logging · List views",
+  list_sinks: "Logging · List sinks",
+  list_log_scopes: "Logging · List scopes",
+  list_metric_descriptors: "Monitoring · List metric descriptors",
+  list_time_series: "Monitoring · List time series",
+  list_alert_policies: "Monitoring · List alert policies",
+  list_alerts: "Monitoring · List alerts",
+  list_traces: "Trace · List traces",
+  get_trace: "Trace · Get trace",
+  list_group_stats: "Error Reporting · List group stats",
 };
 
 function humanize(value) {
@@ -60,10 +60,10 @@ function customToolTitle(name) {
     ["google_cloud_security_", "Security"],
   ]) {
     if (name.startsWith(prefix)) {
-      return `${group}: ${humanize(name.slice(prefix.length))}`;
+      return `Google Cloud · ${group} · ${humanize(name.slice(prefix.length))}`;
     }
   }
-  return humanize(name.replace(/^google_cloud_/, ""));
+  return `Google Cloud · ${humanize(name.replace(/^google_cloud_/, ""))}`;
 }
 
 function displayTool(tool, title, annotationDefaults = {}) {
@@ -79,12 +79,16 @@ function displayTool(tool, title, annotationDefaults = {}) {
 }
 
 const exposedOfficialTools = officialTools.map((tool) =>
-  displayTool(tool, observabilityTitles[tool.name] ?? humanize(tool.name), {
-    readOnlyHint: true,
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: true,
-  }),
+  displayTool(
+    tool,
+    `Google Cloud · ${observabilityTitles[tool.name] ?? humanize(tool.name)}`,
+    {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+  ),
 );
 
 const deployEnabled =

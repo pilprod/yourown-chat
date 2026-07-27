@@ -63,12 +63,12 @@ function createServer() {
   server.registerTool(
     "whatsapp_personal_status",
     {
-      title: "Status",
+      title: "WhatsApp Personal · Session · Status",
       description:
         "Read QR-session state, kill-switch state, conservative limits and current usage.",
       inputSchema: {},
       annotations: {
-        title: "Status",
+        title: "WhatsApp Personal · Session · Status",
         readOnlyHint: true,
         destructiveHint: false,
         idempotentHint: true,
@@ -81,12 +81,12 @@ function createServer() {
   server.registerTool(
     "whatsapp_personal_get_qr",
     {
-      title: "Get QR code",
+      title: "WhatsApp Personal · Session · Get QR code",
       description:
         "Return the current QR code for linking this persistent WhatsApp session.",
       inputSchema: {},
       annotations: {
-        title: "Get QR code",
+        title: "WhatsApp Personal · Session · Get QR code",
         readOnlyHint: true,
         destructiveHint: false,
         idempotentHint: true,
@@ -128,14 +128,14 @@ function createServer() {
   server.registerTool(
     "whatsapp_personal_list_conversations",
     {
-      title: "List conversations",
+      title: "WhatsApp Personal · Messages · List conversations",
       description:
         "List direct conversations observed by this linked device. Groups, broadcasts and statuses are excluded.",
       inputSchema: {
         limit: z.number().int().min(1).max(200).optional().default(50),
       },
       annotations: {
-        title: "List conversations",
+        title: "WhatsApp Personal · Messages · List conversations",
         readOnlyHint: true,
         destructiveHint: false,
         idempotentHint: true,
@@ -148,7 +148,7 @@ function createServer() {
   server.registerTool(
     "whatsapp_personal_list_messages",
     {
-      title: "List messages",
+      title: "WhatsApp Personal · Messages · List messages",
       description:
         "Read bounded local message history captured by the linked device.",
       inputSchema: {
@@ -157,7 +157,7 @@ function createServer() {
         limit: z.number().int().min(1).max(200).optional().default(50),
       },
       annotations: {
-        title: "List messages",
+        title: "WhatsApp Personal · Messages · List messages",
         readOnlyHint: true,
         destructiveHint: false,
         idempotentHint: true,
@@ -170,7 +170,7 @@ function createServer() {
   server.registerTool(
     "whatsapp_personal_send_text",
     {
-      title: "Send text",
+      title: "WhatsApp Personal · Messages · Send text",
       description:
         "Send one text to an existing direct dialog after all persisted guardrails pass. No bulk or broadcast operation exists.",
       inputSchema: {
@@ -179,7 +179,7 @@ function createServer() {
         confirmation: z.literal("SEND"),
       },
       annotations: {
-        title: "Send text",
+        title: "WhatsApp Personal · Messages · Send text",
         readOnlyHint: false,
         destructiveHint: true,
         idempotentHint: false,
@@ -192,7 +192,7 @@ function createServer() {
   server.registerTool(
     "whatsapp_personal_mark_read",
     {
-      title: "Mark message read",
+      title: "WhatsApp Personal · Messages · Mark read",
       description:
         "Explicitly mark one locally indexed inbound message as read. Incoming messages are never marked automatically.",
       inputSchema: {
@@ -200,7 +200,7 @@ function createServer() {
         confirmation: z.literal("MARK_READ"),
       },
       annotations: {
-        title: "Mark message read",
+        title: "WhatsApp Personal · Messages · Mark read",
         readOnlyHint: false,
         destructiveHint: false,
         idempotentHint: true,
@@ -213,12 +213,12 @@ function createServer() {
   server.registerTool(
     "whatsapp_personal_emergency_stop",
     {
-      title: "Emergency stop",
+      title: "WhatsApp Personal · Session · Emergency stop",
       description:
         "Persistently disconnect the linked client and block reconnects and sends.",
       inputSchema: { confirmation: z.literal("STOP") },
       annotations: {
-        title: "Emergency stop",
+        title: "WhatsApp Personal · Session · Emergency stop",
         readOnlyHint: false,
         destructiveHint: true,
         idempotentHint: true,
@@ -234,12 +234,12 @@ function createServer() {
   server.registerTool(
     "whatsapp_personal_resume",
     {
-      title: "Resume session",
+      title: "WhatsApp Personal · Session · Resume",
       description:
         "Clear the persistent emergency stop and reconnect through the configured static proxy.",
       inputSchema: { confirmation: z.literal("RESUME") },
       annotations: {
-        title: "Resume session",
+        title: "WhatsApp Personal · Session · Resume",
         readOnlyHint: false,
         destructiveHint: true,
         idempotentHint: true,
@@ -255,12 +255,12 @@ function createServer() {
   server.registerTool(
     "whatsapp_personal_reset_link",
     {
-      title: "Reset linked device",
+      title: "WhatsApp Personal · Session · Reset linked device",
       description:
         "Delete only the persisted WhatsApp linked-device credential and request a new QR. Emergency stop must already be active.",
       inputSchema: { confirmation: z.literal("RESET_LINK") },
       annotations: {
-        title: "Reset linked device",
+        title: "WhatsApp Personal · Session · Reset linked device",
         readOnlyHint: false,
         destructiveHint: true,
         idempotentHint: false,

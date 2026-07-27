@@ -66,15 +66,21 @@ test("aggregator exposes official observability and guarded deploy tools", async
     assert(names.has("google_cloud_security_get_vulnerability"));
 
     const logging = tools.find((tool) => tool.name === "list_log_entries");
-    assert.equal(logging.title, "Logging: List entries");
-    assert.equal(logging.annotations.title, "Logging: List entries");
+    assert.equal(logging.title, "Google Cloud · Logging · List entries");
+    assert.equal(
+      logging.annotations.title,
+      "Google Cloud · Logging · List entries",
+    );
     assert.equal(logging.annotations.readOnlyHint, true);
     assert.equal(logging.annotations.destructiveHint, false);
 
     const approve = tools.find(
       (tool) => tool.name === "google_cloud_deploy_approve_rollout",
     );
-    assert.equal(approve.title, "Deploy: Approve rollout");
+    assert.equal(
+      approve.title,
+      "Google Cloud · Deploy · Approve rollout",
+    );
     assert.equal(approve.annotations.readOnlyHint, false);
     assert.equal(approve.annotations.destructiveHint, true);
 

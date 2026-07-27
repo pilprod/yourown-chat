@@ -63,12 +63,12 @@ test("tools expose concise titles and explicit safety annotations", async () => 
     );
 
     const list = tools.find((tool) => tool.name === "whatsapp_list_messages");
-    assert.equal(list.title, "List messages");
+    assert.equal(list.title, "WhatsApp Business · Messages · List");
     assert.equal(list.annotations.readOnlyHint, true);
     assert.equal(list.annotations.destructiveHint, false);
 
     const send = tools.find((tool) => tool.name === "whatsapp_send_text");
-    assert.equal(send.title, "Send text");
+    assert.equal(send.title, "WhatsApp Business · Messages · Send text");
     assert.equal(send.annotations.readOnlyHint, false);
     assert.equal(send.annotations.destructiveHint, false);
 
