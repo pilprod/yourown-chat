@@ -111,13 +111,14 @@ variable "gke_regional" {
 
 variable "gke_node_pools" {
   type = map(object({
-    machine_type = optional(string, "e2-small")
-    spot         = optional(bool, false)
-    min_count    = optional(number, 1)
-    max_count    = optional(number, 2)
-    disk_size_gb = optional(number, 30)
-    disk_type    = optional(string, "pd-standard")
-    labels       = optional(map(string), {})
+    machine_type   = optional(string, "e2-small")
+    spot           = optional(bool, false)
+    min_count      = optional(number, 1)
+    max_count      = optional(number, 2)
+    disk_size_gb   = optional(number, 30)
+    disk_type      = optional(string, "pd-standard")
+    cmek_boot_disk = optional(bool, false)
+    labels         = optional(map(string), {})
     taints = optional(list(object({
       key    = string
       value  = string
