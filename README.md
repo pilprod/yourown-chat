@@ -790,6 +790,58 @@ projectId: yourown-chat
 `displayName` can remain `Argentina`; it is independent of the Payments
 account nickname.
 
+#### Billing health checks
+
+The active USD account has a Terraform-managed **USD 100 monthly budget**:
+
+- actual-spend email thresholds: 50%, 75%, 90% and 100%;
+- forecasted-spend email threshold: 100%;
+- scope: the complete billing account;
+- credits are included, so the tracked amount follows expected payable spend;
+- default email recipients remain enabled for human Billing Account
+  Administrators and Billing Account Users;
+- `prevent_destroy` protects the budget from accidental removal.
+
+`terraform-apply` holds only `roles/billing.costsManager` on this account. It
+can maintain budgets but cannot change payment settings or account IAM. The
+one-time bootstrap is:
+
+```sh
+gcloud billing accounts add-iam-policy-binding 01B729-537989-CCA4BB \
+  --member="serviceAccount:terraform-apply@yourown-chat.iam.gserviceaccount.com" \
+  --role="roles/billing.costsManager"
+```
+
+The remaining Billing health recommendations are deliberately split between
+IaC and one-time identity governance:
+
+| Health recommendation | Implementation |
+|---|---|
+| Set up budget alerts | Terraform component `billing_budget` owns the USD 100 monthly budget and five thresholds |
+| Grant access to billing reports | `user:ilya@papou.email` and the read-only MCP identity have `roles/billing.viewer` |
+| Assign multiple Billing Account Administrators | Requires a second real human identity; do not satisfy this by granting a service account Billing Admin |
+| Turn off Billing Account Creator for domain | Removed once from `domain:papou.work`; Terraform is intentionally not granted organization IAM administration |
+| Link a project or close unused account | Active account is linked to `yourown-chat`; the former account is linked to `yourown-chat-billing-legacy` until export catch-up finishes |
+
+To add the required backup administrator after choosing the person:
+
+```sh
+export BACKUP_BILLING_ADMIN="second-admin@papou.work"
+
+gcloud billing accounts add-iam-policy-binding 01B729-537989-CCA4BB \
+  --member="user:$BACKUP_BILLING_ADMIN" \
+  --role="roles/billing.admin"
+
+gcloud billing accounts add-iam-policy-binding 01B729-537989-CCA4BB \
+  --member="user:$BACKUP_BILLING_ADMIN" \
+  --role="roles/billing.viewer"
+```
+
+Do not put billing-account or organization IAM bindings into `platform-gcp`:
+Terraform would need persistent Billing Admin or Organization Admin power to
+manage its own access. The project infrastructure and budget are declarative;
+the small bootstrap trust set remains an audited one-time operation.
+
 Billing-related identities have deliberately different scopes:
 
 | Identity | Scope | Purpose |

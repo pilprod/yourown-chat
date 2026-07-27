@@ -87,6 +87,12 @@ output "billing_detailed_export_table" {
   value       = component.billing_export.detailed_export_table
 }
 
+output "billing_monthly_budget_name" {
+  type        = string
+  description = "Protected USD 100 monthly budget with actual and forecast thresholds."
+  value       = component.billing_budget.name
+}
+
 output "legacy_billing_export_project_id" {
   type        = string
   description = "Dedicated project linked to the former billing account."

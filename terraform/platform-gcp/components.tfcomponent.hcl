@@ -182,6 +182,25 @@ component "billing_export" {
   }
 }
 
+component "billing_budget" {
+  source = "./modules/billing-budget"
+
+  inputs = {
+    billing_account_id = var.billing_account_id
+    display_name       = "YourOwn.Chat monthly USD budget"
+    currency_code      = "USD"
+    monthly_units      = 100
+    actual_thresholds  = [0.5, 0.75, 0.9, 1.0]
+    forecast_thresholds = [1.0]
+  }
+
+  providers = {
+    google = provider.google.this
+  }
+
+  depends_on = [component.project_services]
+}
+
 # The former THB billing account cannot export into `yourown-chat.billing`
 # after the application project moved to the USD account. Keep its history in
 # an isolated, non-networked FinOps project and query it cross-project.
