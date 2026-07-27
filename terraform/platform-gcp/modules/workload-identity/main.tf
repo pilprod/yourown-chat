@@ -34,3 +34,11 @@ resource "google_project_iam_member" "roles" {
   role    = each.value
   member  = "serviceAccount:${google_service_account.this.email}"
 }
+
+resource "google_billing_account_iam_member" "roles" {
+  for_each = var.billing_account_roles
+
+  billing_account_id = var.billing_account_id
+  role               = each.value
+  member             = "serviceAccount:${google_service_account.this.email}"
+}

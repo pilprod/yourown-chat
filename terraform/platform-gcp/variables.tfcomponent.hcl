@@ -25,6 +25,11 @@ variable "project_number" {
   description = "Numeric project number (from the WIF audience). Used to build the GKE service-agent email for the etcd Secrets-encryption KMS grant."
 }
 
+variable "billing_account_id" {
+  type        = string
+  description = "Cloud Billing account used for read-only MCP budget and cost inspection."
+}
+
 variable "environment" {
   type        = string
   description = "Environment name (drives labels only; resource names are role-based or regional, never environment-scoped). The single-cluster budget default uses 'prod' as the platform cluster; dev workloads run as low-priority tenants on the shared node pool."
@@ -121,7 +126,7 @@ variable "gke_node_pools" {
       labels = {
         pool = "general"
       }
-      taints       = []
+      taints = []
     }
   }
 }

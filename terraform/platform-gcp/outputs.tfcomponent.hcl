@@ -79,16 +79,16 @@ output "workload_identity_emails" {
   type        = map(string)
   description = "Tenant => Google SA email to annotate the matching KSA (iam.gke.io/gcp-service-account)."
   value = {
-    mattermost          = component.workload_identity_mattermost.email
-    matterbridge        = component.workload_identity_matterbridge.email
-    dev                 = component.workload_identity_dev.email
-    mcp                 = component.workload_identity_mcp.email
-    mcp-dev             = component.workload_identity_mcp_dev.email
-    mcp-terraform       = component.workload_identity_mcp_terraform.email
-    mcp-terraform-stacks = component.workload_identity_mcp_terraform_stacks.email
-    mcp-whatsapp        = component.workload_identity_mcp_whatsapp.email
+    mattermost            = component.workload_identity_mattermost.email
+    matterbridge          = component.workload_identity_matterbridge.email
+    dev                   = component.workload_identity_dev.email
+    mcp                   = component.workload_identity_mcp.email
+    mcp-dev               = component.workload_identity_mcp_dev.email
+    mcp-terraform         = component.workload_identity_mcp_terraform.email
+    mcp-terraform-stacks  = component.workload_identity_mcp_terraform_stacks.email
+    mcp-whatsapp          = component.workload_identity_mcp_whatsapp.email
     mcp-whatsapp-personal = component.workload_identity_mcp_whatsapp_personal.email
-    mcp-tunnel          = component.workload_identity_mcp_tunnel.email
+    mcp-tunnel            = component.workload_identity_mcp_tunnel.email
   }
 }
 
@@ -96,16 +96,16 @@ output "workload_identity_members" {
   type        = map(string)
   description = "Tenant => IAM member string (serviceAccount:<email>). Consumed by the app-gcp stack as least-privilege secretAccessor grants."
   value = {
-    mattermost          = component.workload_identity_mattermost.iam_member
-    matterbridge        = component.workload_identity_matterbridge.iam_member
-    dev                 = component.workload_identity_dev.iam_member
-    mcp                 = component.workload_identity_mcp.iam_member
-    mcp-dev             = component.workload_identity_mcp_dev.iam_member
-    mcp-terraform       = component.workload_identity_mcp_terraform.iam_member
-    mcp-terraform-stacks = component.workload_identity_mcp_terraform_stacks.iam_member
-    mcp-whatsapp        = component.workload_identity_mcp_whatsapp.iam_member
+    mattermost            = component.workload_identity_mattermost.iam_member
+    matterbridge          = component.workload_identity_matterbridge.iam_member
+    dev                   = component.workload_identity_dev.iam_member
+    mcp                   = component.workload_identity_mcp.iam_member
+    mcp-dev               = component.workload_identity_mcp_dev.iam_member
+    mcp-terraform         = component.workload_identity_mcp_terraform.iam_member
+    mcp-terraform-stacks  = component.workload_identity_mcp_terraform_stacks.iam_member
+    mcp-whatsapp          = component.workload_identity_mcp_whatsapp.iam_member
     mcp-whatsapp-personal = component.workload_identity_mcp_whatsapp_personal.iam_member
-    mcp-tunnel          = component.workload_identity_mcp_tunnel.iam_member
+    mcp-tunnel            = component.workload_identity_mcp_tunnel.iam_member
   }
 }
 

@@ -9,10 +9,11 @@ locals {
   gcp_wif_audience = "//iam.googleapis.com/projects/1086706391144/locations/global/workloadIdentityPools/hcp-terraform/providers/hcp-terraform"
   gcp_apply_sa     = "terraform-apply@yourown-chat.iam.gserviceaccount.com"
 
-  gcp_project        = "yourown-chat"
-  gcp_project_number = "1086706391144"
-  gcp_region         = "europe-west3"
-  gcp_zone           = "europe-west3-b"
+  gcp_project            = "yourown-chat"
+  gcp_project_number     = "1086706391144"
+  gcp_billing_account_id = "01E41D-B879C6-3494D7"
+  gcp_region             = "europe-west3"
+  gcp_zone               = "europe-west3-b"
 
   # Empty list = control-plane endpoint reachable from anywhere (credentials
   # still required). Restricting CIDRs would also block Cloud Deploy's
@@ -30,11 +31,12 @@ deployment "eu" {
     audience              = local.gcp_wif_audience
     service_account_email = local.gcp_apply_sa
 
-    project_id     = local.gcp_project
-    project_number = local.gcp_project_number
-    environment    = "prod"
-    region         = local.gcp_region
-    zone           = local.gcp_zone
+    project_id         = local.gcp_project
+    project_number     = local.gcp_project_number
+    billing_account_id = local.gcp_billing_account_id
+    environment        = "prod"
+    region             = local.gcp_region
+    zone               = local.gcp_zone
 
     # ONE zonal cluster (GKE free tier), one autoscaling general-purpose pool.
     # Kubernetes PriorityClass + requests/quotas protect prod capacity; dev
@@ -52,7 +54,7 @@ deployment "eu" {
         labels = {
           pool = "general"
         }
-        taints       = []
+        taints = []
       }
     }
 

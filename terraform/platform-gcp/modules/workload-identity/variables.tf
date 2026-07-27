@@ -48,3 +48,21 @@ variable "project_roles" {
   description = "Optional project-level IAM roles to grant the GSA (least privilege — keep short)."
   default     = []
 }
+
+variable "billing_account_id" {
+  type        = string
+  description = "Optional Cloud Billing account ID for account-level IAM grants."
+  default     = null
+  nullable    = true
+}
+
+variable "billing_account_roles" {
+  type        = set(string)
+  description = "Optional roles to grant the GSA on billing_account_id."
+  default     = []
+
+  validation {
+    condition     = length(var.billing_account_roles) == 0 || var.billing_account_id != null
+    error_message = "billing_account_id must be set when billing_account_roles is non-empty."
+  }
+}

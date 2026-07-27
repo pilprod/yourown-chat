@@ -10,15 +10,15 @@ locals {
   # Kubernetes tenants (namespace / KSA) that use Workload Identity. Every MCP
   # runtime gets its own identity so CSI-mounted credentials stay isolated.
   ns = {
-    mattermost          = { namespace = "mattermost", ksa = "mattermost" }
-    matterbridge        = { namespace = "matterbridge", ksa = "matterbridge" }
-    dev                 = { namespace = "dev", ksa = "dev-app" }
-    mcp                 = { namespace = "mcp-google-cloud", ksa = "mcp-servers" }
-    mcp-terraform       = { namespace = "mcp-terraform", ksa = "mcp-terraform" }
-    mcp-terraform-stacks = { namespace = "mcp-terraform-stacks", ksa = "mcp-terraform-stacks" }
-    mcp-whatsapp        = { namespace = "mcp-whatsapp-business", ksa = "mcp-whatsapp-business" }
+    mattermost            = { namespace = "mattermost", ksa = "mattermost" }
+    matterbridge          = { namespace = "matterbridge", ksa = "matterbridge" }
+    dev                   = { namespace = "dev", ksa = "dev-app" }
+    mcp                   = { namespace = "mcp-google-cloud", ksa = "mcp-servers" }
+    mcp-terraform         = { namespace = "mcp-terraform", ksa = "mcp-terraform" }
+    mcp-terraform-stacks  = { namespace = "mcp-terraform-stacks", ksa = "mcp-terraform-stacks" }
+    mcp-whatsapp          = { namespace = "mcp-whatsapp-business", ksa = "mcp-whatsapp-business" }
     mcp-whatsapp-personal = { namespace = "mcp-whatsapp-personal", ksa = "mcp-whatsapp-personal" }
-    mcp-tunnel          = { namespace = "mcp-tunnel", ksa = "mcp-tunnel" }
+    mcp-tunnel            = { namespace = "mcp-tunnel", ksa = "mcp-tunnel" }
   }
 
   common_labels = merge({
@@ -136,11 +136,15 @@ component "workload_identity_mcp" {
   source = "./modules/workload-identity"
 
   inputs = {
-    project_id   = component.project_services.project_id
-    account_id   = "mcp-servers"
-    display_name = "Google Cloud MCP workload identity"
-    namespace    = local.ns.mcp.namespace
-    ksa_name     = local.ns.mcp.ksa
+    project_id         = component.project_services.project_id
+    account_id         = "mcp-servers"
+    display_name       = "Google Cloud MCP workload identity"
+    namespace          = local.ns.mcp.namespace
+    ksa_name           = local.ns.mcp.ksa
+    billing_account_id = var.billing_account_id
+    billing_account_roles = [
+      "roles/billing.viewer",
+    ]
     project_roles = [
       "roles/logging.viewer",
       "roles/monitoring.viewer",
@@ -206,7 +210,7 @@ component "workload_identity_mcp_terraform" {
     }]
   }
 
-  providers = { google = provider.google.this }
+  providers  = { google = provider.google.this }
   depends_on = [component.gke]
 }
 
@@ -225,7 +229,7 @@ component "workload_identity_mcp_terraform_stacks" {
     }]
   }
 
-  providers = { google = provider.google.this }
+  providers  = { google = provider.google.this }
   depends_on = [component.gke]
 }
 
@@ -244,7 +248,7 @@ component "workload_identity_mcp_whatsapp" {
     }]
   }
 
-  providers = { google = provider.google.this }
+  providers  = { google = provider.google.this }
   depends_on = [component.gke]
 }
 
@@ -263,7 +267,7 @@ component "workload_identity_mcp_whatsapp_personal" {
     }]
   }
 
-  providers = { google = provider.google.this }
+  providers  = { google = provider.google.this }
   depends_on = [component.gke]
 }
 
@@ -278,7 +282,7 @@ component "workload_identity_mcp_tunnel" {
     ksa_name     = local.ns["mcp-tunnel"].ksa
   }
 
-  providers = { google = provider.google.this }
+  providers  = { google = provider.google.this }
   depends_on = [component.gke]
 }
 
@@ -364,9 +368,9 @@ component "gke" {
     services_range_name        = component.network.services_range_name
     master_authorized_networks = var.master_authorized_networks
     node_pools                 = var.gke_node_pools
-    enable_secret_manager_csi = true
-    deletion_protection       = var.gke_deletion_protection
-    resource_labels           = local.common_labels
+    enable_secret_manager_csi  = true
+    deletion_protection        = var.gke_deletion_protection
+    resource_labels            = local.common_labels
 
     # etcd Secrets encryption with the shared CMEK key (null omits the block ->
     # Google-managed); referencing kms orders the key + its GKE-agent grant first.
