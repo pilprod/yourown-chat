@@ -183,11 +183,11 @@ grant `mcp-servers@yourown-chat.iam.gserviceaccount.com`
 Stack now creates the EU multi-region dataset `yourown-chat.billing`, grants
 the MCP reader, enables GKE cost allocation, and configures the expected table
 name. The only remaining one-time action is Billing → Billing export →
-BigQuery export → Detailed usage cost → Edit settings: select project
-`yourown-chat` and dataset `billing`, then save. Google creates
+BigQuery export → Detailed usage cost → Enable: select project `yourown-chat`
+and dataset `billing`, then save. Google creates
 `gcp_billing_export_resource_v1_01E41D_B879C6_3494D7`; initial EU backfill can
-take up to five days and starts at the beginning of the previous month.
-Billing account
+take up to five days and starts at the beginning of the previous month. The
+one-time toggle is not available through Terraform or `gcloud`. Billing account
 budgets additionally require `roles/billing.viewer` for that GSA on the linked
 billing account; this account-scoped grant cannot be derived from project IAM.
 Without the table, profile/budget/recommendation tools remain usable and cost

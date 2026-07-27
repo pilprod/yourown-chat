@@ -42,6 +42,7 @@ holds the VPC, the cluster and the database — and the Cloudflare API token
 | Container registry | One Artifact Registry repo (`docker`) with a shared hardened runtime base and Artifact Analysis vulnerability scanning enabled |
 | CI | Cloud Build builds Mattermost on a `v*-patched` tag; one catalog-driven MCP builder creates shared OS/language bases and mirrors pinned vendor images into Artifact Registry |
 | CD | Separate Mattermost and MCP pipelines; ephemeral test workloads; one semver platform tag routes only changed components |
+| Agent-operated delivery | An agent can author a change, inspect CI/CD and Terraform plans, promote a verified release, and request the guarded production approval through MCP; write actions remain Human-in-the-loop |
 | Secrets | Everything in Secret Manager, mounted via the CSI add-on + Workload Identity |
 | Encryption | One shared Cloud KMS **HSM** key (CMEK, 90-day rotation) over Cloud SQL, GCS, Secret Manager and **GKE etcd** (application-layer Kubernetes Secrets encryption) |
 | Edge | Cloudflare proxy: Full (Strict) TLS, DNSSEC, HSTS, www→apex redirect, Origin CA cert issued by Terraform |
@@ -102,19 +103,36 @@ policies. A server cannot connect directly to another MCP namespace.
 
 ```mermaid
 flowchart TB
-  API["Enabled Google APIs"] --> N["VPC, subnet, firewall, router, NAT, PSA"]
-  API --> K["HSM KMS key"]
-  API --> C["GKE cluster and node pool"]
-  API --> Q["Cloud SQL and GCS"]
-  API --> R["Artifact Registry"]
-  API --> B["BigQuery billing dataset"]
-  K --> C
-  K --> Q
+  API["Enabled Google APIs"] --> TF["platform-gcp Terraform Stack"]
+  TF --> N["Network<br/>VPC · subnet · firewall · NAT · PSA"]
+  TF --> C["Compute<br/>private GKE · general node pool"]
+  TF --> D["Data<br/>Cloud SQL · GCS · BigQuery"]
+  TF --> S["Supply chain<br/>Artifact Registry · scanning"]
+  TF --> I["Identity and keys<br/>Workload Identity · HSM KMS"]
 ```
 
-The KMS key protects GKE etcd, Cloud SQL, GCS and Secret Manager. The billing
-dataset is separate from application data and gives the Google Cloud MCP
-read-only cost visibility.
+This view shows ownership only: every arrow means “created by the
+`platform-gcp` Stack”. Encryption is a separate relationship and is shown
+below, so resource-ownership and key-use arrows do not cross.
+
+```mermaid
+flowchart TB
+  K["Cloud KMS HSM key<br/>90-day rotation"] --> E["CMEK envelope encryption"]
+  E --> SQL["Cloud SQL<br/>database + backups"]
+  E --> GCS["GCS<br/>Mattermost objects + deploy source"]
+  E --> SM["Secret Manager<br/>regional replicas"]
+  E --> ETCD["GKE etcd<br/>Kubernetes Secrets"]
+  E --> PVC["mcp-sensitive PVCs<br/>Persistent Disk CSI"]
+
+  GM["Google-managed encryption at rest"] --> BQ["BigQuery billing dataset"]
+  GM --> AR["Artifact Registry"]
+  GM --> ND["GKE node and default PVC disks"]
+```
+
+The billing dataset is separate from application data and gives the Google
+Cloud MCP read-only cost visibility. Google-managed encryption is still
+encryption at rest, but those services are deliberately not presented as
+CMEK-controlled in this configuration.
 
 ### Build and release flow
 
@@ -130,6 +148,63 @@ flowchart LR
 
 Mattermost and MCP use independent pipelines. Change routing starts only the
 affected pipeline; production approval happens after the dev smoke succeeds.
+
+### Agent-operated delivery and infrastructure
+
+The connected MCP Portal is also the agent's guarded control plane. It exposes
+read tools for Git-adjacent delivery evidence, Cloud Build, Cloud Deploy,
+Artifact Analysis, Google Cloud operations and HCP Terraform Stacks, plus
+separately classified write tools for promotion, approval and Stack changes.
+An agent can therefore take a task from code to production without receiving a
+long-lived cloud key or falling back to local `gcloud`, `kubectl` or a broad
+Terraform token.
+
+Application delivery follows one straight, auditable path:
+
+```mermaid
+flowchart LR
+  T["Task"] --> C["Agent writes code"]
+  C --> G["Commit + immutable tag"]
+  G --> B["Cloud Build"]
+  B --> D["Dev rollout"]
+  D --> S["Smoke + inspection over MCP"]
+  S --> H["Human approval"]
+  H --> P["Agent approves exact rollout etag over MCP"]
+  P --> R["Prod rollout + verify + catalog sync"]
+```
+
+Infrastructure changes use the same pattern with the Terraform control plane:
+
+```mermaid
+flowchart LR
+  C["Agent writes IaC"] --> P["HCP Stack plan"]
+  P --> I["Agent inspects diff over MCP"]
+  I --> H["Human approval"]
+  H --> A["Agent approves exact configuration over MCP"]
+  A --> R["HCP apply"]
+  R --> V["Agent verifies outputs and downstream plans"]
+```
+
+Human-in-the-loop is enforced at multiple layers rather than being a chat
+convention:
+
+- read-only MCP tools may inspect plans, builds, vulnerabilities, rollouts and
+  logs without mutating infrastructure;
+- write/delete tools require explicit client approval and use narrow
+  allowlists;
+- Cloud Deploy approval requires a fresh rollout inspection and its exact
+  current `etag`;
+- Terraform Stack approval requires the inspected deployment run and exact
+  configuration ID;
+- promotion and rollback are plan-then-execute operations bound to an exact
+  plan hash;
+- Cloud Deploy and HCP keep the durable actor, plan, approval and execution
+  history, while Mattermost is the planned human discussion/approval surface.
+
+Today a human starts or confirms the guarded write action. The target agent
+platform in [`docs/AGENT_PLATFORM.md`](docs/AGENT_PLATFORM.md) will pause a
+Temporal workflow, collect Approve/Edit/Reject in the linked Mattermost thread,
+and resume the same workflow with the human identity and decision attached.
 
 ### Identity and secrets
 
@@ -282,9 +357,11 @@ short version:
    emails are injected automatically via Cloud Deploy deploy parameters; only
    the ingress `loadBalancerIP` and the dev-team RBAC principal stay manual.
 7. **Enable Detailed Billing Export** once in Billing Console after the
-   platform creates `yourown-chat.billing`: choose Detailed usage cost,
-   project `yourown-chat`, dataset `billing`. The MCP table name and read-only
-   access are already configured in code.
+   platform creates `yourown-chat.billing`: open **Billing → Billing export →
+   BigQuery export → Detailed usage cost → Enable**, select project
+   `yourown-chat` and dataset `billing`, then save. This one-time toggle is not
+   available through Terraform or `gcloud`; all later cost analysis runs
+   automatically through MCP.
 
 ### Day-2 flows
 
@@ -418,6 +495,40 @@ These cost real debugging time; the configuration now guards against them:
 - **Dev environment**: one namespace for services and databases, namespace
   RBAC (no cluster rights), default-deny cross-namespace traffic, and
   `automountServiceAccountToken: false`.
+
+### Data encryption and key boundaries
+
+Encryption is configured per storage service; the presence of an HSM key does
+not imply that every Google or Cloudflare resource uses it.
+
+| Data | Encryption at rest | Transport and access boundary |
+|---|---|---|
+| Mattermost PostgreSQL | Cloud SQL instance storage and managed backups use the regional HSM CMEK through `encryption_key_name` | No public IP; Private Service Access only; Cloud SQL is `ENCRYPTED_ONLY`, and Mattermost connects with `sslmode=require` |
+| Mattermost object storage (“S3”) | This is GCS, not AWS S3. The bucket's default key is the regional HSM CMEK, including object versions | Uniform bucket-level access, Public Access Prevention, bucket-scoped HMAC service account; S3-compatible requests use TLS |
+| Cloud Deploy source archives | Private `deploy-source-europe-west3` GCS bucket uses the same HSM CMEK; source objects expire by lifecycle policy | Only the release/build identities receive bucket-scoped access |
+| Secret Manager | User-managed regional replicas use the HSM CMEK; this includes database credentials, GCS HMAC keys, Cloudflare material and MCP credentials | Per-secret IAM; pods authenticate with Workload Identity and mount allowed versions read-only through Secret Manager CSI |
+| MCP credentials in Kubernetes | MCP secrets do **not** become Kubernetes Secret objects: CSI reads them directly from Secret Manager into the pod filesystem | Separate KSA/GSA and `secretAccessor` grant per tenant; files disappear with the pod |
+| Compatibility Kubernetes Secrets | Values needed by Mattermost/operator compatibility are envelope-encrypted in GKE etcd; the HSM key wraps the data-encryption key | Kubernetes RBAC and namespace isolation govern reads; these are the exception to the direct-CSI path |
+| Personal WhatsApp session PVC | The `mcp-sensitive` StorageClass passes the HSM CMEK to Persistent Disk CSI | Mounted only by the personal WhatsApp workload in its isolated namespace |
+| BigQuery billing export | Google-managed encryption at rest; no dataset CMEK is configured | Dataset-level `roles/bigquery.dataViewer` for the Google Cloud MCP and a bounded 1 GB/query limit |
+| Artifact Registry images | Google-managed encryption at rest because `artifact_registry_kms_key_name = null` | Regional private repository, IAM-scoped pulls and Artifact Analysis scanning |
+| GKE node disks and ordinary PVCs | Google-managed encryption at rest; only `mcp-sensitive` explicitly selects CMEK | Private nodes, Shielded Nodes and workload/namespace access controls |
+| Network traffic | TLS at the public Cloudflare edge and Full (Strict) TLS to ingress; Cloud SQL forces encrypted connections | Cloudflare-only ingress, private cluster networking, NetworkPolicy and Cloud NAT egress |
+
+Google services use envelope encryption: the service encrypts data with data
+encryption keys and the Cloud KMS HSM key wraps those keys. The HSM key is not
+exported to pods or Terraform. Its service agents receive only
+`cryptoKeyEncrypterDecrypter`; application workloads do not receive raw KMS
+key material.
+
+Terraform state is a separate trust boundary. Values generated by Terraform
+can appear as sensitive values in the corresponding HCP Terraform Stack state,
+even when their runtime destination is Secret Manager. External MCP
+credentials are therefore added as Secret Manager versions and consumed over
+CSI so they do not pass through app state or Kubernetes etcd. Cloudflare's own
+edge/Access data is encrypted and controlled inside Cloudflare's service, not
+by the GCP HSM key; only the credentials and origin material copied into GCP
+Secret Manager inherit the GCP CMEK policy.
 
 ## Growing it later
 
