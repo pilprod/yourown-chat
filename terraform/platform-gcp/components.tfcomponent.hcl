@@ -41,6 +41,7 @@ locals {
     "logging.googleapis.com",
     "monitoring.googleapis.com",
     "cloudbuild.googleapis.com",
+    "cloudbilling.googleapis.com",
     "bigquery.googleapis.com",
     "billingbudgets.googleapis.com",
     "recommender.googleapis.com",
