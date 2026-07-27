@@ -701,6 +701,7 @@ flowchart LR
   E --> SM["Secret Manager<br/>regional replicas"]
   E --> ETCD["GKE etcd<br/>Kubernetes Secrets"]
   E --> PVC["mcp-sensitive PVCs<br/>Persistent Disk CSI"]
+  E --> ND["GKE general pool<br/>node boot disks"]
 ```
 
 ```mermaid
@@ -708,7 +709,6 @@ flowchart LR
 flowchart LR
   GM["Google-managed encryption at rest"] --> BQ["BigQuery billing dataset"]
   GM --> AR["Artifact Registry"]
-  GM --> ND["GKE general-pool<br/>node boot disks"]
   GM --> DP["dev-only default PVCs<br/>Mattermost + PostgreSQL"]
 ```
 
@@ -717,12 +717,13 @@ Cloud MCP read-only cost visibility. Google-managed encryption is still
 encryption at rest, but those services are deliberately not presented as
 CMEK-controlled in this configuration. There is no separate dev node pool:
 dev and production pods share the autoscaling `general` pool and Kubernetes
-PriorityClasses decide scheduling/preemption priority. Its boot disks hold the
-Container Optimized OS and disposable pod/runtime data. Default-class PVCs
-currently hold only replaceable dev Mattermost and dev PostgreSQL data.
-Production Mattermost state is in CMEK-protected Cloud SQL and GCS, Kubernetes
-Secrets are application-layer encrypted with CMEK before etcd persistence,
-and the only stateful MCP session uses the `mcp-sensitive` CMEK StorageClass.
+PriorityClasses decide scheduling/preemption priority. Its replacement boot
+disks use the same HSM CMEK as the rest of the platform. Default-class PVCs
+currently hold only replaceable dev Mattermost and dev PostgreSQL data and
+remain Google-managed. Production Mattermost state is in CMEK-protected Cloud
+SQL and GCS, Kubernetes Secrets are application-layer encrypted with CMEK
+before etcd persistence, and the only stateful MCP session uses the
+`mcp-sensitive` CMEK StorageClass.
 
 ### Build and release flow
 
@@ -823,8 +824,8 @@ resource type.
 |---|---|
 | **platform-gcp / APIs** | Service Usage entries for Compute, GKE, Service Networking, Cloud SQL, KMS, Storage, Cloud Deploy, Logging, Monitoring, Cloud Build, Cloud Billing, Billing Budgets, BigQuery, BigQuery Data Transfer, Recommender, Artifact Registry, Artifact Analysis, Agent Registry and Google Workspace MCP APIs |
 | **platform-gcp / network** | Custom VPC, regional subnet with pod/service secondary ranges, internal firewall, Cloud Router, Cloud NAT, reserved external ingress IP, PSA address and Service Networking connection |
-| **platform-gcp / encryption** | Regional HSM KMS key ring and key, rotation policy, IAM grants for GKE, Cloud SQL, GCS and Secret Manager service agents |
-| **platform-gcp / compute** | One zonal private GKE Standard cluster, autoscaling `general` node pool, shielded nodes, node service account, CSI drivers, etcd application-layer encryption and GKE cost allocation |
+| **platform-gcp / encryption** | Regional HSM KMS key ring and key, rotation policy, IAM grants for GKE, Compute Engine, Cloud SQL, GCS and Secret Manager service agents |
+| **platform-gcp / compute** | One zonal private GKE Standard cluster, HSM-CMEK autoscaling `general` node pool, shielded nodes, node service account, CSI drivers, etcd application-layer encryption and GKE cost allocation |
 | **platform-gcp / data** | Private Cloud SQL PostgreSQL instance, database/user/password secrets, GCS Mattermost bucket, HMAC service account and secrets, EU BigQuery `billing` dataset |
 | **platform-gcp / supply chain** | Regional Artifact Registry `docker` repository, cleanup policy, default-off scanning gate and least-privilege MCP scanning controller |
 | **platform-gcp / identities** | Separate Google service accounts and Workload Identity bindings for Mattermost, dev, Matterbridge, every MCP server and cloudflared |
@@ -1135,28 +1136,27 @@ not imply that every Google or Cloudflare resource uses it.
 | Personal WhatsApp session PVC | The `mcp-sensitive` StorageClass passes the HSM CMEK to Persistent Disk CSI | Mounted only by the personal WhatsApp workload in its isolated namespace |
 | BigQuery billing export | Google-managed encryption at rest; no dataset CMEK is configured | Dataset-level `roles/bigquery.dataViewer` for the Google Cloud MCP and a bounded 1 GB/query limit |
 | Artifact Registry images | Google-managed encryption at rest because `artifact_registry_kms_key_name = null` | Regional private repository, IAM-scoped pulls and explicitly bounded Artifact Analysis scan windows |
-| GKE `general` node-pool boot disks | Google-managed encryption at rest; the single shared pool has no dedicated dev nodes | Private nodes, Shielded Nodes, disposable Container Optimized OS/runtime data and Kubernetes PriorityClasses |
+| GKE `general` node-pool boot disks | The shared regional HSM CMEK is assigned through `boot_disk_kms_key`; the single pool has no dedicated dev nodes | Private nodes, Shielded Nodes, disposable Container Optimized OS/runtime data and Kubernetes PriorityClasses |
 | Dev Mattermost and PostgreSQL PVCs | Google-managed encryption through the default StorageClass; these are replaceable dev-only data | `dev` namespace isolation and low scheduling priority; production state does not use these volumes |
 | Network traffic | TLS at the public Cloudflare edge and Full (Strict) TLS to ingress; Cloud SQL forces encrypted connections | Cloudflare-only ingress, private cluster networking, NetworkPolicy and Cloud NAT egress |
 
-Google-managed encryption is an acceptable baseline for the node and dev-disk
-threat model here: Google encrypts storage with AES-256 before it is written
-and separately encrypts storage devices. It protects lost, replaced or
-decommissioned physical media without adding a key dependency to every node
-boot. The trade-off is control rather than cryptographic strength: Google owns
-the key-encryption keys, so the project cannot independently disable them,
-choose their rotation, inspect per-key use or satisfy a requirement for
-customer-controlled key custody. IAM compromise or a compromised workload that
-is already authorized to read a mounted disk is not prevented by either
-Google-managed encryption or CMEK.
+Google-managed encryption remains an acceptable baseline for replaceable dev
+PVCs: Google encrypts storage with AES-256 before it is written and separately
+encrypts storage devices. The trade-off is control rather than cryptographic
+strength: Google owns those key-encryption keys, so the project cannot
+independently disable them, choose their rotation, inspect per-key use or
+satisfy a requirement for customer-controlled key custody. IAM compromise or
+a compromised workload that is already authorized to read a mounted disk is
+not prevented by either Google-managed encryption or CMEK.
 
 This boundary is intentional, not a claim that default encryption is
 equivalent to CMEK. If durable production data is added to an ordinary PVC, it
-must select `mcp-sensitive` or a new workload-specific CMEK StorageClass.
-Moving node boot disks to CMEK is possible, but GKE requires a replacement node
-pool; it should be treated as a separate migration because disabling the key
-can prevent nodes from booting. The GKE control-plane disks also remain
-Google-managed even when workload node and attached disks use CMEK.
+must select `mcp-sensitive` or a new workload-specific CMEK StorageClass. GKE
+cannot add CMEK to existing node boot disks in place, so the first apply of
+this setting deletes and recreates the `general` pool with the same name and
+causes a temporary workload outage. Disabling the key can subsequently prevent
+nodes from booting. The GKE control-plane disks remain Google-managed even when
+workload node and attached disks use CMEK.
 
 Google services use envelope encryption: the service encrypts data with data
 encryption keys and the Cloud KMS HSM key wraps those keys. The HSM key is not

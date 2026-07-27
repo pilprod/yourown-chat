@@ -48,13 +48,18 @@ deployment "eu" {
     gke_regional            = false
     gke_deletion_protection = true
     gke_node_pools = {
+      # GKE cannot add CMEK to existing boot disks. The first apply with
+      # cmek_boot_disk=true intentionally deletes and recreates this pool with
+      # the same name, causing a temporary workload outage but avoiding a
+      # second migration pool.
       general = {
-        machine_type = "e2-standard-2"
-        spot         = false
-        min_count    = 1
-        max_count    = 3
-        disk_size_gb = 30
-        disk_type    = "pd-standard"
+        machine_type   = "e2-standard-2"
+        spot           = false
+        min_count      = 1
+        max_count      = 3
+        disk_size_gb   = 30
+        disk_type      = "pd-standard"
+        cmek_boot_disk = true
         labels = {
           pool = "general"
         }
@@ -79,7 +84,8 @@ deployment "eu" {
 
     public_ingress_enabled = true
 
-    # One shared HSM CMEK key for Cloud SQL + GCS + Secret Manager (~$1/mo).
+    # One shared HSM CMEK key for Cloud SQL, GCS, Secret Manager, GKE etcd,
+    # sensitive PVCs and the replacement GKE node-pool boot disks (~$1/mo).
     cmek_enabled         = true
     kms_protection_level = "HSM"
     # Ring/key survive deletion in GCP -- adopt instead of 409-ing on create.

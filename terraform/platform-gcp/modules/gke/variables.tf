@@ -61,13 +61,14 @@ variable "master_authorized_networks" {
 
 variable "node_pools" {
   type = map(object({
-    machine_type = optional(string, "e2-small")
-    spot         = optional(bool, true)
-    min_count    = optional(number, 1)
-    max_count    = optional(number, 2)
-    disk_size_gb = optional(number, 30)
-    disk_type    = optional(string, "pd-standard")
-    labels       = optional(map(string), {})
+    machine_type   = optional(string, "e2-small")
+    spot           = optional(bool, true)
+    min_count      = optional(number, 1)
+    max_count      = optional(number, 2)
+    disk_size_gb   = optional(number, 30)
+    disk_type      = optional(string, "pd-standard")
+    cmek_boot_disk = optional(bool, false)
+    labels         = optional(map(string), {})
     taints = optional(list(object({
       key    = string
       value  = string
@@ -104,6 +105,12 @@ variable "node_pools" {
     ])
     error_message = "Each pool needs max_count >= min_count and disk_size_gb >= 20."
   }
+}
+
+variable "node_boot_disk_kms_key" {
+  type        = string
+  description = "Cloud KMS key used by node pools whose cmek_boot_disk flag is true. Enabling CMEK requires a replacement pool; it cannot be added to existing node boot disks in place."
+  default     = null
 }
 
 variable "database_encryption_key" {

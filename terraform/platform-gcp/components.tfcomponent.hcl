@@ -360,10 +360,9 @@ component "network" {
   }
 }
 
-# One shared CMEK key for Cloud SQL + GCS + Secret Manager (skipped when
-# cmek_enabled = false -> Google-managed keys). grant_gke lets the GKE agent
-# use it for etcd application-layer Secrets encryption. The public registry
-# does not use CMEK.
+# One shared CMEK key for Cloud SQL, GCS, Secret Manager, GKE etcd, sensitive
+# PVCs and opted-in node boot disks (skipped when cmek_enabled = false).
+# The public registry and ordinary dev PVCs do not use CMEK.
 component "kms" {
   for_each = var.cmek_enabled ? toset(["default"]) : toset([])
 
@@ -425,12 +424,13 @@ component "gke" {
     services_range_name        = component.network.services_range_name
     master_authorized_networks = var.master_authorized_networks
     node_pools                 = var.gke_node_pools
+    node_boot_disk_kms_key     = one([for k in component.kms : k.crypto_key_id])
     enable_secret_manager_csi  = true
     deletion_protection        = var.gke_deletion_protection
     resource_labels            = local.common_labels
 
-    # etcd Secrets encryption with the shared CMEK key (null omits the block ->
-    # Google-managed); referencing kms orders the key + its GKE-agent grant first.
+    # The same shared key protects etcd Secrets and opted-in node boot disks.
+    # Referencing kms orders both the key and service-agent grants first.
     database_encryption_key = one([for k in component.kms : k.crypto_key_id])
   }
 

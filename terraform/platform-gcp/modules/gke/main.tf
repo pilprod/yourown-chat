@@ -164,11 +164,12 @@ resource "google_container_node_pool" "pool" {
   }
 
   node_config {
-    machine_type = each.value.machine_type
-    spot         = each.value.spot
-    disk_size_gb = each.value.disk_size_gb
-    disk_type    = each.value.disk_type
-    image_type   = "COS_CONTAINERD"
+    machine_type      = each.value.machine_type
+    spot              = each.value.spot
+    disk_size_gb      = each.value.disk_size_gb
+    disk_type         = each.value.disk_type
+    boot_disk_kms_key = each.value.cmek_boot_disk ? var.node_boot_disk_kms_key : null
+    image_type        = "COS_CONTAINERD"
 
     service_account = google_service_account.node.email
     oauth_scopes    = ["https://www.googleapis.com/auth/cloud-platform"]
@@ -196,9 +197,10 @@ resource "google_container_node_pool" "pool" {
   }
 
   lifecycle {
-    # A pool name cannot be changed in-place. During the prod -> general
-    # migration, provision replacement capacity before draining the old pool.
-    create_before_destroy = true
+    precondition {
+      condition     = !each.value.cmek_boot_disk || var.node_boot_disk_kms_key != null
+      error_message = "node_boot_disk_kms_key is required when cmek_boot_disk is true."
+    }
 
     ignore_changes = [
       # Autoscaler owns the live node count.

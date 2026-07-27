@@ -143,7 +143,7 @@ output "workload_identity_members" {
 # --- Encryption ----------------------------------------------------------------
 output "cmek_key_id" {
   type        = string
-  description = "Shared CMEK key resource ID (null when cmek_enabled = false), encrypting Cloud SQL + GCS + Secret Manager -- including the app-gcp stack's secrets and release-source bucket (via upstream_input)."
+  description = "Shared CMEK key resource ID (null when cmek_enabled = false), protecting Cloud SQL, GCS, Secret Manager, GKE etcd, sensitive PVCs and opted-in node boot disks."
   value       = one([for k in component.kms : k.crypto_key_id])
 }
 

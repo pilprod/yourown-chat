@@ -227,7 +227,7 @@ variable "storage_force_destroy" {
 # Artifact Registry is deliberately not CMEK-encrypted, so it takes no key.
 variable "cmek_enabled" {
   type        = bool
-  description = "Provision the shared Cloud KMS key and encrypt Cloud SQL + GCS + Secret Manager with it. Cost is ~$1/mo for an HSM key version (or ~$0.06 for SOFTWARE). Note: Cloud SQL binds its key at creation, so toggling this on an existing deployment replaces that instance."
+  description = "Provision the shared Cloud KMS key for Cloud SQL, GCS, Secret Manager, GKE etcd, sensitive PVCs and opted-in node boot disks. Cost is ~$1/mo for an HSM key version (or ~$0.06 for SOFTWARE). Cloud SQL and node boot disks bind their key at creation, so enabling it later requires resource replacement."
   default     = true
 }
 
