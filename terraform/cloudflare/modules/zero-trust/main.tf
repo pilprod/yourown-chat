@@ -78,8 +78,11 @@ locals {
 
   # Cloudflare aliases are protocol identifiers rather than free-form titles:
   # they accept only alphanumeric sections separated by "_" or "-" and are
-  # limited to 40 characters. The Portal already prefixes the server name, so
-  # aliases add only the missing product/domain context and avoid duplication.
+  # limited to 40 characters. Use them only for the official Terraform MCP,
+  # which does not expose consistent human-readable titles. Our adapters
+  # publish structured Tool.title metadata themselves; aliasing those tools
+  # would replace titles such as "WhatsApp Personal · Session · Status" with
+  # technical identifiers such as "whatsapp-personal session status".
   mcp_tool_aliases = {
     terraform = {
       attach_policy_set_to_workspaces     = "hcp_policy_sets_attach"
@@ -122,17 +125,6 @@ locals {
       search_providers                    = "registry_providers_search"
       update_workspace                    = "hcp_workspaces_update"
       update_workspace_variable           = "hcp_workspaces_variable_update"
-    }
-    whatsapp-personal = {
-      whatsapp_personal_status             = "session_status"
-      whatsapp_personal_get_qr             = "session_qr_get"
-      whatsapp_personal_list_conversations = "messages_conversations_list"
-      whatsapp_personal_list_messages      = "messages_list"
-      whatsapp_personal_send_text          = "messages_text_send"
-      whatsapp_personal_mark_read          = "messages_mark_read"
-      whatsapp_personal_emergency_stop     = "session_emergency_stop"
-      whatsapp_personal_resume             = "session_resume"
-      whatsapp_personal_reset_link         = "session_link_reset"
     }
   }
 }
