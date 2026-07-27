@@ -10,10 +10,9 @@ managed end-to-end with **HCP Terraform Stacks** — production practices on a
 
 ## What's inside
 
-Runtime infrastructure lives in the `yourown-chat` GCP project, with one
-isolated legacy FinOps project for the former billing account. Four Terraform
-Stacks (three data-linked plus one independent governance catalog) own the
-platform with separate state and blast radius:
+Runtime infrastructure lives entirely in the `yourown-chat` GCP project. Four
+Terraform Stacks (three data-linked plus one independent governance catalog)
+own the platform with separate state and blast radius:
 
 | Stack | Directory | What it owns | Changes |
 |---|---|---|---|
@@ -881,10 +880,10 @@ short version:
    the ingress `loadBalancerIP` and the dev-team RBAC principal stay manual.
 7. **Enable Detailed Billing Export** once per billing account in Billing
    Console. For the active USD account select project `yourown-chat` and
-   dataset `billing`. Preserve the legacy THB history in a separate FinOps
-   project linked to the old account; a project cannot be linked to both
-   billing accounts. The exact account checks and export choices are documented
-   in [Cloud Billing account access and export](#cloud-billing-account-access-and-export).
+   dataset `billing`. The former billing account and its empty legacy export
+   are intentionally not retained. The exact account checks and export choices
+   are documented in
+   [Cloud Billing account access and export](#cloud-billing-account-access-and-export).
 
 ### Day-2 flows
 

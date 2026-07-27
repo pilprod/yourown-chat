@@ -75,6 +75,19 @@ component "project_services" {
   }
 }
 
+# Migration cleanup: `billing_legacy` was removed after confirming that its
+# dataset contained no exported rows and deleting the dedicated project. Keep
+# this block for one successful deployment so HCP Terraform can release the
+# component instance from Stack state. Remove it in the following deployment.
+removed {
+  source = "./modules/billing-legacy"
+  from   = component.billing_legacy
+
+  providers = {
+    google = provider.google.this
+  }
+}
+
 # Workload Identity SAs. depends_on component.gke: the PROJECT.svc.id.goog pool
 # the workloadIdentityUser binding references only exists once a WI-enabled
 # cluster is created.
