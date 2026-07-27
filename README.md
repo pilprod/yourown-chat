@@ -634,7 +634,8 @@ answers one question and keeps arrows flowing in one direction.
 ### Stack ownership and state
 
 ```mermaid
-flowchart TB
+%%{init: {"flowchart": {"nodeSpacing": 18, "rankSpacing": 28, "curve": "linear"}, "themeVariables": {"fontSize": "12px"}}}%%
+flowchart LR
   P["platform-gcp<br/>foundation"] --> E["cloudflare<br/>edge and MCP portal"]
   P --> D["app-gcp<br/>build and delivery"]
   P -.-> R["agent-registry-gcp<br/>catalog"]
@@ -647,7 +648,8 @@ cannot form a dependency cycle.
 ### Public application traffic
 
 ```mermaid
-flowchart TB
+%%{init: {"flowchart": {"nodeSpacing": 18, "rankSpacing": 28, "curve": "linear"}, "themeVariables": {"fontSize": "12px"}}}%%
+flowchart LR
   U["Browser / mobile client"] --> C["Cloudflare edge"]
   C --> L["GKE external LoadBalancer"]
   L --> I["ingress-nginx"]
@@ -661,7 +663,8 @@ Mattermost reaches it over Private Service Access and stores files in GCS.
 ### MCP client traffic
 
 ```mermaid
-flowchart TB
+%%{init: {"flowchart": {"nodeSpacing": 18, "rankSpacing": 28, "curve": "linear"}, "themeVariables": {"fontSize": "12px"}}}%%
+flowchart LR
   A["ChatGPT / Claude / Mattermost / Codex"] --> P["tools.yourown.chat<br/>Cloudflare MCP Portal"]
   P --> T["cloudflared tunnel"]
   T --> X["one selected MCP namespace"]
@@ -675,7 +678,8 @@ policies. A server cannot connect directly to another MCP namespace.
 ### Google Cloud foundation
 
 ```mermaid
-flowchart TB
+%%{init: {"flowchart": {"nodeSpacing": 18, "rankSpacing": 28, "curve": "linear"}, "themeVariables": {"fontSize": "12px"}}}%%
+flowchart LR
   API["Enabled Google APIs"] --> TF["platform-gcp Terraform Stack"]
   TF --> N["Network<br/>VPC · subnet · firewall · NAT · PSA"]
   TF --> C["Compute<br/>private GKE · general node pool"]
@@ -689,14 +693,19 @@ This view shows ownership only: every arrow means “created by the
 below, so resource-ownership and key-use arrows do not cross.
 
 ```mermaid
-flowchart TB
+%%{init: {"flowchart": {"nodeSpacing": 18, "rankSpacing": 28, "curve": "linear"}, "themeVariables": {"fontSize": "12px"}}}%%
+flowchart LR
   K["Cloud KMS HSM key<br/>90-day rotation"] --> E["CMEK envelope encryption"]
   E --> SQL["Cloud SQL<br/>database + backups"]
   E --> GCS["GCS<br/>Mattermost objects + deploy source"]
   E --> SM["Secret Manager<br/>regional replicas"]
   E --> ETCD["GKE etcd<br/>Kubernetes Secrets"]
   E --> PVC["mcp-sensitive PVCs<br/>Persistent Disk CSI"]
+```
 
+```mermaid
+%%{init: {"flowchart": {"nodeSpacing": 18, "rankSpacing": 28, "curve": "linear"}, "themeVariables": {"fontSize": "12px"}}}%%
+flowchart LR
   GM["Google-managed encryption at rest"] --> BQ["BigQuery billing dataset"]
   GM --> AR["Artifact Registry"]
   GM --> ND["GKE node and default PVC disks"]
@@ -715,7 +724,8 @@ stateful MCP session uses the `mcp-sensitive` CMEK StorageClass.
 ### Build and release flow
 
 ```mermaid
-flowchart TB
+%%{init: {"flowchart": {"nodeSpacing": 18, "rankSpacing": 28, "curve": "linear"}, "themeVariables": {"fontSize": "12px"}}}%%
+flowchart LR
   G["Git tags and changed files"] --> B["Cloud Build"]
   B --> R["Artifact Registry"]
   R --> D["Cloud Deploy"]
@@ -740,7 +750,8 @@ Terraform token.
 Application delivery follows one straight, auditable path:
 
 ```mermaid
-flowchart TB
+%%{init: {"flowchart": {"nodeSpacing": 18, "rankSpacing": 28, "curve": "linear"}, "themeVariables": {"fontSize": "12px"}}}%%
+flowchart LR
   T["Task"] --> C["Agent writes code"]
   C --> G["Commit + immutable tag"]
   G --> B["Cloud Build"]
@@ -754,7 +765,8 @@ flowchart TB
 Infrastructure changes use the same pattern with the Terraform control plane:
 
 ```mermaid
-flowchart TB
+%%{init: {"flowchart": {"nodeSpacing": 18, "rankSpacing": 28, "curve": "linear"}, "themeVariables": {"fontSize": "12px"}}}%%
+flowchart LR
   C["Agent writes IaC"] --> P["HCP Stack plan"]
   P --> I["Agent inspects diff over MCP"]
   I --> H["Human approval"]
@@ -787,7 +799,8 @@ and resume the same workflow with the human identity and decision attached.
 ### Identity and secrets
 
 ```mermaid
-flowchart TB
+%%{init: {"flowchart": {"nodeSpacing": 18, "rankSpacing": 28, "curve": "linear"}, "themeVariables": {"fontSize": "12px"}}}%%
+flowchart LR
   H["HCP Terraform OIDC"] --> W["GCP Workload Identity Federation"]
   W --> F["terraform apply service account"]
   K["Kubernetes service account"] --> P["Pod-specific Google service account"]
