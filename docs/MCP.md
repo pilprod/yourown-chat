@@ -369,6 +369,8 @@ approval or approval of later plans.
 Available management tools:
 
 - `get_stack_settings`;
+- `list_configurations` / `inspect_configuration` for configuration status,
+  preparation diagnostics, and deployment-group summaries before a run exists;
 - `plan_create` / `create`;
 - `plan_update` / `update`.
 

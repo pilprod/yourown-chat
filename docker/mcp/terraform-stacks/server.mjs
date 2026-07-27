@@ -38,6 +38,59 @@ function createServer() {
     async ({ stack_name }) => toolResult(await client.stackSettings(stack_name)),
   );
 
+  server.registerTool(
+    "list_configurations",
+    {
+      title: "HCP Terraform · Configurations · List",
+      description:
+        "List prepared, pending and failed configuration versions for one allowlisted Stack, including sequence, status and VCS ingress metadata.",
+      inputSchema: {
+        stack_name: z.string().min(1),
+        page_number: z.number().int().min(1).optional().default(1),
+        page_size: z.number().int().min(1).max(100).optional().default(20),
+      },
+      annotations: {
+        title: "HCP Terraform · Configurations · List",
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    async ({ stack_name, page_number, page_size }) =>
+      toolResult(
+        await client.listConfigurations({
+          stackName: stack_name,
+          pageNumber: page_number,
+          pageSize: page_size,
+        }),
+      ),
+  );
+
+  server.registerTool(
+    "inspect_configuration",
+    {
+      title: "HCP Terraform · Configurations · Inspect",
+      description:
+        "Inspect one exact Stack configuration with its preparation diagnostics and deployment-group summaries. Use this when a fetched configuration did not create deployment runs.",
+      inputSchema: {
+        stack_name: z.string().min(1),
+        configuration_id: z.string().regex(/^stc-[A-Za-z0-9]+$/),
+      },
+      annotations: {
+        title: "HCP Terraform · Configurations · Inspect",
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    async ({ stack_name, configuration_id }) =>
+      toolResult(
+        await client.inspectConfiguration(stack_name, configuration_id),
+      ),
+  );
+
   const createInputSchema = {
     name: z.string().regex(/^[A-Za-z0-9_-]{1,90}$/),
     description: z.string().max(500).optional().default(""),

@@ -71,6 +71,82 @@ function fixtureFetch({
         },
       });
     }
+    if (
+      path.startsWith(
+        "/api/v2/stacks/st-cloudflare1/stack-configurations?",
+      )
+    ) {
+      return jsonResponse({
+        data: [
+          {
+            id: "stc-config1",
+            attributes: {
+              status: "errored",
+              "sequence-number": 12,
+            },
+            relationships: {
+              stack: {
+                data: { id: "st-cloudflare1", type: "stacks" },
+              },
+            },
+          },
+        ],
+        meta: {
+          pagination: {
+            "current-page": 1,
+            "page-size": 20,
+            "total-count": 1,
+          },
+        },
+      });
+    }
+    if (path === "/api/v2/stack-configurations/stc-config1") {
+      return jsonResponse({
+        data: {
+          id: "stc-config1",
+          attributes: {
+            status: "errored",
+            "sequence-number": 12,
+          },
+          relationships: {
+            stack: {
+              data: { id: "st-cloudflare1", type: "stacks" },
+            },
+          },
+        },
+      });
+    }
+    if (
+      path.startsWith(
+        "/api/v2/stack-configurations/stc-config1/stack-diagnostics?",
+      )
+    ) {
+      return jsonResponse({
+        data: [
+          {
+            id: "std-diagnostic1",
+            attributes: {
+              severity: "error",
+              summary: "Configuration preparation failed",
+            },
+          },
+        ],
+      });
+    }
+    if (
+      path.startsWith(
+        "/api/v2/stack-configurations/stc-config1/stack-deployment-group-summaries?",
+      )
+    ) {
+      return jsonResponse({
+        data: [
+          {
+            id: "sdg-summary1",
+            attributes: { name: "eu", status: "failed" },
+          },
+        ],
+      });
+    }
     if (path === "/api/v2/stacks" && options.method === "POST") {
       const body = JSON.parse(options.body);
       return jsonResponse(
@@ -353,6 +429,24 @@ test("reads full Stack settings under the committed management policy", async ()
   assert.equal(settings["working-directory"], "terraform/cloudflare");
   assert.equal(settings.policy.approval_allowed, true);
   assert.equal(settings.policy.management_allowed, true);
+});
+
+test("lists and inspects Stack configuration diagnostics", async () => {
+  const fixture = fixtureFetch();
+  const configurations = await client(fixture.fetchImpl).listConfigurations({
+    stackName: "cloudflare",
+  });
+  assert.equal(configurations.configurations[0].id, "stc-config1");
+  assert.equal(configurations.configurations[0].status, "errored");
+  assert.equal(configurations.pagination["total-count"], 1);
+
+  const inspected = await client(fixture.fetchImpl).inspectConfiguration(
+    "cloudflare",
+    "stc-config1",
+  );
+  assert.equal(inspected.configuration["sequence-number"], 12);
+  assert.equal(inspected.diagnostics[0].severity, "error");
+  assert.equal(inspected.deployment_groups[0].name, "eu");
 });
 
 test("previews and creates only an allowlisted VCS-backed Stack", async () => {

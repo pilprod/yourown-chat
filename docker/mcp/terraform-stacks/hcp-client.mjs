@@ -255,6 +255,52 @@ export class HcpStacksClient {
     };
   }
 
+  async listConfigurations({
+    stackName,
+    pageNumber = 1,
+    pageSize = 20,
+  }) {
+    const stack = await this.requireAllowedStack(stackName);
+    const boundedPage = Math.max(1, pageNumber);
+    const boundedSize = Math.min(Math.max(1, pageSize), 100);
+    const payload = await this.request(
+      `stacks/${stack.id}/stack-configurations?` +
+        `page%5Bnumber%5D=${boundedPage}&page%5Bsize%5D=${boundedSize}`,
+    );
+    return {
+      stack: stackName,
+      configurations: payload.data.map(resourceSummary),
+      pagination: payload.meta?.pagination ?? null,
+    };
+  }
+
+  async inspectConfiguration(stackName, configurationId) {
+    assertId(configurationId, "stc", "configuration_id");
+    const stack = await this.requireAllowedStack(stackName);
+    const configuration = await this.request(
+      `stack-configurations/${configurationId}`,
+    );
+    if (configuration.data.relationships?.stack?.data?.id !== stack.id) {
+      throw new Error(
+        `Stack configuration ${configurationId} does not belong to ${stackName}`,
+      );
+    }
+    const [diagnostics, deploymentGroups] = await Promise.all([
+      this.request(
+        `stack-configurations/${configurationId}/stack-diagnostics?page%5Bsize%5D=100`,
+      ),
+      this.request(
+        `stack-configurations/${configurationId}/stack-deployment-group-summaries?page%5Bsize%5D=100`,
+      ),
+    ]);
+    return {
+      stack: stackName,
+      configuration: resourceSummary(configuration.data),
+      diagnostics: diagnostics.data.map(resourceSummary),
+      deployment_groups: deploymentGroups.data.map(resourceSummary),
+    };
+  }
+
   async planCreateStack({
     name,
     description = "",
