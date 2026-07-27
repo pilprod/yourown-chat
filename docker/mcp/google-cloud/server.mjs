@@ -16,6 +16,7 @@ import { artifactVulnerabilityClientFromEnv } from "./artifact-vulnerability-cli
 import { billingCostClientFromEnv } from "./billing-cost-client.mjs";
 import { cloudBuildClientFromEnv } from "./cloud-build-client.mjs";
 import { cloudDeployClientFromEnv } from "./cloud-deploy-client.mjs";
+import { resolveLegacyToolName } from "./tool-name-compat.mjs";
 import { toolError, toolResult } from "./tool-result.mjs";
 
 const childTransport = new StdioClientTransport({
@@ -800,9 +801,14 @@ function createServer() {
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     try {
-      if (customNames.has(request.params.name)) {
+      const toolName = resolveLegacyToolName(
+        request.params.name,
+        "google_cloud_",
+        customNames,
+      );
+      if (customNames.has(toolName)) {
         return toolResult(
-          await callCustom(request.params.name, request.params.arguments ?? {}),
+          await callCustom(toolName, request.params.arguments ?? {}),
         );
       }
       return observability.callTool({

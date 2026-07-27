@@ -7,10 +7,24 @@ import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
 import { clientFromEnv } from "./hcp-client.mjs";
+import { normalizeLegacyToolCall } from "./tool-name-compat.mjs";
 import { toolResult } from "./tool-result.mjs";
 
 const port = Number.parseInt(process.env.PORT ?? "3000", 10);
 const client = clientFromEnv();
+const toolNames = new Set([
+  "get_stack_settings",
+  "list_configurations",
+  "inspect_configuration",
+  "plan_create",
+  "create",
+  "plan_update",
+  "update",
+  "list_deployment_runs",
+  "inspect_deployment_run",
+  "approve_deployment_run",
+  "cancel_deployment_run",
+]);
 
 function createServer() {
   const server = new McpServer({
@@ -401,7 +415,12 @@ app.post("/mcp", async (request, response) => {
       return;
     }
 
-    await transport.handleRequest(request, response, request.body);
+    const body = normalizeLegacyToolCall(
+      request.body,
+      "terraform_stacks_",
+      toolNames,
+    );
+    await transport.handleRequest(request, response, body);
   } catch (error) {
     console.error(error);
     if (!response.headersSent) {

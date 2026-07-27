@@ -18,7 +18,8 @@ USER root
 COPY --from=dependencies --chown=65532:65532 /app/node_modules ./node_modules
 COPY --chown=65532:65532 package.json package-lock.json ./
 COPY artifact-vulnerability-client.mjs billing-cost-client.mjs \
-  cloud-build-client.mjs cloud-deploy-client.mjs server.mjs tool-result.mjs ./
+  cloud-build-client.mjs cloud-deploy-client.mjs server.mjs \
+  tool-name-compat.mjs tool-result.mjs ./
 
 USER 65532:65532
 

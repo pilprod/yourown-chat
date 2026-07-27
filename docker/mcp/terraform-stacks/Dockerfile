@@ -17,7 +17,7 @@ USER root
 
 COPY --from=dependencies --chown=65532:65532 /app/node_modules ./node_modules
 COPY --chown=65532:65532 package.json package-lock.json ./
-COPY hcp-client.mjs secret-env.mjs server.mjs tool-result.mjs ./
+COPY hcp-client.mjs secret-env.mjs server.mjs tool-name-compat.mjs tool-result.mjs ./
 
 ENV NODE_ENV=production \
     PORT=3000
