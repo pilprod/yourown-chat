@@ -65,6 +65,25 @@ publish_runtime_tag() {
   docker push "${runtime_image}"
 }
 
+verify_built_image() {
+  local name="$1"
+  local image="$2"
+
+  case "${name}" in
+    mcp-google-cloud)
+      docker run --rm --entrypoint node "${image}" \
+        --input-type=module \
+        --eval "await Promise.all([
+          'artifact-vulnerability-client.mjs',
+          'billing-cost-client.mjs',
+          'cloud-build-client.mjs',
+          'cloud-deploy-client.mjs',
+          'tool-result.mjs'
+        ].map((module) => import('file:///app/' + module)))"
+      ;;
+  esac
+}
+
 while IFS=$'\t' read -r name artifact_path kind dockerfile context parent_arg parent source_env change_regex audit deploy_parameter source description repository_env revision_env version_env; do
   [[ -z "${name}" || "${name}" == \#* ]] && continue
 
@@ -140,6 +159,7 @@ while IFS=$'\t' read -r name artifact_path kind dockerfile context parent_arg pa
     exit 1
   fi
 
+  verify_built_image "${name}" "${immutable_image}"
   docker push "${immutable_image}"
   publish_runtime_tag "${immutable_image}" "${runtime_image}"
   printf '%s' "${immutable_image}" > "${output_dir}/${name}-image"
