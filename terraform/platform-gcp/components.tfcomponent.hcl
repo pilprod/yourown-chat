@@ -43,6 +43,7 @@ locals {
     "cloudbuild.googleapis.com",
     "cloudbilling.googleapis.com",
     "bigquery.googleapis.com",
+    "bigquerydatatransfer.googleapis.com",
     "billingbudgets.googleapis.com",
     "recommender.googleapis.com",
     "artifactregistry.googleapis.com",
@@ -136,11 +137,11 @@ component "workload_identity_mcp" {
   source = "./modules/workload-identity"
 
   inputs = {
-    project_id         = component.project_services.project_id
-    account_id         = "mcp-servers"
-    display_name       = "Google Cloud MCP workload identity"
-    namespace          = local.ns.mcp.namespace
-    ksa_name           = local.ns.mcp.ksa
+    project_id   = component.project_services.project_id
+    account_id   = "mcp-servers"
+    display_name = "Google Cloud MCP workload identity"
+    namespace    = local.ns.mcp.namespace
+    ksa_name     = local.ns.mcp.ksa
     project_roles = [
       "roles/logging.viewer",
       "roles/monitoring.viewer",
@@ -160,6 +161,24 @@ component "workload_identity_mcp" {
   }
 
   depends_on = [component.gke]
+}
+
+component "billing_export" {
+  source = "./modules/billing-export"
+
+  inputs = {
+    project_id         = component.project_services.project_id
+    billing_account_id = var.billing_account_id
+    dataset_id         = "billing"
+    location           = "EU"
+    reader_member      = component.workload_identity_mcp.iam_member
+    manager_member     = "serviceAccount:${var.service_account_email}"
+    labels             = local.common_labels
+  }
+
+  providers = {
+    google = provider.google.this
+  }
 }
 
 # Disposable dev Google Cloud MCP can inspect observability data but cannot

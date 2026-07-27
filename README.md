@@ -16,7 +16,7 @@ owning a piece with its own state and blast radius:
 
 | Stack | Directory | What it owns | Changes |
 |---|---|---|---|
-| **platform-gcp** | `terraform/platform-gcp` | The stateful foundation: APIs, network + reserved ingress IP, CMEK key, GKE cluster, Cloud SQL, object storage, container registry, Workload Identity SAs | Rarely |
+| **platform-gcp** | `terraform/platform-gcp` | The stateful foundation: APIs, network + reserved ingress IP, CMEK key, GKE cluster, Cloud SQL, object storage, container registry, billing-export dataset, Workload Identity SAs | Rarely |
 | **cloudflare** | `terraform/cloudflare` | The public edge for `yourown.chat`: DNS, TLS/security settings, DNSSEC, WAF, Origin CA cert + the origin-TLS secrets it fills | Sometimes |
 | **app-gcp** | `terraform/app-gcp` | App secrets; independent Mattermost and MCP delivery pipelines; persistent dev PostgreSQL; image CI; tag routing; cluster bootstrap | Often |
 | **agent-registry-gcp** | `terraform/agent-registry-gcp` | Google Cloud Agent Registry catalog entries for external APIs and vendor-hosted MCP servers; GKE and Google MCPs register automatically | Rarely |
@@ -25,14 +25,8 @@ The platform stack **publishes** its key values (ingress IP, cluster ID,
 registry coordinates, CMEK key, Workload Identity members); **cloudflare** and
 **app-gcp** consume them over HCP's linked-stacks mechanism. Nothing is
 copy-pasted between stacks, and when a platform apply changes a published
-value, HCP automatically triggers the downstream plans:
-
-```mermaid
-graph LR
-  P[platform-gcp<br/>foundation] -->|ingress IP, CMEK, WI| CF[cloudflare<br/>edge]
-  P -->|cluster, registry, CMEK, WI| A[app-gcp<br/>delivery]
-  P -.->|enables Agent Registry API| R[agent-registry-gcp<br/>governance catalog]
-```
+value, HCP automatically triggers the downstream plans. The small architecture
+views below show each path without mixing state, traffic and delivery arrows.
 
 Why split? A mistake in edge rules or CI can now never touch the state that
 holds the VPC, the cluster and the database — and the Cloudflare API token
@@ -51,6 +45,7 @@ holds the VPC, the cluster and the database — and the Cloudflare API token
 | Secrets | Everything in Secret Manager, mounted via the CSI add-on + Workload Identity |
 | Encryption | One shared Cloud KMS **HSM** key (CMEK, 90-day rotation) over Cloud SQL, GCS, Secret Manager and **GKE etcd** (application-layer Kubernetes Secrets encryption) |
 | Edge | Cloudflare proxy: Full (Strict) TLS, DNSSEC, HSTS, www→apex redirect, Origin CA cert issued by Terraform |
+| Cost visibility | Billing profile, budgets and Active Assist through MCP; EU BigQuery Detailed Billing Export dataset with GKE cost allocation and a 1 GB/query ceiling |
 
 > GCP has no "S3" — its equivalent is a Cloud Storage (GCS) bucket, which is
 > what this platform provisions, in the same German region.
@@ -59,24 +54,131 @@ holds the VPC, the cluster and the database — and the Cloudflare API token
 
 ## How the pieces fit
 
+The architecture is intentionally shown as several small views. Each diagram
+answers one question and keeps arrows flowing in one direction.
+
+### Stack ownership and state
+
 ```mermaid
-graph TD
-  PS[project_services<br/>enables ALL APIs] --> NET[network<br/>VPC, NAT, PSA, ingress IP]
-  PS --> STO[storage<br/>GCS + HMAC creds]
-  PS --> AR[artifact_registry<br/>docker repo]
-  NET --> SQL[cloudsql<br/>private Postgres]
-  NET --> GKE[gke<br/>1 cluster, 2 pools]
-  KMS[kms<br/>shared CMEK key] -->|encrypts| SQL
-  KMS -->|encrypts| STO
-  KMS -->|encrypts etcd| GKE
-  WI[workload identity SAs] -->|read own secrets| SQL
-  WI --> STO
-  NET -->|ingress IP| CF[cloudflare stack<br/>DNS + TLS + Origin CA]
-  CF -->|writes cert/key| OSEC[origin-TLS secrets]
-  GKE --> CD[Cloud Deploy<br/>Mattermost + MCP pipelines]
-  AR --> IMG[mattermost_image CI]
-  CD --> DR[deploy_release<br/>semver tag → release]
+flowchart LR
+  P["platform-gcp<br/>foundation"] --> E["cloudflare<br/>edge and MCP portal"]
+  P --> D["app-gcp<br/>build and delivery"]
+  P -.-> R["agent-registry-gcp<br/>catalog"]
 ```
+
+`platform-gcp` is the only upstream state. `cloudflare` and `app-gcp` consume
+published values; they never publish values back to the platform and therefore
+cannot form a dependency cycle.
+
+### Public application traffic
+
+```mermaid
+flowchart LR
+  U["Browser / mobile client"] --> C["Cloudflare edge"]
+  C --> L["GKE external LoadBalancer"]
+  L --> I["ingress-nginx"]
+  I --> M["Mattermost"]
+  M --> S["Cloud SQL + GCS"]
+```
+
+Only Cloudflare addresses may reach ingress-nginx. Cloud SQL has no public IP;
+Mattermost reaches it over Private Service Access and stores files in GCS.
+
+### MCP client traffic
+
+```mermaid
+flowchart LR
+  A["ChatGPT / Claude / Mattermost / Codex"] --> P["tools.yourown.chat<br/>Cloudflare MCP Portal"]
+  P --> T["cloudflared tunnel"]
+  T --> X["one selected MCP namespace"]
+  X --> G["Google Cloud / HCP Terraform / Meta APIs"]
+```
+
+The portal is the single public MCP endpoint. Each MCP server and the tunnel
+have separate namespaces, service accounts, secrets and default-deny network
+policies. A server cannot connect directly to another MCP namespace.
+
+### Google Cloud foundation
+
+```mermaid
+flowchart TB
+  API["Enabled Google APIs"] --> N["VPC, subnet, firewall, router, NAT, PSA"]
+  API --> K["HSM KMS key"]
+  API --> C["GKE cluster and node pool"]
+  API --> Q["Cloud SQL and GCS"]
+  API --> R["Artifact Registry"]
+  API --> B["BigQuery billing dataset"]
+  K --> C
+  K --> Q
+```
+
+The KMS key protects GKE etcd, Cloud SQL, GCS and Secret Manager. The billing
+dataset is separate from application data and gives the Google Cloud MCP
+read-only cost visibility.
+
+### Build and release flow
+
+```mermaid
+flowchart LR
+  G["Git tags and changed files"] --> B["Cloud Build"]
+  B --> R["Artifact Registry"]
+  R --> D["Cloud Deploy"]
+  D --> V["dev deploy + smoke"]
+  V --> A["reviewer approval"]
+  A --> P["prod rolling deploy + verify"]
+```
+
+Mattermost and MCP use independent pipelines. Change routing starts only the
+affected pipeline; production approval happens after the dev smoke succeeds.
+
+### Identity and secrets
+
+```mermaid
+flowchart LR
+  H["HCP Terraform OIDC"] --> W["GCP Workload Identity Federation"]
+  W --> F["terraform apply service account"]
+  K["Kubernetes service account"] --> P["Pod-specific Google service account"]
+  P --> S["Allowed Secret Manager secrets and Google APIs"]
+```
+
+There are no Google service-account keys. Terraform receives a short-lived
+token through WIF; pods use Workload Identity and can read only the secrets and
+APIs assigned to their tenant.
+
+### Resource inventory
+
+This is the deployable inventory, grouped by owner rather than by Terraform
+resource type.
+
+| Owner | Resources |
+|---|---|
+| **platform-gcp / APIs** | Service Usage entries for Compute, GKE, Service Networking, Cloud SQL, KMS, Storage, Cloud Deploy, Logging, Monitoring, Cloud Build, Cloud Billing, Billing Budgets, BigQuery, BigQuery Data Transfer, Recommender, Artifact Registry, Artifact Analysis, Agent Registry and Google Workspace MCP APIs |
+| **platform-gcp / network** | Custom VPC, regional subnet with pod/service secondary ranges, internal firewall, Cloud Router, Cloud NAT, reserved external ingress IP, PSA address and Service Networking connection |
+| **platform-gcp / encryption** | Regional HSM KMS key ring and key, rotation policy, IAM grants for GKE, Cloud SQL, GCS and Secret Manager service agents |
+| **platform-gcp / compute** | One zonal private GKE Standard cluster, autoscaling `general` node pool, shielded nodes, node service account, CSI drivers, etcd application-layer encryption and GKE cost allocation |
+| **platform-gcp / data** | Private Cloud SQL PostgreSQL instance, database/user/password secrets, GCS Mattermost bucket, HMAC service account and secrets, EU BigQuery `billing` dataset |
+| **platform-gcp / supply chain** | Regional Artifact Registry `docker` repository, cleanup policy and vulnerability scanning |
+| **platform-gcp / identities** | Separate Google service accounts and Workload Identity bindings for Mattermost, dev, Matterbridge, every MCP server and cloudflared |
+| **app-gcp / delivery** | Two Cloud Deploy pipelines (`mattermost`, `mcp`), dev/prod targets, execution/cleanup/release service accounts, Cloud Build repository links and tag triggers, deploy-source bucket and Artifact Registry IAM |
+| **app-gcp / cluster policy** | Namespaces, priority classes, quotas, limit ranges, namespace RBAC, encrypted storage class, persistent dev PostgreSQL, application-compatible Kubernetes Secrets |
+| **app-gcp / Helm bootstrap** | Mattermost Operator and ingress-nginx releases; workload charts themselves are rendered by Cloud Deploy |
+| **cloudflare / edge** | Zone lookup, proxied DNS, DNSSEC, zone settings, HSTS/redirect/WAF rules, Origin CA certificate, Authenticated Origin Pulls and matching Secret Manager values |
+| **cloudflare / Zero Trust** | Cloudflare Tunnel and ingress routes, Access organization/apps/policies, service token, MCP server registrations, MCP Portal and capability-sync credential |
+| **agent-registry-gcp** | Agent Registry entries for external HTTP endpoints and vendor-hosted MCP servers |
+
+### Kubernetes runtime inventory
+
+| Namespace | Long-lived workload | External dependencies |
+|---|---|---|
+| `mattermost` | Production Mattermost | Cloud SQL, GCS, Secret Manager |
+| `dev` | Persistent dev PostgreSQL; disposable Mattermost/MCP test workloads | Secret Manager |
+| `matterbridge` | Matterbridge integration | Mattermost and configured chat networks |
+| `mcp-google-cloud` | Google Cloud operations, observability, security and billing MCP | Google Cloud APIs and BigQuery billing export |
+| `mcp-terraform` | HCP Terraform workspace/provider MCP | HCP Terraform API |
+| `mcp-terraform-stacks` | HCP Terraform Stacks lifecycle MCP | HCP Terraform API |
+| `mcp-whatsapp-business` | Official WhatsApp Business Cloud API MCP | Meta Graph API |
+| `mcp-whatsapp-personal` | QR-linked personal WhatsApp MCP | WhatsApp Web and its encrypted persistent volume |
+| `mcp-tunnel` | `cloudflared` connector | Cloudflare edge and explicitly allowed MCP Services |
 
 The flow in plain words:
 
@@ -103,7 +205,8 @@ The flow in plain words:
 
 ```
 terraform/
-  platform-gcp/          # stack 1: foundation (network, GKE, SQL, storage, KMS, registry, WI)
+  platform-gcp/          # stack 1: foundation (network, GKE, SQL, storage, KMS,
+                         #   registry, billing export, Workload Identity)
   cloudflare/            # stack 2: edge (DNS/TLS/WAF/Origin CA) + origin-TLS secrets
   app-gcp/               # stack 3: delivery (secrets, Cloud Deploy, image CI, release cutting,
                          #   cluster bootstrap: operator + ingress-nginx Helm releases)
@@ -178,6 +281,10 @@ short version:
    Mattermost operator, apply manifests. The bucket and Workload Identity
    emails are injected automatically via Cloud Deploy deploy parameters; only
    the ingress `loadBalancerIP` and the dev-team RBAC principal stay manual.
+7. **Enable Detailed Billing Export** once in Billing Console after the
+   platform creates `yourown-chat.billing`: choose Detailed usage cost,
+   project `yourown-chat`, dataset `billing`. The MCP table name and read-only
+   access are already configured in code.
 
 ### Day-2 flows
 

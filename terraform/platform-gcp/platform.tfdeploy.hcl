@@ -11,6 +11,7 @@ locals {
 
   gcp_project            = "yourown-chat"
   gcp_project_number     = "1086706391144"
+  gcp_billing_account_id = "01E41D-B879C6-3494D7"
   gcp_region             = "europe-west3"
   gcp_zone               = "europe-west3-b"
 
@@ -32,6 +33,7 @@ deployment "eu" {
 
     project_id         = local.gcp_project
     project_number     = local.gcp_project_number
+    billing_account_id = local.gcp_billing_account_id
     environment        = "prod"
     region             = local.gcp_region
     zone               = local.gcp_zone

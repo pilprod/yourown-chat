@@ -74,6 +74,19 @@ output "cloudsql_connection_secret_id" {
   value       = one([for c in component.cloudsql : c.connection_secret_id])
 }
 
+# --- Cloud Billing -------------------------------------------------------------
+output "billing_export_dataset_id" {
+  type        = string
+  description = "BigQuery dataset selected for Detailed Cloud Billing export."
+  value       = component.billing_export.dataset_id
+}
+
+output "billing_detailed_export_table" {
+  type        = string
+  description = "Expected detailed usage table created by Cloud Billing after export is enabled."
+  value       = component.billing_export.detailed_export_table
+}
+
 # --- Workload Identity -----------------------------------------------------------
 output "workload_identity_emails" {
   type        = map(string)

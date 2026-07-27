@@ -110,6 +110,12 @@ resource "google_container_cluster" "this" {
     }
   }
 
+  # Populate resource-level GKE allocation fields in Detailed Cloud Billing
+  # export instead of reporting only the aggregate cluster charge.
+  cost_management_config {
+    enabled = true
+  }
+
   maintenance_policy {
     daily_maintenance_window {
       start_time = formatdate("hh:mm", var.maintenance_start_time)

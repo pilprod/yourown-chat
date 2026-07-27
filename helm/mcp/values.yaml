@@ -185,10 +185,9 @@ servers:
       GOOGLE_CLOUD_BUILD_PROJECT: "yourown-chat"
       GOOGLE_CLOUD_BUILD_LOCATION: "europe-west3"
       GOOGLE_CLOUD_BILLING_PROJECT: "yourown-chat"
-      # Set to project.dataset.gcp_billing_export_resource_v1_ACCOUNT after
-      # enabling Detailed usage cost export. Empty keeps cost queries disabled
-      # while billing profile, budgets and recommendations remain available.
-      GOOGLE_CLOUD_BILLING_EXPORT_TABLE: ""
+      # Cloud Billing creates this table after Detailed usage cost export is
+      # enabled for the Terraform-managed `billing` dataset.
+      GOOGLE_CLOUD_BILLING_EXPORT_TABLE: "yourown-chat.billing.gcp_billing_export_resource_v1_01E41D_B879C6_3494D7"
       GOOGLE_CLOUD_BILLING_EXPORT_LOCATION: "EU"
       # Hard per-query ceiling: 1 GB scanned; over-limit queries fail for free.
       GOOGLE_CLOUD_BILLING_MAXIMUM_BYTES_BILLED: "1000000000"
