@@ -573,13 +573,25 @@ export class HcpStacksClient {
       throw new Error(`Run ${runId} has no plan step pending operator approval`);
     }
 
-    await this.request(
-      `stack-deployment-runs/${runId}/approve-all-plans?all_plans=false`,
-      {
-        method: "POST",
-        body: { reason },
-      },
-    );
+    const existingApproval =
+      inspection.run.relationships?.["stack-approval"]?.id;
+    if (existingApproval) {
+      // A run-level approval can be created only once. Stacks may produce
+      // another operator-gated convergence plan after an apply; advance that
+      // exact reviewed step instead of trying to recreate the run approval.
+      await this.request(
+        `stack-deployment-steps/${pendingPlan.id}/advance`,
+        { method: "POST" },
+      );
+    } else {
+      await this.request(
+        `stack-deployment-runs/${runId}/approve-all-plans?all_plans=false`,
+        {
+          method: "POST",
+          body: { reason },
+        },
+      );
+    }
 
     return {
       approved: true,
@@ -587,6 +599,7 @@ export class HcpStacksClient {
       run_id: runId,
       configuration_id: configurationId,
       approved_plan_step_id: pendingPlan.id,
+      approval_scope: existingApproval ? "step" : "run",
       all_future_plans: false,
       reason,
     };

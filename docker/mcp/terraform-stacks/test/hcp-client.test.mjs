@@ -13,6 +13,7 @@ function jsonResponse(payload, status = 200) {
 function fixtureFetch({
   runStatus = "pre_deploying_pending_operator",
   planStatus = "pending_operator",
+  existingApproval = false,
 } = {}) {
   const calls = [];
   const fetchImpl = async (url, options = {}) => {
@@ -141,6 +142,11 @@ function fixtureFetch({
             "stack-configuration": {
               data: { id: "stc-config1", type: "stack-configurations" },
             },
+            "stack-approval": {
+              data: existingApproval
+                ? { id: "sa-approval1", type: "stack-approvals" }
+                : null,
+            },
           },
         },
       });
@@ -180,6 +186,12 @@ function fixtureFetch({
     if (
       path ===
       "/api/v2/stack-deployment-runs/sdr-run1/approve-all-plans?all_plans=false"
+    ) {
+      return new Response(null, { status: 204 });
+    }
+    if (
+      path === "/api/v2/stack-deployment-steps/sds-plan1/advance" &&
+      options.method === "POST"
     ) {
       return new Response(null, { status: 204 });
     }
@@ -234,6 +246,7 @@ test("approves one exact run without approving future plans", async () => {
   });
   assert.equal(result.approved, true);
   assert.equal(result.all_future_plans, false);
+  assert.equal(result.approval_scope, "run");
   const approval = fixture.calls.find(({ path }) =>
     path.includes("approve-all-plans"),
   );
@@ -244,6 +257,34 @@ test("approves one exact run without approving future plans", async () => {
   assert.deepEqual(JSON.parse(approval.options.body), {
     reason: "Reviewed through MCP",
   });
+});
+
+test("advances the exact pending convergence plan after run approval", async () => {
+  const fixture = fixtureFetch({
+    runStatus: "deploying-pending-operator",
+    existingApproval: true,
+  });
+  const result = await client(fixture.fetchImpl).approveRun({
+    stackName: "cloudflare",
+    runId: "sdr-run1",
+    expectedConfigurationId: "stc-config1",
+    reason: "Reviewed convergence plan through MCP",
+  });
+
+  assert.equal(result.approved, true);
+  assert.equal(result.approval_scope, "step");
+  assert.equal(result.approved_plan_step_id, "sds-plan1");
+  const advances = fixture.calls.filter(({ path }) => path.endsWith("/advance"));
+  assert.equal(advances.length, 1);
+  assert.equal(
+    advances[0].path,
+    "/api/v2/stack-deployment-steps/sds-plan1/advance",
+  );
+  assert.equal(advances[0].options.body, undefined);
+  assert.equal(
+    fixture.calls.some(({ path }) => path.includes("approve-all-plans")),
+    false,
+  );
 });
 
 test("accepts hyphenated statuses returned by the HCP Stacks API", async () => {

@@ -244,7 +244,7 @@ function createServer() {
     {
       title: "HCP Terraform · Stacks · Approve deployment",
       description:
-        "Approve only the currently pending plan in one allowlisted Stack deployment run. Inspect first, then pass its exact configuration ID and APPROVE confirmation.",
+        "Approve only the currently pending plan in one allowlisted Stack deployment run, including a later convergence plan. Inspect first, then pass its exact configuration ID and APPROVE confirmation.",
       inputSchema: {
         stack_name: z.string().min(1),
         run_id: z.string().regex(/^sdr-[A-Za-z0-9]+$/),
