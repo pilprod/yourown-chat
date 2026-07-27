@@ -78,6 +78,7 @@ verify_built_image() {
           'billing-cost-client.mjs',
           'cloud-build-client.mjs',
           'cloud-deploy-client.mjs',
+          'tool-name-compat.mjs',
           'tool-result.mjs'
         ].map((module) => import('file:///app/' + module)))"
       ;;

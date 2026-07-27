@@ -7,4 +7,5 @@
 !cloud-build-client.mjs
 !cloud-deploy-client.mjs
 !server.mjs
+!tool-name-compat.mjs
 !tool-result.mjs
