@@ -66,7 +66,6 @@ output "cloudsql_private_ip" {
   type        = string
   description = "Private IP of the Cloud SQL instance (null when Cloud SQL is disabled)."
   value       = one([for c in component.cloudsql : c.private_ip_address])
-  sensitive   = true
 }
 
 output "cloudsql_connection_secret_id" {
