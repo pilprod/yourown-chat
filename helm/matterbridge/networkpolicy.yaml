@@ -1,7 +1,7 @@
 # matterbridge network isolation (GKE Dataplane V2). Default-deny, then allow:
-# DNS, egress to the mattermost namespace on 8065 (it bridges the prod
-# Mattermost in-cluster), and egress to public IPs only (external chat
-# networks). Ingress denied entirely. Policies are additive.
+# DNS and egress to public IPs only (Mattermost through yourown.chat and
+# external chat networks). Direct access to the mattermost namespace is
+# intentionally denied. Ingress is denied entirely. Policies are additive.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -32,25 +32,6 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: allow-egress-mattermost
-  namespace: matterbridge
-spec:
-  podSelector: {}
-  policyTypes:
-    - Egress
-  egress:
-    - to:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: mattermost
-      ports:
-        - protocol: TCP
-          port: 8065
----
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -68,3 +49,4 @@ spec:
               - 10.0.0.0/8
               - 172.16.0.0/12
               - 192.168.0.0/16
+              - 169.254.0.0/16

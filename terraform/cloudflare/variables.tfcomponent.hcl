@@ -73,6 +73,12 @@ variable "domain" {
   default     = "yourown.chat"
 }
 
+variable "zero_trust_mcp_portal_subdomain" {
+  type        = string
+  description = "Subdomain of the single Cloudflare MCP Portal. `tools` leaves `agents` available for the future agent control plane."
+  default     = "tools"
+}
+
 variable "cloudflare_proxied" {
   type        = bool
   description = "Whether the apex A record is proxied (orange cloud). Keep true so Cloudflare fronts the origin."

@@ -1,8 +1,9 @@
 # In-cluster MCP servers, one entry per server under `servers:` (renders
 # Deployment + Service + NetworkPolicy named mcp-<key>). Per-server switchboard;
 # the whole set is gated by the app-gcp mcp_servers_enabled flag. Servers are
-# reachable only from the mattermost namespace or the dedicated mcp-tunnel
-# namespace. Skaffold renders one release per server namespace.
+# reachable only from the dedicated mcp-tunnel namespace. Mattermost uses the
+# public Cloudflare MCP Portal and has no direct cross-namespace path.
+# Skaffold renders one release per server namespace.
 # Credentials never live in chart values or Kubernetes Secrets. Secret Manager
 # CSI mounts versions/latest as read-only files under /var/run/secrets/mcp.
 
@@ -80,10 +81,9 @@ defaults:
     namespaceDefaults: true
     allowGkeMetadata: false
     allowTunnel: true
-    # Mattermost is the only cross-namespace caller. The chart additionally
-    # permits the dedicated cloudflared connector for Zero Trust traffic.
-    allowedNamespaces:
-      - mattermost
+    # cloudflared is the only cross-namespace caller. Interactive Mattermost,
+    # Claude and ChatGPT clients all traverse the Cloudflare MCP Portal.
+    allowedNamespaces: []
     tunnelNamespace: mcp-tunnel
 
 servers:

@@ -27,8 +27,12 @@ policy, Managed OAuth, dynamic client registration, and token lifetimes.
 The client endpoint is:
 
 ```text
-https://mcp.yourown.chat/mcp
+https://tools.yourown.chat/mcp
 ```
+
+`tools` is the stable tool-gateway name. The `/mcp` protocol path is fixed by
+Cloudflare. Keep `agents.yourown.chat` unallocated for the future
+Mattermost/Temporal agent control plane.
 
 ### Codex client authentication
 
@@ -71,19 +75,15 @@ requests:
 - `CF-Access-Client-Secret`
 
 The Portal mapping keeps `on_behalf = false`. A human authenticates only to
-`mcp.yourown.chat` using Portal Managed OAuth and is not prompted separately
+`tools.yourown.chat` using Portal Managed OAuth and is not prompted separately
 for Terraform or Google Cloud. The MCP processes still use their own
 in-cluster workload credentials for calls to HCP Terraform and Google Cloud.
 
-Continue only after both AI Controls entries show `Ready` and a non-zero tool
-count. Cloudflare refreshes capabilities in the background approximately every
-two hours. The release pipeline deliberately does not force the account-level
-sync endpoint after routine runtime rollouts: forced sync has coincided with
-invalidated end-user grants in both Claude and Codex and remains quarantined
-until Access logs disprove that relationship. `Waiting` means Cloudflare cannot
-yet initialize the upstream MCP session; inspect the status error and verify the
-direct hostname and Access policy. Use **… → Sync capabilities** only as a
-controlled recovery action.
+Continue only after all AI Controls entries show `Ready` and a non-zero tool
+count. Every successful MCP production rollout forces capability
+synchronization so new and renamed tools become visible immediately. `Waiting`
+means Cloudflare cannot yet initialize the upstream MCP session; inspect the
+status error and verify the direct hostname and Access policy.
 
 The service token lasts one year (`8760h`); rotate it before expiry by replacing
 the resource through Terraform. The temporary shared token is intentional—split

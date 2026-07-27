@@ -101,9 +101,9 @@ The production health endpoint proves that the MCP process is alive. The
 production protocol smoke additionally fails if the proxy is still the seeded
 placeholder. Linking remains a one-time operator action:
 
-1. Connect the Cloudflare Portal (`https://mcp.yourown.chat/mcp`) in the MCP
-   client, or add the internal Mattermost URL:
-   `http://mcp-whatsapp-personal.mcp-whatsapp-personal.svc.cluster.local:3000/mcp`.
+1. Connect the Cloudflare Portal (`https://tools.yourown.chat/mcp`) in the MCP
+   client. Mattermost uses the same Portal; direct MCP Service URLs are blocked
+   by namespace NetworkPolicy.
 2. Call `whatsapp_personal_status`; expect `awaiting_qr`.
 3. Call `whatsapp_personal_get_qr`; it returns a PNG.
 4. On the phone open **WhatsApp → Settings → Linked devices → Link a device**

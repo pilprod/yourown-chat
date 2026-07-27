@@ -39,11 +39,12 @@ component "clouddeploy" {
     ]
 
     deploy_parameters = {
-      filestore_bucket   = var.gcs_bucket_name
-      mattermost_gsa     = var.workload_identity_emails.mattermost
-      mattermost_dev_gsa = var.workload_identity_emails.dev
-      matterbridge_gsa   = var.workload_identity_emails.matterbridge
-      aop_verify_client  = var.aop_enabled ? "on" : "off"
+      filestore_bucket        = var.gcs_bucket_name
+      mattermost_cloudsql_ip  = var.cloudsql_private_ip
+      mattermost_gsa          = var.workload_identity_emails.mattermost
+      mattermost_dev_gsa      = var.workload_identity_emails.dev
+      matterbridge_gsa        = var.workload_identity_emails.matterbridge
+      aop_verify_client       = var.aop_enabled ? "on" : "off"
     }
 
     labels = local.common_labels
@@ -135,8 +136,10 @@ component "secrets" {
           # Replace Token/Team and set enable=true (add a new Secret Manager
           # version) to bridge the prod Mattermost.
           [mattermost.prod]
-          Server="mattermost.mattermost.svc.cluster.local:8065"
-          NoTLS=true
+          # Cross-namespace ClusterIP access is intentionally denied. The
+          # bridge uses the public Cloudflare-fronted endpoint instead.
+          Server="yourown.chat"
+          NoTLS=false
           Team="REPLACE_ME_TEAM"
           Token="REPLACE_ME_TOKEN"
           PrefixMessagesWithNick=true

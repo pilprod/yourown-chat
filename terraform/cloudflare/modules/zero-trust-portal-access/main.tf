@@ -5,6 +5,8 @@ locals {
   managed_oauth_allowed_uris = [
     "https://claude.ai/api/mcp/auth_callback",
     "https://chatgpt.com/*",
+    "https://yourown.chat/plugins/mattermost-ai/oauth/callback",
+    "https://dev.yourown.chat/plugins/mattermost-ai/oauth/callback",
     "https://playground.ai.cloudflare.com/*",
     "https://oauth-callbacks.cloudflareaccess.com/cdn-cgi/access/outbound-oauth-callback",
   ]

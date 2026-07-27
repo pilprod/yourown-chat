@@ -18,6 +18,17 @@ variable "domain" {
   description = "Zone apex; each upstream key becomes <key>.<domain>."
 }
 
+variable "mcp_portal_subdomain" {
+  type        = string
+  description = "DNS label used by the shared MCP tool gateway. Keep agents.<domain> available for the future agent control plane."
+  default     = "tools"
+
+  validation {
+    condition     = can(regex("^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$", var.mcp_portal_subdomain))
+    error_message = "mcp_portal_subdomain must be one valid lowercase DNS label."
+  }
+}
+
 variable "upstreams" {
   type        = map(string)
   description = "Hostname label => private in-cluster service URL (e.g. mcp-terraform => http://mcp-terraform.mcp-terraform.svc.cluster.local:8080). One tunnel ingress rule, DNS record and Access app per entry."

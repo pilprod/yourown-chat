@@ -46,6 +46,9 @@ deployment "yourown-chat" {
 
     cloudflare_api_token = store.varset.cloudflare.cloudflare_api_token
     domain               = "yourown.chat"
+    # Stable tool gateway. Reserve agents.yourown.chat for the future
+    # Mattermost + Temporal agent control plane.
+    zero_trust_mcp_portal_subdomain = "tools"
 
     cloudflare_proxied            = true
     cloudflare_ssl_mode           = "strict"

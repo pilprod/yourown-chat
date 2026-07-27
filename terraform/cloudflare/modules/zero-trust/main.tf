@@ -228,11 +228,14 @@ resource "cloudflare_zero_trust_access_application" "mcp_server" {
 }
 
 resource "cloudflare_zero_trust_access_ai_controls_mcp_portal" "this" {
-  account_id         = var.account_id
-  id                 = "yourown-chat"
-  name               = "yourown-chat"
-  description        = "Curated MCP access for yourown-chat agents"
-  hostname           = "mcp.${var.domain}"
+  account_id  = var.account_id
+  id          = "yourown-chat"
+  name        = "yourown-chat"
+  description = "Curated MCP access for yourown-chat agents"
+  # `tools` describes the stable public contract: this endpoint exposes tools
+  # to humans and agents. Reserve `agents` for the future Mattermost/Temporal
+  # agent control plane and avoid the visually duplicated mcp.<domain>/mcp.
+  hostname           = "${var.mcp_portal_subdomain}.${var.domain}"
   allow_code_mode    = true
   secure_web_gateway = false
 
@@ -260,7 +263,7 @@ resource "cloudflare_zero_trust_access_ai_controls_mcp_portal" "this" {
 # The Portal API does not create DNS when called by Terraform.
 resource "cloudflare_dns_record" "mcp_portal" {
   zone_id = var.zone_id
-  name    = "mcp"
+  name    = var.mcp_portal_subdomain
   type    = "CNAME"
   content = "gateway.agents.cloudflare.com"
   proxied = true

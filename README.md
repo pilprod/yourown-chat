@@ -124,6 +124,9 @@ docker/
 docs/BUILD.md            # image build flow in detail
 ```
 
+The target Mattermost/Temporal/multi-agent boundaries and identity evolution
+are recorded in [`docs/AGENT_PLATFORM.md`](docs/AGENT_PLATFORM.md).
+
 A few structural notes worth knowing:
 
 - **One stack per directory.** HCP Terraform reads one stack per working

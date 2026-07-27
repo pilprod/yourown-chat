@@ -6,13 +6,14 @@ The platform consumes MCP (Model Context Protocol) servers in two ways:
    (`helm/mcp`), rendered onto the prod stage by Cloud Deploy when the
    app-gcp stack sets `mcp_servers_enabled = true`. Each server is an entry in
    `helm/mcp/values.yaml` (`servers.<name>.enabled`). Production is reachable
-   across namespaces only from `mattermost`, at
-   `http://mcp-<name>.mcp-<name>.svc.cluster.local:<port>/mcp`. Every server
+   across namespaces only from the Cloudflare Tunnel connector. Mattermost,
+   Claude and ChatGPT use the common `https://tools.yourown.chat/mcp` Portal
+   and never call an MCP ClusterIP. Every server
    has its own default-deny namespace (`mcp-terraform`,
    `mcp-terraform-stacks`, `mcp-google-cloud`, or
    `mcp-whatsapp-business`, or `mcp-whatsapp-personal`), so a compromised server
-   cannot initiate traffic to another MCP server. Each server admits only Mattermost and the Cloudflare
-   Tunnel connector in the separate `mcp-tunnel` namespace. Egress is limited
+   cannot initiate traffic to another MCP server. Each server admits only the
+   Cloudflare Tunnel connector in the separate `mcp-tunnel` namespace. Egress is limited
    to cluster DNS plus encrypted external API/Tunnel traffic.
    Credentials are mounted directly from regional, CMEK-protected Secret
    Manager containers through the managed GKE CSI add-on. Each server has a
@@ -378,6 +379,16 @@ Register this exact Mattermost Agents callback:
 https://yourown.chat/plugins/mattermost-ai/oauth/callback
 ```
 
+The disposable dev instance uses:
+
+```text
+https://dev.yourown.chat/plugins/mattermost-ai/oauth/callback
+```
+
+Both callbacks are allow-listed in the Cloudflare Portal Managed OAuth
+configuration. Mattermost itself connects only to
+`https://tools.yourown.chat/mcp`; it never receives a direct MCP ClusterIP.
+
 The OAuth client ID and secret are entered in Mattermost's MCP server settings,
 not placed in Kubernetes. Mattermost stores a separate OAuth token for every
 user, so each user must click **Connect** and grant their own Google access.
@@ -544,39 +555,31 @@ and Instagram adapters only when their exact tool set and inbound webhook
 contract are defined; the current WhatsApp deployment should not be deleted
 before that replacement exists.
 
-## Connect Terraform, Google Cloud, and Google Workspace to Mattermost
+## Connect the Cloudflare MCP Portal and Google Workspace to Mattermost
 
 Open **System Console → Plugins → Agents → MCP Servers** (the label can be
 **Remote MCP Servers** in some plugin versions), add the server, save, then
 enable it for the required agent.
 
-For Terraform use:
+Add exactly one self-hosted gateway:
 
-- Name: `Terraform`
+- Name: `yourown-chat tools`
 - Enabled: `true`
-- Server URL:
-  `http://mcp-terraform.mcp-terraform.svc.cluster.local:8080/mcp`
+- Server URL: `https://tools.yourown.chat/mcp`
 - Headers: empty
 - OAuth credentials: empty
 
-The HCP Terraform user token is already injected into the server from its
-Kubernetes Secret; never paste it into Mattermost. After saving, enable the
-Terraform tools for the agent and test with a read-only request such as listing
-the accessible HCP Terraform workspaces.
+Save it, then select **Connect** from Mattermost web or desktop and complete
+Cloudflare Managed OAuth. Each Mattermost user connects separately. This
+identifies the user at the Portal boundary; the current upstream mapping still
+uses shared workload credentials (`on_behalf = false`). Never paste a
+Cloudflare service token, HCP Terraform token, or Google service-account key
+into Mattermost.
 
-For Google Cloud use:
-
-- Name: `Google Cloud`
-- Enabled: `true`
-- Server URL:
-  `http://mcp-google-cloud.mcp-google-cloud.svc.cluster.local:8080/mcp`
-- Headers: empty
-- OAuth credentials: empty
-
-The pod authenticates through GKE Workload Identity. Mattermost must not use
-the public Cloudflare URL or receive a Google service-account key. After
-saving, enable the tools for the agent and test with a read-only request such
-as listing Cloud Logging log names.
+Delete the former direct Terraform, Terraform Stacks, Google Cloud and
+WhatsApp entries after the Portal connection exposes their tools. Their
+ClusterIP names are intentionally blocked by NetworkPolicy and are no longer
+allowlisted by Mattermost SSRF settings.
 
 For Google Workspace add three separate remote servers. Use the same Web OAuth
 client ID and secret for each:
@@ -649,16 +652,17 @@ MCP client / browser → Access policy (allowed emails, Google SSO / one-time PI
   → ClusterIP in that server's own namespace
 ```
 
-Everything fits the Zero Trust **Free** plan: 50 seats (only Zero Trust users
-consume one; Mattermost chat users go in-cluster and consume none), tunnel and
-Access apps are free. Cloudflare OAuth tokens do not consume LLM/API tokens;
+Everything fits the Zero Trust **Free** plan: 50 seats. Interactive Mattermost,
+Claude and ChatGPT users authenticate to the Portal; tunnel and Access apps are
+free. Cloudflare OAuth tokens do not consume LLM/API tokens;
 the limits and subscription of the MCP client itself are separate.
 
 The layer ships **enabled** (`zero_trust_enabled = true` in both stacks,
 `tunnel.enabled: true` in the chart, allowed emails committed); the account ID
 is derived from the zone lookup. The flags are the kill switch for the
-external private-service path. Mattermost continues to use in-cluster Service
-URLs and does not traverse Cloudflare.
+external private-service path. Mattermost traverses the same Portal as every
+other interactive MCP client, so its namespace has no direct path to an MCP
+namespace.
 
 ### Human clients use Portal OAuth; Cloudflare uses a service token upstream
 
@@ -683,7 +687,7 @@ Cloud through its shared GKE Workload Identity service account, while
 Terraform MCP still uses its configured HCP credential.
 
 The Cloudflare stack uses provider 5.22.x, registers every configured server in AI
-Controls, and creates a single `https://mcp.yourown.chat/mcp` MCP Portal. This
+Controls, and creates a single `https://tools.yourown.chat/mcp` MCP Portal. This
 matters for Claude Free, which permits one custom connector: one portal exposes
 all servers through that connector. The Portal uses Managed OAuth and a
 proxied CNAME to `gateway.agents.cloudflare.com`. Terraform explicitly manages
@@ -739,7 +743,7 @@ Client availability is not identical:
 Use the single Portal endpoint in every remote client:
 
 ```text
-https://mcp.yourown.chat/mcp
+https://tools.yourown.chat/mcp
 ```
 
 For Claude Free, Pro, or Max:
@@ -840,9 +844,9 @@ Then validate the external path:
    rejected by Access (commonly with a browser-login redirect):
 
    ```bash
-   curl -i https://mcp.yourown.chat/mcp
+   curl -i https://tools.yourown.chat/mcp
    curl -sS \
-     https://mcp.yourown.chat/.well-known/oauth-authorization-server
+     https://tools.yourown.chat/.well-known/oauth-authorization-server
    curl -i https://mcp-google-cloud.yourown.chat/mcp/
    ```
 
@@ -863,8 +867,6 @@ Then validate the external path:
 3. Ship: merge → the tag-triggered release renders the profile; the server
    lands with the next prod rollout.
 
-Also add the new Service FQDN to
-`MM_SERVICESETTINGS_ALLOWEDUNTRUSTEDINTERNALCONNECTIONS` in both Mattermost
-environment templates. Mattermost deliberately blocks user-controlled
-integration requests to reserved IP ranges; this repository allowlists exact
-MCP Service names rather than a broad Pod or Service CIDR.
+Do not add the new Service FQDN to Mattermost. Register it in Cloudflare AI
+Controls and expose it through the existing Portal. Mattermost has no direct
+cross-namespace path to MCP Services.
