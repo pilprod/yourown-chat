@@ -683,12 +683,19 @@ flowchart LR
   B --> R["Artifact Registry"]
   R --> D["Cloud Deploy"]
   D --> V["dev deploy + smoke"]
-  V --> A["reviewer approval"]
+  V --> S["final image digest<br/>vulnerability assessment"]
+  S --> A["Human-in-the-loop<br/>risk approval"]
   A --> P["prod rolling deploy + verify"]
 ```
 
 Mattermost and MCP use independent pipelines. Change routing starts only the
-affected pipeline; production approval happens after the dev smoke succeeds.
+affected pipeline. For a release that introduces a new image digest, the
+production decision is made only after the dev smoke succeeds and the agent
+has inspected that exact digest's vulnerability report. The reviewer receives
+severity, available fixes, known exploitability, runtime exposure and residual
+risk, then explicitly approves, rejects or postpones the production rollout.
+This is a Human-in-the-loop policy gate attached to Cloud Deploy approval, not
+an unattended acceptance of scanner output.
 
 ### Agent-operated delivery and infrastructure
 
@@ -710,7 +717,8 @@ flowchart LR
   G --> B["Cloud Build"]
   B --> D["Dev rollout"]
   D --> S["Smoke + inspection over MCP"]
-  S --> H["Human approval"]
+  S --> V["Agent assesses vulnerabilities<br/>of the final image digest"]
+  V --> H["Human accepts / rejects risk"]
   H --> P["Agent approves exact rollout etag over MCP"]
   P --> R["Prod rollout + verify + catalog sync"]
 ```
@@ -733,6 +741,12 @@ convention:
 
 - read-only MCP tools may inspect plans, builds, vulnerabilities, rollouts and
   logs without mutating infrastructure;
+- before an image-bearing release enters production, the agent correlates the
+  final immutable digest with its vulnerability findings and presents severity,
+  fix availability, exploitability and workload exposure to the reviewer;
+- vulnerability findings do not approve a release automatically: the human
+  explicitly accepts the residual risk, rejects the rollout, or holds it for a
+  rebuild, and the decision is recorded with the Cloud Deploy approval;
 - write/delete tools require explicit client approval and use narrow
   allowlists;
 - Cloud Deploy approval requires a fresh rollout inspection and its exact
@@ -916,7 +930,9 @@ for production approval:
 ```
 git tag v9.11.3-patched  (on pilprod/mattermost)
   → Cloud Build builds & pushes docker/mattermost:v9.11.3-patched
-  → Mattermost dev rollout + migration smoke → reviewer validation
+  → Mattermost dev rollout + migration smoke
+  → scan final immutable digest → agent risk assessment
+  → reviewer accepts/rejects residual risk
   → production approval → dev scaled to 0 → rolling prod rollout
 ```
 
@@ -949,7 +965,13 @@ Use the production Google Cloud MCP:
    gate does not guarantee a fresh scan of every old digest.
 4. Poll `security_list_images` until discovery is complete, then use
    `security_list_vulnerabilities` and `security_get_vulnerability`.
-5. Read state again and disable with `enabled=false`,
+5. Before approving the production rollout, bind the report to the exact image
+   digest from the release. Summarize critical/high findings, known
+   exploitability, available fixed versions, whether the vulnerable component
+   is reachable in this workload, and the residual risk. The reviewer must
+   explicitly choose approve, reject, or rebuild; a clean scanner status alone
+   is not an approval.
+6. Read state again and disable with `enabled=false`,
    `expected_enablement_config="INHERITED"`,
    `confirmation="DISABLE_SCANNING"` and the audit reason.
 
