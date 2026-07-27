@@ -104,11 +104,11 @@ placeholder. Linking remains a one-time operator action:
 1. Connect the Cloudflare Portal (`https://tools.yourown.chat/mcp`) in the MCP
    client. Mattermost uses the same Portal; direct MCP Service URLs are blocked
    by namespace NetworkPolicy.
-2. Call `whatsapp_personal_status`; expect `awaiting_qr`.
-3. Call `whatsapp_personal_get_qr`; it returns a PNG.
+2. Call `session_status`; expect `awaiting_qr`.
+3. Call `session_get_qr`; it returns a PNG.
 4. On the phone open **WhatsApp → Settings → Linked devices → Link a device**
    and scan it.
-5. Call `whatsapp_personal_status` again; expect `connected`.
+5. Call `session_status` again; expect `connected`.
 
 Do not delete the PVC or auth directory during routine rollouts. A new QR is
 required after an explicit WhatsApp logout, credential invalidation, or loss of
@@ -116,15 +116,15 @@ the auth state.
 
 ## MCP tools
 
-- `whatsapp_personal_status`
-- `whatsapp_personal_get_qr`
-- `whatsapp_personal_list_conversations`
-- `whatsapp_personal_list_messages`
-- `whatsapp_personal_send_text`
-- `whatsapp_personal_mark_read`
-- `whatsapp_personal_emergency_stop`
-- `whatsapp_personal_resume`
-- `whatsapp_personal_reset_link` (requires an active stop and
+- `session_status`
+- `session_get_qr`
+- `messages_list_conversations`
+- `messages_list`
+- `messages_send_text`
+- `messages_mark_read`
+- `session_emergency_stop`
+- `session_resume`
+- `session_reset_link` (requires an active stop and
   `RESET_LINK`; deletes only the linked-device auth directory)
 
 The connector does not attempt to scrape or interpret WhatsApp account-warning

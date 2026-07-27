@@ -41,6 +41,9 @@ locals {
     "logging.googleapis.com",
     "monitoring.googleapis.com",
     "cloudbuild.googleapis.com",
+    "bigquery.googleapis.com",
+    "billingbudgets.googleapis.com",
+    "recommender.googleapis.com",
     "artifactregistry.googleapis.com",
     "containeranalysis.googleapis.com",
     "agentregistry.googleapis.com",
@@ -144,6 +147,8 @@ component "workload_identity_mcp" {
       "roles/artifactregistry.reader",
       "roles/containeranalysis.occurrences.viewer",
       "roles/cloudbuild.builds.viewer",
+      "roles/bigquery.jobUser",
+      "roles/recommender.viewer",
       "roles/clouddeploy.releaser",
       "roles/clouddeploy.approver",
     ]

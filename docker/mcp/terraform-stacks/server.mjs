@@ -19,7 +19,7 @@ function createServer() {
   });
 
   server.registerTool(
-    "terraform_stacks_get_stack_settings",
+    "get_stack_settings",
     {
       title: "HCP Terraform · Stacks · Get settings",
       description:
@@ -51,7 +51,7 @@ function createServer() {
   };
 
   server.registerTool(
-    "terraform_stacks_plan_create",
+    "plan_create",
     {
       title: "HCP Terraform · Stacks · Plan creation",
       description:
@@ -82,7 +82,7 @@ function createServer() {
   );
 
   server.registerTool(
-    "terraform_stacks_create",
+    "create",
     {
       title: "HCP Terraform · Stacks · Create",
       description:
@@ -128,7 +128,7 @@ function createServer() {
   };
 
   server.registerTool(
-    "terraform_stacks_plan_update",
+    "plan_update",
     {
       title: "HCP Terraform · Stacks · Plan update",
       description:
@@ -157,7 +157,7 @@ function createServer() {
   );
 
   server.registerTool(
-    "terraform_stacks_update",
+    "update",
     {
       title: "HCP Terraform · Stacks · Update",
       description:
@@ -191,7 +191,7 @@ function createServer() {
   );
 
   server.registerTool(
-    "terraform_stacks_list_deployment_runs",
+    "list_deployment_runs",
     {
       title: "HCP Terraform · Stacks · List deployments",
       description:
@@ -218,7 +218,7 @@ function createServer() {
   );
 
   server.registerTool(
-    "terraform_stacks_inspect_deployment_run",
+    "inspect_deployment_run",
     {
       title: "HCP Terraform · Stacks · Inspect deployment",
       description:
@@ -240,7 +240,7 @@ function createServer() {
   );
 
   server.registerTool(
-    "terraform_stacks_approve_deployment_run",
+    "approve_deployment_run",
     {
       title: "HCP Terraform · Stacks · Approve deployment",
       description:
@@ -277,7 +277,7 @@ function createServer() {
   );
 
   server.registerTool(
-    "terraform_stacks_cancel_deployment_run",
+    "cancel_deployment_run",
     {
       title: "HCP Terraform · Stacks · Cancel deployment",
       description:

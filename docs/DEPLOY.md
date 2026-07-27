@@ -131,17 +131,17 @@ version that changes the operator or CR schema.
 Agents operate Cloud Build and Cloud Deploy through the production Google
 Cloud MCP, not through the Cloud SDK:
 
-1. inspect the tag build with `google_cloud_build_inspect_build`;
+1. inspect the tag build with `build_inspect_build`;
 2. inspect the frozen release and successful dev rollout/job runs;
-3. call `google_cloud_deploy_plan_promote`, then pass its exact plan ID to
-   `google_cloud_deploy_promote`;
+3. call `deploy_plan_promote`, then pass its exact plan ID to
+   `deploy_promote`;
 4. inspect the production rollout etag and dev verification state;
-5. call `google_cloud_deploy_approve_rollout`.
+5. call `deploy_approve_rollout`.
 
 Rollback stays inside Cloud Deploy. Call
-`google_cloud_deploy_plan_rollback` with a unique rollout ID and optionally an
+`deploy_plan_rollback` with a unique rollout ID and optionally an
 exact previous release, review the validated configuration, then call
-`google_cloud_deploy_rollback` with its exact plan ID. Cloud Deploy creates a
+`deploy_rollback` with its exact plan ID. Cloud Deploy creates a
 new auditable rollout from the previous frozen release and preserves rollout
 history, deploy parameters, policy checks, and notifications. Do not use
 `helm rollback`: native GKE targets have no installed Helm release state.

@@ -121,7 +121,12 @@ with native HTTP transport. The platform therefore builds
 official package and exposes it through the aggregator's native Streamable HTTP
 transport.
 The local aggregator proxies the official tool catalog unchanged and adds
-Cloud Deploy lifecycle tools; it does not fork or patch Google's package.
+Cloud Deploy lifecycle, Artifact Analysis, Billing Export, Budgets, and
+Recommender tools; it does not fork or patch Google's package. Custom protocol
+names omit the server identity (`build_list_builds`, not
+`google_cloud_build_list_builds`) because Cloudflare Portal already namespaces
+them with `google-cloud`. This prevents duplicated client labels while
+structured titles remain `Google Cloud · Build · List builds`.
 There is no package download, writable npm cache, or init container at runtime.
 
 When `docker/mcp/google-cloud/**` or the shared `docker/base/**` changes, the
@@ -138,13 +143,13 @@ is enabled for the repository by `platform-gcp`.
 The first-party security adapter exposes only the committed
 `yourown-chat/europe-west3/docker` repository:
 
-- `google_cloud_security_list_images` lists immutable digest pages with tags,
+- `security_list_images` lists immutable digest pages with tags,
   sizes, timestamps, discovery status, available-fix count, and vulnerability
   counts by severity for every returned image;
-- `google_cloud_security_list_vulnerabilities` returns complete vulnerability
+- `security_list_vulnerabilities` returns complete vulnerability
   occurrences for one digest, including CVE/GHSA ID, effective severity, CVSS
   score, remediation, affected/fixed package versions, and the raw occurrence;
-- `google_cloud_security_get_vulnerability` returns the occurrence plus its
+- `security_get_vulnerability` returns the occurrence plus its
   provider Note, including the advisory description, CVSS vectors, related
   URLs, affected versions, and remediation metadata available from Google.
 
@@ -152,6 +157,33 @@ All three tools are read-only. Image URIs must use an allowlisted repository
 and immutable `@sha256:` digest; occurrence names must belong to the configured
 project. The identities hold only `roles/artifactregistry.reader` and
 `roles/containeranalysis.occurrences.viewer` for this feature.
+
+The cost adapter is also read-only:
+
+- `billing_get_profile` reports the project-to-billing-account association and
+  whether a Detailed Billing Export table is configured;
+- `billing_list_budgets` returns budget scope, amount, period, actual/forecast
+  thresholds, and Pub/Sub notification configuration;
+- `billing_analyze_costs` aggregates the Detailed usage cost export by day,
+  service, SKU, project, location, resource, invoice month, or cost type. It
+  returns gross/list/effective/net cost, credits, attribution, and BigQuery
+  execution statistics;
+- `billing_list_recommendations` collects Active Assist cost recommendations
+  for Compute Engine, GKE, Cloud SQL, Cloud Run, Storage, and BigQuery,
+  including projected savings and affected resources.
+
+Cost queries never return raw export rows. They use named date parameters,
+return at most 200 aggregated rows, time out after 30 seconds, and set
+`maximumBytesBilled=1 GB`, so a broader query fails before incurring excess
+BigQuery scan cost. Enable **Detailed usage cost export** in Cloud Billing,
+grant `mcp-servers@yourown-chat.iam.gserviceaccount.com`
+`roles/bigquery.dataViewer` on that billing dataset, and set
+`GOOGLE_CLOUD_BILLING_EXPORT_TABLE` to the exact
+`project.dataset.gcp_billing_export_resource_v1_ACCOUNT` table. Billing account
+budgets additionally require `roles/billing.viewer` for that GSA on the linked
+billing account; this account-scoped grant cannot be derived from project IAM.
+Without the table, profile/budget/recommendation tools remain usable and cost
+analysis returns an explicit configuration error.
 
 The Google Cloud aggregator terminates Streamable HTTP itself and shares one
 official Observability stdio child across all client sessions. This avoids the
@@ -206,14 +238,11 @@ access; build and mutating lifecycle tools are not advertised.
 
 Operational agents must use these MCP tools for build/deploy state and actions:
 
-1. `google_cloud_build_list_builds` and
-   `google_cloud_build_inspect_build`;
-2. `google_cloud_build_list_build_logs` for failed or incomplete steps;
-3. `google_cloud_deploy_list_releases` and
-   `google_cloud_deploy_inspect_release`;
-4. `google_cloud_deploy_list_rollouts`,
-   `google_cloud_deploy_inspect_rollout`, and
-   `google_cloud_deploy_list_job_runs`;
+1. `build_list_builds` and `build_inspect_build`;
+2. `build_list_build_logs` for failed or incomplete steps;
+3. `deploy_list_releases` and `deploy_inspect_release`;
+4. `deploy_list_rollouts`, `deploy_inspect_rollout`, and
+   `deploy_list_job_runs`;
 5. guarded plan/promote, inspect/approve, or plan/rollback flows.
 
 The Cloud SDK remains only a human bootstrap/debugging fallback. Agents must
@@ -226,9 +255,8 @@ first-party transport wrapper can clamp arguments later if stricter
 multi-client enforcement becomes necessary.
 
 Inspect deployed image digests and findings with
-`google_cloud_security_list_images`, then pass the selected immutable URI to
-`google_cloud_security_list_vulnerabilities`. Use
-`google_cloud_security_get_vulnerability` for the complete occurrence and
+`security_list_images`, then pass the selected immutable URI to
+`security_list_vulnerabilities`. Use `security_get_vulnerability` for the complete occurrence and
 provider advisory.
 
 Artifact Analysis updates findings for an existing digest as its vulnerability
@@ -313,7 +341,7 @@ Creation and settings updates are constrained to the committed policy:
 - relative working directories below `terraform/`;
 - remote execution and a trigger pattern scoped to that working directory.
 
-`terraform_stacks_plan_create` and `terraform_stacks_plan_update` are read-only
+`plan_create` and `plan_update` are read-only
 previews that return a SHA-256 plan ID. Their mutating counterparts repeat the
 full input, recompute the plan against current HCP state, require the exact
 plan ID, and require `CREATE_STACK` or `UPDATE_STACK`. The update tool cannot
@@ -340,16 +368,16 @@ approval or approval of later plans.
 
 Available management tools:
 
-- `terraform_stacks_get_stack_settings`;
-- `terraform_stacks_plan_create` / `terraform_stacks_create`;
-- `terraform_stacks_plan_update` / `terraform_stacks_update`.
+- `get_stack_settings`;
+- `plan_create` / `create`;
+- `plan_update` / `update`.
 
 Available delivery tools remain:
 
-- `terraform_stacks_list_deployment_runs`;
-- `terraform_stacks_inspect_deployment_run`;
-- `terraform_stacks_approve_deployment_run`;
-- `terraform_stacks_cancel_deployment_run`.
+- `list_deployment_runs`;
+- `inspect_deployment_run`;
+- `approve_deployment_run`;
+- `cancel_deployment_run`.
 
 Rollout order for the Google Cloud server: apply **platform-gcp first** (creates
 the `mcp` GSA + Workload Identity binding and publishes it in
@@ -491,13 +519,13 @@ server.
 
 Reading tools:
 
-- `whatsapp_list_conversations` — conversations with latest message, locally
+- `messages_list_conversations` — conversations with latest message, locally
   derived unread count, and source list;
-- `whatsapp_list_messages` — newest captured messages, optionally filtered by
+- `messages_list` — newest captured messages, optionally filtered by
   either participant, sender, direction, source, delivery/read status,
   timestamp, and limit;
-- `whatsapp_get_message` — one message by its `wamid`;
-- `whatsapp_mark_message_read` — acknowledge an inbound message through the
+- `messages_get` — one message by its `wamid`;
+- `messages_mark_read` — acknowledge an inbound message through the
   official Graph API and update the local index.
 
 Every captured message stays in the MCP store even if it is later opened on the
@@ -731,12 +759,13 @@ Client availability is not identical:
    mount `versions/latest` directly. A release racing ahead of the IAM steps
    waits in `ContainerCreating`; re-run it after the stack applies.
 6. Terraform supplies the Access service-token headers to all AI Controls
-   registrations. No upstream browser authorization is required. Cloudflare
-   refreshes the capability catalog in the background approximately every two
-   hours. The normal Cloud Deploy path does not force an account-level sync
-   after runtime-only rollouts because that shared mutation has coincided with
-   invalidated Claude and Codex grants. Use manual **Sync capabilities** only as
-   a controlled recovery path; see [`CLOUDFLARE.md`](CLOUDFLARE.md).
+   registrations. No upstream browser authorization is required. Every
+   successful production MCP rollout runs the guarded postdeploy capability
+   sync, so renamed and newly added tools become visible immediately instead
+   of waiting for Cloudflare's background refresh. Treat an OAuth grant loss
+   after this action as a reproducible defect and retain the postdeploy logs;
+   do not silently disable synchronization. See
+   [`CLOUDFLARE.md`](CLOUDFLARE.md).
 
 ### Connect personal clients
 
@@ -789,15 +818,15 @@ service account, so it creates no pod in GKE. Each verifier Job runs in
 
 - each server's health endpoint;
 - a real read-only `list_terraform_orgs` HCP Terraform API call;
-- a real read-only `terraform_stacks_list_deployment_runs` call through the
+- a real read-only `list_deployment_runs` call through the
   guarded Stack adapter;
 - a real read-only `list_log_names` Google Cloud API call through Workload
   Identity;
-- a real read-only `whatsapp_get_phone_number` Meta API call;
-- a read-only `whatsapp_list_messages` call against the mounted production
+- a real read-only `account_get_phone_number` Meta API call;
+- a read-only `messages_list` call against the mounted production
   message index, ensuring the PVC-backed JSON store is readable through MCP;
 - when `mcp_whatsapp_personal_enabled=true`, a separate read-only
-  `whatsapp_personal_status` verification; it fails while the mandatory
+  `session_status` verification; it fails while the mandatory
   static proxy is unconfigured, but QR linking itself remains a post-deploy
   operator action;
 - official Gmail, Calendar, and Drive MCP credentials are deliberately not

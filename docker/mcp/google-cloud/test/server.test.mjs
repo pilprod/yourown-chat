@@ -51,19 +51,23 @@ test("aggregator exposes official observability and guarded deploy tools", async
     const tools = (await client.listTools()).tools;
     const names = new Set(tools.map((tool) => tool.name));
     assert(names.has("list_log_entries"));
-    assert(names.has("google_cloud_build_list_builds"));
-    assert(names.has("google_cloud_build_inspect_build"));
-    assert(names.has("google_cloud_build_list_build_logs"));
-    assert(names.has("google_cloud_deploy_list_releases"));
-    assert(names.has("google_cloud_deploy_inspect_release"));
-    assert(names.has("google_cloud_deploy_list_job_runs"));
-    assert(names.has("google_cloud_deploy_plan_promote"));
-    assert(names.has("google_cloud_deploy_approve_rollout"));
-    assert(names.has("google_cloud_deploy_plan_rollback"));
-    assert(names.has("google_cloud_deploy_rollback"));
-    assert(names.has("google_cloud_security_list_images"));
-    assert(names.has("google_cloud_security_list_vulnerabilities"));
-    assert(names.has("google_cloud_security_get_vulnerability"));
+    assert(names.has("build_list_builds"));
+    assert(names.has("build_inspect_build"));
+    assert(names.has("build_list_build_logs"));
+    assert(names.has("deploy_list_releases"));
+    assert(names.has("deploy_inspect_release"));
+    assert(names.has("deploy_list_job_runs"));
+    assert(names.has("deploy_plan_promote"));
+    assert(names.has("deploy_approve_rollout"));
+    assert(names.has("deploy_plan_rollback"));
+    assert(names.has("deploy_rollback"));
+    assert(names.has("security_list_images"));
+    assert(names.has("security_list_vulnerabilities"));
+    assert(names.has("security_get_vulnerability"));
+    assert(names.has("billing_get_profile"));
+    assert(names.has("billing_list_budgets"));
+    assert(names.has("billing_analyze_costs"));
+    assert(names.has("billing_list_recommendations"));
 
     const logging = tools.find((tool) => tool.name === "list_log_entries");
     assert.equal(logging.title, "Google Cloud · Logging · List entries");
@@ -75,7 +79,7 @@ test("aggregator exposes official observability and guarded deploy tools", async
     assert.equal(logging.annotations.destructiveHint, false);
 
     const approve = tools.find(
-      (tool) => tool.name === "google_cloud_deploy_approve_rollout",
+      (tool) => tool.name === "deploy_approve_rollout",
     );
     assert.equal(
       approve.title,
@@ -129,12 +133,12 @@ test("dev mode omits lifecycle tools entirely", async () => {
     await client.connect(transport);
     const names = new Set((await client.listTools()).tools.map((tool) => tool.name));
     assert(names.has("list_log_entries"));
-    assert(!names.has("google_cloud_build_list_builds"));
-    assert(!names.has("google_cloud_deploy_list_releases"));
-    assert(!names.has("google_cloud_deploy_approve_rollout"));
-    assert(!names.has("google_cloud_deploy_rollback"));
-    assert(names.has("google_cloud_security_list_images"));
-    assert(names.has("google_cloud_security_get_vulnerability"));
+    assert(!names.has("build_list_builds"));
+    assert(!names.has("deploy_list_releases"));
+    assert(!names.has("deploy_approve_rollout"));
+    assert(!names.has("deploy_rollback"));
+    assert(names.has("security_list_images"));
+    assert(names.has("security_get_vulnerability"));
   } finally {
     await client.close();
   }

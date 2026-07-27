@@ -142,7 +142,7 @@ function createServer() {
   });
 
   server.registerTool(
-    "whatsapp_send_text",
+    "messages_send_text",
     toolDefinition(
       "Messages · Send text",
       "Send a text message through the official WhatsApp Business Cloud API.",
@@ -174,7 +174,7 @@ function createServer() {
   );
 
   server.registerTool(
-    "whatsapp_send_template",
+    "templates_send",
     toolDefinition(
       "Templates · Send",
       "Send an approved WhatsApp Business message template.",
@@ -207,7 +207,7 @@ function createServer() {
   );
 
   server.registerTool(
-    "whatsapp_send_media_link",
+    "messages_send_media_link",
     toolDefinition(
       "Messages · Send media link",
       "Send image, video, audio, or document media by HTTPS URL.",
@@ -243,7 +243,7 @@ function createServer() {
   );
 
   server.registerTool(
-    "whatsapp_list_messages",
+    "messages_list",
     toolDefinition(
       "Messages · List",
       "Read recently received and sent WhatsApp Business messages captured through the verified Meta webhook.",
@@ -268,7 +268,7 @@ function createServer() {
   );
 
   server.registerTool(
-    "whatsapp_list_conversations",
+    "messages_list_conversations",
     toolDefinition(
       "Messages · List conversations",
       "List WhatsApp conversations assembled from webhook, Coexistence history, and WhatsApp Business app echo events.",
@@ -281,7 +281,7 @@ function createServer() {
   );
 
   server.registerTool(
-    "whatsapp_get_message",
+    "messages_get",
     toolDefinition(
       "Messages · Get",
       "Read one captured WhatsApp Business message by its wamid.",
@@ -298,7 +298,7 @@ function createServer() {
   );
 
   server.registerTool(
-    "whatsapp_mark_message_read",
+    "messages_mark_read",
     toolDefinition(
       "Messages · Mark read",
       "Mark a WhatsApp message as read.",
@@ -329,7 +329,7 @@ function createServer() {
   );
 
   server.registerTool(
-    "whatsapp_get_business_profile",
+    "account_get_business_profile",
     toolDefinition(
       "Account · Get business profile",
       "Read the WhatsApp Business profile attached to the configured phone number.",
@@ -345,7 +345,7 @@ function createServer() {
   );
 
   server.registerTool(
-    "whatsapp_get_phone_number",
+    "account_get_phone_number",
     toolDefinition(
       "Account · Get phone number",
       "Read the configured WhatsApp Business phone-number metadata and quality rating.",
@@ -361,7 +361,7 @@ function createServer() {
   );
 
   server.registerTool(
-    "whatsapp_list_message_templates",
+    "templates_list",
     toolDefinition(
       "Templates · List",
       "List approved and pending WhatsApp Business message templates.",

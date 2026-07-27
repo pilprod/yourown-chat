@@ -13,6 +13,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 
 import { artifactVulnerabilityClientFromEnv } from "./artifact-vulnerability-client.mjs";
+import { billingCostClientFromEnv } from "./billing-cost-client.mjs";
 import { cloudBuildClientFromEnv } from "./cloud-build-client.mjs";
 import { cloudDeployClientFromEnv } from "./cloud-deploy-client.mjs";
 import { toolError, toolResult } from "./tool-result.mjs";
@@ -55,15 +56,16 @@ function humanize(value) {
 
 function customToolTitle(name) {
   for (const [prefix, group] of [
-    ["google_cloud_build_", "Build"],
-    ["google_cloud_deploy_", "Deploy"],
-    ["google_cloud_security_", "Security"],
+    ["build_", "Build"],
+    ["deploy_", "Deploy"],
+    ["security_", "Security"],
+    ["billing_", "Billing"],
   ]) {
     if (name.startsWith(prefix)) {
       return `Google Cloud · ${group} · ${humanize(name.slice(prefix.length))}`;
     }
   }
-  return `Google Cloud · ${humanize(name.replace(/^google_cloud_/, ""))}`;
+  return `Google Cloud · ${humanize(name)}`;
 }
 
 function displayTool(tool, title, annotationDefaults = {}) {
@@ -96,10 +98,11 @@ const deployEnabled =
 const deploy = deployEnabled ? cloudDeployClientFromEnv() : null;
 const builds = deployEnabled ? cloudBuildClientFromEnv() : null;
 const security = artifactVulnerabilityClientFromEnv();
+const billing = billingCostClientFromEnv();
 
 const buildTools = [
   {
-    name: "google_cloud_build_list_builds",
+    name: "build_list_builds",
     description:
       "List recent regional Cloud Build executions with status, trigger substitutions, source, images and per-step state.",
     inputSchema: {
@@ -118,7 +121,7 @@ const buildTools = [
     },
   },
   {
-    name: "google_cloud_build_inspect_build",
+    name: "build_inspect_build",
     description:
       "Inspect one Cloud Build execution, including every step, timing, source provenance, produced images, warnings and failure information.",
     inputSchema: {
@@ -137,7 +140,7 @@ const buildTools = [
     },
   },
   {
-    name: "google_cloud_build_list_build_logs",
+    name: "build_list_build_logs",
     description:
       "Read ordered Cloud Logging entries for one Cloud Build execution, including text, JSON/proto payloads, severity and timestamps.",
     inputSchema: {
@@ -166,7 +169,7 @@ const buildTools = [
 
 const deployTools = [
   {
-    name: "google_cloud_deploy_list_releases",
+    name: "deploy_list_releases",
     description:
       "List recent releases from an explicitly allowlisted yourown-chat Cloud Deploy pipeline.",
     inputSchema: {
@@ -187,7 +190,7 @@ const deployTools = [
     },
   },
   {
-    name: "google_cloud_deploy_inspect_release",
+    name: "deploy_inspect_release",
     description:
       "Inspect a frozen Cloud Deploy release, including target artifacts, deploy parameters, image artifacts, render condition and pipeline/target snapshots.",
     inputSchema: {
@@ -207,7 +210,7 @@ const deployTools = [
     },
   },
   {
-    name: "google_cloud_deploy_list_rollouts",
+    name: "deploy_list_rollouts",
     description:
       "List rollout state for one release in an explicitly allowlisted yourown-chat Cloud Deploy pipeline.",
     inputSchema: {
@@ -229,7 +232,7 @@ const deployTools = [
     },
   },
   {
-    name: "google_cloud_deploy_inspect_rollout",
+    name: "deploy_inspect_rollout",
     description:
       "Inspect one rollout, including target, approval state, phases, failure reason and etag. Always inspect immediately before approval.",
     inputSchema: {
@@ -250,7 +253,7 @@ const deployTools = [
     },
   },
   {
-    name: "google_cloud_deploy_list_job_runs",
+    name: "deploy_list_job_runs",
     description:
       "List deploy, verify, predeploy and postdeploy job runs for one rollout with their exact states and execution details.",
     inputSchema: {
@@ -273,7 +276,7 @@ const deployTools = [
     },
   },
   {
-    name: "google_cloud_deploy_inspect_job_run",
+    name: "deploy_inspect_job_run",
     description:
       "Inspect one Cloud Deploy job run, including deploy/verify/custom-action failure causes, build identifiers and execution timestamps.",
     inputSchema: {
@@ -295,7 +298,7 @@ const deployTools = [
     },
   },
   {
-    name: "google_cloud_deploy_plan_promote",
+    name: "deploy_plan_promote",
     description:
       "Validate and preview promotion of one rendered release to an allowlisted target. Makes no changes and returns the exact plan hash required by promote.",
     inputSchema: {
@@ -316,7 +319,7 @@ const deployTools = [
     },
   },
   {
-    name: "google_cloud_deploy_promote",
+    name: "deploy_promote",
     description:
       "Promote exactly the previously previewed release to an allowlisted target. Requires the exact plan hash and PROMOTE confirmation.",
     inputSchema: {
@@ -350,7 +353,7 @@ const deployTools = [
     },
   },
   {
-    name: "google_cloud_deploy_approve_rollout",
+    name: "deploy_approve_rollout",
     description:
       "Approve one allowlisted rollout only after inspection. Requires its exact current etag and APPROVE confirmation.",
     inputSchema: {
@@ -381,7 +384,7 @@ const deployTools = [
     },
   },
   {
-    name: "google_cloud_deploy_plan_rollback",
+    name: "deploy_plan_rollback",
     description:
       "Validate a Cloud Deploy rollback without changing the target. Returns the exact validated release/configuration and plan hash required by rollback.",
     inputSchema: {
@@ -411,7 +414,7 @@ const deployTools = [
     },
   },
   {
-    name: "google_cloud_deploy_rollback",
+    name: "deploy_rollback",
     description:
       "Create the exact previously validated Cloud Deploy rollback rollout. Requires the plan hash and ROLLBACK confirmation.",
     inputSchema: {
@@ -449,7 +452,7 @@ const deployTools = [
 
 const securityTools = [
   {
-    name: "google_cloud_security_list_images",
+    name: "security_list_images",
     description:
       "List immutable Docker images in an allowlisted Artifact Registry repository, with tags, size, timestamps, scan status, and vulnerability counts by severity for every image.",
     inputSchema: {
@@ -471,7 +474,7 @@ const securityTools = [
     },
   },
   {
-    name: "google_cloud_security_list_vulnerabilities",
+    name: "security_list_vulnerabilities",
     description:
       "Return full Artifact Analysis vulnerability occurrences for one immutable image digest, including CVE/GHSA ID, effective severity, CVSS score, affected/fixed package versions, remediation, timestamps, and raw occurrence metadata.",
     inputSchema: {
@@ -481,7 +484,7 @@ const securityTools = [
         image_uri: {
           type: "string",
           description:
-            "Immutable Artifact Registry URI ending in @sha256:<64 hex characters>, as returned by google_cloud_security_list_images.",
+            "Immutable Artifact Registry URI ending in @sha256:<64 hex characters>, as returned by security_list_images.",
         },
         page_size: {
           type: "integer",
@@ -514,7 +517,7 @@ const securityTools = [
     },
   },
   {
-    name: "google_cloud_security_get_vulnerability",
+    name: "security_get_vulnerability",
     description:
       "Get the complete Artifact Analysis occurrence and its provider Note for one vulnerability. The Note adds the full advisory description, CVSS vectors, related URLs, affected versions, and remediation metadata available from Google.",
     inputSchema: {
@@ -523,7 +526,7 @@ const securityTools = [
         occurrence_name: {
           type: "string",
           description:
-            "Full projects/<configured-project>/occurrences/<id> name returned by google_cloud_security_list_vulnerabilities.",
+            "Full projects/<configured-project>/occurrences/<id> name returned by security_list_vulnerabilities.",
         },
       },
       required: ["occurrence_name"],
@@ -538,8 +541,114 @@ const securityTools = [
   },
 ];
 
+const billingTools = [
+  {
+    name: "billing_get_profile",
+    description:
+      "Inspect the project's Cloud Billing account association and the bounded Detailed Billing Export configuration used by this MCP server.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      additionalProperties: false,
+    },
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+  },
+  {
+    name: "billing_list_budgets",
+    description:
+      "List Cloud Billing budgets, scopes, periods, thresholds, forecast rules and programmatic notification settings for the linked billing account.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        project_only: { type: "boolean", default: false },
+        page_size: { type: "integer", minimum: 1, maximum: 100, default: 100 },
+        page_token: { type: "string" },
+      },
+      additionalProperties: false,
+    },
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+  },
+  {
+    name: "billing_analyze_costs",
+    description:
+      "Aggregate Detailed Cloud Billing Export rows server-side for a bounded date range. Reports gross, credits, net, list and effective costs plus query bytes, grouped by day, service, SKU, project, location, resource, invoice month or cost type.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        start_date: {
+          type: "string",
+          pattern: "^\\d{4}-\\d{2}-\\d{2}$",
+        },
+        end_date: {
+          type: "string",
+          pattern: "^\\d{4}-\\d{2}-\\d{2}$",
+          description: "Exclusive end date.",
+        },
+        group_by: {
+          type: "string",
+          enum: [
+            "day",
+            "service",
+            "sku",
+            "project",
+            "location",
+            "resource",
+            "invoice_month",
+            "cost_type",
+          ],
+          default: "service",
+        },
+        limit: { type: "integer", minimum: 1, maximum: 200, default: 50 },
+      },
+      required: ["start_date", "end_date"],
+      additionalProperties: false,
+    },
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+  },
+  {
+    name: "billing_list_recommendations",
+    description:
+      "Collect active cost-optimization recommendations across allowlisted Active Assist recommenders, including projected savings, priority, affected resources, operations and supporting insights. Partial API errors are returned per recommender.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        state: {
+          type: "string",
+          enum: ["ACTIVE", "CLAIMED", "SUCCEEDED", "FAILED", "DISMISSED"],
+          default: "ACTIVE",
+        },
+        page_size: { type: "integer", minimum: 1, maximum: 100, default: 100 },
+        include_raw: { type: "boolean", default: false },
+      },
+      additionalProperties: false,
+    },
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+  },
+];
+
 const enabledCustomTools = [
   ...securityTools,
+  ...billingTools,
   ...(deployEnabled ? [...buildTools, ...deployTools] : []),
 ];
 const exposedCustomTools = enabledCustomTools.map((tool) =>
@@ -553,37 +662,37 @@ if (duplicate) {
 
 async function callCustom(name, input) {
   switch (name) {
-    case "google_cloud_build_list_builds":
+    case "build_list_builds":
       return builds.listBuilds({
         pageSize: input.page_size,
         pageToken: input.page_token,
       });
-    case "google_cloud_build_inspect_build":
+    case "build_inspect_build":
       return builds.inspectBuild({ buildId: input.build_id });
-    case "google_cloud_build_list_build_logs":
+    case "build_list_build_logs":
       return builds.listBuildLogs({
         buildId: input.build_id,
         pageSize: input.page_size,
         pageToken: input.page_token,
       });
-    case "google_cloud_deploy_list_releases":
+    case "deploy_list_releases":
       return deploy.listReleases({
         pipeline: input.pipeline,
         pageSize: input.page_size,
         pageToken: input.page_token,
       });
-    case "google_cloud_deploy_inspect_release":
+    case "deploy_inspect_release":
       return deploy.inspectRelease(input);
-    case "google_cloud_deploy_list_rollouts":
+    case "deploy_list_rollouts":
       return deploy.listRollouts({
         pipeline: input.pipeline,
         release: input.release,
         pageSize: input.page_size,
         pageToken: input.page_token,
       });
-    case "google_cloud_deploy_inspect_rollout":
+    case "deploy_inspect_rollout":
       return deploy.inspectRollout(input);
-    case "google_cloud_deploy_list_job_runs":
+    case "deploy_list_job_runs":
       return deploy.listJobRuns({
         pipeline: input.pipeline,
         release: input.release,
@@ -591,16 +700,16 @@ async function callCustom(name, input) {
         pageSize: input.page_size,
         pageToken: input.page_token,
       });
-    case "google_cloud_deploy_inspect_job_run":
+    case "deploy_inspect_job_run":
       return deploy.inspectJobRun({
         pipeline: input.pipeline,
         release: input.release,
         rollout: input.rollout,
         jobRun: input.job_run,
       });
-    case "google_cloud_deploy_plan_promote":
+    case "deploy_plan_promote":
       return deploy.planPromote(input);
-    case "google_cloud_deploy_promote":
+    case "deploy_promote":
       return deploy.promote({
         pipeline: input.pipeline,
         release: input.release,
@@ -608,7 +717,7 @@ async function callCustom(name, input) {
         expectedPlanId: input.expected_plan_id,
         reason: input.reason,
       });
-    case "google_cloud_deploy_approve_rollout":
+    case "deploy_approve_rollout":
       return deploy.approve({
         pipeline: input.pipeline,
         release: input.release,
@@ -616,14 +725,14 @@ async function callCustom(name, input) {
         expectedEtag: input.expected_etag,
         reason: input.reason,
       });
-    case "google_cloud_deploy_plan_rollback":
+    case "deploy_plan_rollback":
       return deploy.planRollback({
         pipeline: input.pipeline,
         target: input.target,
         rolloutId: input.rollout_id,
         release: input.release,
       });
-    case "google_cloud_deploy_rollback":
+    case "deploy_rollback":
       return deploy.rollback({
         pipeline: input.pipeline,
         target: input.target,
@@ -632,7 +741,7 @@ async function callCustom(name, input) {
         expectedPlanId: input.expected_plan_id,
         reason: input.reason,
       });
-    case "google_cloud_security_list_images":
+    case "security_list_images":
       return security.listImages({
         repository: input.repository,
         pageSize: input.page_size,
@@ -640,7 +749,7 @@ async function callCustom(name, input) {
         includeVulnerabilitySummary:
           input.include_vulnerability_summary ?? true,
       });
-    case "google_cloud_security_list_vulnerabilities":
+    case "security_list_vulnerabilities":
       return security.listVulnerabilities({
         repository: input.repository,
         imageUri: input.image_uri,
@@ -649,9 +758,30 @@ async function callCustom(name, input) {
         severity: input.severity,
         fixAvailableOnly: input.fix_available_only,
       });
-    case "google_cloud_security_get_vulnerability":
+    case "security_get_vulnerability":
       return security.getVulnerability({
         occurrenceName: input.occurrence_name,
+      });
+    case "billing_get_profile":
+      return billing.getBillingProfile();
+    case "billing_list_budgets":
+      return billing.listBudgets({
+        projectOnly: input.project_only,
+        pageSize: input.page_size,
+        pageToken: input.page_token,
+      });
+    case "billing_analyze_costs":
+      return billing.queryCosts({
+        startDate: input.start_date,
+        endDate: input.end_date,
+        groupBy: input.group_by,
+        limit: input.limit,
+      });
+    case "billing_list_recommendations":
+      return billing.listRecommendations({
+        state: input.state,
+        pageSize: input.page_size,
+        includeRaw: input.include_raw,
       });
     default:
       throw new Error(`Unknown custom tool: ${name}`);

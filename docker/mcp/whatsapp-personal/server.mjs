@@ -61,7 +61,7 @@ function createServer() {
   });
 
   server.registerTool(
-    "whatsapp_personal_status",
+    "session_status",
     {
       title: "WhatsApp Personal · Session · Status",
       description:
@@ -79,7 +79,7 @@ function createServer() {
   );
 
   server.registerTool(
-    "whatsapp_personal_get_qr",
+    "session_get_qr",
     {
       title: "WhatsApp Personal · Session · Get QR code",
       description:
@@ -126,7 +126,7 @@ function createServer() {
   );
 
   server.registerTool(
-    "whatsapp_personal_list_conversations",
+    "messages_list_conversations",
     {
       title: "WhatsApp Personal · Messages · List conversations",
       description:
@@ -146,7 +146,7 @@ function createServer() {
   );
 
   server.registerTool(
-    "whatsapp_personal_list_messages",
+    "messages_list",
     {
       title: "WhatsApp Personal · Messages · List messages",
       description:
@@ -168,7 +168,7 @@ function createServer() {
   );
 
   server.registerTool(
-    "whatsapp_personal_send_text",
+    "messages_send_text",
     {
       title: "WhatsApp Personal · Messages · Send text",
       description:
@@ -190,7 +190,7 @@ function createServer() {
   );
 
   server.registerTool(
-    "whatsapp_personal_mark_read",
+    "messages_mark_read",
     {
       title: "WhatsApp Personal · Messages · Mark read",
       description:
@@ -211,7 +211,7 @@ function createServer() {
   );
 
   server.registerTool(
-    "whatsapp_personal_emergency_stop",
+    "session_emergency_stop",
     {
       title: "WhatsApp Personal · Session · Emergency stop",
       description:
@@ -232,7 +232,7 @@ function createServer() {
   );
 
   server.registerTool(
-    "whatsapp_personal_resume",
+    "session_resume",
     {
       title: "WhatsApp Personal · Session · Resume",
       description:
@@ -253,7 +253,7 @@ function createServer() {
   );
 
   server.registerTool(
-    "whatsapp_personal_reset_link",
+    "session_reset_link",
     {
       title: "WhatsApp Personal · Session · Reset linked device",
       description:

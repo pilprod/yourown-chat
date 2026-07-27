@@ -62,25 +62,26 @@ test("tools expose concise titles and explicit safety annotations", async () => 
       ),
     );
 
-    const list = tools.find((tool) => tool.name === "whatsapp_list_messages");
+    const list = tools.find((tool) => tool.name === "messages_list");
     assert.equal(list.title, "WhatsApp Business · Messages · List");
     assert.equal(list.annotations.readOnlyHint, true);
     assert.equal(list.annotations.destructiveHint, false);
 
-    const send = tools.find((tool) => tool.name === "whatsapp_send_text");
+    const send = tools.find((tool) => tool.name === "messages_send_text");
     assert.equal(send.title, "WhatsApp Business · Messages · Send text");
     assert.equal(send.annotations.readOnlyHint, false);
     assert.equal(send.annotations.destructiveHint, false);
 
     const markRead = tools.find(
-      (tool) => tool.name === "whatsapp_mark_message_read",
+      (tool) => tool.name === "messages_mark_read",
     );
     assert.equal(markRead.annotations.readOnlyHint, false);
     assert.equal(markRead.annotations.idempotentHint, true);
   } finally {
     await client.close().catch(() => {});
+    const exited = new Promise((resolve) => child.once("exit", resolve));
     child.kill("SIGTERM");
-    await new Promise((resolve) => child.once("exit", resolve));
+    if (child.exitCode === null) await exited;
     await rm(storeDirectory, { recursive: true, force: true });
   }
 });
