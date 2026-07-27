@@ -126,6 +126,11 @@ publish_output "gcs_bucket_name" {
   value       = deployment.eu.gcs_bucket_name
 }
 
+publish_output "cloudsql_private_ip" {
+  description = "Exact private Cloud SQL address consumed by the production Mattermost NetworkPolicy."
+  value       = deployment.eu.cloudsql_private_ip
+}
+
 publish_output "workload_identity_emails" {
   description = "Tenant => GSA email, rendered into the KSA annotations via Cloud Deploy deploy parameters."
   value       = deployment.eu.workload_identity_emails
