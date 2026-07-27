@@ -787,8 +787,7 @@ Client availability is not identical:
    the `deploy-mcp` Cloud Deploy identity can read this copy.
 4. Apply **app-gcp**: grant Terraform/WhatsApp identities access to their own
    Secret Manager containers and create the MCP namespaces. The
-   capability-sync action remains available for controlled recovery but is not
-   attached to routine production rollouts.
+   capability-sync action is attached to every successful production rollout.
 5. Release: Cloud Deploy creates KSAs + SecretProviderClasses and the pods
    mount `versions/latest` directly. A release racing ahead of the IAM steps
    waits in `ContainerCreating`; re-run it after the stack applies.
@@ -796,9 +795,11 @@ Client availability is not identical:
    registrations. No upstream browser authorization is required. Every
    successful production MCP rollout runs the guarded postdeploy capability
    sync, so renamed and newly added tools become visible immediately instead
-   of waiting for Cloudflare's background refresh. Treat an OAuth grant loss
-   after this action as a reproducible defect and retain the postdeploy logs;
-   do not silently disable synchronization. See
+   of waiting for Cloudflare's background refresh. The action also fails if
+   the Google Cloud security inventory and scanning-control tools are missing
+   from the refreshed catalog. Treat an OAuth grant loss after this action as
+   a reproducible defect and retain the postdeploy logs; do not silently
+   disable synchronization. See
    [`CLOUDFLARE.md`](CLOUDFLARE.md).
 
 ### Connect personal clients

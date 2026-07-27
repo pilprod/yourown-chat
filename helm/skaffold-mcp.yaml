@@ -365,6 +365,26 @@ customActions:
 
                 tools = result.get("tools") or []
                 prompts = result.get("prompts") or []
+                required_tools = {
+                    "google-cloud": {
+                        "security_get_scanning",
+                        "security_list_images",
+                        "security_list_vulnerabilities",
+                        "security_get_vulnerability",
+                        "security_set_scanning",
+                    },
+                }.get(server_id, set())
+                discovered_tools = {
+                    tool.get("name") or tool.get("id")
+                    for tool in tools
+                    if isinstance(tool, dict)
+                }
+                missing_tools = required_tools - discovered_tools
+                if missing_tools:
+                    raise RuntimeError(
+                        f"{server_id}: capability sync omitted required tools: "
+                        f"{sorted(missing_tools)}"
+                    )
                 print(
                     f"{server_id}: ready, tools={len(tools)}, prompts={len(prompts)}",
                     flush=True,

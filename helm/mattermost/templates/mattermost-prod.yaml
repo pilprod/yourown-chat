@@ -19,6 +19,35 @@ spec:
   version: {{ required "Cloud Deploy parameter mattermost_version is required" .Values.mattermost_version | quote }}
   replicas: 1
 
+  mattermostEnv:
+    # Native TOTP protects email/password accounts. Keep enforcement disabled
+    # for the first rollout so existing users can enroll. Google SSO users must
+    # have 2-Step Verification enforced by Google Workspace.
+    - name: MM_SERVICESETTINGS_ENABLEMULTIFACTORAUTHENTICATION
+      value: {{ .Values.mattermost_mfa_enabled | quote }}
+    - name: MM_SERVICESETTINGS_ENFORCEMULTIFACTORAUTHENTICATION
+      value: {{ .Values.mattermost_mfa_enforced | quote }}
+    - name: MM_GOOGLESETTINGS_ENABLE
+      value: {{ .Values.mattermost_google_auth_enabled | quote }}
+    - name: MM_GOOGLESETTINGS_ID
+      valueFrom:
+        secretKeyRef:
+          name: mattermost-google-auth
+          key: client-id
+    - name: MM_GOOGLESETTINGS_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: mattermost-google-auth
+          key: client-secret
+    - name: MM_GOOGLESETTINGS_DISCOVERYENDPOINT
+      value: "https://accounts.google.com/.well-known/openid-configuration"
+    - name: MM_GOOGLESETTINGS_SCOPE
+      value: "openid email profile"
+    - name: MM_GOOGLESETTINGS_BUTTONTEXT
+      value: "Google Workspace"
+    - name: MM_TEAMSETTINGS_RESTRICTCREATIONTODOMAINS
+      value: {{ .Values.mattermost_google_workspace_domain | quote }}
+
   # Keep the existing replica serving until its replacement is Ready. The
   # operator renders RollingUpdate with maxSurge=1 and maxUnavailable=0, so a
   # release temporarily schedules two pods and never tears the old one down

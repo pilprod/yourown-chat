@@ -155,6 +155,17 @@ component "secrets" {
         TOML
         accessors = [var.workload_identity_members.matterbridge]
       }
+      # Seed placeholders so app-gcp can safely materialize the Kubernetes
+      # Secret while Google login remains disabled. Add real Secret Manager
+      # versions before setting mattermost_google_auth_enabled=true.
+      "mattermost-google-client-id" = {
+        value     = "REPLACE_ME_GOOGLE_CLIENT_ID"
+        accessors = []
+      }
+      "mattermost-google-client-secret" = {
+        value     = "REPLACE_ME_GOOGLE_CLIENT_SECRET"
+        accessors = []
+      }
       # MCP credentials are read directly by GKE's Secret Manager CSI add-on.
       # Terraform manages only containers/IAM and never reads current values.
       "mcp-terraform-hcp-token" = {
@@ -217,6 +228,10 @@ component "prod_secret_values" {
         mattermost_db_connection      = "cloudsql-mattermost-connection"
         mattermost_storage_access_key = "mattermost-storage-access-key"
         mattermost_storage_secret_key = "mattermost-storage-secret-key"
+        # Full resource IDs create a graph edge to the new containers/initial
+        # versions, so the first app-gcp plan does not try to read them early.
+        mattermost_google_client_id     = component.secrets.secret_resource_ids["mattermost-google-client-id"]
+        mattermost_google_client_secret = component.secrets.secret_resource_ids["mattermost-google-client-secret"]
       },
       var.manage_ingress_origin_tls ? {
         mattermost_origin_tls_cert = "mattermost-origin-tls-cert"
@@ -292,6 +307,15 @@ component "cluster_secrets" {
           data = {
             accesskey = component.prod_secret_values.values["mattermost_storage_access_key"]
             secretkey = component.prod_secret_values.values["mattermost_storage_secret_key"]
+          }
+        }
+        mattermost-google-auth = {
+          name      = "mattermost-google-auth"
+          namespace = "mattermost"
+          labels    = { app = "mattermost" }
+          data = {
+            "client-id"     = component.prod_secret_values.values["mattermost_google_client_id"]
+            "client-secret" = component.prod_secret_values.values["mattermost_google_client_secret"]
           }
         }
       },

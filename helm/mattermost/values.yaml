@@ -10,3 +10,12 @@ mattermost_gsa: ""
 mattermost_cloudsql_ip: ""
 filestore_bucket: ""
 aop_verify_client: ""
+
+# Production authentication defaults. Google OAuth remains disabled until the
+# real Secret Manager versions are installed and the Workspace OAuth client is
+# ready. Native Mattermost TOTP is enabled but initially not enforced so
+# existing email users can enroll without being locked out.
+mattermost_mfa_enabled: false
+mattermost_mfa_enforced: false
+mattermost_google_auth_enabled: false
+mattermost_google_workspace_domain: ""

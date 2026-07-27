@@ -59,6 +59,9 @@ locals {
     "calendarmcp.googleapis.com",
     "drive.googleapis.com",
     "drivemcp.googleapis.com",
+    # Mattermost Google Workspace sign-in resolves the authenticated profile
+    # through People API.
+    "people.googleapis.com",
   ]
 }
 
@@ -69,19 +72,6 @@ component "project_services" {
     project_id    = var.project_id
     activate_apis = local.activate_apis
   }
-
-  providers = {
-    google = provider.google.this
-  }
-}
-
-# Migration cleanup: `billing_legacy` was removed after confirming that its
-# dataset contained no exported rows and deleting the dedicated project. Keep
-# this block for one successful deployment so HCP Terraform can release the
-# component instance from Stack state. Remove it in the following deployment.
-removed {
-  source = "./modules/billing-legacy"
-  from   = component.billing_legacy
 
   providers = {
     google = provider.google.this

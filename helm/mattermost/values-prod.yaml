@@ -1,1 +1,5 @@
 environment: prod
+mattermost_mfa_enabled: true
+mattermost_mfa_enforced: false
+mattermost_google_auth_enabled: false
+mattermost_google_workspace_domain: papou.email

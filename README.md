@@ -209,7 +209,6 @@ export APPLY="serviceAccount:$APPLY_SA@$PROJECT_ID.iam.gserviceaccount.com"
 for ROLE in \
   roles/serviceusage.serviceUsageAdmin \
   roles/resourcemanager.projectIamAdmin \
-  roles/iam.roleAdmin \
   roles/iam.serviceAccountAdmin \
   roles/iam.serviceAccountUser \
   roles/secretmanager.admin \
@@ -229,11 +228,34 @@ for ROLE in \
 done
 ```
 
-`roles/iam.roleAdmin` is required because the platform stack owns the narrow
-`artifactScanningController` custom role used to toggle scanning. It does not
-grant the MCP runtime permission to manage IAM roles; that runtime receives
-only the two Artifact Registry repository permissions declared by the custom
-role.
+The platform stack creates the narrow `artifactScanningController` role used
+by MCP to toggle repository scanning. Do not grant the apply identity the broad
+`roles/iam.roleAdmin` role. Bootstrap one project-local role with only the six
+custom-role lifecycle permissions instead:
+
+```sh
+export CUSTOM_ROLE_ID="terraformCustomRoleManager"
+
+gcloud iam roles create "$CUSTOM_ROLE_ID" \
+  --project="$PROJECT_ID" \
+  --title="Terraform custom role manager" \
+  --description="Bootstrap-only management of project custom IAM roles" \
+  --permissions="iam.roles.create,iam.roles.delete,iam.roles.get,iam.roles.list,iam.roles.undelete,iam.roles.update" \
+  --stage=GA
+
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="$APPLY" \
+  --role="projects/$PROJECT_ID/roles/$CUSTOM_ROLE_ID" \
+  --condition=None
+```
+
+This bootstrap role is intentionally created outside Terraform: Terraform
+cannot create the permission that authorizes its own first custom-role
+operation. It cannot edit project IAM policy, service accounts, organization
+roles or tags. The MCP runtime receives only
+`artifactregistry.repositories.get` and
+`artifactregistry.repositories.update` through the separate
+`artifactScanningController` role.
 
 ### Cloud Billing account access and export
 
@@ -936,6 +958,37 @@ new scans. Google continuously refreshes findings for recently active scanned
 images for a limited monitoring window. A later `platform-gcp` apply also
 restores the cost-safe `DISABLED` baseline if a scan window was accidentally
 left open.
+
+**Enable Mattermost Google Workspace login** — the chart enables native TOTP
+but initially leaves enforcement off so existing email users can enroll.
+Google login is prepared and remains disabled until real credentials replace
+the seeded placeholders:
+
+1. In Google Auth Platform create an **Internal** OAuth application for the
+   `papou.email` Workspace organization and a **Web application** client.
+2. Add `https://yourown.chat` as an authorized JavaScript origin and
+   `https://yourown.chat/signup/google/complete` as an authorized redirect URI.
+   The platform stack enables People API automatically.
+3. Add the credentials as new Secret Manager versions without committing them:
+
+   ```sh
+   gcloud secrets versions add mattermost-google-client-id \
+     --project=yourown-chat --data-file=/path/to/client-id.txt
+   gcloud secrets versions add mattermost-google-client-secret \
+     --project=yourown-chat --data-file=/path/to/client-secret.txt
+   ```
+
+4. Apply `app-gcp` so `mattermost-google-auth` receives the latest versions,
+   then set `mattermost_google_auth_enabled: true` in
+   `helm/mattermost/values-prod.yaml` and cut a normal platform release.
+5. After email/password users have enrolled TOTP, set
+   `mattermost_mfa_enforced: true`. Enforce 2-Step Verification in Google
+   Workspace separately: Mattermost's native MFA policy does not apply to SSO
+   sessions.
+
+`MM_TEAMSETTINGS_RESTRICTCREATIONTODOMAINS=papou.email` limits Mattermost email
+account creation, but it is not the SSO security boundary. The Internal OAuth
+application and Workspace policy are what restrict Google identities.
 
 **Rotate the DB password** — bump one committed value, no time-based
 surprises:
