@@ -71,13 +71,10 @@ deployment "eu" {
     # and zero_trust_ready are true when Secret Manager versions exist.
     # try() guards the initial bootstrap.
     zero_trust_enabled = try(upstream_input.cloudflare.zero_trust_ready, false)
-    # Cloudflare already refreshes Portal capabilities approximately every two
-    # hours. Do not force the account-level sync endpoint after every runtime
-    # rollout: it changes shared Portal state and has coincided with invalidated
-    # end-user OAuth grants in both Claude and Codex. Keep the action available
-    # for a controlled recovery after the incident is reproduced with Access
-    # logs, but remove it from the normal release path.
-    mcp_capability_sync_enabled = false
+    # Refresh the Cloudflare Portal catalog after every verified production MCP
+    # rollout. Treat any OAuth-session regression as a release failure so it is
+    # reproducible and visible instead of waiting for the periodic catalog sync.
+    mcp_capability_sync_enabled = true
 
     # Cloud Build 2nd-gen GitHub connection, authorized once out-of-band in the
     # console (README.md); both repos are linked to it.

@@ -197,7 +197,7 @@ variable "zero_trust_enabled" {
 
 variable "mcp_capability_sync_enabled" {
   type        = bool
-  description = "Attach the Cloudflare AI Controls capability sync to verified production MCP rollouts. Keep false for routine releases; enable only for a controlled recovery after confirming that the CMEK-encrypted sync credential exists."
+  description = "Attach the Cloudflare AI Controls capability sync to verified production MCP rollouts. Enable in environments where the CMEK-encrypted sync credential exists so catalog and OAuth regressions fail visibly during delivery."
   default     = false
 }
 
