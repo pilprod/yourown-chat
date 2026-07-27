@@ -137,8 +137,9 @@ before it creates an MCP release. Other MCP-only changes reuse the newest
 internal image rather than rebuilding identical dependencies. The trigger
 resolves the selected digest and passes
 `mcp_google_cloud_image=<repository>@sha256:...` to Cloud Deploy, so both dev
-and prod promote the exact same artifact. Automatic Artifact Analysis scanning
-is enabled for the repository by `platform-gcp`.
+and prod promote the exact same artifact. Paid automatic Artifact Analysis
+scanning is disabled by default; `platform-gcp` keeps only the API ready and
+sets the repository gate to `DISABLED`.
 
 The first-party security adapter exposes only the committed
 `yourown-chat/europe-west3/docker` repository:
@@ -152,11 +153,27 @@ The first-party security adapter exposes only the committed
 - `security_get_vulnerability` returns the occurrence plus its
   provider Note, including the advisory description, CVSS vectors, related
   URLs, affected versions, and remediation metadata available from Google.
+- `security_get_scanning` reads the repository scanning config and effective
+  state;
+- production-only `security_set_scanning` changes the allowlisted repository
+  between `DISABLED` and `INHERITED`. It requires optimistic expected state,
+  an exact enable/disable confirmation and an audit reason, and is presented to
+  clients as a write/destructive action requiring approval.
 
-All three tools are read-only. Image URIs must use an allowlisted repository
+The inventory and finding tools are read-only. Image URIs must use an allowlisted repository
 and immutable `@sha256:` digest; occurrence names must belong to the configured
-project. The identities hold only `roles/artifactregistry.reader` and
-`roles/containeranalysis.occurrences.viewer` for this feature.
+project. The production identity holds `roles/artifactregistry.reader`,
+`roles/containeranalysis.occurrences.viewer` and a custom role containing only
+`artifactregistry.repositories.get/update`; it cannot delete images or
+repositories.
+
+For a paid scan, read state, enable scanning, push only the intended build
+digests, wait for discovery, inspect findings, and disable scanning again.
+Enabling the gate does not guarantee a fresh scan of every old digest, so an
+existing image that requires a new assessment must be rebuilt or re-pushed as
+a new immutable digest during the window. Stored findings remain queryable
+after disabling. The Terraform baseline is also `DISABLED`, so an unrelated
+platform apply closes a forgotten scan window.
 
 The cost adapter is also read-only:
 

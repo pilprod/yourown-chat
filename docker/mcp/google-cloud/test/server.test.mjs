@@ -61,6 +61,8 @@ test("aggregator exposes official observability and guarded deploy tools", async
     assert(names.has("deploy_approve_rollout"));
     assert(names.has("deploy_plan_rollback"));
     assert(names.has("deploy_rollback"));
+    assert(names.has("security_get_scanning"));
+    assert(names.has("security_set_scanning"));
     assert(names.has("security_list_images"));
     assert(names.has("security_list_vulnerabilities"));
     assert(names.has("security_get_vulnerability"));
@@ -87,6 +89,16 @@ test("aggregator exposes official observability and guarded deploy tools", async
     );
     assert.equal(approve.annotations.readOnlyHint, false);
     assert.equal(approve.annotations.destructiveHint, true);
+
+    const setScanning = tools.find(
+      (tool) => tool.name === "security_set_scanning",
+    );
+    assert.equal(
+      setScanning.title,
+      "Google Cloud · Security · Set scanning",
+    );
+    assert.equal(setScanning.annotations.readOnlyHint, false);
+    assert.equal(setScanning.annotations.destructiveHint, true);
 
     assert(
       tools.every(
@@ -137,6 +149,8 @@ test("dev mode omits lifecycle tools entirely", async () => {
     assert(!names.has("deploy_list_releases"));
     assert(!names.has("deploy_approve_rollout"));
     assert(!names.has("deploy_rollback"));
+    assert(names.has("security_get_scanning"));
+    assert(!names.has("security_set_scanning"));
     assert(names.has("security_list_images"));
     assert(names.has("security_get_vulnerability"));
   } finally {

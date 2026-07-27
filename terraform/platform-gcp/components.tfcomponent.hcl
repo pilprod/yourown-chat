@@ -30,7 +30,7 @@ locals {
   # ALL APIs (platform AND app) enabled here, so the two stacks never contend
   # over google_project_service. The bootstrap set is enabled by hand first
   # (README.md).
-  activate_apis = concat([
+  activate_apis = [
     "compute.googleapis.com",
     "container.googleapis.com",
     "servicenetworking.googleapis.com",
@@ -48,6 +48,9 @@ locals {
     "recommender.googleapis.com",
     "artifactregistry.googleapis.com",
     "containeranalysis.googleapis.com",
+    # Keep the API ready for a bounded MCP-controlled scan window. The paid
+    # repository gate remains DISABLED during routine builds.
+    "containerscanning.googleapis.com",
     "agentregistry.googleapis.com",
     # Official Google-hosted Workspace MCP servers and their underlying APIs.
     "gmail.googleapis.com",
@@ -56,9 +59,7 @@ locals {
     "calendarmcp.googleapis.com",
     "drive.googleapis.com",
     "drivemcp.googleapis.com",
-    ],
-    var.artifact_registry_vulnerability_scanning ? ["containerscanning.googleapis.com"] : []
-  )
+  ]
 }
 
 component "project_services" {
@@ -472,7 +473,8 @@ component "artifact_registry" {
     kms_key_name  = var.artifact_registry_kms_key_name
     labels        = local.common_labels
 
-    vulnerability_scanning = var.artifact_registry_vulnerability_scanning
+    vulnerability_scanning     = var.artifact_registry_vulnerability_scanning
+    scanning_controller_member = component.workload_identity_mcp.iam_member
   }
 
   providers = {

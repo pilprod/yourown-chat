@@ -98,7 +98,7 @@ variable "artifact_registry_kms_key_name" {
 
 variable "artifact_registry_vulnerability_scanning" {
   type        = bool
-  description = "Automatically scan images pushed to the unified registry (Mattermost and internally built/mirrored MCP images) for vulnerabilities via Artifact Analysis. Enables the containerscanning API and sets the repository's vulnerability_scanning_config to INHERITED. Paid: ~$0.26 per scanned image digest; default off."
+  description = "Default repository scanning gate. Keep false for routine builds; the production Google Cloud MCP opens bounded paid scan windows when explicitly approved."
   default     = false
 }
 

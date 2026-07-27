@@ -88,8 +88,11 @@ deployment "eu" {
     storage_force_destroy = false
 
     # Registry is public -> no CMEK.
-    artifact_registry_kms_key_name           = null
-    artifact_registry_vulnerability_scanning = true
+    artifact_registry_kms_key_name = null
+    # Paid per image digest. Keep the repository gate off during routine
+    # builds; enable it only for a bounded build window through the guarded
+    # Google Cloud MCP security_set_scanning tool, then disable it again.
+    artifact_registry_vulnerability_scanning = false
 
     extra_labels = { cost-center = "platform" }
   }

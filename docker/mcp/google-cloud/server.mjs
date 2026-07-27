@@ -453,6 +453,25 @@ const deployTools = [
 
 const securityTools = [
   {
+    name: "security_get_scanning",
+    description:
+      "Read the effective vulnerability-scanning gate and API-derived state for one allowlisted Artifact Registry repository.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        repository: { type: "string" },
+      },
+      required: ["repository"],
+      additionalProperties: false,
+    },
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+  },
+  {
     name: "security_list_images",
     description:
       "List immutable Docker images in an allowlisted Artifact Registry repository, with tags, size, timestamps, scan status, and vulnerability counts by severity for every image.",
@@ -536,6 +555,48 @@ const securityTools = [
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+  },
+];
+
+const securityWriteTools = [
+  {
+    name: "security_set_scanning",
+    description:
+      "Enable or disable paid automatic vulnerability scanning for one allowlisted Artifact Registry repository. Read current state first and pass it as expected_enablement_config; client approval, an exact confirmation token and an audit reason are required.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        repository: { type: "string" },
+        enabled: { type: "boolean" },
+        expected_enablement_config: {
+          type: "string",
+          enum: [
+            "ENABLEMENT_CONFIG_UNSPECIFIED",
+            "INHERITED",
+            "DISABLED",
+          ],
+        },
+        reason: { type: "string", minLength: 1 },
+        confirmation: {
+          type: "string",
+          enum: ["ENABLE_SCANNING", "DISABLE_SCANNING"],
+        },
+      },
+      required: [
+        "repository",
+        "enabled",
+        "expected_enablement_config",
+        "reason",
+        "confirmation",
+      ],
+      additionalProperties: false,
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
       idempotentHint: true,
       openWorldHint: true,
     },
@@ -650,7 +711,9 @@ const billingTools = [
 const enabledCustomTools = [
   ...securityTools,
   ...billingTools,
-  ...(deployEnabled ? [...buildTools, ...deployTools] : []),
+  ...(deployEnabled
+    ? [...securityWriteTools, ...buildTools, ...deployTools]
+    : []),
 ];
 const exposedCustomTools = enabledCustomTools.map((tool) =>
   displayTool(tool, customToolTitle(tool.name)),
@@ -742,6 +805,8 @@ async function callCustom(name, input) {
         expectedPlanId: input.expected_plan_id,
         reason: input.reason,
       });
+    case "security_get_scanning":
+      return security.getScanning({ repository: input.repository });
     case "security_list_images":
       return security.listImages({
         repository: input.repository,
@@ -762,6 +827,14 @@ async function callCustom(name, input) {
     case "security_get_vulnerability":
       return security.getVulnerability({
         occurrenceName: input.occurrence_name,
+      });
+    case "security_set_scanning":
+      return security.setScanning({
+        repository: input.repository,
+        enabled: input.enabled,
+        expectedEnablementConfig: input.expected_enablement_config,
+        reason: input.reason,
+        confirmation: input.confirmation,
       });
     case "billing_get_profile":
       return billing.getBillingProfile();

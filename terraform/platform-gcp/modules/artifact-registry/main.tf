@@ -18,10 +18,9 @@ resource "google_artifact_registry_repository" "this" {
 
   # Automatic vulnerability scanning (Artifact Analysis) for images pushed to
   # THIS repository. Scanning is a two-part switch in GCP: the project-level
-  # containerscanning API (enabled by project_services when the stack input is
-  # on) plus this per-repository gate -- INHERITED follows the project setting,
-  # DISABLED opts the repo out. Cost: ~$0.26 per scanned image digest, so it is
-  # a paid opt-in (default off).
+  # containerscanning API (kept ready by project_services) plus this
+  # per-repository gate. INHERITED activates scans immediately; DISABLED opts
+  # the repository out and is the cost-safe baseline.
   vulnerability_scanning_config {
     enablement_config = var.vulnerability_scanning ? "INHERITED" : "DISABLED"
   }
@@ -49,4 +48,28 @@ resource "google_artifact_registry_repository" "this" {
       }
     }
   }
+}
+
+# Artifact Registry Admin can delete images and repositories, so the MCP gets
+# a narrow custom role containing only repository read/update permissions.
+resource "google_project_iam_custom_role" "scanning_controller" {
+  count = var.scanning_controller_member == null ? 0 : 1
+
+  project     = var.project_id
+  role_id     = "artifactScanningController"
+  title       = "Artifact scanning controller"
+  description = "Toggle vulnerability scanning for an allowlisted Artifact Registry repository."
+  permissions = [
+    "artifactregistry.repositories.get",
+    "artifactregistry.repositories.update",
+  ]
+  stage = "GA"
+}
+
+resource "google_project_iam_member" "scanning_controller" {
+  count = var.scanning_controller_member == null ? 0 : 1
+
+  project = var.project_id
+  role    = google_project_iam_custom_role.scanning_controller[0].name
+  member  = var.scanning_controller_member
 }

@@ -40,7 +40,7 @@ holds the VPC, the cluster and the database — and the Cloudflare API token
 | PostgreSQL | Cloud SQL, private IP only, Frankfurt (`europe-west3`), PITR + 7-day backups |
 | Object storage | GCS bucket with S3-compatible HMAC creds for Mattermost ("filestore") |
 | Kubernetes | One zonal GKE Standard cluster, private nodes, one autoscaling `general` pool (`e2-standard-2`, 1–3 nodes) |
-| Container registry | One Artifact Registry repo (`docker`) with a shared hardened runtime base and Artifact Analysis vulnerability scanning enabled |
+| Container registry | One Artifact Registry repo (`docker`) with a shared hardened runtime base; paid Artifact Analysis scanning is off by default and opened through a guarded MCP action only for selected build windows |
 | CI | Cloud Build builds Mattermost on a `v*-patched` tag; one catalog-driven MCP builder creates shared OS/language bases and mirrors pinned vendor images into Artifact Registry |
 | CD | Separate Mattermost and MCP pipelines; ephemeral test workloads; one semver platform tag routes only changed components |
 | Agent-operated delivery | An agent can author a change, inspect CI/CD and Terraform plans, promote a verified release, and request the guarded production approval through MCP; write actions remain Human-in-the-loop |
@@ -108,7 +108,7 @@ flowchart TB
   TF --> N["Network<br/>VPC · subnet · firewall · NAT · PSA"]
   TF --> C["Compute<br/>private GKE · general node pool"]
   TF --> D["Data<br/>Cloud SQL · GCS · BigQuery"]
-  TF --> S["Supply chain<br/>Artifact Registry · scanning"]
+  TF --> S["Supply chain<br/>Artifact Registry · on-demand scanning"]
   TF --> I["Identity and keys<br/>Workload Identity · HSM KMS"]
 ```
 
@@ -233,7 +233,7 @@ resource type.
 | **platform-gcp / encryption** | Regional HSM KMS key ring and key, rotation policy, IAM grants for GKE, Cloud SQL, GCS and Secret Manager service agents |
 | **platform-gcp / compute** | One zonal private GKE Standard cluster, autoscaling `general` node pool, shielded nodes, node service account, CSI drivers, etcd application-layer encryption and GKE cost allocation |
 | **platform-gcp / data** | Private Cloud SQL PostgreSQL instance, database/user/password secrets, GCS Mattermost bucket, HMAC service account and secrets, EU BigQuery `billing` dataset |
-| **platform-gcp / supply chain** | Regional Artifact Registry `docker` repository, cleanup policy and vulnerability scanning |
+| **platform-gcp / supply chain** | Regional Artifact Registry `docker` repository, cleanup policy, default-off scanning gate and least-privilege MCP scanning controller |
 | **platform-gcp / identities** | Separate Google service accounts and Workload Identity bindings for Mattermost, dev, Matterbridge, every MCP server and cloudflared |
 | **app-gcp / delivery** | Two Cloud Deploy pipelines (`mattermost`, `mcp`), dev/prod targets, execution/cleanup/release service accounts, Cloud Build repository links and tag triggers, deploy-source bucket and Artifact Registry IAM |
 | **app-gcp / cluster policy** | Namespaces, priority classes, quotas, limit ranges, namespace RBAC, encrypted storage class, persistent dev PostgreSQL, application-compatible Kubernetes Secrets |
@@ -387,6 +387,35 @@ git tag 1.2.3  (on pilprod/yourown-chat)
   → route each component's skaffold-<component>.yaml only to its own pipeline
 ```
 
+**Open a vulnerability-scanning window** — automatic Artifact Analysis is
+deliberately disabled during routine builds because Google charges for scanning
+each pushed digest, while one release can produce shared base, language,
+Mattermost and multiple MCP images. The Container Scanning API stays enabled
+but the `docker` repository gate is `DISABLED`, which lets MCP activate it
+without waiting for an API rollout.
+
+Use the production Google Cloud MCP:
+
+1. Call `security_get_scanning(repository="docker")`.
+2. Enable with `security_set_scanning` using `enabled=true`,
+   `expected_enablement_config="DISABLED"`,
+   `confirmation="ENABLE_SCANNING"` and a human-readable reason. This is a
+   write action and therefore requires client approval.
+3. Build and push only the images being audited while the gate is active.
+   Images pushed in this window are scanned automatically; merely enabling the
+   gate does not guarantee a fresh scan of every old digest.
+4. Poll `security_list_images` until discovery is complete, then use
+   `security_list_vulnerabilities` and `security_get_vulnerability`.
+5. Read state again and disable with `enabled=false`,
+   `expected_enablement_config="INHERITED"`,
+   `confirmation="DISABLE_SCANNING"` and the audit reason.
+
+Previously stored vulnerability occurrences remain readable after disabling
+new scans. Google continuously refreshes findings for recently active scanned
+images for a limited monitoring window. A later `platform-gcp` apply also
+restores the cost-safe `DISABLED` baseline if a scan window was accidentally
+left open.
+
 **Rotate the DB password** — bump one committed value, no time-based
 surprises:
 
@@ -512,7 +541,7 @@ not imply that every Google or Cloudflare resource uses it.
 | Compatibility Kubernetes Secrets | Values needed by Mattermost/operator compatibility are envelope-encrypted in GKE etcd; the HSM key wraps the data-encryption key | Kubernetes RBAC and namespace isolation govern reads; these are the exception to the direct-CSI path |
 | Personal WhatsApp session PVC | The `mcp-sensitive` StorageClass passes the HSM CMEK to Persistent Disk CSI | Mounted only by the personal WhatsApp workload in its isolated namespace |
 | BigQuery billing export | Google-managed encryption at rest; no dataset CMEK is configured | Dataset-level `roles/bigquery.dataViewer` for the Google Cloud MCP and a bounded 1 GB/query limit |
-| Artifact Registry images | Google-managed encryption at rest because `artifact_registry_kms_key_name = null` | Regional private repository, IAM-scoped pulls and Artifact Analysis scanning |
+| Artifact Registry images | Google-managed encryption at rest because `artifact_registry_kms_key_name = null` | Regional private repository, IAM-scoped pulls and explicitly bounded Artifact Analysis scan windows |
 | GKE node disks and ordinary PVCs | Google-managed encryption at rest; only `mcp-sensitive` explicitly selects CMEK | Private nodes, Shielded Nodes and workload/namespace access controls |
 | Network traffic | TLS at the public Cloudflare edge and Full (Strict) TLS to ingress; Cloud SQL forces encrypted connections | Cloudflare-only ingress, private cluster networking, NetworkPolicy and Cloud NAT egress |
 
@@ -836,6 +865,7 @@ Why each role, in one line each:
 | `storage.admin` | GCS bucket + HMAC keys |
 | `clouddeploy.admin` | pipeline + targets + execution SA binding |
 | `artifactregistry.admin` | the `docker` repo + build SA writer grant |
+| custom `artifactScanningController` | MCP can only read repository state and toggle its vulnerability-scanning gate; it cannot delete repositories or images |
 | `agentregistry.editor` | register and maintain external endpoints and vendor-hosted MCP metadata |
 | `cloudbuild.connectionAdmin` + `builds.editor` | repository links + tag triggers on the shared connection |
 

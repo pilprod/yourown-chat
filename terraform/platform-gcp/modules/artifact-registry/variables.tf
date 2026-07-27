@@ -57,6 +57,13 @@ variable "labels" {
 
 variable "vulnerability_scanning" {
   type        = bool
-  description = "Automatically scan images pushed to this repository for vulnerabilities (Artifact Analysis). Requires the containerscanning API on the project. Paid: ~$0.26 per scanned image digest."
+  description = "Default Artifact Analysis repository gate. Paid scans are off by default and enabled temporarily through MCP."
   default     = false
+}
+
+variable "scanning_controller_member" {
+  type        = string
+  description = "Optional IAM member allowed to toggle only this repository's vulnerability-scanning gate."
+  default     = null
+  nullable    = true
 }
