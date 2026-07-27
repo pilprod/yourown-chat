@@ -62,7 +62,7 @@ answers one question and keeps arrows flowing in one direction.
 ### Stack ownership and state
 
 ```mermaid
-flowchart LR
+flowchart TB
   P["platform-gcp<br/>foundation"] --> E["cloudflare<br/>edge and MCP portal"]
   P --> D["app-gcp<br/>build and delivery"]
   P -.-> R["agent-registry-gcp<br/>catalog"]
@@ -75,7 +75,7 @@ cannot form a dependency cycle.
 ### Public application traffic
 
 ```mermaid
-flowchart LR
+flowchart TB
   U["Browser / mobile client"] --> C["Cloudflare edge"]
   C --> L["GKE external LoadBalancer"]
   L --> I["ingress-nginx"]
@@ -89,7 +89,7 @@ Mattermost reaches it over Private Service Access and stores files in GCS.
 ### MCP client traffic
 
 ```mermaid
-flowchart LR
+flowchart TB
   A["ChatGPT / Claude / Mattermost / Codex"] --> P["tools.yourown.chat<br/>Cloudflare MCP Portal"]
   P --> T["cloudflared tunnel"]
   T --> X["one selected MCP namespace"]
@@ -133,12 +133,17 @@ flowchart TB
 The billing dataset is separate from application data and gives the Google
 Cloud MCP read-only cost visibility. Google-managed encryption is still
 encryption at rest, but those services are deliberately not presented as
-CMEK-controlled in this configuration.
+CMEK-controlled in this configuration. Node boot disks hold the Container
+Optimized OS and disposable pod/runtime data; the ordinary PVCs currently hold
+only replaceable dev Mattermost and dev PostgreSQL data. Production Mattermost
+state is in CMEK-protected Cloud SQL and GCS, Kubernetes Secrets are
+application-layer encrypted with CMEK before etcd persistence, and the only
+stateful MCP session uses the `mcp-sensitive` CMEK StorageClass.
 
 ### Build and release flow
 
 ```mermaid
-flowchart LR
+flowchart TB
   G["Git tags and changed files"] --> B["Cloud Build"]
   B --> R["Artifact Registry"]
   R --> D["Cloud Deploy"]
@@ -163,7 +168,7 @@ Terraform token.
 Application delivery follows one straight, auditable path:
 
 ```mermaid
-flowchart LR
+flowchart TB
   T["Task"] --> C["Agent writes code"]
   C --> G["Commit + immutable tag"]
   G --> B["Cloud Build"]
@@ -177,7 +182,7 @@ flowchart LR
 Infrastructure changes use the same pattern with the Terraform control plane:
 
 ```mermaid
-flowchart LR
+flowchart TB
   C["Agent writes IaC"] --> P["HCP Stack plan"]
   P --> I["Agent inspects diff over MCP"]
   I --> H["Human approval"]
@@ -210,7 +215,7 @@ and resume the same workflow with the human identity and decision attached.
 ### Identity and secrets
 
 ```mermaid
-flowchart LR
+flowchart TB
   H["HCP Terraform OIDC"] --> W["GCP Workload Identity Federation"]
   W --> F["terraform apply service account"]
   K["Kubernetes service account"] --> P["Pod-specific Google service account"]
@@ -544,6 +549,25 @@ not imply that every Google or Cloudflare resource uses it.
 | Artifact Registry images | Google-managed encryption at rest because `artifact_registry_kms_key_name = null` | Regional private repository, IAM-scoped pulls and explicitly bounded Artifact Analysis scan windows |
 | GKE node disks and ordinary PVCs | Google-managed encryption at rest; only `mcp-sensitive` explicitly selects CMEK | Private nodes, Shielded Nodes and workload/namespace access controls |
 | Network traffic | TLS at the public Cloudflare edge and Full (Strict) TLS to ingress; Cloud SQL forces encrypted connections | Cloudflare-only ingress, private cluster networking, NetworkPolicy and Cloud NAT egress |
+
+Google-managed encryption is an acceptable baseline for the node and dev-disk
+threat model here: Google encrypts storage with AES-256 before it is written
+and separately encrypts storage devices. It protects lost, replaced or
+decommissioned physical media without adding a key dependency to every node
+boot. The trade-off is control rather than cryptographic strength: Google owns
+the key-encryption keys, so the project cannot independently disable them,
+choose their rotation, inspect per-key use or satisfy a requirement for
+customer-controlled key custody. IAM compromise or a compromised workload that
+is already authorized to read a mounted disk is not prevented by either
+Google-managed encryption or CMEK.
+
+This boundary is intentional, not a claim that default encryption is
+equivalent to CMEK. If durable production data is added to an ordinary PVC, it
+must select `mcp-sensitive` or a new workload-specific CMEK StorageClass.
+Moving node boot disks to CMEK is possible, but GKE requires a replacement node
+pool; it should be treated as a separate migration because disabling the key
+can prevent nodes from booting. The GKE control-plane disks also remain
+Google-managed even when workload node and attached disks use CMEK.
 
 Google services use envelope encryption: the service encrypts data with data
 encryption keys and the Cloud KMS HSM key wraps those keys. The HSM key is not
