@@ -185,13 +185,31 @@ the MCP reader, enables GKE cost allocation, and configures the expected table
 name. The only remaining one-time action is Billing → Billing export →
 BigQuery export → Detailed usage cost → Enable: select project `yourown-chat`
 and dataset `billing`, then save. Google creates
-`gcp_billing_export_resource_v1_01E41D_B879C6_3494D7`; initial EU backfill can
+`gcp_billing_export_resource_v1_01B729_537989_CCA4BB`; initial EU backfill can
 take up to five days and starts at the beginning of the previous month. The
 one-time toggle is not available through Terraform or `gcloud`. Billing account
 budgets additionally require `roles/billing.viewer` for that GSA on the linked
 billing account; this account-scoped grant cannot be derived from project IAM.
 Without the table, profile/budget/recommendation tools remain usable and cost
 analysis returns an explicit configuration error.
+
+The previous account `01E41D-B879C6-3494D7` exports to the Terraform-managed
+EU dataset in the isolated `yourown-chat-billing-legacy` FinOps project linked
+to that legacy account. Google requires the dataset project and exported
+billing account to match, so it must not be pointed at
+`yourown-chat.billing` after `yourown-chat` has moved to the USD account. Its
+expected table is
+`yourown-chat-billing-legacy.billing.gcp_billing_export_resource_v1_01E41D_B879C6_3494D7`.
+Keep both managed export tables immutable and use a BigQuery view or `UNION
+ALL` when historical cross-account analysis is enabled. The production adapter
+currently reads only the active USD table.
+
+Detailed usage cost is the required export because it includes Standard fields
+plus resource attribution. Standard is redundant for this adapter. Pricing
+data is useful for forecast and contract-price comparisons but is not
+retroactive; CUD metadata is useful only after commitments are purchased.
+FOCUS (Preview) is useful for future normalized multi-cloud reporting but does
+not replace the native Detailed export used for GCP resource optimization.
 
 The Google Cloud aggregator terminates Streamable HTTP itself and shares one
 official Observability stdio child across all client sessions. This avoids the

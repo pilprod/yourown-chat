@@ -10,13 +10,14 @@ managed end-to-end with **HCP Terraform Stacks** — production practices on a
 
 ## What's inside
 
-Everything lives in one GCP project and is described by **four Terraform
-Stacks** (three data-linked plus one independent governance catalog), each
-owning a piece with its own state and blast radius:
+Runtime infrastructure lives in the `yourown-chat` GCP project, with one
+isolated legacy FinOps project for the former billing account. Four Terraform
+Stacks (three data-linked plus one independent governance catalog) own the
+platform with separate state and blast radius:
 
 | Stack | Directory | What it owns | Changes |
 |---|---|---|---|
-| **platform-gcp** | `terraform/platform-gcp` | The stateful foundation: APIs, network + reserved ingress IP, CMEK key, GKE cluster, Cloud SQL, object storage, container registry, billing-export dataset, Workload Identity SAs | Rarely |
+| **platform-gcp** | `terraform/platform-gcp` | The stateful foundation: APIs, network + reserved ingress IP, CMEK key, GKE cluster, Cloud SQL, object storage, container registry, active billing dataset, isolated legacy billing project/dataset, Workload Identity SAs | Rarely |
 | **cloudflare** | `terraform/cloudflare` | The public edge for `yourown.chat`: DNS, TLS/security settings, DNSSEC, WAF, Origin CA cert + the origin-TLS secrets it fills | Sometimes |
 | **app-gcp** | `terraform/app-gcp` | App secrets; independent Mattermost and MCP delivery pipelines; persistent dev PostgreSQL; image CI; tag routing; cluster bootstrap | Often |
 | **agent-registry-gcp** | `terraform/agent-registry-gcp` | Google Cloud Agent Registry catalog entries for external APIs and vendor-hosted MCP servers; GKE and Google MCPs register automatically | Rarely |
@@ -356,12 +357,12 @@ short version:
    Mattermost operator, apply manifests. The bucket and Workload Identity
    emails are injected automatically via Cloud Deploy deploy parameters; only
    the ingress `loadBalancerIP` and the dev-team RBAC principal stay manual.
-7. **Enable Detailed Billing Export** once in Billing Console after the
-   platform creates `yourown-chat.billing`: open **Billing → Billing export →
-   BigQuery export → Detailed usage cost → Enable**, select project
-   `yourown-chat` and dataset `billing`, then save. This one-time toggle is not
-   available through Terraform or `gcloud`; all later cost analysis runs
-   automatically through MCP.
+7. **Enable Detailed Billing Export** once per billing account in Billing
+   Console. For the active USD account select project `yourown-chat` and
+   dataset `billing`. Preserve the legacy THB history in a separate FinOps
+   project linked to the old account; a project cannot be linked to both
+   billing accounts. The exact account checks and export choices are documented
+   in [Cloud Billing account access and export](#cloud-billing-account-access-and-export).
 
 ### Day-2 flows
 
@@ -715,16 +716,110 @@ for ROLE in \
 done
 ```
 
-Cloud Billing account IAM is outside project IAM. Grant the production Google
-Cloud MCP identity read-only access once as the billing-account owner; do not
-give `terraform-apply` the much broader `roles/billing.admin` merely to manage
-this one binding:
+### Cloud Billing account access and export
+
+Cloud Billing account IAM is outside project IAM. The active USD billing
+account is `01B729-537989-CCA4BB`; the Payments account nickname is
+`YourOwn.Chat · USD · Argentina`. The nickname is only a Payments UI label and
+does not change the Cloud Billing account `displayName` returned by the API.
+
+Grant only the production Google Cloud MCP identity read-only account access;
+`terraform-apply` needs project/dataset permissions but does not need
+`roles/billing.admin`:
 
 ```sh
-gcloud billing accounts add-iam-policy-binding 01E41D-B879C6-3494D7 \
+export BILLING_ACCOUNT_ID="01B729-537989-CCA4BB"
+
+gcloud billing accounts add-iam-policy-binding "$BILLING_ACCOUNT_ID" \
   --member="serviceAccount:mcp-servers@yourown-chat.iam.gserviceaccount.com" \
   --role="roles/billing.viewer"
+
+gcloud billing accounts describe "$BILLING_ACCOUNT_ID" \
+  --format="yaml(name,displayName,currencyCode,open)"
+
+gcloud billing projects describe yourown-chat \
+  --format="yaml(projectId,billingAccountName,billingEnabled)"
+
+gcloud billing accounts get-iam-policy "$BILLING_ACCOUNT_ID" \
+  --flatten="bindings[].members" \
+  --filter="bindings.members:mcp-servers@yourown-chat.iam.gserviceaccount.com" \
+  --format="table(bindings.role,bindings.members)"
 ```
+
+The important verification values are:
+
+```yaml
+currencyCode: USD
+name: billingAccounts/01B729-537989-CCA4BB
+open: true
+---
+billingAccountName: billingAccounts/01B729-537989-CCA4BB
+billingEnabled: true
+projectId: yourown-chat
+```
+
+`displayName` can remain `Argentina`; it is independent of the Payments
+account nickname.
+
+Billing-related identities have deliberately different scopes:
+
+| Identity | Scope | Purpose |
+|---|---|---|
+| `mcp-servers@yourown-chat.iam.gserviceaccount.com` | Billing account `roles/billing.viewer`; project `roles/bigquery.jobUser`; dataset `roles/bigquery.dataViewer` | Read billing profile/budgets and execute bounded, read-only cost queries |
+| `terraform-apply@yourown-chat.iam.gserviceaccount.com` | Project `roles/bigquery.user` | Create and manage the `billing` dataset; it has no Billing Account Admin grant |
+| `billing-export-bigquery@system.gserviceaccount.com` | Dataset owner, added automatically by Google | Create and continuously fill the managed export table; do not remove this binding |
+
+#### Detailed cost history for both billing accounts
+
+Enable the active export under billing account `01B729-537989-CCA4BB`:
+
+1. Open **Billing → Billing export → BigQuery export**.
+2. Under **Detailed usage cost**, select **Edit settings** or **Enable**.
+3. Select project `yourown-chat`, dataset `billing`, and save.
+4. Wait for
+   `yourown-chat.billing.gcp_billing_export_resource_v1_01B729_537989_CCA4BB`.
+
+Keep the legacy account `01E41D-B879C6-3494D7` separate. Google requires the
+project that contains an export dataset to be linked to the same billing
+account as the exported data, while one project can be linked to only one
+billing account. The dedicated setup is described in
+[Provision the legacy billing archive](#8-provision-the-legacy-billing-archive).
+After `platform-gcp` creates the project and dataset:
+
+1. Keep the legacy billing account open until export catch-up and late
+   adjustments have completed.
+2. In the legacy account's **Billing export** page enable **Detailed usage
+   cost** for that project and dataset.
+3. Wait for
+   `yourown-chat-billing-legacy.billing.gcp_billing_export_resource_v1_01E41D_B879C6_3494D7`.
+4. Verify that the Terraform-managed MCP dataset reader is present. Query jobs
+   continue to run in `yourown-chat`, where the identity already has
+   `roles/bigquery.jobUser`.
+
+For an EU multi-region dataset, the first Detailed export normally backfills
+from the beginning of the previous month and can take up to five days to catch
+up. It does not reconstruct older periods. Keep the two Google-managed tables
+unchanged and combine them through a view or `UNION ALL`; do not copy legacy
+rows into the active export table. The current MCP production configuration
+queries the active USD table only. The legacy table is retained independently
+until the cost adapter is explicitly configured for a union view.
+
+#### Which Billing export options to enable
+
+| Export | What it contains | Decision for this stack |
+|---|---|---|
+| **Detailed usage cost** | Everything in Standard plus resource-level cost attribution for resources such as VMs, disks and GKE workloads | **Enable for both accounts.** This is the source used by `billing_analyze_costs` |
+| **Standard usage cost** | Account, invoice, service, SKU, project, labels, location, usage, cost, credits and currency, but no resource-level attribution | Optional and redundant for the current MCP because Detailed is a superset |
+| **Pricing data** | The billing account's daily SKU prices, tiers, consumption models and effective dates | Enable on the active account if forecasting or list-price-versus-effective-price analysis is needed; it is not retroactive and can take up to 48 hours initially |
+| **CUD metadata** (Preview) | Daily snapshots of spend-based committed-use subscriptions and entitlement metadata | Leave disabled until the account buys CUDs or commitment coverage analysis is required |
+| **FOCUS usage cost** (Preview) | A normalized FinOps Open Cost and Usage Specification table in a Google-managed immutable dataset | Optional; useful later for cross-cloud AWS/GCP reporting, but not a replacement for Detailed resource analysis |
+
+Enabling Standard in addition to Detailed does not give the MCP more data.
+Pricing export requires BigQuery Data Transfer Service and stronger one-time
+setup permissions; that API is already enabled by `platform-gcp`. See Google's
+[Billing export setup](https://docs.cloud.google.com/billing/docs/how-to/export-data-bigquery-setup)
+and [Billing table reference](https://docs.cloud.google.com/billing/docs/how-to/export-data-bigquery-tables)
+for the current schemas and availability rules.
 
 Why each role, in one line each:
 
@@ -756,7 +851,66 @@ gcloud projects get-iam-policy "$PROJECT_ID" \
   --format="table(bindings.role, bindings.members)"
 ```
 
-### 8. Create the Cloud Build GitHub connection
+### 8. Provision the legacy billing archive
+
+The project moved from the former THB billing account
+`01E41D-B879C6-3494D7` to the active USD account
+`01B729-537989-CCA4BB`. Google requires an export dataset's project to be
+linked to the account being exported. We bootstrap a second, non-networked
+FinOps project once; `platform-gcp` owns its API, dataset and reader access:
+
+| Resource | Value |
+|---|---|
+| Organization | `papou.work` (`374501806996`) |
+| Project | `yourown-chat-billing-legacy` |
+| Billing account | `01E41D-B879C6-3494D7` |
+| Dataset | `billing`, EU multi-region, no table expiration |
+| Expected table | `gcp_billing_export_resource_v1_01E41D_B879C6_3494D7` |
+| Reader | `mcp-servers@yourown-chat.iam.gserviceaccount.com` |
+
+Create and link the empty archive project once with your billing-owner
+identity. This avoids giving the Terraform service account organization-wide
+Project Creator:
+
+```sh
+export ORGANIZATION_ID="374501806996"
+export LEGACY_BILLING_ACCOUNT_ID="01E41D-B879C6-3494D7"
+export APPLY_SA="terraform-apply@yourown-chat.iam.gserviceaccount.com"
+
+gcloud projects create yourown-chat-billing-legacy \
+  --name="YourOwn Chat legacy billing" \
+  --organization="$ORGANIZATION_ID" \
+  --no-enable-cloud-apis
+
+gcloud billing projects link yourown-chat-billing-legacy \
+  --billing-account="$LEGACY_BILLING_ACCOUNT_ID"
+
+for ROLE in \
+  roles/serviceusage.serviceUsageAdmin \
+  roles/bigquery.admin; do
+  gcloud projects add-iam-policy-binding yourown-chat-billing-legacy \
+    --member="serviceAccount:$APPLY_SA" \
+    --role="$ROLE" \
+    --condition=None
+done
+```
+
+Apply `platform-gcp`. Terraform enables BigQuery, creates the EU dataset with
+`delete_contents_on_destroy = false`, and grants the MCP dataset read access.
+Terraform has no organization-wide role and no permission to relink or close
+either billing account.
+
+One console action remains because Google exposes no public Terraform or
+`gcloud` operation for this setting: select the **legacy billing account**,
+then **Billing → Billing export → BigQuery export → Detailed usage cost →
+Enable**, project `yourown-chat-billing-legacy`, dataset `billing`.
+
+Do not enable Standard solely for this archive: Detailed is its resource-level
+superset. With the EU multi-region, the initial export normally backfills from
+the beginning of the previous month and can take up to five days. Keep the old
+account open until catch-up and late adjustments finish.
+
+### 9. Create the Cloud Build GitHub connection
 
 Two repos feed CI/CD: `pilprod/mattermost` (image source) and
 `pilprod/yourown-chat` (this repo, holds `helm/`). Both link to **one** shared
@@ -785,7 +939,7 @@ To rotate or re-scope access later, re-authorize the App from the console or
 GitHub settings — the connection keeps its name and ID, so Terraform doesn't
 change. If you ever recreate it, reuse the same name.
 
-### 9. Create the four Stacks in HCP Terraform
+### 10. Create the four Stacks in HCP Terraform
 
 All four live in the **same HCP project** and connect to this repo — only the
 working directory differs. Names used by `upstream_input` must match
@@ -805,7 +959,7 @@ its state: in HCP Terraform open **Stack → Settings**, change the name to
 
 Then:
 
-1. Attach the Cloudflare variable set (step 10) to the **cloudflare** stack.
+1. Attach the Cloudflare variable set (step 11) to the **cloudflare** stack.
 2. Plan + apply **platform-gcp** first. The first plan proves federation end to
    end — if the token is rejected, re-check the provider's
    `--attribute-condition` and `--allowed-audiences` against the
@@ -821,7 +975,7 @@ Then:
 > delete the old one. State doesn't carry over — with a torn-down environment
 > everything creates fresh; with live infrastructure you'd need state moves.
 
-### 10. Create the Cloudflare API token
+### 11. Create the Cloudflare API token
 
 The cloudflare stack manages the `yourown.chat` zone. Cloudflare has no
 Workload Identity path, so its API credential is a static secret.
@@ -832,7 +986,7 @@ capability-sync recovery. Routine rollouts rely on Cloudflare's background
 catalog refresh and do not mutate shared Portal state. Payload versions stay
 outside Terraform state; Terraform manages the secret metadata and IAM only.
 
-#### 10.1 Scope the token
+#### 11.1 Scope the token
 
 Cloudflare dashboard → **My Profile → API Tokens → Create Token → Create
 Custom Token**, scoped to the `yourown.chat` zone and, for Zero Trust, the

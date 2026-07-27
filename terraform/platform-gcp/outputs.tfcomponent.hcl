@@ -87,6 +87,18 @@ output "billing_detailed_export_table" {
   value       = component.billing_export.detailed_export_table
 }
 
+output "legacy_billing_export_project_id" {
+  type        = string
+  description = "Dedicated project linked to the former billing account."
+  value       = component.billing_legacy.project_id
+}
+
+output "legacy_billing_detailed_export_table" {
+  type        = string
+  description = "Expected legacy Detailed usage table created after the one-time Billing Console toggle."
+  value       = component.billing_legacy.detailed_export_table
+}
+
 # --- Workload Identity -----------------------------------------------------------
 output "workload_identity_emails" {
   type        = map(string)

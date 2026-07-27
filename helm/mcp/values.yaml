@@ -187,7 +187,7 @@ servers:
       GOOGLE_CLOUD_BILLING_PROJECT: "yourown-chat"
       # Cloud Billing creates this table after Detailed usage cost export is
       # enabled for the Terraform-managed `billing` dataset.
-      GOOGLE_CLOUD_BILLING_EXPORT_TABLE: "yourown-chat.billing.gcp_billing_export_resource_v1_01E41D_B879C6_3494D7"
+      GOOGLE_CLOUD_BILLING_EXPORT_TABLE: "yourown-chat.billing.gcp_billing_export_resource_v1_01B729_537989_CCA4BB"
       GOOGLE_CLOUD_BILLING_EXPORT_LOCATION: "EU"
       # Hard per-query ceiling: 1 GB scanned; over-limit queries fail for free.
       GOOGLE_CLOUD_BILLING_MAXIMUM_BYTES_BILLED: "1000000000"

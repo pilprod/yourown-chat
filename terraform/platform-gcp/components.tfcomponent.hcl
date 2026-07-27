@@ -181,6 +181,28 @@ component "billing_export" {
   }
 }
 
+# The former THB billing account cannot export into `yourown-chat.billing`
+# after the application project moved to the USD account. Keep its history in
+# an isolated, non-networked FinOps project and query it cross-project.
+component "billing_legacy" {
+  source = "./modules/billing-legacy"
+
+  inputs = {
+    project_id         = var.legacy_billing_project_id
+    billing_account_id = var.legacy_billing_account_id
+    dataset_id         = "billing"
+    location           = "EU"
+    reader_member      = component.workload_identity_mcp.iam_member
+    labels             = local.common_labels
+  }
+
+  providers = {
+    google = provider.google.this
+  }
+
+  depends_on = [component.workload_identity_mcp]
+}
+
 # Disposable dev Google Cloud MCP can inspect observability data but cannot
 # promote or approve Cloud Deploy releases.
 component "workload_identity_mcp_dev" {

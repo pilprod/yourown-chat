@@ -30,6 +30,16 @@ variable "billing_account_id" {
   description = "Cloud Billing account exported to the project BigQuery dataset."
 }
 
+variable "legacy_billing_project_id" {
+  type        = string
+  description = "Dedicated FinOps project used only to retain the former billing account's Detailed export."
+}
+
+variable "legacy_billing_account_id" {
+  type        = string
+  description = "Former Cloud Billing account retained for historical Detailed usage cost export."
+}
+
 variable "environment" {
   type        = string
   description = "Environment name (drives labels only; resource names are role-based or regional, never environment-scoped). The single-cluster budget default uses 'prod' as the platform cluster; dev workloads run as low-priority tenants on the shared node pool."
