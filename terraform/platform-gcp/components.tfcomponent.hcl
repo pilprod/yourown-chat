@@ -141,10 +141,6 @@ component "workload_identity_mcp" {
     display_name       = "Google Cloud MCP workload identity"
     namespace          = local.ns.mcp.namespace
     ksa_name           = local.ns.mcp.ksa
-    billing_account_id = var.billing_account_id
-    billing_account_roles = [
-      "roles/billing.viewer",
-    ]
     project_roles = [
       "roles/logging.viewer",
       "roles/monitoring.viewer",

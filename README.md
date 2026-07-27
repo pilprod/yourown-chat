@@ -497,6 +497,17 @@ for ROLE in \
 done
 ```
 
+Cloud Billing account IAM is outside project IAM. Grant the production Google
+Cloud MCP identity read-only access once as the billing-account owner; do not
+give `terraform-apply` the much broader `roles/billing.admin` merely to manage
+this one binding:
+
+```sh
+gcloud billing accounts add-iam-policy-binding 01E41D-B879C6-3494D7 \
+  --member="serviceAccount:mcp-servers@yourown-chat.iam.gserviceaccount.com" \
+  --role="roles/billing.viewer"
+```
+
 Why each role, in one line each:
 
 | Role | Grants |
