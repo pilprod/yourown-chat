@@ -258,6 +258,13 @@ resource "cloudflare_zero_trust_access_ai_controls_mcp_portal" "this" {
       }
     ]
   }]
+
+  lifecycle {
+    # The Portal holds the client-facing OAuth contract. Hostname changes must
+    # be supported in place by Cloudflare; never silently replace the Portal
+    # and invalidate every registered client/grant.
+    prevent_destroy = true
+  }
 }
 
 # The Portal API does not create DNS when called by Terraform.
@@ -269,4 +276,10 @@ resource "cloudflare_dns_record" "mcp_portal" {
   proxied = true
   ttl     = 1
   comment = "Cloudflare MCP Portal (Managed by Terraform)."
+
+  lifecycle {
+    # A DNS label rename is expected to be an in-place provider update. Stop
+    # the plan if the provider ever models it as delete/create.
+    prevent_destroy = true
+  }
 }
