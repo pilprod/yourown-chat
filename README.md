@@ -708,18 +708,21 @@ flowchart LR
 flowchart LR
   GM["Google-managed encryption at rest"] --> BQ["BigQuery billing dataset"]
   GM --> AR["Artifact Registry"]
-  GM --> ND["GKE node and default PVC disks"]
+  GM --> ND["GKE general-pool<br/>node boot disks"]
+  GM --> DP["dev-only default PVCs<br/>Mattermost + PostgreSQL"]
 ```
 
 The billing dataset is separate from application data and gives the Google
 Cloud MCP read-only cost visibility. Google-managed encryption is still
 encryption at rest, but those services are deliberately not presented as
-CMEK-controlled in this configuration. Node boot disks hold the Container
-Optimized OS and disposable pod/runtime data; the ordinary PVCs currently hold
-only replaceable dev Mattermost and dev PostgreSQL data. Production Mattermost
-state is in CMEK-protected Cloud SQL and GCS, Kubernetes Secrets are
-application-layer encrypted with CMEK before etcd persistence, and the only
-stateful MCP session uses the `mcp-sensitive` CMEK StorageClass.
+CMEK-controlled in this configuration. There is no separate dev node pool:
+dev and production pods share the autoscaling `general` pool and Kubernetes
+PriorityClasses decide scheduling/preemption priority. Its boot disks hold the
+Container Optimized OS and disposable pod/runtime data. Default-class PVCs
+currently hold only replaceable dev Mattermost and dev PostgreSQL data.
+Production Mattermost state is in CMEK-protected Cloud SQL and GCS, Kubernetes
+Secrets are application-layer encrypted with CMEK before etcd persistence,
+and the only stateful MCP session uses the `mcp-sensitive` CMEK StorageClass.
 
 ### Build and release flow
 
@@ -1132,7 +1135,8 @@ not imply that every Google or Cloudflare resource uses it.
 | Personal WhatsApp session PVC | The `mcp-sensitive` StorageClass passes the HSM CMEK to Persistent Disk CSI | Mounted only by the personal WhatsApp workload in its isolated namespace |
 | BigQuery billing export | Google-managed encryption at rest; no dataset CMEK is configured | Dataset-level `roles/bigquery.dataViewer` for the Google Cloud MCP and a bounded 1 GB/query limit |
 | Artifact Registry images | Google-managed encryption at rest because `artifact_registry_kms_key_name = null` | Regional private repository, IAM-scoped pulls and explicitly bounded Artifact Analysis scan windows |
-| GKE node disks and ordinary PVCs | Google-managed encryption at rest; only `mcp-sensitive` explicitly selects CMEK | Private nodes, Shielded Nodes and workload/namespace access controls |
+| GKE `general` node-pool boot disks | Google-managed encryption at rest; the single shared pool has no dedicated dev nodes | Private nodes, Shielded Nodes, disposable Container Optimized OS/runtime data and Kubernetes PriorityClasses |
+| Dev Mattermost and PostgreSQL PVCs | Google-managed encryption through the default StorageClass; these are replaceable dev-only data | `dev` namespace isolation and low scheduling priority; production state does not use these volumes |
 | Network traffic | TLS at the public Cloudflare edge and Full (Strict) TLS to ingress; Cloud SQL forces encrypted connections | Cloudflare-only ingress, private cluster networking, NetworkPolicy and Cloud NAT egress |
 
 Google-managed encryption is an acceptable baseline for the node and dev-disk
