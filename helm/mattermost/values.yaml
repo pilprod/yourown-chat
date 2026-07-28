@@ -29,6 +29,6 @@ mattermost_smtp_enabled: false
 mattermost_smtp_server: "smtp-relay.gmail.com"
 mattermost_smtp_port: "587"
 mattermost_smtp_connection_security: "STARTTLS"
-mattermost_smtp_feedback_name: "Mattermost"
+mattermost_smtp_feedback_name: "YourOwn.Chat"
 mattermost_smtp_feedback_email: ""
 mattermost_smtp_reply_to: ""

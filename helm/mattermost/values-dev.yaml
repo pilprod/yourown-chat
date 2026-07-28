@@ -4,6 +4,6 @@ mattermost_google_auth_enabled: false
 mattermost_google_hosted_domains: "papou.work,papou.email"
 mattermost_google_email_domains: "papou.email"
 mattermost_smtp_enabled: true
-mattermost_smtp_feedback_name: "Mattermost Dev"
+mattermost_smtp_feedback_name: "YourOwn.Chat"
 mattermost_smtp_feedback_email: "noreply@yourown.chat"
 mattermost_smtp_reply_to: "ilya@papou.email"
