@@ -15,9 +15,14 @@ slug() {
 
 case "${source_ref}" in
   refs/heads/release-* | release-*)
-    image_version="$(printf '%s' "${source_ref}" | sed -E 's|^refs/heads/||; s/^release-//')"
+    preview_release="true"
+    image_version="$(
+      printf '%s' "${source_ref}" |
+        sed -E 's|^refs/heads/||; s/^release-//; s/-patched$//'
+    )"
     ;;
   *)
+    preview_release="false"
     image_version="$(printf '%s' "${source_ref}" | sed -E 's/^v//; s/-patched$//')"
     ;;
 esac
@@ -36,7 +41,13 @@ image_slug="$(slug "${image_version}")"
 short_commit="$(printf '%s' "${commit_sha}" | tr '[:upper:]' '[:lower:]' | cut -c1-8)"
 
 short_build="$(slug "${build_id}" | cut -c1-8)"
-identity="${image_slug}-img-${short_commit}"
+if [[ "${preview_release}" == "true" ]]; then
+  # A preview is already identified by its source commit. Keep the release ID
+  # readable and leave implementation details such as "patched" and "img" out.
+  identity="${image_slug}-${short_commit}"
+else
+  identity="${image_slug}-img-${short_commit}"
+fi
 
 # Cloud Deploy derives rollout IDs by appending the initial target suffix.
 # Account for the concrete delivery pipeline target so previews with a longer
@@ -45,7 +56,7 @@ rollout_suffix="-to-$(slug "${target_name}")-0001"
 max_release_length=$((63 - ${#rollout_suffix}))
 release_id="mattermost-${identity}"
 
-if [[ -n "${short_build}" ]]; then
+if [[ "${preview_release}" == "false" && -n "${short_build}" ]]; then
   release_with_build="${release_id}-${short_build}"
   if ((${#release_with_build} <= max_release_length)); then
     release_id="${release_with_build}"
@@ -59,7 +70,11 @@ if ((${#release_id} > max_release_length)); then
 fi
 
 if ((${#release_id} > max_release_length)); then
-  fixed_length=$((3 + 5 + ${#short_commit}))
+  if [[ "${preview_release}" == "true" ]]; then
+    fixed_length=$((3 + 1 + ${#short_commit}))
+  else
+    fixed_length=$((3 + 5 + ${#short_commit}))
+  fi
   readable_length=$((max_release_length - fixed_length))
   ((readable_length > 0)) || {
     printf 'Mattermost release ID cannot retain the source commit\n' >&2
@@ -70,7 +85,11 @@ if ((${#release_id} > max_release_length)); then
       cut -c1-"${readable_length}" |
       sed -E 's/-+$//'
   )"
-  release_id="mm-${readable_version}-img-${short_commit}"
+  if [[ "${preview_release}" == "true" ]]; then
+    release_id="mm-${readable_version}-${short_commit}"
+  else
+    release_id="mm-${readable_version}-img-${short_commit}"
+  fi
 fi
 
 printf '%s\n' "${release_id}"

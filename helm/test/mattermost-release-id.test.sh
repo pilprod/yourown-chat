@@ -22,7 +22,7 @@ assert_id() {
 }
 
 assert_id \
-  "mm-11-9-patched-img-deadbeef" \
+  "mattermost-11-9-deadbeef" \
   "mattermost-preview-dev" \
   "release-11.9-patched" \
   "deadbeefcafebabe" \
@@ -38,7 +38,7 @@ assert_id \
   "mattermost-dev"
 
 assert_id \
-  "mm-11-10-patched-img-deadbeef" \
+  "mattermost-11-10-deadbeef" \
   "mattermost-preview-dev" \
   "refs/heads/release-11.10-patched" \
   "deadbeefcafebabe" \
@@ -57,7 +57,7 @@ preview_rollout_suffix="-to-mattermost-preview-dev-0001"
   printf 'expected mm- prefix fallback, got %s\n' "${long_id}" >&2
   exit 1
 }
-[[ "${long_id}" == *-img-deadbeef ]] || {
+[[ "${long_id}" == *-deadbeef ]] || {
   printf 'expected source commit to be retained, got %s\n' "${long_id}" >&2
   exit 1
 }
