@@ -92,18 +92,12 @@ variable "image_name" {
 
 variable "builds" {
   type = map(object({
-    tag_regex       = string
-    release_channel = optional(string, "production")
+    tag_regex = string
   }))
-  description = "Map of trigger name => tag regex and release channel. Production images may be promoted dev -> prod; experimental images are built and deployed to dev only."
+  description = "Map of trigger name => tag regex. The build derives production or experimental release-channel from the immutable source tag."
   default = {
     mattermost = {
-      tag_regex       = "^v[0-9]+\\.[0-9]+\\.[0-9]+-patched$"
-      release_channel = "production"
-    }
-    mattermost-dev = {
-      tag_regex       = "^v[0-9]+\\.[0-9]+\\.[0-9]+-dev\\.[0-9]+$"
-      release_channel = "experimental"
+      tag_regex = "^v[0-9]+\\.[0-9]+\\.[0-9]+-(patched|dev\\.[0-9]+)$"
     }
   }
 }

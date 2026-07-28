@@ -81,16 +81,12 @@ deployment "eu" {
     github_connection_name = "pilprod-github"
     github_remote_uri      = "https://github.com/pilprod/mattermost.git"
     image_name             = "mattermost"
-    # Production source tags can be promoted dev -> prod. Product-compliance
-    # experiments build the same reproducible image but stop after dev.
+    # One trigger builds both production and dev-only product tags. The build
+    # derives release-channel from the matched tag; guarded promotion refuses
+    # experimental releases.
     builds = {
       mattermost = {
-        tag_regex       = "^v[0-9]+\\.[0-9]+\\.[0-9]+-patched$"
-        release_channel = "production"
-      }
-      mattermost-dev = {
-        tag_regex       = "^v[0-9]+\\.[0-9]+\\.[0-9]+-dev\\.[0-9]+$"
-        release_channel = "experimental"
+        tag_regex = "^v[0-9]+\\.[0-9]+\\.[0-9]+-(patched|dev\\.[0-9]+)$"
       }
     }
 

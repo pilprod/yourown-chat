@@ -962,6 +962,11 @@ verifies the replica count before rejecting any already-created pending
 production rollout. If no prod rollout was created, `deploy_cleanup_dev`
 performs only the verified scale-to-zero step.
 
+The same `mattermost-image` trigger accepts both `-patched` and `-dev.N`
+source tags and derives the release channel from the tag. There is no separate
+experimental Cloud Build trigger; isolation is enforced by immutable release
+metadata and the guarded promotion action.
+
 Mattermost builds publish OCI SBOM and max-mode BuildKit provenance
 attestations. Before a Cloud Deploy release exists, the pipeline pulls the
 pushed image and verifies that its binary version, immutable source commit,

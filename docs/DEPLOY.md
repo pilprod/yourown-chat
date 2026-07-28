@@ -87,10 +87,11 @@ git tag v11.9.0-dev.1
 git push origin v11.9.0-dev.1
 ```
 
-The dedicated trigger builds and pushes the immutable image, creates the
-Cloud Deploy release with `release-channel=experimental`, and deploys/verifies
-the first `mattermost-dev` target. Google Cloud MCP refuses to plan promotion
-of that release to `mattermost-prod`.
+The single Mattermost image trigger accepts both production `-patched` and
+experimental `-dev.N` tags. It derives `release-channel` from the immutable
+tag, creates the Cloud Deploy release, and deploys/verifies the first
+`mattermost-dev` target. Google Cloud MCP refuses to plan promotion of an
+experimental release to `mattermost-prod`.
 
 Every Mattermost build publishes BuildKit SBOM and max-mode provenance
 attestations alongside the immutable registry digest. Before Cloud Deploy

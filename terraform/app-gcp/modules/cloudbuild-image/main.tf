@@ -183,6 +183,9 @@ resource "google_cloudbuild_trigger" "this" {
         "-ceu",
         <<-EOT
           image="${local.image_repo_path}:$TAG_NAME"
+          release_channel="$$(bash \
+            /workspace/yourown-chat/helm/mattermost-release-channel.sh \
+            "$TAG_NAME")"
           digest="$$(gcloud artifacts docker images describe "$$image" --format='value(image_summary.digest)')"
           deploy_parameters="$$(bash \
             /workspace/yourown-chat/helm/mattermost-image-parameters.sh \
@@ -214,7 +217,7 @@ resource "google_cloudbuild_trigger" "this" {
             --skaffold-file "skaffold-mattermost.yaml" \
             --gcs-source-staging-dir "gs://${var.mattermost_delivery.source_bucket_name}/source" \
             --deploy-parameters "$$deploy_parameters" \
-            --annotations "source-repo=pilprod/mattermost,git-tag=$TAG_NAME,git-sha=$COMMIT_SHA,build-id=$BUILD_ID,image-digest=$$digest,release-channel=${each.value.release_channel}"
+            --annotations "source-repo=pilprod/mattermost,git-tag=$TAG_NAME,git-sha=$COMMIT_SHA,build-id=$BUILD_ID,image-digest=$$digest,release-channel=$$release_channel"
         EOT
       ]
     }

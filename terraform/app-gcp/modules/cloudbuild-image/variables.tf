@@ -62,23 +62,15 @@ variable "dockerfile" {
 
 variable "builds" {
   type = map(object({
-    tag_regex       = string
-    release_channel = optional(string, "production")
+    tag_regex = string
   }))
-  description = "Map of trigger name => tag regex and release channel. Every trigger builds the same immutable image path; production releases may be promoted, while experimental releases stop after dev."
+  description = "Map of trigger name => tag regex. The build derives production or experimental release-channel from the immutable source tag."
 
   validation {
     condition     = length(var.builds) > 0
     error_message = "Provide at least one build."
   }
 
-  validation {
-    condition = alltrue([
-      for build in values(var.builds) :
-      contains(["production", "experimental"], build.release_channel)
-    ])
-    error_message = "release_channel must be production or experimental."
-  }
 }
 
 variable "mattermost_delivery" {
