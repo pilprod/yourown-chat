@@ -6,11 +6,5 @@ serviceAccount:
   create: false
 
 servers:
-  terraform:
-    enabled: false
   google-cloud:
-    enabled: false
-  whatsapp-business:
-    enabled: false
-  whatsapp-personal:
     enabled: false

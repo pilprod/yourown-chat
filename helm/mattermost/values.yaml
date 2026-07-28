@@ -18,4 +18,16 @@ aop_verify_client: ""
 mattermost_mfa_enabled: false
 mattermost_mfa_enforced: false
 mattermost_google_auth_enabled: false
-mattermost_google_workspace_domain: ""
+mattermost_google_hosted_domains: ""
+mattermost_google_email_domains: ""
+
+# Google Workspace SMTP Relay. Production/dev overlays opt in with distinct
+# From addresses. Relay authentication is the Terraform-managed static Cloud
+# NAT IP, so no SMTP user password is stored in Kubernetes or Terraform.
+mattermost_smtp_enabled: false
+mattermost_smtp_server: "smtp-relay.gmail.com"
+mattermost_smtp_port: "587"
+mattermost_smtp_connection_security: "STARTTLS"
+mattermost_smtp_feedback_name: "Mattermost"
+mattermost_smtp_feedback_email: ""
+mattermost_smtp_reply_to: ""

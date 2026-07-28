@@ -32,13 +32,8 @@ deployment "eu" {
       }
       hcp-terraform-api = {
         display_name = "HCP Terraform API"
-        description  = "HCP Terraform v2 API used through the Terraform MCP server."
+        description  = "HCP Terraform v2 API used through the Terraform Stacks MCP server."
         url          = "https://app.terraform.io/api/v2"
-      }
-      meta-graph-api = {
-        display_name = "Meta Graph API"
-        description  = "Official Meta Graph API used by the WhatsApp Business MCP adapter and future Messenger/Instagram tools."
-        url          = "https://graph.facebook.com/v23.0"
       }
     }
 

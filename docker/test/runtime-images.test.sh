@@ -46,9 +46,6 @@ grep -Fq \
   'build_args+=(--build-arg "UPSTREAM_VERSION=${image_build_version}")' \
   "${repo_root}/docker/build-images.sh"
 grep -Fq \
-  'TERRAFORM_MCP_SOURCE=hashicorp/terraform-mcp-server@sha256:312d63756b5474df384b1844af55b58ca48cbe0996871e1d6c4239bfcd6fcd29' \
-  "${upstreams}"
-grep -Fq \
   'CLOUDFLARED_REVISION=3a2b45c2a511fcdd81b68c190938e4ffadbea5dc' \
   "${upstreams}"
 
@@ -65,8 +62,6 @@ done < "${catalog}"
 node_apps=(
   google-cloud
   terraform-stacks
-  whatsapp-business
-  whatsapp-personal
 )
 for app in "${node_apps[@]}"; do
   dockerfile="${repo_root}/docker/mcp/${app}/Dockerfile"

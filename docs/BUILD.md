@@ -119,9 +119,7 @@ docker/                         # one Artifact Registry repository
 ├── python
 ├── mcp-cloudflared
 ├── mcp-google-cloud
-├── mcp-terraform
-├── mcp-whatsapp-business
-└── mcp-whatsapp-personal
+└── mcp-terraform-stacks
 ```
 
 Each internal package gets an immutable `<git-sha>` tag and a moving `runtime`
@@ -132,12 +130,10 @@ is:
 base (pinned Alpine)
 ├── node
 │   ├── mcp-google-cloud
-│   ├── mcp-whatsapp-business
-│   └── mcp-whatsapp-personal
+│   └── mcp-terraform-stacks
 └── python
 ```
 
-Terraform MCP is copied from the current official release digest.
 Cloudflared is built from the exact commit behind an official release tag with
 a pinned patched Go toolchain because the corresponding upstream container can
 lag a Go security patch. Mattermost is built and released by its separate

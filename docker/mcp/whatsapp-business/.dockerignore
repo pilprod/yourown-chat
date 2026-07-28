@@ -1,8 +1,0 @@
-*
-!Dockerfile
-!package.json
-!package-lock.json
-!message-store.mjs
-!secret-env.mjs
-!server.mjs
-!webhook.mjs

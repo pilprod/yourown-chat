@@ -76,14 +76,11 @@ component "clouddeploy_mcp" {
         verify             = false
       },
       {
-        name              = "prod"
-        profiles = concat(
-          ["mcp-prod"],
-          var.mcp_whatsapp_personal_enabled ? ["mcp-whatsapp-personal-prod"] : [],
-        )
-        require_approval  = true
-        verify            = true
-        predeploy_actions = ["cleanup-mcp-dev"]
+        name                = "prod"
+        profiles            = ["mcp-prod"]
+        require_approval    = true
+        verify              = true
+        predeploy_actions   = ["cleanup-mcp-dev"]
         postdeploy_actions = var.mcp_capability_sync_enabled ? [
           "sync-cloudflare-mcp-capabilities",
         ] : []
@@ -94,10 +91,7 @@ component "clouddeploy_mcp" {
       mcp_secret_project        = var.project_id
       mcp_google_cloud_gsa      = lookup(var.workload_identity_emails, "mcp", "")
       mcp_google_cloud_dev_gsa  = lookup(var.workload_identity_emails, "mcp-dev", "")
-      mcp_terraform_gsa         = lookup(var.workload_identity_emails, "mcp-terraform", "")
       mcp_terraform_stacks_gsa  = lookup(var.workload_identity_emails, "mcp-terraform-stacks", "")
-      mcp_whatsapp_gsa          = lookup(var.workload_identity_emails, "mcp-whatsapp", "")
-      mcp_whatsapp_personal_gsa = lookup(var.workload_identity_emails, "mcp-whatsapp-personal", "")
       mcp_tunnel_gsa            = lookup(var.workload_identity_emails, "mcp-tunnel", "")
     }
 
@@ -166,45 +160,22 @@ component "secrets" {
         value     = "REPLACE_ME_GOOGLE_CLIENT_SECRET"
         accessors = []
       }
+      # Use a separate OAuth client for dev so its redirect URI and credential
+      # can be tested and rotated without expanding the production client's
+      # trust boundary.
+      "dev-mattermost-google-client-id" = {
+        value     = "REPLACE_ME_DEV_GOOGLE_CLIENT_ID"
+        accessors = []
+      }
+      "dev-mattermost-google-client-secret" = {
+        value     = "REPLACE_ME_DEV_GOOGLE_CLIENT_SECRET"
+        accessors = []
+      }
       # MCP credentials are read directly by GKE's Secret Manager CSI add-on.
       # Terraform manages only containers/IAM and never reads current values.
       "mcp-terraform-hcp-token" = {
-        value = "REPLACE_ME_HCP_TEAM_TOKEN"
-        accessors = [
-          for key in ["mcp-terraform", "mcp-terraform-stacks"] :
-          var.workload_identity_members[key]
-        ]
-      }
-      # WhatsApp Business uses Meta's official Cloud API. Its dedicated
-      # Workload Identity is the only runtime accessor.
-      "mcp-whatsapp-access-token" = {
-        value     = "REPLACE_ME_ACCESS_TOKEN"
-        accessors = [var.workload_identity_members["mcp-whatsapp"]]
-      }
-      "mcp-whatsapp-waba-id" = {
-        value     = "REPLACE_ME_WABA_ID"
-        accessors = [var.workload_identity_members["mcp-whatsapp"]]
-      }
-      "mcp-whatsapp-phone-number-id" = {
-        value     = "REPLACE_ME_PHONE_NUMBER_ID"
-        accessors = [var.workload_identity_members["mcp-whatsapp"]]
-      }
-      "mcp-whatsapp-app-secret" = {
-        value     = "REPLACE_ME_META_APP_SECRET"
-        accessors = [var.workload_identity_members["mcp-whatsapp"]]
-      }
-      "mcp-whatsapp-webhook-verify-token" = {
-        generate  = true
-        special   = false
-        length    = 48
-        accessors = [var.workload_identity_members["mcp-whatsapp"]]
-      }
-      # Static proxy credentials for the separate QR-linked personal client.
-      # Replace the seeded value with a socks5h:// or https:// URL through a
-      # new Secret Manager version before linking the device.
-      "mcp-whatsapp-personal-proxy-url" = {
-        value     = "REPLACE_ME_STATIC_SOCKS5H_OR_HTTPS_PROXY_URL"
-        accessors = [var.workload_identity_members["mcp-whatsapp-personal"]]
+        value     = "REPLACE_ME_HCP_TEAM_TOKEN"
+        accessors = [var.workload_identity_members["mcp-terraform-stacks"]]
       }
     }
   }
@@ -230,8 +201,10 @@ component "prod_secret_values" {
         mattermost_storage_secret_key = "mattermost-storage-secret-key"
         # Full resource IDs create a graph edge to the new containers/initial
         # versions, so the first app-gcp plan does not try to read them early.
-        mattermost_google_client_id     = component.secrets.secret_resource_ids["mattermost-google-client-id"]
-        mattermost_google_client_secret = component.secrets.secret_resource_ids["mattermost-google-client-secret"]
+        mattermost_google_client_id         = component.secrets.secret_resource_ids["mattermost-google-client-id"]
+        mattermost_google_client_secret     = component.secrets.secret_resource_ids["mattermost-google-client-secret"]
+        dev_mattermost_google_client_id     = component.secrets.secret_resource_ids["dev-mattermost-google-client-id"]
+        dev_mattermost_google_client_secret = component.secrets.secret_resource_ids["dev-mattermost-google-client-secret"]
       },
       var.manage_ingress_origin_tls ? {
         mattermost_origin_tls_cert = "mattermost-origin-tls-cert"
@@ -261,11 +234,8 @@ component "cluster_secrets" {
         # Every MCP server is an independent tenant.  This prevents a
         # compromised server from reaching another server merely because both
         # happen to be MCP workloads.  The Tunnel connector is isolated too.
-        mcp-terraform        = { labels = { tier = "prod", "part-of" = "yourown-chat", "mcp-server" = "terraform" } }
         mcp-terraform-stacks = { labels = { tier = "prod", "part-of" = "yourown-chat", "mcp-server" = "terraform-stacks" } }
         mcp-google-cloud     = { labels = { tier = "prod", "part-of" = "yourown-chat", "mcp-server" = "google-cloud" } }
-        mcp-whatsapp-business = { labels = { tier = "prod", "part-of" = "yourown-chat", "mcp-server" = "whatsapp-business" } }
-        mcp-whatsapp-personal = { labels = { tier = "prod", "part-of" = "yourown-chat", "mcp-server" = "whatsapp-personal" } }
         mcp-tunnel           = { labels = { tier = "prod", "part-of" = "yourown-chat", "mcp-component" = "tunnel" } }
       },
       var.matterbridge_enabled ? {
@@ -274,17 +244,7 @@ component "cluster_secrets" {
     )
     adopt_existing_namespaces = var.adopt_existing_namespaces
 
-    storage_classes = {
-      mcp-sensitive = {
-        provisioner = "pd.csi.storage.gke.io"
-        parameters = merge(
-          { type = "pd-balanced" },
-          var.cmek_key_id != null ? {
-            "disk-encryption-kms-key" = var.cmek_key_id
-          } : {},
-        )
-      }
-    }
+    storage_classes = {}
 
     secrets = merge(
       {
@@ -293,6 +253,15 @@ component "cluster_secrets" {
           namespace = "dev"
           labels    = { app = "dev-postgres" }
           data      = { POSTGRES_PASSWORD = component.secrets.generated_values["dev-postgres-password"] }
+        }
+        dev-mattermost-google-auth = {
+          name      = "dev-mattermost-google-auth"
+          namespace = "dev"
+          labels    = { app = "dev-mattermost" }
+          data = {
+            "client-id"     = component.prod_secret_values.values["dev_mattermost_google_client_id"]
+            "client-secret" = component.prod_secret_values.values["dev_mattermost_google_client_secret"]
+          }
         }
         mattermost-db = {
           name      = "mattermost-db"

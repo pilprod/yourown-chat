@@ -10,18 +10,12 @@
 # Cloud Deploy supplies these to Skaffold's Helm renderer as --set values.
 # Enabled templates require them, so missing release parameters fail during
 # render instead of reaching GKE as placeholder images.
-mcp_terraform_image: ""
 mcp_terraform_stacks_image: ""
 mcp_google_cloud_image: ""
-mcp_whatsapp_business_image: ""
-mcp_whatsapp_personal_image: ""
 mcp_tunnel_image: ""
 mcp_secret_project: ""
 mcp_google_cloud_gsa: ""
-mcp_terraform_gsa: ""
 mcp_terraform_stacks_gsa: ""
-mcp_whatsapp_gsa: ""
-mcp_whatsapp_personal_gsa: ""
 mcp_tunnel_gsa: ""
 
 # Ephemeral development releases use `dev-`; production keeps this empty.
@@ -87,43 +81,10 @@ defaults:
     tunnelNamespace: mcp-tunnel
 
 servers:
-  # Official image. Registry lookups are tokenless; HCP Terraform
-  # (workspaces/runs/stacks) needs TFE_TOKEN from mcp-terraform-hcp. TFE_ADDRESS
-  # is fixed server-side (per-request overrides are rejected 403).
-  terraform:
-    enabled: true
-    serviceAccountName: mcp-terraform
-    gcpServiceAccountDeployParameter: mcp_terraform_gsa
-    image:
-      deployParameter: mcp_terraform_image
-      pullPolicy: IfNotPresent
-    port: 8080
-    args:
-      - "streamable-http"
-      - "--transport-host"
-      - "0.0.0.0"
-      - "--transport-port"
-      - "8080"
-      - "--mcp-endpoint"
-      - "/mcp"
-      - "--toolsets"
-      - "registry,terraform"
-    env:
-      MCP_ALLOWED_ORIGINS: "https://yourown.chat"
-      TFE_ADDRESS: "https://app.terraform.io"
-      TFE_TOKEN_FILE: /var/run/secrets/mcp/tfe-token
-    secretProvider:
-      enabled: true
-      files:
-        - secretName: mcp-terraform-hcp-token
-          path: tfe-token
-    health:
-      path: /health
-
-  # Small first-party adapter for HCP Terraform Stacks deployment runs. The
-  # official HashiCorp MCP currently exposes Stack discovery but not deployment
-  # plan review/approval. This server resolves Stack IDs by an explicit
-  # name allowlist and never grants a deployment-group/global approval.
+  # First-party, policy-constrained HCP Terraform Stacks lifecycle server.
+  # It covers settings, VCS/reuse configurations, creation/update, guarded
+  # destroy-all planning, empty-Stack deletion, deployment review and exact
+  # run approval without exposing the unused workspace/Registry MCP.
   terraform-stacks:
     enabled: true
     serviceAccountName: mcp-terraform-stacks
@@ -204,103 +165,3 @@ servers:
         memory: 2Gi
     health:
       path: /healthz
-
-  # Community transport adapter over Meta's official WhatsApp Business Cloud
-  # API. This is not a WhatsApp Web/QR bridge. Account credentials are mounted
-  # directly from Secret Manager through CSI.
-  whatsapp-business:
-    enabled: true
-    # The bounded JSON index has exactly one writer on a ReadWriteOnce PVC.
-    # Recreate prevents a rolling release from briefly running two writers and
-    # corrupting the store. Move back to RollingUpdate only after issue #71
-    # migrates the index to transactional PostgreSQL.
-    replicaCount: 1
-    strategy:
-      type: Recreate
-    serviceAccountName: mcp-whatsapp-business
-    gcpServiceAccountDeployParameter: mcp_whatsapp_gsa
-    image:
-      deployParameter: mcp_whatsapp_business_image
-      pullPolicy: IfNotPresent
-    port: 3000
-    env:
-      PORT: "3000"
-      WHATSAPP_API_VERSION: "v23.0"
-      WHATSAPP_ACCESS_TOKEN_FILE: /var/run/secrets/mcp/access-token
-      WHATSAPP_WABA_ID_FILE: /var/run/secrets/mcp/waba-id
-      WHATSAPP_PHONE_NUMBER_ID_FILE: /var/run/secrets/mcp/phone-number-id
-      WHATSAPP_APP_SECRET_FILE: /var/run/secrets/mcp/app-secret
-      WHATSAPP_WEBHOOK_VERIFY_TOKEN_FILE: /var/run/secrets/mcp/webhook-verify-token
-      WHATSAPP_MESSAGE_STORE: /var/lib/whatsapp-mcp/messages.json
-      WHATSAPP_MESSAGE_RETENTION: "5000"
-      WHATSAPP_WEBHOOK_BODY_LIMIT: "16mb"
-    secretProvider:
-      enabled: true
-      files:
-        - secretName: mcp-whatsapp-access-token
-          path: access-token
-        - secretName: mcp-whatsapp-waba-id
-          path: waba-id
-        - secretName: mcp-whatsapp-phone-number-id
-          path: phone-number-id
-        - secretName: mcp-whatsapp-app-secret
-          path: app-secret
-        - secretName: mcp-whatsapp-webhook-verify-token
-          path: webhook-verify-token
-    persistence:
-      enabled: true
-      mountPath: /var/lib/whatsapp-mcp
-      size: 1Gi
-    resources:
-      requests:
-        cpu: 10m
-        memory: 64Mi
-      limits:
-        cpu: 250m
-        memory: 256Mi
-    health:
-      path: /health
-
-  # Personal WhatsApp linked-device client. Unlike whatsapp-business this uses
-  # an unofficial WhatsApp Web implementation and a QR-linked session. The
-  # mutable auth state is a long-lived credential on its dedicated PVC.
-  whatsapp-personal:
-    enabled: true
-    replicaCount: 1
-    strategy:
-      type: Recreate
-    serviceAccountName: mcp-whatsapp-personal
-    gcpServiceAccountDeployParameter: mcp_whatsapp_personal_gsa
-    image:
-      deployParameter: mcp_whatsapp_personal_image
-      pullPolicy: IfNotPresent
-    port: 3000
-    env:
-      PORT: "3000"
-      WHATSAPP_PERSONAL_CONNECT_ENABLED: "true"
-      WHATSAPP_PERSONAL_PROXY_URL_FILE: /var/run/secrets/mcp/proxy-url
-      WHATSAPP_PERSONAL_DATA_DIR: /var/lib/whatsapp-personal
-      WHATSAPP_PERSONAL_MESSAGE_RETENTION: "5000"
-      WHATSAPP_PERSONAL_HOURLY_LIMIT: "6"
-      WHATSAPP_PERSONAL_DAILY_LIMIT: "20"
-      WHATSAPP_PERSONAL_MINIMUM_INTERVAL_SECONDS: "30"
-      WHATSAPP_PERSONAL_MAXIMUM_UNANSWERED: "2"
-    secretProvider:
-      enabled: true
-      files:
-        - secretName: mcp-whatsapp-personal-proxy-url
-          path: proxy-url
-    persistence:
-      enabled: true
-      mountPath: /var/lib/whatsapp-personal
-      size: 1Gi
-      storageClassName: mcp-sensitive
-    resources:
-      requests:
-        cpu: 20m
-        memory: 128Mi
-      limits:
-        cpu: 500m
-        memory: 512Mi
-    health:
-      path: /health

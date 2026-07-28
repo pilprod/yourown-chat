@@ -188,12 +188,6 @@ variable "mcp_servers_enabled" {
   default     = false
 }
 
-variable "mcp_whatsapp_personal_enabled" {
-  type        = bool
-  description = "Opt the unofficial QR-linked personal WhatsApp MCP into the production MCP target. Keep false until mcp-whatsapp-personal-proxy-url contains a working static residential/mobile proxy; true also enables its blocking protocol/credential smoke."
-  default     = false
-}
-
 variable "zero_trust_enabled" {
   type        = bool
   description = "Materialise the mcp-tunnel Kubernetes Secret (cloudflared run token, written to Secret Manager by the cloudflare stack's zero_trust component) so the tunnel pod in helm/mcp can start. MUST follow the cloudflare stack's zero_trust_enabled: enabling it here first would 404 on the missing Secret Manager secret. The chart-side switch is tunnel.enabled in helm/mcp/values.yaml."

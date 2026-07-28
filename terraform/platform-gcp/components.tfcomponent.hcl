@@ -14,10 +14,7 @@ locals {
     matterbridge          = { namespace = "matterbridge", ksa = "matterbridge" }
     dev                   = { namespace = "dev", ksa = "dev-app" }
     mcp                   = { namespace = "mcp-google-cloud", ksa = "mcp-servers" }
-    mcp-terraform         = { namespace = "mcp-terraform", ksa = "mcp-terraform" }
     mcp-terraform-stacks  = { namespace = "mcp-terraform-stacks", ksa = "mcp-terraform-stacks" }
-    mcp-whatsapp          = { namespace = "mcp-whatsapp-business", ksa = "mcp-whatsapp-business" }
-    mcp-whatsapp-personal = { namespace = "mcp-whatsapp-personal", ksa = "mcp-whatsapp-personal" }
     mcp-tunnel            = { namespace = "mcp-tunnel", ksa = "mcp-tunnel" }
   }
 
@@ -233,25 +230,6 @@ component "workload_identity_mcp_dev" {
 
 # Dedicated identities keep CSI-mounted credentials isolated per MCP server.
 # Each identity is also bound to the matching disposable KSA in `dev`.
-component "workload_identity_mcp_terraform" {
-  source = "./modules/workload-identity"
-
-  inputs = {
-    project_id   = component.project_services.project_id
-    account_id   = "mcp-terraform"
-    display_name = "Terraform MCP Secret Manager identity"
-    namespace    = local.ns["mcp-terraform"].namespace
-    ksa_name     = local.ns["mcp-terraform"].ksa
-    additional_ksa_bindings = [{
-      namespace = local.ns.dev.namespace
-      ksa_name  = local.ns["mcp-terraform"].ksa
-    }]
-  }
-
-  providers  = { google = provider.google.this }
-  depends_on = [component.gke]
-}
-
 component "workload_identity_mcp_terraform_stacks" {
   source = "./modules/workload-identity"
 
@@ -264,44 +242,6 @@ component "workload_identity_mcp_terraform_stacks" {
     additional_ksa_bindings = [{
       namespace = local.ns.dev.namespace
       ksa_name  = local.ns["mcp-terraform-stacks"].ksa
-    }]
-  }
-
-  providers  = { google = provider.google.this }
-  depends_on = [component.gke]
-}
-
-component "workload_identity_mcp_whatsapp" {
-  source = "./modules/workload-identity"
-
-  inputs = {
-    project_id   = component.project_services.project_id
-    account_id   = "mcp-whatsapp"
-    display_name = "WhatsApp MCP Secret Manager identity"
-    namespace    = local.ns["mcp-whatsapp"].namespace
-    ksa_name     = local.ns["mcp-whatsapp"].ksa
-    additional_ksa_bindings = [{
-      namespace = local.ns.dev.namespace
-      ksa_name  = local.ns["mcp-whatsapp"].ksa
-    }]
-  }
-
-  providers  = { google = provider.google.this }
-  depends_on = [component.gke]
-}
-
-component "workload_identity_mcp_whatsapp_personal" {
-  source = "./modules/workload-identity"
-
-  inputs = {
-    project_id   = component.project_services.project_id
-    account_id   = "mcp-wa-personal"
-    display_name = "Personal WhatsApp MCP proxy-secret identity"
-    namespace    = local.ns["mcp-whatsapp-personal"].namespace
-    ksa_name     = local.ns["mcp-whatsapp-personal"].ksa
-    additional_ksa_bindings = [{
-      namespace = local.ns.dev.namespace
-      ksa_name  = local.ns["mcp-whatsapp-personal"].ksa
     }]
   }
 

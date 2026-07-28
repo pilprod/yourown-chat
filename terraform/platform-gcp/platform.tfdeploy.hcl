@@ -107,6 +107,11 @@ publish_output "ingress_ip_address" {
   value       = deployment.eu.ingress_ip_address
 }
 
+publish_output "nat_egress_ip_address" {
+  description = "Reserved Cloud NAT egress IP to allowlist in Google Workspace SMTP Relay."
+  value       = deployment.eu.nat_egress_ip_address
+}
+
 publish_output "gke_cluster_id" {
   description = "Full GKE cluster resource ID for the Cloud Deploy targets."
   value       = deployment.eu.gke_cluster_id

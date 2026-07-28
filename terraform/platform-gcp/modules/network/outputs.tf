@@ -47,3 +47,8 @@ output "ingress_ip_address" {
   description = "Reserved regional external IP for the public ingress LB (null when ingress_static_ip = false). Point the Cloudflare A record at this address."
   value       = one(google_compute_address.ingress[*].address)
 }
+
+output "nat_egress_ip_address" {
+  description = "Reserved regional external IP used by Cloud NAT for stable outbound allowlists such as Google Workspace SMTP Relay."
+  value       = google_compute_address.nat.address
+}

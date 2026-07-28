@@ -8,6 +8,7 @@ locals {
   services_range_name    = "${var.region}-services"
   router_name            = var.region
   nat_name               = var.region
+  nat_ip_name            = "nat-${var.region}"
   psa_range_name         = "psa"
   internal_firewall_name = "allow-internal"
   ingress_ip_name        = "ingress-${var.region}"
@@ -60,12 +61,25 @@ resource "google_compute_router" "this" {
   network = google_compute_network.this.id
 }
 
+# A reserved egress address makes IP-authenticated SaaS allowlists stable.
+# Google Workspace SMTP Relay uses this address so Mattermost needs neither a
+# licensed mailbox nor an app password.
+resource "google_compute_address" "nat" {
+  project      = var.project_id
+  name         = local.nat_ip_name
+  region       = var.region
+  address_type = "EXTERNAL"
+  network_tier = "PREMIUM"
+  labels       = var.labels
+}
+
 resource "google_compute_router_nat" "this" {
   project                            = var.project_id
   name                               = local.nat_name
   router                             = google_compute_router.this.name
   region                             = var.region
-  nat_ip_allocate_option             = "AUTO_ONLY"
+  nat_ip_allocate_option             = "MANUAL_ONLY"
+  nat_ips                            = [google_compute_address.nat.self_link]
   source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
   min_ports_per_vm                   = var.nat_min_ports_per_vm
 

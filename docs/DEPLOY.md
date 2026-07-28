@@ -146,9 +146,45 @@ new auditable rollout from the previous frozen release and preserves rollout
 history, deploy parameters, policy checks, and notifications. Do not use
 `helm rollback`: native GKE targets have no installed Helm release state.
 
+### Google Workspace SMTP Relay
+
+Mattermost sends invitations and notifications through
+`smtp-relay.gmail.com:587` with STARTTLS. The relay authenticates the cluster
+by the platform's reserved Cloud NAT address, so it needs no SMTP username,
+password, App Password, licensed mailbox, or credential stored in Kubernetes.
+Production sends as `mattermost@papou.email`; dev sends as
+`mattermost-dev@papou.email`. Replies go to `ilya@papou.email`.
+
+Apply `platform-gcp` first and copy its `nat_egress_ip_address` output. In
+**Google Admin Console → Apps → Google Workspace → Gmail → Routing → SMTP
+relay service**, create one relay with:
+
+- allowed senders: **Only addresses in my domains**;
+- authentication: **Only accept mail from the specified IP addresses**, using
+  exactly `nat_egress_ip_address`;
+- **Require SMTP authentication** disabled;
+- **Require TLS encryption** enabled.
+
+Both `papou.email` sender addresses are intentionally unlicensed. They work
+because the relay accepts addresses in Workspace-owned domains rather than
+only registered users. A separate licensed user is required only if the relay
+is changed to SMTP AUTH or Mattermost is pointed at `smtp.gmail.com`; that
+alternative also requires 2-Step Verification and an App Password.
+
+After the Google setting has propagated, deploy to dev and verify:
+
+1. open **System Console → Environment → SMTP** and run **Test Connection**;
+2. invite a test `@papou.email` user and confirm receipt;
+3. confirm the message's From, Reply-To, SPF, DKIM, and DMARC results;
+4. approve production only after the dev invitation succeeds.
+
+Keep SPF for `papou.email` compatible with Google (`include:_spf.google.com`),
+enable Google Workspace DKIM signing, and maintain a DMARC policy. Google can
+take up to 24 hours to propagate an SMTP relay change.
+
 ## MCP verification
 
-The dev stage deploys all three prefixed instances into the shared `dev`
+The dev stage deploys both prefixed MCP instances into the shared `dev`
 namespace. Cloud Deploy waits for their Kubernetes rollout; startup, readiness,
 and liveness probes check the health endpoints. There is intentionally no dev
 credential smoke: a process-level check with placeholder credentials would
@@ -157,8 +193,8 @@ give false confidence.
 The ready dev deployments remain available for review. Production approval
 runs their external cleanup hook as the prod predeploy step. The production
 stage then deploys into the isolated MCP namespaces and performs real,
-read-only upstream API calls through Terraform, Google Cloud, and WhatsApp
-Business MCP. Official Gmail, Calendar, and Drive MCP connections are
+read-only upstream API calls through Terraform Stacks and Google Cloud MCP.
+Official Gmail, Calendar, and Drive MCP connections are
 vendor-hosted and are verified by each Mattermost user after OAuth consent
 rather than by the GKE delivery pipeline.
 

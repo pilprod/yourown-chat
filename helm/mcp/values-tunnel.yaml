@@ -1,13 +1,7 @@
 # Connector-only release. It owns the single outbound Cloudflare Tunnel and no
 # MCP server workload, in a namespace separate from every server.
 servers:
-  terraform:
-    enabled: false
   terraform-stacks:
     enabled: false
   google-cloud:
-    enabled: false
-  whatsapp-business:
-    enabled: false
-  whatsapp-personal:
     enabled: false

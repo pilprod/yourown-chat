@@ -75,58 +75,6 @@ locals {
     for label, service in var.upstreams : label => service
     if startswith(label, "mcp-")
   }
-
-  # Cloudflare aliases are protocol identifiers rather than free-form titles:
-  # they accept only alphanumeric sections separated by "_" or "-" and are
-  # limited to 40 characters. Use them only for the official Terraform MCP,
-  # which does not expose consistent human-readable titles. Our adapters
-  # publish structured Tool.title metadata themselves; aliasing those tools
-  # would replace titles such as "WhatsApp Personal · Session · Status" with
-  # technical identifiers such as "whatsapp-personal session status".
-  mcp_tool_aliases = {
-    terraform = {
-      attach_policy_set_to_workspaces     = "hcp_policy_sets_attach"
-      attach_variable_set_to_workspaces   = "hcp_variable_sets_attach"
-      create_no_code_workspace            = "hcp_workspaces_create_no_code"
-      create_run                          = "hcp_runs_create"
-      create_variable_in_variable_set     = "hcp_variable_sets_variable_create"
-      create_variable_set                 = "hcp_variable_sets_create"
-      create_workspace                    = "hcp_workspaces_create"
-      create_workspace_tags               = "hcp_workspaces_tags_add"
-      create_workspace_variable           = "hcp_workspaces_variable_create"
-      delete_variable_in_variable_set     = "hcp_variable_sets_variable_delete"
-      detach_variable_set_from_workspaces = "hcp_variable_sets_detach"
-      get_apply_details                   = "hcp_applies_get"
-      get_apply_logs                      = "hcp_applies_logs_get"
-      get_latest_module_version           = "registry_modules_latest"
-      get_latest_provider_version         = "registry_providers_latest"
-      get_module_details                  = "registry_modules_get"
-      get_plan_details                    = "hcp_plans_get"
-      get_plan_json_output                = "hcp_plans_json_get"
-      get_plan_logs                       = "hcp_plans_logs_get"
-      get_policy_details                  = "registry_policies_get"
-      get_provider_capabilities           = "registry_providers_capabilities"
-      get_provider_details                = "registry_providers_get"
-      get_run_details                     = "hcp_runs_get"
-      get_stack_details                   = "hcp_stacks_get"
-      get_token_permissions               = "hcp_account_token_permissions_get"
-      get_workspace_details               = "hcp_workspaces_get"
-      list_runs                           = "hcp_runs_list"
-      list_stacks                         = "hcp_stacks_list"
-      list_terraform_orgs                 = "hcp_organizations_list"
-      list_terraform_projects             = "hcp_projects_list"
-      list_variable_sets                  = "hcp_variable_sets_list"
-      list_workspace_policy_sets          = "hcp_workspaces_policy_sets_list"
-      list_workspace_variables            = "hcp_workspaces_variables_list"
-      list_workspaces                     = "hcp_workspaces_list"
-      read_workspace_tags                 = "hcp_workspaces_tags_list"
-      search_modules                      = "registry_modules_search"
-      search_policies                     = "registry_policies_search"
-      search_providers                    = "registry_providers_search"
-      update_workspace                    = "hcp_workspaces_update"
-      update_workspace_variable           = "hcp_workspaces_variable_update"
-    }
-  }
 }
 
 # One machine identity lets AI Controls synchronize and invoke every currently
@@ -237,18 +185,8 @@ resource "cloudflare_zero_trust_access_ai_controls_mcp_portal" "this" {
     # Use the server's Access service token. Per-user upstream authorization is
     # redundant: Google Cloud and Terraform already use shared workload
     # credentials after the MCP request reaches the cluster.
-    on_behalf = false
-    updated_tools = [
-      for name, alias in lookup(
-        local.mcp_tool_aliases,
-        trimprefix(label, "mcp-"),
-        {},
-        ) : {
-        name    = name
-        alias   = alias
-        enabled = true
-      }
-    ]
+    on_behalf     = false
+    updated_tools = []
   }]
 
   lifecycle {

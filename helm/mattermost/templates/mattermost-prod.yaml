@@ -44,9 +44,37 @@ spec:
     - name: MM_GOOGLESETTINGS_SCOPE
       value: "openid email profile"
     - name: MM_GOOGLESETTINGS_BUTTONTEXT
-      value: "Google Workspace"
+      value: "Continue with Google"
+    - name: MM_GOOGLESETTINGS_ALLOWEDHOSTEDDOMAINS
+      value: {{ .Values.mattermost_google_hosted_domains | quote }}
+    - name: MM_GOOGLESETTINGS_ALLOWEDDOMAINS
+      value: {{ .Values.mattermost_google_email_domains | quote }}
     - name: MM_TEAMSETTINGS_RESTRICTCREATIONTODOMAINS
-      value: {{ .Values.mattermost_google_workspace_domain | quote }}
+      value: {{ .Values.mattermost_google_email_domains | quote }}
+    {{- if .Values.mattermost_smtp_enabled }}
+    # Workspace SMTP Relay authenticates this workload by the platform's
+    # reserved Cloud NAT IP. Do not add a Google password or enable SMTP AUTH.
+    - name: MM_SERVICESETTINGS_ENABLEEMAILINVITATIONS
+      value: "true"
+    - name: MM_EMAILSETTINGS_SENDEMAILNOTIFICATIONS
+      value: "true"
+    - name: MM_EMAILSETTINGS_ENABLESMTPAUTH
+      value: "false"
+    - name: MM_EMAILSETTINGS_SMTPSERVER
+      value: {{ required "mattermost_smtp_server is required when SMTP is enabled" .Values.mattermost_smtp_server | quote }}
+    - name: MM_EMAILSETTINGS_SMTPPORT
+      value: {{ required "mattermost_smtp_port is required when SMTP is enabled" .Values.mattermost_smtp_port | quote }}
+    - name: MM_EMAILSETTINGS_CONNECTIONSECURITY
+      value: {{ required "mattermost_smtp_connection_security is required when SMTP is enabled" .Values.mattermost_smtp_connection_security | quote }}
+    - name: MM_EMAILSETTINGS_FEEDBACKNAME
+      value: {{ required "mattermost_smtp_feedback_name is required when SMTP is enabled" .Values.mattermost_smtp_feedback_name | quote }}
+    - name: MM_EMAILSETTINGS_FEEDBACKEMAIL
+      value: {{ required "mattermost_smtp_feedback_email is required when SMTP is enabled" .Values.mattermost_smtp_feedback_email | quote }}
+    - name: MM_EMAILSETTINGS_REPLYTOADDRESS
+      value: {{ required "mattermost_smtp_reply_to is required when SMTP is enabled" .Values.mattermost_smtp_reply_to | quote }}
+    - name: MM_EMAILSETTINGS_SKIPSERVERCERTIFICATEVERIFICATION
+      value: "false"
+    {{- end }}
 
   # Keep the existing replica serving until its replacement is Ready. The
   # operator renders RollingUpdate with maxSurge=1 and maxUnavailable=0, so a

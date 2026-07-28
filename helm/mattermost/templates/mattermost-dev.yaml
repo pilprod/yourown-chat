@@ -77,6 +77,54 @@ spec:
               value: /mattermost/data
             - name: MM_SERVICESETTINGS_SITEURL
               value: https://dev.yourown.chat
+            - name: MM_GOOGLESETTINGS_ENABLE
+              value: {{ .Values.mattermost_google_auth_enabled | quote }}
+            - name: MM_GOOGLESETTINGS_ID
+              valueFrom:
+                secretKeyRef:
+                  name: dev-mattermost-google-auth
+                  key: client-id
+            - name: MM_GOOGLESETTINGS_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: dev-mattermost-google-auth
+                  key: client-secret
+            - name: MM_GOOGLESETTINGS_DISCOVERYENDPOINT
+              value: "https://accounts.google.com/.well-known/openid-configuration"
+            - name: MM_GOOGLESETTINGS_SCOPE
+              value: "openid email profile"
+            - name: MM_GOOGLESETTINGS_BUTTONTEXT
+              value: "Continue with Google"
+            - name: MM_GOOGLESETTINGS_ALLOWEDHOSTEDDOMAINS
+              value: {{ .Values.mattermost_google_hosted_domains | quote }}
+            - name: MM_GOOGLESETTINGS_ALLOWEDDOMAINS
+              value: {{ .Values.mattermost_google_email_domains | quote }}
+            - name: MM_TEAMSETTINGS_RESTRICTCREATIONTODOMAINS
+              value: {{ .Values.mattermost_google_email_domains | quote }}
+            {{- if .Values.mattermost_smtp_enabled }}
+            # Same IP-authenticated Workspace relay as prod, with a distinct
+            # sender so test invitations are immediately identifiable.
+            - name: MM_SERVICESETTINGS_ENABLEEMAILINVITATIONS
+              value: "true"
+            - name: MM_EMAILSETTINGS_SENDEMAILNOTIFICATIONS
+              value: "true"
+            - name: MM_EMAILSETTINGS_ENABLESMTPAUTH
+              value: "false"
+            - name: MM_EMAILSETTINGS_SMTPSERVER
+              value: {{ required "mattermost_smtp_server is required when SMTP is enabled" .Values.mattermost_smtp_server | quote }}
+            - name: MM_EMAILSETTINGS_SMTPPORT
+              value: {{ required "mattermost_smtp_port is required when SMTP is enabled" .Values.mattermost_smtp_port | quote }}
+            - name: MM_EMAILSETTINGS_CONNECTIONSECURITY
+              value: {{ required "mattermost_smtp_connection_security is required when SMTP is enabled" .Values.mattermost_smtp_connection_security | quote }}
+            - name: MM_EMAILSETTINGS_FEEDBACKNAME
+              value: {{ required "mattermost_smtp_feedback_name is required when SMTP is enabled" .Values.mattermost_smtp_feedback_name | quote }}
+            - name: MM_EMAILSETTINGS_FEEDBACKEMAIL
+              value: {{ required "mattermost_smtp_feedback_email is required when SMTP is enabled" .Values.mattermost_smtp_feedback_email | quote }}
+            - name: MM_EMAILSETTINGS_REPLYTOADDRESS
+              value: {{ required "mattermost_smtp_reply_to is required when SMTP is enabled" .Values.mattermost_smtp_reply_to | quote }}
+            - name: MM_EMAILSETTINGS_SKIPSERVERCERTIFICATEVERIFICATION
+              value: "false"
+            {{- end }}
           ports:
             - containerPort: 8065
           resources:

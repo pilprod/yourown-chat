@@ -8,11 +8,8 @@ variable "mcp_dev_deployments" {
   type        = set(string)
   description = "Ephemeral MCP Deployments in the dev namespace that the Cloud Deploy cleanup identity may scale to zero."
   default = [
-    "dev-mcp-terraform",
     "dev-mcp-terraform-stacks",
     "dev-mcp-google-cloud",
-    "dev-mcp-whatsapp-business",
-    "dev-mcp-whatsapp-personal",
   ]
 }
 

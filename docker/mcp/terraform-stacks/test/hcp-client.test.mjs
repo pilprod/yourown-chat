@@ -14,6 +14,10 @@ function fixtureFetch({
   runStatus = "pre_deploying_pending_operator",
   planStatus = "pending_operator",
   existingApproval = false,
+  deployments = [{ id: "std-one", attributes: { name: "yourown-chat" } }],
+  repository = "pilprod/yourown-chat",
+  workingDirectory = "terraform/cloudflare",
+  projectId = "prj-yourownchat1",
 } = {}) {
   const calls = [];
   const fetchImpl = async (url, options = {}) => {
@@ -26,17 +30,17 @@ function fixtureFetch({
             id: "st-cloudflare1",
             attributes: {
               name: "cloudflare",
-              "working-directory": "terraform/cloudflare",
+              "working-directory": workingDirectory,
               "updated-at": "2026-07-25T00:00:00Z",
               "vcs-repo": {
-                identifier: "pilprod/yourown-chat",
+                identifier: repository,
                 branch: "main",
                 "trigger-disabled": false,
               },
             },
             relationships: {
               project: {
-                data: { id: "prj-yourownchat1", type: "projects" },
+                data: { id: projectId, type: "projects" },
               },
             },
           },
@@ -54,18 +58,18 @@ function fixtureFetch({
           attributes: {
             name: "cloudflare",
             description: "Cloudflare",
-            "working-directory": "terraform/cloudflare",
+            "working-directory": workingDirectory,
             "updated-at": "2026-07-25T00:00:00Z",
             "speculative-enabled": false,
             "vcs-repo": {
-              identifier: "pilprod/yourown-chat",
+              identifier: repository,
               branch: "main",
               "trigger-disabled": false,
             },
           },
           relationships: {
             project: {
-              data: { id: "prj-yourownchat1", type: "projects" },
+              data: { id: projectId, type: "projects" },
             },
           },
         },
@@ -74,7 +78,8 @@ function fixtureFetch({
     if (
       path.startsWith(
         "/api/v2/stacks/st-cloudflare1/stack-configurations?",
-      )
+      ) &&
+      (options.method ?? "GET") === "GET"
     ) {
       return jsonResponse({
         data: [
@@ -96,6 +101,29 @@ function fixtureFetch({
             "current-page": 1,
             "page-size": 20,
             "total-count": 1,
+          },
+        },
+      });
+    }
+    if (
+      path.startsWith(
+        "/api/v2/stacks/st-cloudflare1/stack-configurations?source=",
+      ) &&
+      options.method === "POST"
+    ) {
+      const body = JSON.parse(options.body);
+      return jsonResponse({
+        data: {
+          id: "stc-created1",
+          attributes: {
+            ...body.data.attributes,
+            status: "pending",
+            "sequence-number": 13,
+          },
+          relationships: {
+            stack: {
+              data: { id: "st-cloudflare1", type: "stacks" },
+            },
           },
         },
       });
@@ -181,10 +209,14 @@ function fixtureFetch({
         },
       });
     }
+    if (
+      path === "/api/v2/stacks/st-cloudflare1" &&
+      options.method === "DELETE"
+    ) {
+      return new Response(null, { status: 204 });
+    }
     if (path.startsWith("/api/v2/stacks/st-cloudflare1/stack-deployments?")) {
-      return jsonResponse({
-        data: [{ id: "std-one", attributes: { name: "yourown-chat" } }],
-      });
+      return jsonResponse({ data: deployments });
     }
     if (
       path.startsWith(
@@ -312,6 +344,18 @@ test("lists only allowlisted Stack runs", async () => {
   );
 });
 
+test("refuses an allowlisted Stack name outside its repository policy", async () => {
+  const fixture = fixtureFetch({ repository: "attacker/lookalike" });
+  await assert.rejects(
+    client(fixture.fetchImpl).listRuns({ stackName: "cloudflare" }),
+    /outside the committed management policy/,
+  );
+  assert.equal(
+    fixture.calls.some(({ path }) => path.includes("stack-deployment-runs")),
+    false,
+  );
+});
+
 test("approves one exact run without approving future plans", async () => {
   const fixture = fixtureFetch();
   const result = await client(fixture.fetchImpl).approveRun({
@@ -431,6 +475,14 @@ test("reads full Stack settings under the committed management policy", async ()
   assert.equal(settings.policy.management_allowed, true);
 });
 
+test("lists only Stacks covered by the committed policy", async () => {
+  const fixture = fixtureFetch();
+  const stacks = await client(fixture.fetchImpl).listStacks();
+  assert.deepEqual(stacks.map(({ name }) => name), ["cloudflare"]);
+  assert.equal(stacks[0].policy.approval_allowed, true);
+  assert.equal(stacks[0].policy.management_allowed, true);
+});
+
 test("lists and inspects Stack configuration diagnostics", async () => {
   const fixture = fixtureFetch();
   const configurations = await client(fixture.fetchImpl).listConfigurations({
@@ -447,6 +499,60 @@ test("lists and inspects Stack configuration diagnostics", async () => {
   assert.equal(inspected.configuration["sequence-number"], 12);
   assert.equal(inspected.diagnostics[0].severity, "error");
   assert.equal(inspected.deployment_groups[0].name, "eu");
+});
+
+test("previews and creates a non-destructive Stack configuration", async () => {
+  const fixture = fixtureFetch();
+  const input = {
+    stackName: "cloudflare",
+    source: "fetch",
+    speculative: false,
+    destroyAll: false,
+  };
+  const plan = await client(fixture.fetchImpl).planCreateConfiguration(input);
+  assert.equal(plan.operation, "create_stack_configuration");
+  assert.equal(plan.expected_latest_configuration.id, "stc-config1");
+
+  const result = await client(fixture.fetchImpl).createConfiguration({
+    ...input,
+    expectedPlanId: plan.plan_id,
+  });
+  assert.equal(result.created, true);
+  assert.equal(result.destroy_all, false);
+  assert.equal(result.configuration.id, "stc-created1");
+  const creation = fixture.calls.find(
+    ({ path, options }) =>
+      path.endsWith("stack-configurations?source=fetch") &&
+      options.method === "POST",
+  );
+  assert.deepEqual(JSON.parse(creation.options.body).data.attributes, {
+    speculative: false,
+    "destroy-all": false,
+  });
+});
+
+test("requires an exact reusable configuration for destroy-all", async () => {
+  const fixture = fixtureFetch();
+  const input = {
+    stackName: "cloudflare",
+    source: "reuse",
+    speculative: false,
+    destroyAll: true,
+  };
+  const plan = await client(fixture.fetchImpl).planCreateConfiguration(input);
+  assert.equal(plan.operation, "destroy_all_stack_configuration");
+  const result = await client(fixture.fetchImpl).createConfiguration({
+    ...input,
+    expectedPlanId: plan.plan_id,
+  });
+  assert.equal(result.destroy_all, true);
+  await assert.rejects(
+    client(fixture.fetchImpl).planCreateConfiguration({
+      ...input,
+      source: "fetch",
+    }),
+    /destroy-all requires source=reuse/,
+  );
 });
 
 test("previews and creates only an allowlisted VCS-backed Stack", async () => {
@@ -538,4 +644,32 @@ test("previews and applies a constrained Stack settings update", async () => {
     description: "Cloudflare DNS and Zero Trust",
     "speculative-enabled": true,
   });
+});
+
+test("deletes only a management-allowed Stack with no deployments", async () => {
+  const nonEmpty = fixtureFetch();
+  await assert.rejects(
+    client(nonEmpty.fetchImpl).planDeleteStack({
+      stackName: "cloudflare",
+    }),
+    /still contains 1 deployment/,
+  );
+
+  const empty = fixtureFetch({ deployments: [] });
+  const plan = await client(empty.fetchImpl).planDeleteStack({
+    stackName: "cloudflare",
+  });
+  const result = await client(empty.fetchImpl).deleteStack({
+    stackName: "cloudflare",
+    expectedPlanId: plan.plan_id,
+  });
+  assert.equal(result.deleted, true);
+  assert.equal(result.deployment_count, 0);
+  assert.ok(
+    empty.calls.some(
+      ({ path, options }) =>
+        path === "/api/v2/stacks/st-cloudflare1" &&
+        options.method === "DELETE",
+    ),
+  );
 });

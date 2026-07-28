@@ -156,20 +156,48 @@ export class HcpStacksClient {
     return text;
   }
 
-  async allowedStacks() {
-    const payload = await this.request(
-      `organizations/${encodeURIComponent(this.organization)}/stacks?page%5Bsize%5D=100`,
-    );
-    return payload.data
-      .filter((stack) => this.allowedStackNames.has(stack.attributes.name))
-      .map((stack) => ({ id: stack.id, name: stack.attributes.name }));
-  }
-
   async allStacks() {
     const payload = await this.request(
       `organizations/${encodeURIComponent(this.organization)}/stacks?page%5Bsize%5D=100`,
     );
     return payload.data;
+  }
+
+  stackPolicy(stack) {
+    const summary = resourceSummary(stack);
+    const repository = summary["vcs-repo"]?.identifier;
+    const projectId = summary.relationships?.project?.id;
+    const workingDirectory = summary["working-directory"] ?? "";
+    const directoryAllowed = workingDirectory
+      ? this.allowedWorkingDirectoryPrefixes.some((prefix) =>
+          workingDirectory === prefix.replace(/\/+$/, "") ||
+          workingDirectory.startsWith(
+            `${prefix.replace(/\/+$/, "")}/`,
+          ),
+        )
+      : false;
+    const managementAllowed =
+      this.allowedProjectIds.has(projectId) &&
+      this.allowedRepositories.has(repository) &&
+      directoryAllowed;
+    return {
+      approval_allowed:
+        this.allowedStackNames.has(summary.name) && managementAllowed,
+      management_allowed: managementAllowed,
+    };
+  }
+
+  async listStacks() {
+    return (await this.allStacks())
+      .map((stack) => ({
+        ...resourceSummary(stack),
+        policy: this.stackPolicy(stack),
+      }))
+      .filter(
+        ({ policy }) =>
+          policy.approval_allowed || policy.management_allowed,
+      )
+      .sort((left, right) => left.name.localeCompare(right.name));
   }
 
   async stackByName(stackName) {
@@ -200,7 +228,8 @@ export class HcpStacksClient {
     if (
       normalized === "." ||
       !this.allowedWorkingDirectoryPrefixes.some((prefix) =>
-        normalized.startsWith(prefix),
+        normalized === prefix.replace(/\/+$/, "") ||
+        normalized.startsWith(`${prefix.replace(/\/+$/, "")}/`),
       )
     ) {
       throw new Error(
@@ -229,29 +258,13 @@ export class HcpStacksClient {
     const listed = await this.stackByName(stackName);
     const payload = await this.request(`stacks/${listed.id}`);
     const settings = resourceSummary(payload.data);
-    const repository = settings["vcs-repo"]?.identifier;
-    const projectId = settings.relationships?.project?.id;
-    const workingDirectory = settings["working-directory"] ?? "";
-
-    const approvalAllowed = this.allowedStackNames.has(stackName);
-    const directoryAllowed = workingDirectory
-      ? this.allowedWorkingDirectoryPrefixes.some((prefix) =>
-          workingDirectory.startsWith(prefix),
-        )
-      : approvalAllowed;
-    const managementAllowed =
-      this.allowedProjectIds.has(projectId) &&
-      this.allowedRepositories.has(repository) &&
-      directoryAllowed;
-    if (!approvalAllowed && !managementAllowed) {
+    const policy = this.stackPolicy(payload.data);
+    if (!policy.approval_allowed && !policy.management_allowed) {
       throw new Error(`Stack ${stackName} is outside the committed management policy`);
     }
     return {
       ...settings,
-      policy: {
-        approval_allowed: approvalAllowed,
-        management_allowed: managementAllowed,
-      },
+      policy,
     };
   }
 
@@ -298,6 +311,95 @@ export class HcpStacksClient {
       configuration: resourceSummary(configuration.data),
       diagnostics: diagnostics.data.map(resourceSummary),
       deployment_groups: deploymentGroups.data.map(resourceSummary),
+    };
+  }
+
+  async latestConfigurationIdentity(stackName) {
+    const stack = await this.stackSettings(stackName);
+    const payload = await this.request(
+      `stacks/${stack.id}/stack-configurations?` +
+        "page%5Bnumber%5D=1&page%5Bsize%5D=1",
+    );
+    const latest = payload.data[0]
+      ? resourceSummary(payload.data[0])
+      : null;
+    return latest
+      ? {
+          id: latest.id,
+          sequence_number: latest["sequence-number"],
+          status: latest.status,
+        }
+      : null;
+  }
+
+  async planCreateConfiguration({
+    stackName,
+    source,
+    speculative = false,
+    destroyAll = false,
+  }) {
+    if (!["fetch", "reuse"].includes(source)) {
+      throw new Error("configuration source must be fetch or reuse");
+    }
+    if (destroyAll && (source !== "reuse" || speculative)) {
+      throw new Error(
+        "destroy-all requires source=reuse and speculative=false",
+      );
+    }
+    const current = await this.stackSettings(stackName);
+    if (!current.policy.management_allowed) {
+      throw new Error(`Stack ${stackName} is not management-allowed`);
+    }
+    const latestConfiguration =
+      await this.latestConfigurationIdentity(stackName);
+    if (source === "reuse" && !latestConfiguration) {
+      throw new Error(
+        `Stack ${stackName} has no configuration available for reuse`,
+      );
+    }
+    const plan = {
+      operation: destroyAll
+        ? "destroy_all_stack_configuration"
+        : "create_stack_configuration",
+      organization: this.organization,
+      stack_id: current.id,
+      stack_name: current.name,
+      source,
+      attributes: {
+        speculative,
+        "destroy-all": destroyAll,
+      },
+      expected_latest_configuration: latestConfiguration,
+    };
+    return { ...plan, plan_id: planId(plan) };
+  }
+
+  async createConfiguration({ expectedPlanId, ...inputs }) {
+    const plan = await this.planCreateConfiguration(inputs);
+    if (plan.plan_id !== expectedPlanId) {
+      throw new Error(
+        `Refusing stale configuration creation: plan is ${plan.plan_id}, expected ${expectedPlanId}`,
+      );
+    }
+    const payload = await this.request(
+      `stacks/${plan.stack_id}/stack-configurations?source=${plan.source}`,
+      {
+        method: "POST",
+        body: {
+          data: {
+            type: "stack-configurations",
+            attributes: plan.attributes,
+          },
+        },
+      },
+    );
+    return {
+      created: true,
+      stack: plan.stack_name,
+      source: plan.source,
+      destroy_all: plan.attributes["destroy-all"],
+      configuration: resourceSummary(payload.data),
+      plan_id: expectedPlanId,
     };
   }
 
@@ -478,17 +580,59 @@ export class HcpStacksClient {
     };
   }
 
+  async planDeleteStack({ stackName }) {
+    const current = await this.stackSettings(stackName);
+    if (!current.policy.management_allowed) {
+      throw new Error(`Stack ${stackName} is not management-allowed`);
+    }
+    const deployments = await this.deployments(current.id);
+    if (deployments.length !== 0) {
+      throw new Error(
+        `Stack ${stackName} still contains ${deployments.length} deployment(s); destroy them before deletion`,
+      );
+    }
+    const latestConfiguration =
+      await this.latestConfigurationIdentity(stackName);
+    const plan = {
+      operation: "delete_empty_stack",
+      organization: this.organization,
+      stack_id: current.id,
+      stack_name: current.name,
+      expected_updated_at: current["updated-at"],
+      expected_latest_configuration: latestConfiguration,
+      deployment_count: 0,
+    };
+    return { ...plan, plan_id: planId(plan) };
+  }
+
+  async deleteStack({ stackName, expectedPlanId }) {
+    const plan = await this.planDeleteStack({ stackName });
+    if (plan.plan_id !== expectedPlanId) {
+      throw new Error(
+        `Refusing stale Stack deletion: plan is ${plan.plan_id}, expected ${expectedPlanId}`,
+      );
+    }
+    await this.request(`stacks/${plan.stack_id}`, { method: "DELETE" });
+    return {
+      deleted: true,
+      stack: plan.stack_name,
+      stack_id: plan.stack_id,
+      deployment_count: 0,
+      plan_id: expectedPlanId,
+    };
+  }
+
   async requireAllowedStack(stackName) {
     if (!this.allowedStackNames.has(stackName)) {
       throw new Error(`Stack ${stackName} is not in TFE_STACK_ALLOWLIST`);
     }
-    const stack = (await this.allowedStacks()).find(({ name }) => name === stackName);
-    if (!stack) {
+    const stack = await this.stackSettings(stackName);
+    if (!stack.policy.approval_allowed) {
       throw new Error(
-        `Allowed Stack ${stackName} does not exist in organization ${this.organization}`,
+        `Allowed Stack ${stackName} is outside the committed project, repository, or directory policy`,
       );
     }
-    return stack;
+    return { id: stack.id, name: stack.name };
   }
 
   async deployments(stackId) {

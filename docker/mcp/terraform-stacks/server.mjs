@@ -13,13 +13,20 @@ import { toolResult } from "./tool-result.mjs";
 const port = Number.parseInt(process.env.PORT ?? "3000", 10);
 const client = clientFromEnv();
 const toolNames = new Set([
+  "list_stacks",
   "get_stack_settings",
   "list_configurations",
   "inspect_configuration",
+  "plan_configuration",
+  "create_configuration",
+  "plan_destroy_all",
+  "create_destroy_all",
   "plan_create",
   "create",
   "plan_update",
   "update",
+  "plan_delete",
+  "delete",
   "list_deployment_runs",
   "inspect_deployment_run",
   "approve_deployment_run",
@@ -29,8 +36,26 @@ const toolNames = new Set([
 function createServer() {
   const server = new McpServer({
     name: "yourown-chat-terraform-stacks",
-    version: "1.1.0",
+    version: "1.2.0",
   });
+
+  server.registerTool(
+    "list_stacks",
+    {
+      title: "HCP Terraform · Stacks · List",
+      description:
+        "List only Stacks covered by the committed approval or management policy, including their VCS, project and policy status.",
+      inputSchema: {},
+      annotations: {
+        title: "HCP Terraform · Stacks · List",
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    async () => toolResult(await client.listStacks()),
+  );
 
   server.registerTool(
     "get_stack_settings",
@@ -102,6 +127,128 @@ function createServer() {
     async ({ stack_name, configuration_id }) =>
       toolResult(
         await client.inspectConfiguration(stack_name, configuration_id),
+      ),
+  );
+
+  const configurationInputSchema = {
+    stack_name: z.string().min(1),
+    source: z.enum(["fetch", "reuse"]).optional().default("fetch"),
+    speculative: z.boolean().optional().default(false),
+  };
+
+  server.registerTool(
+    "plan_configuration",
+    {
+      title: "HCP Terraform · Configurations · Plan creation",
+      description:
+        "Preview fetching the latest VCS content or reusing the latest content for one management-allowed Stack. This never requests infrastructure destruction.",
+      inputSchema: configurationInputSchema,
+      annotations: {
+        title: "HCP Terraform · Configurations · Plan creation",
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    async ({ stack_name, source, speculative }) =>
+      toolResult(
+        await client.planCreateConfiguration({
+          stackName: stack_name,
+          source,
+          speculative,
+          destroyAll: false,
+        }),
+      ),
+  );
+
+  server.registerTool(
+    "create_configuration",
+    {
+      title: "HCP Terraform · Configurations · Create",
+      description:
+        "Create exactly the previously previewed VCS fetch or reuse configuration. It may start plans but cannot request destroy-all and does not approve any deployment.",
+      inputSchema: {
+        ...configurationInputSchema,
+        expected_plan_id: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+        confirmation: z.literal("CREATE_CONFIGURATION"),
+      },
+      annotations: {
+        title: "HCP Terraform · Configurations · Create",
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+    },
+    async ({ stack_name, source, speculative, expected_plan_id }) =>
+      toolResult(
+        await client.createConfiguration({
+          stackName: stack_name,
+          source,
+          speculative,
+          destroyAll: false,
+          expectedPlanId: expected_plan_id,
+        }),
+      ),
+  );
+
+  server.registerTool(
+    "plan_destroy_all",
+    {
+      title: "HCP Terraform · Configurations · Plan destroy all",
+      description:
+        "Preview a new configuration that reuses the latest Stack content and requests destruction of every deployment. This only creates a guarded plan; later deployment approvals remain separate.",
+      inputSchema: {
+        stack_name: z.string().min(1),
+      },
+      annotations: {
+        title: "HCP Terraform · Configurations · Plan destroy all",
+        readOnlyHint: true,
+        destructiveHint: true,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    async ({ stack_name }) =>
+      toolResult(
+        await client.planCreateConfiguration({
+          stackName: stack_name,
+          source: "reuse",
+          speculative: false,
+          destroyAll: true,
+        }),
+      ),
+  );
+
+  server.registerTool(
+    "create_destroy_all",
+    {
+      title: "HCP Terraform · Configurations · Create destroy-all plan",
+      description:
+        "Create exactly the previewed destroy-all Stack configuration. Requires its plan hash and DESTROY_ALL confirmation; every resulting deployment plan must still be inspected and approved separately.",
+      inputSchema: {
+        stack_name: z.string().min(1),
+        expected_plan_id: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+        confirmation: z.literal("DESTROY_ALL"),
+      },
+      annotations: {
+        title: "HCP Terraform · Configurations · Create destroy-all plan",
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+    },
+    async ({ stack_name, expected_plan_id }) =>
+      toolResult(
+        await client.createConfiguration({
+          stackName: stack_name,
+          source: "reuse",
+          speculative: false,
+          destroyAll: true,
+          expectedPlanId: expected_plan_id,
+        }),
       ),
   );
 
@@ -253,6 +400,55 @@ function createServer() {
           triggerDisabled: input.trigger_disabled,
           fetchConfiguration: input.fetch_configuration,
           expectedPlanId: input.expected_plan_id,
+        }),
+      ),
+  );
+
+  server.registerTool(
+    "plan_delete",
+    {
+      title: "HCP Terraform · Stacks · Plan deletion",
+      description:
+        "Preview deletion of one management-allowed Stack. Refuses to plan while any deployment remains, preventing orphaned infrastructure.",
+      inputSchema: {
+        stack_name: z.string().min(1),
+      },
+      annotations: {
+        title: "HCP Terraform · Stacks · Plan deletion",
+        readOnlyHint: true,
+        destructiveHint: true,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    async ({ stack_name }) =>
+      toolResult(await client.planDeleteStack({ stackName: stack_name })),
+  );
+
+  server.registerTool(
+    "delete",
+    {
+      title: "HCP Terraform · Stacks · Delete empty Stack",
+      description:
+        "Delete exactly the previously previewed empty Stack. The Stack must still contain zero deployments and requires the exact plan hash plus DELETE_EMPTY_STACK confirmation.",
+      inputSchema: {
+        stack_name: z.string().min(1),
+        expected_plan_id: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+        confirmation: z.literal("DELETE_EMPTY_STACK"),
+      },
+      annotations: {
+        title: "HCP Terraform · Stacks · Delete empty Stack",
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+    },
+    async ({ stack_name, expected_plan_id }) =>
+      toolResult(
+        await client.deleteStack({
+          stackName: stack_name,
+          expectedPlanId: expected_plan_id,
         }),
       ),
   );

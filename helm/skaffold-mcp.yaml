@@ -15,14 +15,6 @@ profiles:
     manifests:
       helm:
         releases:
-          - name: dev-mcp-terraform
-            chartPath: mcp
-            namespace: dev
-            createNamespace: false
-            valuesFiles:
-              - mcp/values.yaml
-              - mcp/values-dev.yaml
-              - mcp/values-terraform.yaml
           - name: dev-mcp-terraform-stacks
             chartPath: mcp
             namespace: dev
@@ -39,22 +31,6 @@ profiles:
               - mcp/values.yaml
               - mcp/values-dev.yaml
               - mcp/values-google-cloud.yaml
-          - name: dev-mcp-whatsapp-business
-            chartPath: mcp
-            namespace: dev
-            createNamespace: false
-            valuesFiles:
-              - mcp/values.yaml
-              - mcp/values-dev.yaml
-              - mcp/values-whatsapp-business.yaml
-          - name: dev-mcp-whatsapp-personal
-            chartPath: mcp
-            namespace: dev
-            createNamespace: false
-            valuesFiles:
-              - mcp/values.yaml
-              - mcp/values-dev.yaml
-              - mcp/values-whatsapp-personal.yaml
 
   - name: mcp-prod
     manifests:
@@ -67,13 +43,6 @@ profiles:
             valuesFiles:
               - mcp/values.yaml
               - mcp/values-tunnel.yaml
-          - name: mcp-terraform
-            chartPath: mcp
-            namespace: mcp-terraform
-            createNamespace: false
-            valuesFiles:
-              - mcp/values.yaml
-              - mcp/values-terraform.yaml
           - name: mcp-terraform-stacks
             chartPath: mcp
             namespace: mcp-terraform-stacks
@@ -88,13 +57,6 @@ profiles:
             valuesFiles:
               - mcp/values.yaml
               - mcp/values-google-cloud.yaml
-          - name: mcp-whatsapp-business
-            chartPath: mcp
-            namespace: mcp-whatsapp-business
-            createNamespace: false
-            valuesFiles:
-              - mcp/values.yaml
-              - mcp/values-whatsapp-business.yaml
     verify:
       - name: mcp-smoke-test
         container:
@@ -106,13 +68,9 @@ profiles:
               set -eu
               retry='--retry 30 --retry-all-errors --retry-delay 5';
               curl -sSf $retry \
-                http://mcp-terraform.mcp-terraform.svc.cluster.local:8080/health
-              curl -sSf $retry \
                 http://mcp-terraform-stacks.mcp-terraform-stacks.svc.cluster.local:3000/health
               curl -sSf $retry \
                 http://mcp-google-cloud.mcp-google-cloud.svc.cluster.local:8080/healthz
-              curl -sSf $retry \
-                http://mcp-whatsapp-business.mcp-whatsapp-business.svc.cluster.local:3000/health
 
               init='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"cloud-deploy-prod-smoke","version":"1.0"}}}'
 
@@ -191,9 +149,6 @@ profiles:
 
               # These are real, read-only upstream API calls. They fail on
               # placeholder/revoked credentials or missing IAM permissions.
-              mcp_api_smoke terraform \
-                http://mcp-terraform.mcp-terraform.svc.cluster.local:8080/mcp \
-                list_terraform_orgs '{}'
               mcp_api_smoke terraform-stacks \
                 http://mcp-terraform-stacks.mcp-terraform-stacks.svc.cluster.local:3000/mcp \
                 list_deployment_runs '{"pending_only":true}'
@@ -203,85 +158,10 @@ profiles:
               mcp_api_smoke google-cloud \
                 http://mcp-google-cloud.mcp-google-cloud.svc.cluster.local:8080/mcp \
                 list_log_names '{"parent":"projects/yourown-chat","pageSize":1}'
-              mcp_api_smoke whatsapp-business \
-                http://mcp-whatsapp-business.mcp-whatsapp-business.svc.cluster.local:3000/mcp \
-                account_get_phone_number '{}'
-              # Exercise the production message index on its mounted PVC as a
-              # separate MCP session. This catches missing/unreadable storage,
-              # not only valid Meta credentials.
-              mcp_api_smoke whatsapp-message-store \
-                http://mcp-whatsapp-business.mcp-whatsapp-business.svc.cluster.local:3000/mcp \
-                messages_list '{"limit":1}'
 
         executionMode:
           kubernetesCluster:
             jobManifestPath: mcp/verify/prod-job.yaml
-
-  # Opt-in production profile for the unofficial QR-linked personal client.
-  # Keep it outside mcp-prod until a static residential/mobile proxy secret is
-  # configured. Enabling it adds both the workload and its credential smoke.
-  - name: mcp-whatsapp-personal-prod
-    manifests:
-      helm:
-        releases:
-          - name: mcp-whatsapp-personal
-            chartPath: mcp
-            namespace: mcp-whatsapp-personal
-            createNamespace: false
-            valuesFiles:
-              - mcp/values.yaml
-              - mcp/values-whatsapp-personal.yaml
-    verify:
-      - name: mcp-whatsapp-personal-smoke-test
-        container:
-          name: whatsapp-personal-smoke-test
-          image: curlimages/curl:8.10.1
-          command: ["/bin/sh", "-c"]
-          args:
-            - |
-              set -eu
-              retry='--retry 30 --retry-all-errors --retry-delay 5'
-              url=http://mcp-whatsapp-personal.mcp-whatsapp-personal.svc.cluster.local:3000
-              curl -sSf $retry "$url/health"
-
-              init='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"cloud-deploy-prod-smoke","version":"1.0"}}}'
-              headers=/tmp/whatsapp-personal.headers
-              body=/tmp/whatsapp-personal.body
-              curl -sS --fail-with-body --connect-timeout 5 --max-time 45 \
-                -D "$headers" -o "$body" -X POST \
-                -H 'Content-Type: application/json' \
-                -H 'Accept: application/json, text/event-stream' \
-                -H 'Origin: https://yourown.chat' \
-                --data "$init" "$url/mcp"
-              session_id="$(grep -i '^mcp-session-id:' "$headers" |
-                tail -n1 | cut -d: -f2- | tr -d ' \r')"
-              test -n "$session_id"
-              curl -sS --fail-with-body --connect-timeout 5 --max-time 45 \
-                -o "$body" -X POST \
-                -H 'Content-Type: application/json' \
-                -H 'Accept: application/json, text/event-stream' \
-                -H 'Origin: https://yourown.chat' \
-                -H "Mcp-Session-Id: $session_id" \
-                --data '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
-                "$url/mcp"
-              curl -sS --fail-with-body --connect-timeout 5 --max-time 45 \
-                -o "$body" -X POST \
-                -H 'Content-Type: application/json' \
-                -H 'Accept: application/json, text/event-stream' \
-                -H 'Origin: https://yourown.chat' \
-                -H "Mcp-Session-Id: $session_id" \
-                --data '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"session_status","arguments":{}}}' \
-                "$url/mcp"
-              if ! grep -q '"result"' "$body" ||
-                grep -Eq '"isError"[[:space:]]*:[[:space:]]*true|"error"[[:space:]]*:' "$body" ||
-                grep -q '"configuration_error"' "$body"; then
-                echo "[whatsapp-personal] protocol or static proxy credential smoke failed" >&2
-                cat "$body" >&2
-                exit 1
-              fi
-        executionMode:
-          kubernetesCluster:
-            jobManifestPath: mcp/verify/prod-whatsapp-personal-job.yaml
 
 # Cloud Deploy executes these lifecycle actions in Cloud Build, not as pods in
 # GKE. PREDEPLOY cleanup uses its dedicated cleanup identity. POSTDEPLOY
@@ -406,8 +286,5 @@ customActions:
             gcloud container clusters get-credentials "${cluster_name}" \
               --project "${cluster_project}" \
               --location "${cluster_location}"
-            kubectl --namespace dev scale deployment/dev-mcp-terraform --replicas=0
             kubectl --namespace dev scale deployment/dev-mcp-terraform-stacks --replicas=0
             kubectl --namespace dev scale deployment/dev-mcp-google-cloud --replicas=0
-            kubectl --namespace dev scale deployment/dev-mcp-whatsapp-business --replicas=0
-            kubectl --namespace dev scale deployment/dev-mcp-whatsapp-personal --replicas=0

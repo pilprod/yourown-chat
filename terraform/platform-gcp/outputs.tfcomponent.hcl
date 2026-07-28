@@ -49,6 +49,12 @@ output "ingress_ip_address" {
   value       = component.network.ingress_ip_address
 }
 
+output "nat_egress_ip_address" {
+  type        = string
+  description = "Reserved static Cloud NAT egress IP. Allowlist this address in Google Workspace SMTP Relay."
+  value       = component.network.nat_egress_ip_address
+}
+
 # --- Cloud SQL -----------------------------------------------------------------
 output "cloudsql_connection_name" {
   type        = string
@@ -103,10 +109,7 @@ output "workload_identity_emails" {
     dev                   = component.workload_identity_dev.email
     mcp                   = component.workload_identity_mcp.email
     mcp-dev               = component.workload_identity_mcp_dev.email
-    mcp-terraform         = component.workload_identity_mcp_terraform.email
     mcp-terraform-stacks  = component.workload_identity_mcp_terraform_stacks.email
-    mcp-whatsapp          = component.workload_identity_mcp_whatsapp.email
-    mcp-whatsapp-personal = component.workload_identity_mcp_whatsapp_personal.email
     mcp-tunnel            = component.workload_identity_mcp_tunnel.email
   }
 }
@@ -120,10 +123,7 @@ output "workload_identity_members" {
     dev                   = component.workload_identity_dev.iam_member
     mcp                   = component.workload_identity_mcp.iam_member
     mcp-dev               = component.workload_identity_mcp_dev.iam_member
-    mcp-terraform         = component.workload_identity_mcp_terraform.iam_member
     mcp-terraform-stacks  = component.workload_identity_mcp_terraform_stacks.iam_member
-    mcp-whatsapp          = component.workload_identity_mcp_whatsapp.iam_member
-    mcp-whatsapp-personal = component.workload_identity_mcp_whatsapp_personal.iam_member
     mcp-tunnel            = component.workload_identity_mcp_tunnel.iam_member
   }
 }

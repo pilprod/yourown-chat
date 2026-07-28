@@ -9,16 +9,15 @@ The platform consumes MCP (Model Context Protocol) servers in two ways:
    across namespaces only from the Cloudflare Tunnel connector. Mattermost,
    Claude and ChatGPT use the common `https://tools.yourown.chat/mcp` Portal
    and never call an MCP ClusterIP. Every server
-   has its own default-deny namespace (`mcp-terraform`,
-   `mcp-terraform-stacks`, `mcp-google-cloud`, or
-   `mcp-whatsapp-business`, or `mcp-whatsapp-personal`), so a compromised server
+   has its own default-deny namespace (`mcp-terraform-stacks` or
+   `mcp-google-cloud`), so a compromised server
    cannot initiate traffic to another MCP server. Each server admits only the
    Cloudflare Tunnel connector in the separate `mcp-tunnel` namespace. Egress is limited
    to cluster DNS plus encrypted external API/Tunnel traffic.
    Credentials are mounted directly from regional, CMEK-protected Secret
    Manager containers through the managed GKE CSI add-on. Each server has a
    dedicated Workload Identity and `SecretProviderClass`; operator-supplied
-   Terraform/Meta values never enter app-gcp state, Cloud Deploy, a Kubernetes
+   HCP Terraform values never enter app-gcp state, Cloud Deploy, a Kubernetes
    Secret, or etcd. (The Cloudflare-generated Tunnel token necessarily remains
    sensitive state in the stack that creates it.) After adding a new
    `versions/latest`, restart only that server's Deployment to remount it; no
@@ -28,12 +27,6 @@ The platform consumes MCP (Model Context Protocol) servers in two ways:
    PriorityClass and the tenant's default-deny/intra-namespace policies. Each
    dev server keeps its own KSA and the same per-server Secret Manager IAM
    boundary as production.
-
-   The QR-linked personal WhatsApp exception stores its mutable auth state on
-   a dedicated CMEK-encrypted PVC because it cannot live in immutable Secret
-   Manager versions. Its static proxy credential still uses Secret Manager
-   CSI. See [WHATSAPP_PERSONAL_MCP.md](WHATSAPP_PERSONAL_MCP.md).
-
 2. **Vendor-hosted (remote)** — the vendor runs the MCP endpoint; agents
    connect to its URL with OAuth. Nothing to deploy or operate on our side.
    Preferred whenever an official remote endpoint exists.
@@ -51,8 +44,8 @@ Production GKE MCP Deployments carry the supported discovery metadata:
   `modelcontextprotocol.info/capabilities`;
 - `iam.gke.io/spiffe-identity-type: agent-identity` on the Pod template.
 
-GKE therefore registers and introspects Terraform, Terraform Stacks, Google
-Cloud, and WhatsApp Business MCP after their production rollout. The dev overlay deliberately
+GKE therefore registers and introspects Terraform Stacks and Google Cloud MCP
+after their production rollout. The dev overlay deliberately
 disables registration because those instances are disposable and are scaled
 to zero after review. Official Google remote MCP servers are registered
 automatically when their APIs are enabled.
@@ -65,7 +58,6 @@ registers the public interfaces already used by agents:
 |---|---|---|
 | Endpoint | Mattermost API | `https://yourown.chat/api/v4` |
 | Endpoint | HCP Terraform API | `https://app.terraform.io/api/v2` |
-| Endpoint | Meta Graph API | `https://graph.facebook.com/v23.0` |
 | MCP server | Meta Developer Tools MCP | `https://mcp.facebook.com/devtools` |
 
 Apply `platform-gcp` first and then `agent-registry-gcp`. The Terraform apply SA
@@ -95,7 +87,7 @@ gcloud agent-registry mcp-servers list \
   --location=europe-west3
 ```
 
-The four GKE servers should expose discovered tools after introspection. The
+The two GKE servers should expose discovered tools after introspection. The
 manually registered Meta entry is expected to show endpoint metadata without a
 Terraform-managed tool specification.
 
@@ -109,10 +101,8 @@ constraints (especially for consumer services without a public API).
 
 | Service | Server | Credentials |
 |---|---|---|
-| Terraform (Registry + **HCP Terraform**) | internally mirrored `hashicorp/terraform-mcp-server:1.1.0@sha256:312d…` (official) — registry docs tokenless; workspaces/runs/stacks on app.terraform.io once `TFE_TOKEN` is loaded | HCP user token in Secret Manager (`mcp-terraform-hcp-token`, placeholder seeded) |
-| Terraform Stacks management | internally built `mcp-terraform-stacks` adapter over the official HCP Terraform Stacks API; guarded settings read/create/update plus deployment plan inspection and run-scoped approve/cancel | same HCP user token, with Project Maintain or higher and its owner authorized for the repository's HCP GitHub App |
+| Terraform Stacks management | internally built `mcp-terraform-stacks` adapter over the official HCP Terraform Stacks API; guarded stack settings, configuration lifecycle, deployment inspection, run-scoped approve/cancel and safe stack deletion | HCP user token in Secret Manager (`mcp-terraform-hcp-token`, placeholder seeded), with Project Maintain or higher and its owner authorized for the repository's HCP GitHub App |
 | Google Cloud (Observability + Artifact Analysis + guarded Cloud Deploy lifecycle) | internally built `mcp-google-cloud` image: `@google-cloud/observability-mcp@0.2.3` (Google, preview) behind a native Streamable HTTP aggregator | **none — keyless**: separate Workload Identity principals for prod lifecycle and disposable read-only dev; quota project is `yourown-chat` |
-| WhatsApp Business | internally built adapter over the official Meta WhatsApp Cloud API | Meta system-user token, WABA ID and phone-number ID in Secret Manager |
 
 The Google Cloud server is published as an npm/stdio package, not a container
 with native HTTP transport. The platform therefore builds
@@ -316,8 +306,8 @@ snippets. External Git contexts and their pinned revisions, plus OCI title,
 source, description, revision and version labels, all come from the catalog.
 Parent changes propagate through the catalog, missing
 `runtime` tags bootstrap automatically, and every published image also gets an
-immutable build tag. Mattermost remains on its upstream image, while the
-official Terraform image is mirrored by digest. Cloudflared is compiled from
+immutable build tag. Mattermost remains on its upstream image. Cloudflared is
+compiled from
 the unmodified commit behind the pinned official release tag with a patched
 pinned Go toolchain and copied into the same pinned distroless runtime family
 used upstream.
@@ -330,17 +320,15 @@ docker build -f docker/base/node.Dockerfile \
   --build-arg BASE_IMAGE=base:local \
   -t node:local docker/base
 docker build --build-arg RUNTIME_IMAGE=node:local \
-  -t mcp-whatsapp-business:local docker/mcp/whatsapp-business
+  -t mcp-terraform-stacks:local docker/mcp/terraform-stacks
 ```
 
 `docker/mcp/upstreams.env` is the reviewable upstream lock for the other
-runtime images. Terraform MCP 1.1.0 is pulled by its official
-multi-architecture digest. Cloudflared 2026.7.3 is checked out at commit
+runtime images. Cloudflared 2026.7.3 is checked out at commit
 `3a2b45c2a511fcdd81b68c190938e4ffadbea5dc` and rebuilt with Go 1.26.5
 rather than the vulnerable Go 1.26.4 used by the upstream container.
-WhatsApp Business is built from the committed Node.js source and lock file in
-`docker/mcp/whatsapp-business`. Every in-cluster workload is rendered with an
-Artifact Registry `@sha256` reference.
+Every in-cluster workload is rendered with an Artifact Registry `@sha256`
+reference.
 
 #### HCP Terraform token
 
@@ -355,8 +343,7 @@ new Secret Manager version:
 
 ```bash
 printf '%s' "<user-api-token>" | gcloud secrets versions add mcp-terraform-hcp-token --data-file=-
-# No Terraform apply or release is required; restart both CSI consumers:
-kubectl -n mcp-terraform rollout restart deploy/mcp-terraform
+# No Terraform apply or release is required; restart the CSI consumer:
 kubectl -n mcp-terraform-stacks rollout restart deploy/mcp-terraform-stacks
 ```
 
@@ -382,7 +369,8 @@ or delete it. Creation can optionally fetch the first VCS configuration but
 does not alter the approval allowlist.
 
 Deployment approval remains narrower. Stack IDs inside organization
-`papou-work` are resolved from the committed name allowlist:
+`papou-work` must satisfy the same project, repository, and directory policy
+and are then resolved from the committed name allowlist:
 
 - `cloudflare`;
 - `app-gcp`;
@@ -400,11 +388,16 @@ approval or approval of later plans.
 
 Available management tools:
 
+- `list_stacks`;
 - `get_stack_settings`;
 - `list_configurations` / `inspect_configuration` for configuration status,
   preparation diagnostics, and deployment-group summaries before a run exists;
 - `plan_create` / `create`;
-- `plan_update` / `update`.
+- `plan_update` / `update`;
+- `plan_configuration` / `create_configuration`, including guarded
+  `fetch`, `reuse`, and destroy-all configurations;
+- `plan_delete` / `delete`, which refuse deletion while any deployment
+  remains.
 
 Available delivery tools remain:
 
@@ -457,165 +450,14 @@ user, so each user must click **Connect** and grant their own Google access.
 Use the smallest scopes required by the enabled tools and require confirmation
 for tools that send mail, change calendars, or create/copy Drive files.
 
-#### Meta Developer Tools and business messaging
+#### Meta Developer Tools
 
 Meta now publishes the official, beta **Meta Developer Tools MCP** at
 `https://mcp.facebook.com/devtools`. It covers developer-platform operations:
 app configuration and diagnostics, API health, App Review/compliance,
 documentation/changelog search, and webhook subscription administration. It
-does **not** send or receive WhatsApp, Messenger, or Instagram messages.
-
-The repository therefore still owns a small Streamable HTTP WhatsApp adapter
-in `docker/mcp/whatsapp-business/server.mjs`, which calls only the official
-WhatsApp Cloud API. It does not use WhatsApp Web, a QR session, Baileys, or
-another personal-account bridge.
-
-The server exposes tools to send text, template, and link-hosted media
-messages; read webhook-delivered inbound/outbound messages; mark a message as
-read; and inspect the business profile, phone number, and message templates.
-Meta does not expose a REST endpoint for downloading arbitrary WhatsApp chat
-history. Incoming messages must arrive through the `messages` webhook, so the
-adapter verifies Meta's signature and keeps a bounded local index of the last
-5,000 messages on a Google-encrypted GKE persistent disk.
-
-**Where to get the required values** (all from [Meta Business Suite / Developers](https://developers.facebook.com)):
-
-1. **One-time setup.** In [business.facebook.com](https://business.facebook.com)
-   confirm you have a **WhatsApp Business Account (WABA)** and a phone number
-   (Business Settings → Accounts → WhatsApp Accounts). In
-   [developers.facebook.com](https://developers.facebook.com) create/open a
-   **Business-type app** and add the **WhatsApp** product to it.
-
-2. **`mcp-whatsapp-waba-id`** — the WABA ID. App dashboard → **WhatsApp → API
-   Setup**: the "WhatsApp Business Account ID" shown there (also in Business
-   Settings → WhatsApp Accounts → your account).
-
-3. **`mcp-whatsapp-phone-number-id`** — the sender's **Phone number ID** (NOT
-   the phone number itself). Same **WhatsApp → API Setup** page, under "From",
-   next to the number — a numeric ID.
-
-4. **`mcp-whatsapp-access-token`** — a **permanent System-User token** (the
-   24-hour test token expires, don't use it). Business Settings → **Users →
-   System users** → add/select a system user → **Generate new token** → pick
-   your app → grant **`whatsapp_business_messaging`** and
-   **`whatsapp_business_management`** → set expiry **Never**. Also assign the
-   WABA to that system user (System users → Assign assets → your WABA → full
-   control) or the token can't act on it.
-
-5. **`mcp-whatsapp-app-secret`** — App dashboard → **App settings → Basic →
-   App secret → Show**. This is used only to validate
-   `X-Hub-Signature-256` on incoming webhook requests.
-
-6. **`mcp-whatsapp-webhook-verify-token`** — generated by Terraform. After
-   applying app-gcp, read it once for the Meta webhook form:
-
-   ```bash
-   gcloud secrets versions access latest \
-     --secret=mcp-whatsapp-webhook-verify-token \
-     --project=yourown-chat
-   ```
-
-Then replace the seeded Secret Manager placeholders:
-
-```bash
-printf '%s' "<system-user-token>" | gcloud secrets versions add mcp-whatsapp-access-token --data-file=-
-printf '%s' "<waba-id>"           | gcloud secrets versions add mcp-whatsapp-waba-id --data-file=-
-printf '%s' "<phone-number-id>"   | gcloud secrets versions add mcp-whatsapp-phone-number-id --data-file=-
-printf '%s' "<meta-app-secret>"    | gcloud secrets versions add mcp-whatsapp-app-secret --data-file=-
-```
-
-Apply cloudflare to publish only the signed webhook path, then configure the
-Meta app under **WhatsApp → Configuration**:
-
-```text
-Callback URL: https://whatsapp-webhook.yourown.chat/webhooks/whatsapp
-Verify token: value from mcp-whatsapp-webhook-verify-token
-Webhook fields: messages, history, smb_message_echoes
-```
-
-Subscribe the app to the intended WABA. The public hostname routes only the
-anchored `/webhooks/whatsapp` path; `/mcp` is not reachable on that hostname.
-POST requests are accepted only with a valid HMAC signature made with the Meta
-App Secret. `messages` supplies Cloud API inbound messages and delivery
-statuses. For a number onboarded through WhatsApp Coexistence, `history`
-supplies the history that the business explicitly allowed Meta to share during
-onboarding, and `smb_message_echoes` supplies new messages sent from the
-WhatsApp Business app and linked devices. The larger history payloads are
-accepted up to 16 MiB.
-
-Restart `deployment/mcp-whatsapp-business` after adding credential versions;
-no later `app-gcp` apply or MCP release is needed for credential rotation. The
-adapter reads the mounted files for every API call after the pod remounts them.
-In Mattermost add it as `WhatsApp Business` with URL
-`http://mcp-whatsapp-business.mcp-whatsapp-business.svc.cluster.local:3000/mcp`;
-leave headers and OAuth credentials empty because Meta credentials stay on the
-server.
-
-Reading tools:
-
-- `messages_list_conversations` — conversations with latest message, locally
-  derived unread count, and source list;
-- `messages_list` — newest captured messages, optionally filtered by
-  either participant, sender, direction, source, delivery/read status,
-  timestamp, and limit;
-- `messages_get` — one message by its `wamid`;
-- `messages_mark_read` — acknowledge an inbound message through the
-  official Graph API and update the local index.
-
-Every captured message stays in the MCP store even if it is later opened on the
-phone. Coexistence history can import up to the history window offered by Meta
-during onboarding (currently up to 180 days), but it is not a general
-on-demand history API and excludes unsupported conversations such as groups.
-New phone-originated messages are synchronized through
-`smb_message_echoes`. Meta delivery-status webhooks track Cloud API outbound
-messages; Meta does not document a guaranteed live webhook for every inbound
-message being opened in the phone app. Consequently, `unread_count` is a local
-best-effort value: it is accurate for imported history state and messages
-marked read through this MCP, but a phone-only read may remain locally unread.
-
-#### Personal WhatsApp over a QR-linked device
-
-The separate `mcp-whatsapp-personal` server uses a pinned Baileys client for
-one personal, low-volume account. This is an unofficial WhatsApp Web client
-and can violate WhatsApp Terms of Service; it has no no-ban guarantee. It is
-not a replacement for the official Business Cloud API.
-
-The implementation requires a static proxy, persists the QR auth state on a
-CMEK-backed PVC, excludes groups/broadcast/status traffic, exposes no bulk
-tool, permits sends only to dialogs with captured inbound history, enforces
-hard persisted send limits, and provides an emergency stop. Dev releases keep
-the client disabled so only the production pod can own the linked session.
-Production delivery is also opt-in through
-`mcp_whatsapp_personal_enabled` in
-`terraform/app-gcp/app.tfdeploy.hcl`. It remains `false` while the proxy
-secret contains its seeded placeholder, so unrelated MCP releases can reach
-production without deploying an unusable personal client. Setting it to
-`true` appends the `mcp-whatsapp-personal-prod` Skaffold profile and its
-blocking protocol plus static-proxy credential smoke; the smoke is not
-bypassed or weakened.
-Setup, QR instructions, exact tools, limitations, and the mandatory disclaimer
-are in [WHATSAPP_PERSONAL_MCP.md](WHATSAPP_PERSONAL_MCP.md).
-
-For Facebook Messenger and Instagram messaging, reuse the official Meta Graph
-APIs rather than treating Developer Tools MCP as a messaging gateway. The
-recommended evolution is one reviewed `mcp-meta` codebase/image with shared
-Graph API transport, validation, retries, and webhook verification, but three
-least-privilege runtime boundaries:
-
-| Runtime | Identity/configuration | Purpose |
-|---|---|---|
-| `mcp-meta-whatsapp` | system-user token, WABA ID, phone-number ID | WhatsApp Cloud API |
-| `mcp-meta-messenger` | Page access token and Messenger-approved permissions | Facebook Page Messenger |
-| `mcp-meta-instagram` | Instagram professional-account token and approved messaging permissions | Instagram Direct |
-
-Keep separate Helm releases, namespaces, Secrets, and Agent Registry entries
-even if they share one image. This avoids turning one leaked token or one
-compromised runtime into access to all Meta surfaces. A Meta Business app can
-host the required products, but product access, App Review, tokens, webhook
-topics, and user/account eligibility remain product-specific. Build Messenger
-and Instagram adapters only when their exact tool set and inbound webhook
-contract are defined; the current WhatsApp deployment should not be deleted
-before that replacement exists.
+is vendor-hosted and independently registered in Google Cloud Agent Registry;
+there is no corresponding GKE workload or credential in this repository.
 
 ## Connect the Cloudflare MCP Portal and Google Workspace to Mattermost
 
@@ -638,8 +480,8 @@ uses shared workload credentials (`on_behalf = false`). Never paste a
 Cloudflare service token, HCP Terraform token, or Google service-account key
 into Mattermost.
 
-Delete the former direct Terraform, Terraform Stacks, Google Cloud and
-WhatsApp entries after the Portal connection exposes their tools. Their
+Delete former direct Terraform Stacks and Google Cloud entries after the
+Portal connection exposes their tools. Their
 ClusterIP names are intentionally blocked by NetworkPolicy and are no longer
 allowlisted by Mattermost SSRF settings.
 
@@ -676,7 +518,6 @@ endpoints because Mattermost connects directly to Google.
 |---|---|---|---|
 | Google Maps | reference `server-google-maps` (stdio) | Maps API key | stdio → needs a streamable-http gateway wrapper |
 | Telegram | community MTProto/Bot-API MCP | bot token or MTProto session | Bot API variant is the safer path |
-| WhatsApp personal | community bridges (whatsmeow) | phone session | unofficial protocol use — account-ban risk, not recommended |
 | Binance / Kraken / Bybit | community CCXT-based MCP | exchange API keys (read-only recommended) | one CCXT server covers all three |
 | Airbnb | community `@openbnb/mcp-server-airbnb` (stdio, search-only) | none | stdio → gateway wrapper; search/browse only, no booking |
 | SoundCloud | community (thin) | OAuth | API access is restricted/waitlisted; low maturity |
@@ -746,7 +587,7 @@ not expose Managed OAuth to clients: AI Controls reaches them with the service
 token under a `Service Auth` policy. This edge credential does not change the
 downstream identity used by a server: Google Cloud MCP still calls Google
 Cloud through its shared GKE Workload Identity service account, while
-Terraform MCP still uses its configured HCP credential.
+Terraform Stacks MCP still uses its configured HCP credential.
 
 The Cloudflare stack uses provider 5.22.x, registers every configured server in AI
 Controls, and creates a single `https://tools.yourown.chat/mcp` MCP Portal. This
@@ -785,8 +626,8 @@ Client availability is not identical:
    `cloudflare-mcp-capability-sync` secret through the Google provider's
    write-only argument; the token remains absent from Terraform state. Only
    the `deploy-mcp` Cloud Deploy identity can read this copy.
-4. Apply **app-gcp**: grant Terraform/WhatsApp identities access to their own
-   Secret Manager containers and create the MCP namespaces. The
+4. Apply **app-gcp**: grant the Terraform Stacks identity access to its HCP
+   token container and create the MCP namespaces. The
    capability-sync action is attached to every successful production rollout.
 5. Release: Cloud Deploy creates KSAs + SecretProviderClasses and the pods
    mount `versions/latest` directly. A release racing ahead of the IAM steps
@@ -852,18 +693,10 @@ service account, so it creates no pod in GKE. Each verifier Job runs in
 `mcp-tunnel`, follows the same NetworkPolicy path as cloudflared, and checks:
 
 - each server's health endpoint;
-- a real read-only `list_terraform_orgs` HCP Terraform API call;
 - a real read-only `list_deployment_runs` call through the
   guarded Stack adapter;
 - a real read-only `list_log_names` Google Cloud API call through Workload
   Identity;
-- a real read-only `account_get_phone_number` Meta API call;
-- a read-only `messages_list` call against the mounted production
-  message index, ensuring the PVC-backed JSON store is readable through MCP;
-- when `mcp_whatsapp_personal_enabled=true`, a separate read-only
-  `session_status` verification; it fails while the mandatory
-  static proxy is unconfigured, but QR linking itself remains a post-deploy
-  operator action;
 - official Gmail, Calendar, and Drive MCP credentials are deliberately not
   impersonated by CI; each Mattermost user verifies the remote connection
   after their own OAuth consent.
@@ -871,31 +704,17 @@ service account, so it creates no pod in GKE. Each verifier Job runs in
 Any failure marks verification and the rollout unsuccessful. Apply the
 `app-gcp` stack before cutting the first MCP release.
 
-The PVC-backed WhatsApp deployment is intentionally a one-replica `Recreate`
-Deployment. The JSON store has one writer and must never overlap old and new
-pods during a rollout. A short WhatsApp MCP interruption is preferable to
-concurrent file mutation; Meta retries webhook deliveries. Issue #71 tracks
-the PostgreSQL migration that will remove this limitation and the PVC.
-
 ### Manual smoke test
 
 Port-forward each private Service:
 
 ```bash
-kubectl port-forward -n mcp-terraform svc/mcp-terraform 18080:8080
-curl -i http://127.0.0.1:18080/health
-
 kubectl port-forward -n mcp-terraform-stacks svc/mcp-terraform-stacks 18082:3000
 curl -i http://127.0.0.1:18082/health
 
 kubectl port-forward -n mcp-google-cloud svc/mcp-google-cloud 18081:8080
 curl -i http://127.0.0.1:18081/healthz
 
-kubectl port-forward -n mcp-whatsapp-business svc/mcp-whatsapp-business 18083:3000
-curl -i http://127.0.0.1:18083/health
-
-kubectl port-forward -n mcp-whatsapp-personal svc/mcp-whatsapp-personal 18084:3000
-curl -i http://127.0.0.1:18084/health
 ```
 
 Then validate the external path:

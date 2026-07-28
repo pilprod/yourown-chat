@@ -31,7 +31,7 @@ variable "mcp_portal_subdomain" {
 
 variable "upstreams" {
   type        = map(string)
-  description = "Hostname label => private in-cluster service URL (e.g. mcp-terraform => http://mcp-terraform.mcp-terraform.svc.cluster.local:8080). One tunnel ingress rule, DNS record and Access app per entry."
+  description = "Hostname label => private in-cluster service URL (e.g. mcp-terraform-stacks => http://mcp-terraform-stacks.mcp-terraform-stacks.svc.cluster.local:3000). One tunnel ingress rule, DNS record and Access app per entry."
 
   validation {
     condition     = length(var.upstreams) > 0

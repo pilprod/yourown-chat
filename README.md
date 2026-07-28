@@ -649,7 +649,6 @@ flowchart LR
   E --> GCS["GCS<br/>Mattermost objects + deploy source"]
   E --> SM["Secret Manager<br/>regional replicas"]
   E --> ETCD["GKE etcd<br/>Kubernetes Secrets"]
-  E --> PVC["mcp-sensitive PVCs<br/>Persistent Disk CSI"]
   E --> ND["GKE general pool<br/>node boot disks"]
 ```
 
@@ -670,9 +669,8 @@ PriorityClasses decide scheduling/preemption priority. Its replacement boot
 disks use the same HSM CMEK as the rest of the platform. Default-class PVCs
 currently hold only replaceable dev Mattermost and dev PostgreSQL data and
 remain Google-managed. Production Mattermost state is in CMEK-protected Cloud
-SQL and GCS, Kubernetes Secrets are application-layer encrypted with CMEK
-before etcd persistence, and the only stateful MCP session uses the
-`mcp-sensitive` CMEK StorageClass.
+SQL and GCS, and Kubernetes Secrets are application-layer encrypted with CMEK
+before etcd persistence.
 
 ### Build and release flow
 
@@ -711,29 +709,51 @@ Application delivery follows one straight, auditable path:
 
 ```mermaid
 %%{init: {"flowchart": {"nodeSpacing": 18, "rankSpacing": 28, "curve": "linear"}, "themeVariables": {"fontSize": "12px"}}}%%
-flowchart LR
-  T["Task"] --> C["Agent writes code"]
-  C --> G["Commit + immutable tag"]
-  G --> B["Cloud Build"]
-  B --> D["Dev rollout"]
-  D --> S["Smoke + inspection over MCP"]
-  S --> V["Agent assesses vulnerabilities<br/>of the final image digest"]
-  V --> H["Human accepts / rejects risk"]
-  H --> P["Agent approves exact rollout etag over MCP"]
-  P --> R["Prod rollout + verify + catalog sync"]
+flowchart TB
+  subgraph delivery_top[" "]
+    direction LR
+    T["Task"] --> C["Agent writes code"]
+    C --> G["Commit + immutable tag"]
+    G --> B["Cloud Build"]
+    B --> D["Dev rollout"]
+  end
+
+  subgraph delivery_bottom[" "]
+    direction LR
+    S["Smoke + inspection over MCP"]
+    S --> V["Agent assesses vulnerabilities<br/>of the final image digest"]
+    V --> H["Human accepts / rejects risk"]
+    H --> P["Agent approves exact rollout etag over MCP"]
+    P --> R["Prod rollout + verify + catalog sync"]
+  end
+
+  delivery_top --> delivery_bottom
+  style delivery_top fill:none,stroke:none
+  style delivery_bottom fill:none,stroke:none
 ```
 
 Infrastructure changes use the same pattern with the Terraform control plane:
 
 ```mermaid
 %%{init: {"flowchart": {"nodeSpacing": 18, "rankSpacing": 28, "curve": "linear"}, "themeVariables": {"fontSize": "12px"}}}%%
-flowchart LR
-  C["Agent writes IaC"] --> P["HCP Stack plan"]
-  P --> I["Agent inspects diff over MCP"]
-  I --> H["Human approval"]
-  H --> A["Agent approves exact configuration over MCP"]
-  A --> R["HCP apply"]
-  R --> V["Agent verifies outputs and downstream plans"]
+flowchart TB
+  subgraph infrastructure_top[" "]
+    direction LR
+    C["Agent writes IaC"] --> P["HCP Stack plan"]
+    P --> I["Agent inspects diff over MCP"]
+    I --> H["Human approval"]
+  end
+
+  subgraph infrastructure_bottom[" "]
+    direction LR
+    A["Agent approves exact configuration over MCP"]
+    A --> R["HCP apply"]
+    R --> V["Agent verifies outputs and downstream plans"]
+  end
+
+  infrastructure_top --> infrastructure_bottom
+  style infrastructure_top fill:none,stroke:none
+  style infrastructure_bottom fill:none,stroke:none
 ```
 
 Human-in-the-loop is enforced at multiple layers rather than being a chat
@@ -786,7 +806,7 @@ resource type.
 | Owner | Resources |
 |---|---|
 | **platform-gcp / APIs** | Service Usage entries for Compute, GKE, Service Networking, Cloud SQL, KMS, Storage, Cloud Deploy, Logging, Monitoring, Cloud Build, Cloud Billing, Billing Budgets, BigQuery, BigQuery Data Transfer, Recommender, Artifact Registry, Artifact Analysis, Agent Registry and Google Workspace MCP APIs |
-| **platform-gcp / network** | Custom VPC, regional subnet with pod/service secondary ranges, internal firewall, Cloud Router, Cloud NAT, reserved external ingress IP, PSA address and Service Networking connection |
+| **platform-gcp / network** | Custom VPC, regional subnet with pod/service secondary ranges, internal firewall, Cloud Router, Cloud NAT with a reserved egress IP for Workspace SMTP Relay, reserved external ingress IP, PSA address and Service Networking connection |
 | **platform-gcp / encryption** | Regional HSM KMS key ring and key, rotation policy, IAM grants for GKE, Compute Engine, Cloud SQL, GCS and Secret Manager service agents |
 | **platform-gcp / compute** | One zonal private GKE Standard cluster, HSM-CMEK autoscaling `general` node pool, shielded nodes, node service account, CSI drivers, etcd application-layer encryption and GKE cost allocation |
 | **platform-gcp / data** | Private Cloud SQL PostgreSQL instance, database/user/password secrets, GCS Mattermost bucket, HMAC service account and secrets, EU BigQuery `billing` dataset |
@@ -807,10 +827,7 @@ resource type.
 | `dev` | Persistent dev PostgreSQL; disposable Mattermost/MCP test workloads | Secret Manager |
 | `matterbridge` | Matterbridge integration | Mattermost and configured chat networks |
 | `mcp-google-cloud` | Google Cloud operations, observability, security and billing MCP | Google Cloud APIs and BigQuery billing export |
-| `mcp-terraform` | HCP Terraform workspace/provider MCP | HCP Terraform API |
-| `mcp-terraform-stacks` | HCP Terraform Stacks lifecycle MCP | HCP Terraform API |
-| `mcp-whatsapp-business` | Official WhatsApp Business Cloud API MCP | Meta Graph API |
-| `mcp-whatsapp-personal` | QR-linked personal WhatsApp MCP | WhatsApp Web and its encrypted persistent volume |
+| `mcp-terraform-stacks` | Guarded HCP Terraform Stacks lifecycle MCP: stack settings, configurations, plans, deployment runs, approvals and deletion | HCP Terraform API |
 | `mcp-tunnel` | `cloudflared` connector | Cloudflare edge and explicitly allowed MCP Services |
 
 The flow in plain words:
@@ -981,36 +998,89 @@ images for a limited monitoring window. A later `platform-gcp` apply also
 restores the cost-safe `DISABLED` baseline if a scan window was accidentally
 left open.
 
-**Enable Mattermost Google Workspace login** — the chart enables native TOTP
-but initially leaves enforcement off so existing email users can enroll.
-Google login is prepared and remains disabled until real credentials replace
-the seeded placeholders:
+**Enable Mattermost Google Workspace login** — use separate Internal Web OAuth
+clients for dev and prod. This keeps the dev callback and credential out of the
+production client's trust boundary. Google login remains disabled in both
+environments until real credentials replace the seeded placeholders.
 
-1. In Google Auth Platform create an **Internal** OAuth application for the
-   `papou.email` Workspace organization and a **Web application** client.
-2. Add `https://yourown.chat` as an authorized JavaScript origin and
-   `https://yourown.chat/signup/google/complete` as an authorized redirect URI.
-   The platform stack enables People API automatically.
-3. Add the credentials as new Secret Manager versions without committing them:
+1. In Google Auth Platform configure the app audience as **Internal** for the
+   `papou.work` Workspace organization. Create a **Web application** client
+   named `Mattermost dev` with:
+
+   - authorized JavaScript origin: `https://dev.yourown.chat`
+   - authorized redirect URI:
+     `https://dev.yourown.chat/signup/google/complete`
+
+   Later create a separate `Mattermost prod` client with
+   `https://yourown.chat` and
+   `https://yourown.chat/signup/google/complete`. The platform stack enables
+   People API automatically.
+2. Store the dev credentials as new Secret Manager versions without committing
+   them or adding a trailing newline:
 
    ```sh
-   gcloud secrets versions add mattermost-google-client-id \
-     --project=yourown-chat --data-file=/path/to/client-id.txt
-   gcloud secrets versions add mattermost-google-client-secret \
-     --project=yourown-chat --data-file=/path/to/client-secret.txt
+   printf %s 'CLIENT_ID.apps.googleusercontent.com' > /tmp/dev-mm-client-id
+   printf %s 'CLIENT_SECRET' > /tmp/dev-mm-client-secret
+
+   gcloud secrets versions add dev-mattermost-google-client-id \
+     --project=yourown-chat --data-file=/tmp/dev-mm-client-id
+   gcloud secrets versions add dev-mattermost-google-client-secret \
+     --project=yourown-chat --data-file=/tmp/dev-mm-client-secret
    ```
 
-4. Apply `app-gcp` so `mattermost-google-auth` receives the latest versions,
-   then set `mattermost_google_auth_enabled: true` in
-   `helm/mattermost/values-prod.yaml` and cut a normal platform release.
-5. After email/password users have enrolled TOTP, set
+3. Apply `app-gcp` so the native Kubernetes Secret
+   `dev/dev-mattermost-google-auth` receives the latest versions. Set
+   `mattermost_google_auth_enabled: true` only in
+   `helm/mattermost/values-dev.yaml`, cut a normal platform release, and stop
+   after the automatic dev rollout and verify. Do not approve the prod
+   promotion while testing.
+4. From a workstation with Cloudflare Access, verify dev:
+
+   - `/api/v4/config/client?format=old` reports
+     `EnableSignUpWithGoogle=true`;
+   - `/oauth/google/login` redirects only to `accounts.google.com`;
+   - a Workspace test user whose primary email is `user@papou.email` can sign
+     in and lands back on
+     `https://dev.yourown.chat`;
+   - a non-Workspace Google account is rejected by Google's Internal audience;
+   - a signed token whose `hd` is not one of `papou.work,papou.email` is
+     rejected by
+     Mattermost's `MM_GOOGLESETTINGS_ALLOWEDHOSTEDDOMAINS`;
+   - a signed token whose primary email domain is not `papou.email` is rejected
+     by Mattermost's `MM_GOOGLESETTINGS_ALLOWEDDOMAINS`;
+   - an unauthenticated `/api/v4/users/me` request remains `401`.
+
+   Test with a dedicated non-admin Workspace user first. Keep an existing
+   system-admin email/password session open in a separate browser profile so a
+   bad OAuth configuration cannot lock out administration.
+5. After dev succeeds, add the separate prod credential versions to
+   `mattermost-google-client-id` and `mattermost-google-client-secret`, apply
+   `app-gcp`, enable `mattermost_google_auth_enabled` in
+   `helm/mattermost/values-prod.yaml`, and use the normal dev → approval → prod
+   release flow.
+6. After email/password users have enrolled TOTP, set
    `mattermost_mfa_enforced: true`. Enforce 2-Step Verification in Google
    Workspace separately: Mattermost's native MFA policy does not apply to SSO
    sessions.
 
 `MM_TEAMSETTINGS_RESTRICTCREATIONTODOMAINS=papou.email` limits Mattermost email
-account creation, but it is not the SSO security boundary. The Internal OAuth
-application and Workspace policy are what restrict Google identities.
+account creation. The Internal OAuth application,
+`MM_GOOGLESETTINGS_ALLOWEDHOSTEDDOMAINS=papou.work,papou.email` (`hd` claim) and
+`MM_GOOGLESETTINGS_ALLOWEDDOMAINS=papou.email` (`email` claim) form the SSO
+security boundary. Google documents that an email suffix alone must not be used
+to prove Workspace membership.
+
+To allow another primary user domain later, append the verified domain to both
+comma-separated values in the environment-specific values file:
+
+```yaml
+mattermost_google_hosted_domains: "papou.work,papou.email,other.example"
+mattermost_google_email_domains: "papou.email,other.example"
+```
+
+Deploy and verify this change on dev before promoting it. Keeping the lists
+separate makes the Workspace domains known to Google broader than the subset of
+primary email domains currently entitled to use Mattermost.
 
 **Rotate the DB password** — bump one committed value, no time-based
 surprises:
@@ -1135,7 +1205,6 @@ not imply that every Google or Cloudflare resource uses it.
 | Secret Manager | User-managed regional replicas use the HSM CMEK; this includes database credentials, GCS HMAC keys, Cloudflare material and MCP credentials | Per-secret IAM; pods authenticate with Workload Identity and mount allowed versions read-only through Secret Manager CSI |
 | MCP credentials in Kubernetes | MCP secrets do **not** become Kubernetes Secret objects: CSI reads them directly from Secret Manager into the pod filesystem | Separate KSA/GSA and `secretAccessor` grant per tenant; files disappear with the pod |
 | Compatibility Kubernetes Secrets | Values needed by Mattermost/operator compatibility are envelope-encrypted in GKE etcd; the HSM key wraps the data-encryption key | Kubernetes RBAC and namespace isolation govern reads; these are the exception to the direct-CSI path |
-| Personal WhatsApp session PVC | The `mcp-sensitive` StorageClass passes the HSM CMEK to Persistent Disk CSI | Mounted only by the personal WhatsApp workload in its isolated namespace |
 | BigQuery billing export | Google-managed encryption at rest; no dataset CMEK is configured | Dataset-level `roles/bigquery.dataViewer` for the Google Cloud MCP and a bounded 1 GB/query limit |
 | Artifact Registry images | Google-managed encryption at rest because `artifact_registry_kms_key_name = null` | Regional private repository, IAM-scoped pulls and explicitly bounded Artifact Analysis scan windows |
 | GKE `general` node-pool boot disks | The shared regional HSM CMEK is assigned through `boot_disk_kms_key`; the single pool has no dedicated dev nodes | Private nodes, Shielded Nodes, disposable Container Optimized OS/runtime data and Kubernetes PriorityClasses |
@@ -1152,13 +1221,13 @@ a compromised workload that is already authorized to read a mounted disk is
 not prevented by either Google-managed encryption or CMEK.
 
 This boundary is intentional, not a claim that default encryption is
-equivalent to CMEK. If durable production data is added to an ordinary PVC, it
-must select `mcp-sensitive` or a new workload-specific CMEK StorageClass. GKE
-cannot add CMEK to existing node boot disks in place, so the first apply of
-this setting deletes and recreates the `general` pool with the same name and
-causes a temporary workload outage. Disabling the key can subsequently prevent
-nodes from booting. The GKE control-plane disks remain Google-managed even when
-workload node and attached disks use CMEK.
+equivalent to CMEK. Durable production data added to a PVC needs an explicit
+workload-specific CMEK StorageClass. GKE cannot add CMEK to existing node boot
+disks in place, so the first apply of this setting deletes and recreates the
+`general` pool with the same name and causes a temporary workload outage.
+Disabling the key can subsequently prevent nodes from booting. The GKE
+control-plane disks remain Google-managed even when workload node and attached
+disks use CMEK.
 
 Google services use envelope encryption: the service encrypts data with data
 encryption keys and the Cloud KMS HSM key wraps those keys. The HSM key is not

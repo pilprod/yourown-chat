@@ -70,22 +70,11 @@ deployment "yourown-chat" {
     zero_trust_team_name      = "yourown-chat"
     zero_trust_allowed_emails = ["ilya@papou.email"]
     zero_trust_upstreams = {
-      dev                   = "http://dev-mattermost.dev.svc.cluster.local:8065"
-      mcp-terraform         = "http://mcp-terraform.mcp-terraform.svc.cluster.local:8080"
-      mcp-terraform-stacks  = "http://mcp-terraform-stacks.mcp-terraform-stacks.svc.cluster.local:3000"
-      mcp-google-cloud      = "http://mcp-google-cloud.mcp-google-cloud.svc.cluster.local:8080"
-      mcp-whatsapp-business = "http://mcp-whatsapp-business.mcp-whatsapp-business.svc.cluster.local:3000"
-      mcp-whatsapp-personal = "http://mcp-whatsapp-personal.mcp-whatsapp-personal.svc.cluster.local:3000"
+      dev                  = "http://dev-mattermost.dev.svc.cluster.local:8065"
+      mcp-terraform-stacks = "http://mcp-terraform-stacks.mcp-terraform-stacks.svc.cluster.local:3000"
+      mcp-google-cloud     = "http://mcp-google-cloud.mcp-google-cloud.svc.cluster.local:8080"
     }
-    # Meta cannot pass an interactive Cloudflare Access login. This hostname
-    # exposes only the signed /webhooks/whatsapp handler; the MCP hostname
-    # remains protected by Access.
-    zero_trust_public_upstreams = {
-      whatsapp-webhook = {
-        service = "http://mcp-whatsapp-business.mcp-whatsapp-business.svc.cluster.local:3000"
-        path    = "^/webhooks/whatsapp$"
-      }
-    }
+    zero_trust_public_upstreams = {}
   }
 }
 
