@@ -189,8 +189,10 @@ Mattermost sends invitations and notifications through
 `smtp-relay.gmail.com:587` with STARTTLS. The relay authenticates the cluster
 by the platform's reserved Cloud NAT address, so it needs no SMTP username,
 password, App Password, licensed mailbox, or credential stored in Kubernetes.
-Production and dev send as `YourOwn.Chat <noreply@yourown.chat>`. Replies go to
-`ilya@papou.email`.
+Production sends as `YourOwn.Chat <noreply@yourown.chat>`. Dev sends as
+`YourOwn.Chat Dev <noreply-dev@yourown.chat>` so test invitations and
+notifications are immediately distinguishable. Replies from both environments
+go to `ilya@papou.email`.
 
 Apply `platform-gcp` first and copy its `nat_egress_ip_address` output. In
 **Google Admin Console → Apps → Google Workspace → Gmail → Routing → SMTP
@@ -202,7 +204,7 @@ relay service**, create one relay with:
 - **Require SMTP authentication** disabled;
 - **Require TLS encryption** enabled.
 
-Both `papou.email` sender addresses are intentionally unlicensed. They work
+Both `yourown.chat` sender addresses are intentionally unlicensed. They work
 because the relay accepts addresses in Workspace-owned domains rather than
 only registered users. A separate licensed user is required only if the relay
 is changed to SMTP AUTH or Mattermost is pointed at `smtp.gmail.com`; that
