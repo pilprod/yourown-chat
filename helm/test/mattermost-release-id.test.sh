@@ -30,7 +30,7 @@ assert_id \
   "mattermost-preview-dev"
 
 assert_id \
-  "mattermost-11-9-0-img-deadbeef-12345678" \
+  "mattermost-11-9-0-deadbeef-12345678" \
   "mattermost-dev" \
   "v11.9.0-patched" \
   "deadbeefcafebabe" \
@@ -62,6 +62,26 @@ preview_rollout_suffix="-to-mattermost-preview-dev-0001"
   exit 1
 }
 ((${#long_id} + ${#preview_rollout_suffix} <= 63))
+
+long_tag_id="$(
+  bash "${generator}" \
+    "v123456789.123456789.123456789-patched" \
+    "deadbeefcafebabe" \
+    "12345678-1234-1234-1234-123456789abc" \
+    "mattermost-prod"
+)"
+[[ "${long_tag_id}" != *-img-* ]] || {
+  printf 'expected production release ID without img marker, got %s\n' \
+    "${long_tag_id}" >&2
+  exit 1
+}
+[[ "${long_tag_id}" == *-deadbeef ]] || {
+  printf 'expected production source commit to be retained, got %s\n' \
+    "${long_tag_id}" >&2
+  exit 1
+}
+prod_rollout_suffix="-to-mattermost-prod-0001"
+((${#long_tag_id} + ${#prod_rollout_suffix} <= 63))
 
 if bash "${generator}" "release-11.9-patched" "not-a-sha" "12345678" \
   >/dev/null 2>&1; then

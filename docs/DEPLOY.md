@@ -77,7 +77,7 @@ This path needs no second tag in `yourown-chat`.
 Its Cloud Deploy release ID is derived from the image version and includes the
 short release-source commit plus the short Cloud Build ID when the production
 rollout name remains within 63 characters:
-`mattermost-11-9-0-img-a1b2c3d4-12345678`. If it does not fit, only the
+`mattermost-11-9-0-a1b2c3d4-12345678`. If it does not fit, only the
 optional build suffix is dropped; the source commit is retained.
 
 ### A dev-only release branch

@@ -41,13 +41,10 @@ image_slug="$(slug "${image_version}")"
 short_commit="$(printf '%s' "${commit_sha}" | tr '[:upper:]' '[:lower:]' | cut -c1-8)"
 
 short_build="$(slug "${build_id}" | cut -c1-8)"
-if [[ "${preview_release}" == "true" ]]; then
-  # A preview is already identified by its source commit. Keep the release ID
-  # readable and leave implementation details such as "patched" and "img" out.
-  identity="${image_slug}-${short_commit}"
-else
-  identity="${image_slug}-img-${short_commit}"
-fi
+# The source ref identifies the image release channel, while the commit and
+# frozen digest provide immutable identity. Keep implementation details such
+# as "patched" and "img" out of the Cloud Deploy resource name.
+identity="${image_slug}-${short_commit}"
 
 # Cloud Deploy derives rollout IDs by appending the initial target suffix.
 # Account for the concrete delivery pipeline target so previews with a longer
@@ -70,11 +67,7 @@ if ((${#release_id} > max_release_length)); then
 fi
 
 if ((${#release_id} > max_release_length)); then
-  if [[ "${preview_release}" == "true" ]]; then
-    fixed_length=$((3 + 1 + ${#short_commit}))
-  else
-    fixed_length=$((3 + 5 + ${#short_commit}))
-  fi
+  fixed_length=$((3 + 1 + ${#short_commit}))
   readable_length=$((max_release_length - fixed_length))
   ((readable_length > 0)) || {
     printf 'Mattermost release ID cannot retain the source commit\n' >&2
@@ -85,11 +78,7 @@ if ((${#release_id} > max_release_length)); then
       cut -c1-"${readable_length}" |
       sed -E 's/-+$//'
   )"
-  if [[ "${preview_release}" == "true" ]]; then
-    release_id="mm-${readable_version}-${short_commit}"
-  else
-    release_id="mm-${readable_version}-img-${short_commit}"
-  fi
+  release_id="mm-${readable_version}-${short_commit}"
 fi
 
 printf '%s\n' "${release_id}"
