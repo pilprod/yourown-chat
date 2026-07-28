@@ -182,8 +182,8 @@ Mattermost sends invitations and notifications through
 `smtp-relay.gmail.com:587` with STARTTLS. The relay authenticates the cluster
 by the platform's reserved Cloud NAT address, so it needs no SMTP username,
 password, App Password, licensed mailbox, or credential stored in Kubernetes.
-Production sends as `mattermost@papou.email`; dev sends as
-`mattermost-dev@papou.email`. Replies go to `ilya@papou.email`.
+Production sends as `mattermost@yourown.chat`; dev sends as
+`mattermost-dev@yourown.chat`. Replies go to `ilya@papou.email`.
 
 Apply `platform-gcp` first and copy its `nat_egress_ip_address` output. In
 **Google Admin Console → Apps → Google Workspace → Gmail → Routing → SMTP
