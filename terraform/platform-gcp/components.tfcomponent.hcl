@@ -249,6 +249,36 @@ component "workload_identity_mcp_terraform_stacks" {
   depends_on = [component.gke]
 }
 
+# Keep these declarations for one applied configuration after retiring the
+# corresponding MCP workloads. Terraform Stacks requires the original module
+# source and provider mapping to destroy component instances safely.
+removed {
+  source = "./modules/workload-identity"
+  from   = component.workload_identity_mcp_terraform
+
+  providers = {
+    google = provider.google.this
+  }
+}
+
+removed {
+  source = "./modules/workload-identity"
+  from   = component.workload_identity_mcp_whatsapp
+
+  providers = {
+    google = provider.google.this
+  }
+}
+
+removed {
+  source = "./modules/workload-identity"
+  from   = component.workload_identity_mcp_whatsapp_personal
+
+  providers = {
+    google = provider.google.this
+  }
+}
+
 component "workload_identity_mcp_tunnel" {
   source = "./modules/workload-identity"
 
