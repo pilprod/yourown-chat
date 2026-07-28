@@ -129,8 +129,32 @@ resource "google_cloudbuild_trigger" "this" {
             --build-arg SOURCE_URL="https://github.com/pilprod/mattermost/tree/$$PIPELINE_COMMIT_SHA" \
             --tag "${local.image_repo_path}:$$pipeline_tag" \
             --tag "${local.image_repo_path}:latest" \
+            --attest=type=sbom \
+            --attest=type=provenance,mode=max \
             --push \
             .
+        EOT
+      ]
+    }
+
+    # Verify the artifact that was actually pushed, not an intermediate local
+    # stage. This binds the binary, OCI metadata, source offer and mandatory
+    # notices to one immutable source revision before Cloud Deploy exists.
+    step {
+      id         = "verify-product-image"
+      name       = "gcr.io/cloud-builders/docker"
+      entrypoint = "sh"
+      args = [
+        "-ceu",
+        <<-EOT
+          image="${local.image_repo_path}:$TAG_NAME"
+          source_url="https://github.com/pilprod/mattermost/tree/$COMMIT_SHA"
+          docker pull "$$image"
+          sh scripts/verify-product-image.sh \
+            "$$image" \
+            "$TAG_NAME" \
+            "$COMMIT_SHA" \
+            "$$source_url"
         EOT
       ]
     }

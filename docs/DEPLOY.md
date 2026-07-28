@@ -92,6 +92,13 @@ Cloud Deploy release with `release-channel=experimental`, and deploys/verifies
 the first `mattermost-dev` target. Google Cloud MCP refuses to plan promotion
 of that release to `mattermost-prod`.
 
+Every Mattermost build publishes BuildKit SBOM and max-mode provenance
+attestations alongside the immutable registry digest. Before Cloud Deploy
+creates a release, the pipeline pulls the pushed artifact and verifies its
+source/revision/version OCI labels, Team-only binary metadata, and embedded
+license and modification notices. A failed compliance check stops the pipeline
+before the dev rollout.
+
 After manual testing, call `deploy_cleanup_dev` and leave the release at dev
 without creating a prod rollout. If a prod rollout was already created, use
 `deploy_reject_rollout`: it first scales the exact RBAC-allowlisted dev

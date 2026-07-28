@@ -962,6 +962,13 @@ verifies the replica count before rejecting any already-created pending
 production rollout. If no prod rollout was created, `deploy_cleanup_dev`
 performs only the verified scale-to-zero step.
 
+Mattermost builds publish OCI SBOM and max-mode BuildKit provenance
+attestations. Before a Cloud Deploy release exists, the pipeline pulls the
+pushed image and verifies that its binary version, immutable source commit,
+OCI provenance labels, AGPL declaration, upstream notices, and YourOwn.Chat
+modification notice all describe the same artifact. These compliance checks
+do not depend on the optional paid vulnerability scanner.
+
 **Cut a platform release** — use one semver tag, without component tags:
 
 ```
