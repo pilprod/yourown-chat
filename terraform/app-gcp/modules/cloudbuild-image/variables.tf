@@ -62,13 +62,22 @@ variable "dockerfile" {
 
 variable "builds" {
   type = map(object({
-    tag_regex = string
+    tag_regex       = string
+    release_channel = optional(string, "production")
   }))
-  description = "Map of image name => spec. Each entry creates one tag-triggered Cloud Build trigger that builds var.dockerfile and pushes <ar_location>-docker.pkg.dev/<project>/<ar_repo>/<image_name>:$TAG_NAME. Build once on the tag regex (e.g. ^v.*-patched$) and promote that same artifact across environments, rather than rebuilding per environment."
+  description = "Map of trigger name => tag regex and release channel. Every trigger builds the same immutable image path; production releases may be promoted, while experimental releases stop after dev."
 
   validation {
     condition     = length(var.builds) > 0
     error_message = "Provide at least one build."
+  }
+
+  validation {
+    condition = alltrue([
+      for build in values(var.builds) :
+      contains(["production", "experimental"], build.release_channel)
+    ])
+    error_message = "release_channel must be production or experimental."
   }
 }
 

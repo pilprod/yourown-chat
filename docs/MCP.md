@@ -242,6 +242,14 @@ Google Cloud administration:
   exact SHA-256 plan ID plus literal `PROMOTE`;
 - approval requires a fresh rollout inspection, its exact etag, a reason, and
   literal `APPROVE`;
+- rejection uses `deploy_reject_rollout`: it scales only the pipeline's
+  RBAC-allowlisted dev Deployments to zero, verifies desired and observed
+  replicas are zero, revalidates the rollout etag, and only then rejects it;
+- `deploy_cleanup_dev` performs the same guarded scale-to-zero for an
+  experimental release that never created a production rollout;
+- `deploy_inspect_dev_scale` confirms cleanup after rejection or rollback;
+- releases annotated `release-channel=experimental` (source tags
+  `vX.Y.Z-dev.N`) cannot be promoted to a `*-prod` target through this MCP;
 - rollback is a two-call `plan_rollback` → `rollback` flow. The plan uses
   Cloud Deploy's `validateOnly` API, and execution requires its exact SHA-256
   plan ID plus literal `ROLLBACK`;

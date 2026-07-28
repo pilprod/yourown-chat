@@ -20,3 +20,15 @@ variable "cleanup_service_account_emails" {
   })
   description = "Dedicated Cloud Deploy PREDEPLOY service-account emails granted narrowly scoped Kubernetes cleanup access."
 }
+
+variable "cleanup_kubernetes_service_account" {
+  type = object({
+    namespace = string
+    name      = string
+  })
+  description = "Production Google Cloud MCP KSA allowed to inspect and scale only the exact disposable dev Deployments governed by the cleanup Roles."
+  default = {
+    namespace = "mcp-google-cloud"
+    name      = "mcp-servers"
+  }
+}

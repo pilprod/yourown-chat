@@ -126,6 +126,7 @@ resource "google_cloudbuild_trigger" "this" {
             --build-arg BUILD_HASH="$$PIPELINE_COMMIT_SHA" \
             --build-arg EE_BUILD_HASH="$$PIPELINE_BUILD_ID" \
             --build-arg BUILD_DATE="$$pipeline_build_date" \
+            --build-arg SOURCE_URL="https://github.com/pilprod/mattermost/tree/$$PIPELINE_COMMIT_SHA" \
             --tag "${local.image_repo_path}:$$pipeline_tag" \
             --tag "${local.image_repo_path}:latest" \
             --push \
@@ -146,8 +147,10 @@ resource "google_cloudbuild_trigger" "this" {
       ]
     }
 
-    # A patched-source tag is a complete Mattermost release event. Only after
-    # the image push succeeds do we freeze its digest and start dev -> prod.
+    # A source tag is a complete Mattermost release event. Only after the image
+    # push succeeds do we freeze its digest and start the dev rollout.
+    # Experimental releases are marked in the immutable release metadata;
+    # guarded MCP promotion refuses to route them to production.
     step {
       id         = "mattermost-release"
       name       = "gcr.io/google.com/cloudsdktool/cloud-sdk:slim"
@@ -187,7 +190,7 @@ resource "google_cloudbuild_trigger" "this" {
             --skaffold-file "skaffold-mattermost.yaml" \
             --gcs-source-staging-dir "gs://${var.mattermost_delivery.source_bucket_name}/source" \
             --deploy-parameters "$$deploy_parameters" \
-            --annotations "source-repo=pilprod/mattermost,git-tag=$TAG_NAME,git-sha=$COMMIT_SHA,build-id=$BUILD_ID,image-digest=$$digest"
+            --annotations "source-repo=pilprod/mattermost,git-tag=$TAG_NAME,git-sha=$COMMIT_SHA,build-id=$BUILD_ID,image-digest=$$digest,release-channel=${each.value.release_channel}"
         EOT
       ]
     }

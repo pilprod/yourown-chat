@@ -16,6 +16,7 @@ import { artifactVulnerabilityClientFromEnv } from "./artifact-vulnerability-cli
 import { billingCostClientFromEnv } from "./billing-cost-client.mjs";
 import { cloudBuildClientFromEnv } from "./cloud-build-client.mjs";
 import { cloudDeployClientFromEnv } from "./cloud-deploy-client.mjs";
+import { kubernetesScaleClientFromEnv } from "./kubernetes-scale-client.mjs";
 import { resolveLegacyToolName } from "./tool-name-compat.mjs";
 import { toolError, toolResult } from "./tool-result.mjs";
 
@@ -98,6 +99,7 @@ const deployEnabled =
   (process.env.GOOGLE_CLOUD_DEPLOY_ENABLED ?? "true").toLowerCase() === "true";
 const deploy = deployEnabled ? cloudDeployClientFromEnv() : null;
 const builds = deployEnabled ? cloudBuildClientFromEnv() : null;
+const devScale = deployEnabled ? kubernetesScaleClientFromEnv() : null;
 const security = artifactVulnerabilityClientFromEnv();
 const billing = billingCostClientFromEnv();
 
@@ -366,6 +368,77 @@ const deployTools = [
         expected_etag: { type: "string", minLength: 1 },
         reason: { type: "string", minLength: 8, maxLength: 500 },
         confirmation: { type: "string", const: "APPROVE" },
+      },
+      required: [
+        "pipeline",
+        "release",
+        "rollout",
+        "expected_etag",
+        "reason",
+        "confirmation",
+      ],
+      additionalProperties: false,
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
+  },
+  {
+    name: "deploy_inspect_dev_scale",
+    description:
+      "Inspect desired and observed replica counts for the exact allowlisted disposable dev workloads belonging to one delivery pipeline.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        pipeline: { type: "string" },
+      },
+      required: ["pipeline"],
+      additionalProperties: false,
+    },
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  },
+  {
+    name: "deploy_cleanup_dev",
+    description:
+      "Scale the pipeline's exact RBAC-allowlisted disposable dev workloads to zero and wait until both desired and observed replicas are zero. Requires SCALE_DEV_TO_ZERO confirmation.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        pipeline: { type: "string" },
+        reason: { type: "string", minLength: 8, maxLength: 500 },
+        confirmation: { type: "string", const: "SCALE_DEV_TO_ZERO" },
+      },
+      required: ["pipeline", "reason", "confirmation"],
+      additionalProperties: false,
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  },
+  {
+    name: "deploy_reject_rollout",
+    description:
+      "Scale the pipeline's exact allowlisted dev workloads to zero, verify desired and observed replicas are zero, then reject one inspected pending production rollout. Requires its exact current etag and REJECT confirmation.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        pipeline: { type: "string" },
+        release: { type: "string" },
+        rollout: { type: "string" },
+        expected_etag: { type: "string", minLength: 1 },
+        reason: { type: "string", minLength: 8, maxLength: 500 },
+        confirmation: { type: "string", const: "REJECT" },
       },
       required: [
         "pipeline",
@@ -712,7 +785,19 @@ const enabledCustomTools = [
   ...securityTools,
   ...billingTools,
   ...(deployEnabled
-    ? [...securityWriteTools, ...buildTools, ...deployTools]
+    ? [
+        ...securityWriteTools,
+        ...buildTools,
+        ...deployTools.filter(
+          (tool) =>
+            devScale ||
+            ![
+              "deploy_inspect_dev_scale",
+              "deploy_cleanup_dev",
+              "deploy_reject_rollout",
+            ].includes(tool.name),
+        ),
+      ]
     : []),
 ];
 const exposedCustomTools = enabledCustomTools.map((tool) =>
@@ -789,6 +874,49 @@ async function callCustom(name, input) {
         expectedEtag: input.expected_etag,
         reason: input.reason,
       });
+    case "deploy_inspect_dev_scale":
+      return devScale.inspect(input.pipeline);
+    case "deploy_cleanup_dev":
+      return {
+        ...(await devScale.scaleToZero(input.pipeline)),
+        reason: input.reason,
+      };
+    case "deploy_reject_rollout": {
+      // Validate the exact rollout before changing dev capacity. reject()
+      // repeats the etag/state check after cleanup to close the race window.
+      const current = await deploy.inspectRollout({
+        pipeline: input.pipeline,
+        release: input.release,
+        rollout: input.rollout,
+      });
+      if (current.etag !== input.expected_etag) {
+        throw new Error(
+          `Rollout etag changed: expected ${input.expected_etag}, current ${current.etag}`,
+        );
+      }
+      if (
+        current.approval_state !== "NEEDS_APPROVAL" &&
+        current.approval_state !== "PENDING_APPROVAL"
+      ) {
+        throw new Error(
+          `Rollout ${input.rollout} is not waiting for approval: ${current.approval_state}`,
+        );
+      }
+      if (!current.target_id.endsWith("-prod")) {
+        throw new Error(
+          `Only production approval rollouts may be rejected: ${current.target_id}`,
+        );
+      }
+      const cleanup = await devScale.scaleToZero(input.pipeline);
+      const rejection = await deploy.reject({
+        pipeline: input.pipeline,
+        release: input.release,
+        rollout: input.rollout,
+        expectedEtag: input.expected_etag,
+        reason: input.reason,
+      });
+      return { cleanup, rejection };
+    }
     case "deploy_plan_rollback":
       return deploy.planRollback({
         pipeline: input.pipeline,

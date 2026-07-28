@@ -81,9 +81,17 @@ deployment "eu" {
     github_connection_name = "pilprod-github"
     github_remote_uri      = "https://github.com/pilprod/mattermost.git"
     image_name             = "mattermost"
-    # Build once on the tag pattern, promote the same artifact dev -> prod.
+    # Production source tags can be promoted dev -> prod. Product-compliance
+    # experiments build the same reproducible image but stop after dev.
     builds = {
-      mattermost = { tag_regex = "^v.*-patched$" }
+      mattermost = {
+        tag_regex       = "^v[0-9]+\\.[0-9]+\\.[0-9]+-patched$"
+        release_channel = "production"
+      }
+      mattermost-dev = {
+        tag_regex       = "^v[0-9]+\\.[0-9]+\\.[0-9]+-dev\\.[0-9]+$"
+        release_channel = "experimental"
+      }
     }
 
     # Semver tag on THIS repo cuts a Cloud Deploy release automatically.

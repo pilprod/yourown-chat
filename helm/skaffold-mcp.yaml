@@ -21,16 +21,16 @@ profiles:
             createNamespace: false
             valuesFiles:
               - mcp/values.yaml
-              - mcp/values-dev.yaml
               - mcp/values-terraform-stacks.yaml
+              - mcp/values-dev.yaml
           - name: dev-mcp-google-cloud
             chartPath: mcp
             namespace: dev
             createNamespace: false
             valuesFiles:
               - mcp/values.yaml
-              - mcp/values-dev.yaml
               - mcp/values-google-cloud.yaml
+              - mcp/values-dev.yaml
 
   - name: mcp-prod
     manifests:

@@ -188,6 +188,32 @@ test("promotion refuses duplicate active or successful target rollout", async ()
   );
 });
 
+test("experimental releases cannot be promoted to production", async () => {
+  const client = new CloudDeployClient({
+    project: "yourown-chat",
+    location: "europe-west3",
+    pipelineTargets,
+    auth,
+    fetchImpl: sequenceFetch([
+      {
+        body: {
+          renderState: "SUCCEEDED",
+          etag: "release-etag",
+          annotations: { "release-channel": "experimental" },
+        },
+      },
+    ]),
+  });
+  await assert.rejects(
+    client.planPromote({
+      pipeline: "mcp",
+      release: "mcp-product-dev-1",
+      target: "mcp-prod",
+    }),
+    /dev-only.*cannot be promoted/,
+  );
+});
+
 test("promote requires the exact freshly recomputed plan hash", async () => {
   const client = new CloudDeployClient({
     project: "yourown-chat",
@@ -294,6 +320,41 @@ test("approval verifies current etag and pending approval state", async () => {
   assert.equal(result.approved, true);
   assert.equal(calls[1].method, "POST");
   assert.deepEqual(calls[1].body, { approved: true });
+  assert.match(calls[1].url, /:approve$/);
+});
+
+test("rejection verifies current etag and rejects only pending production", async () => {
+  const calls = [];
+  const client = new CloudDeployClient({
+    project: "yourown-chat",
+    location: "europe-west3",
+    pipelineTargets,
+    auth,
+    fetchImpl: sequenceFetch(
+      [
+        {
+          body: {
+            name: "projects/yourown-chat/locations/europe-west3/deliveryPipelines/mcp/releases/mcp-1-0-0/rollouts/mcp-1-0-0-to-mcp-prod-0001",
+            targetId: "mcp-prod",
+            state: "PENDING_APPROVAL",
+            approvalState: "NEEDS_APPROVAL",
+            etag: "rollout-etag",
+          },
+        },
+        { body: {} },
+      ],
+      calls,
+    ),
+  });
+  const result = await client.reject({
+    pipeline: "mcp",
+    release: "mcp-1-0-0",
+    rollout: "mcp-1-0-0-to-mcp-prod-0001",
+    expectedEtag: "rollout-etag",
+    reason: "dev-only experiment completed",
+  });
+  assert.equal(result.rejected, true);
+  assert.deepEqual(calls[1].body, { approved: false });
   assert.match(calls[1].url, /:approve$/);
 });
 

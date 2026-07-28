@@ -36,6 +36,10 @@ test("aggregator exposes official observability and guarded deploy tools", async
       GOOGLE_CLOUD_DEPLOY_LOCATION: "europe-west3",
       GOOGLE_CLOUD_DEPLOY_PIPELINE_TARGETS:
         "mattermost=mattermost-dev|mattermost-prod,mcp=mcp-dev|mcp-prod",
+      GOOGLE_CLOUD_DEPLOY_CLEANUP_ENABLED: "true",
+      GOOGLE_CLOUD_DEPLOY_DEV_WORKLOADS:
+        "mattermost=dev/dev-mattermost,mcp=dev/dev-mcp-google-cloud",
+      KUBERNETES_SERVICE_HOST: "10.30.0.1",
       GOOGLE_CLOUD_SECURITY_LOCATION: "europe-west3",
       GOOGLE_CLOUD_SECURITY_REPOSITORIES: "docker",
     },
@@ -59,6 +63,9 @@ test("aggregator exposes official observability and guarded deploy tools", async
     assert(names.has("deploy_list_job_runs"));
     assert(names.has("deploy_plan_promote"));
     assert(names.has("deploy_approve_rollout"));
+    assert(names.has("deploy_inspect_dev_scale"));
+    assert(names.has("deploy_cleanup_dev"));
+    assert(names.has("deploy_reject_rollout"));
     assert(names.has("deploy_plan_rollback"));
     assert(names.has("deploy_rollback"));
     assert(names.has("security_get_scanning"));
@@ -148,6 +155,9 @@ test("dev mode omits lifecycle tools entirely", async () => {
     assert(!names.has("build_list_builds"));
     assert(!names.has("deploy_list_releases"));
     assert(!names.has("deploy_approve_rollout"));
+    assert(!names.has("deploy_inspect_dev_scale"));
+    assert(!names.has("deploy_cleanup_dev"));
+    assert(!names.has("deploy_reject_rollout"));
     assert(!names.has("deploy_rollback"));
     assert(names.has("security_get_scanning"));
     assert(!names.has("security_set_scanning"));

@@ -18,6 +18,7 @@ defaults:
   networkPolicy:
     enabled: true
     namespaceDefaults: false
+    allowKubernetesApi: false
     allowTunnel: false
     allowedNamespaces: []
     tunnelNamespace: mcp-tunnel
@@ -29,6 +30,7 @@ servers:
     gcpServiceAccountDeployParameter: mcp_google_cloud_dev_gsa
     env:
       GOOGLE_CLOUD_DEPLOY_ENABLED: "false"
+      GOOGLE_CLOUD_DEPLOY_CLEANUP_ENABLED: "false"
 
 tunnel:
   enabled: false

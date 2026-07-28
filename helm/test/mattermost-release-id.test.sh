@@ -25,6 +25,12 @@ assert_id \
   "deadbeefcafebabe" \
   "12345678-1234-1234-1234-123456789abc"
 
+assert_id \
+  "mattermost-11-9-0-dev-1-img-deadbeef" \
+  "v11.9.0-dev.1" \
+  "deadbeefcafebabe" \
+  "12345678-1234-1234-1234-123456789abc"
+
 # The full version + commit + build identity is two characters too long, so
 # only the optional build suffix is dropped.
 assert_id \

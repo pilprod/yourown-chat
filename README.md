@@ -40,7 +40,7 @@ holds the VPC, the cluster and the database — and the Cloudflare API token
 | Object storage | GCS bucket with S3-compatible HMAC creds for Mattermost ("filestore") |
 | Kubernetes | One zonal GKE Standard cluster, private nodes, one autoscaling `general` pool (`e2-standard-2`, 1–3 nodes) |
 | Container registry | One Artifact Registry repo (`docker`) with a shared hardened runtime base; paid Artifact Analysis scanning is off by default and opened through a guarded MCP action only for selected build windows |
-| CI | Cloud Build builds Mattermost on a `v*-patched` tag; one catalog-driven MCP builder creates shared OS/language bases and mirrors pinned vendor images into Artifact Registry |
+| CI | Cloud Build builds production Mattermost on `vX.Y.Z-patched` and dev-only experiments on `vX.Y.Z-dev.N`; one catalog-driven MCP builder creates shared OS/language bases and mirrors pinned vendor images into Artifact Registry |
 | CD | Separate Mattermost and MCP pipelines; ephemeral test workloads; one semver platform tag routes only changed components |
 | Agent-operated delivery | An agent can author a change, inspect CI/CD and Terraform plans, promote a verified release, and request the guarded production approval through MCP; write actions remain Human-in-the-loop |
 | Secrets | Everything in Secret Manager, mounted via the CSI add-on + Workload Identity |
@@ -952,6 +952,15 @@ git tag v9.11.3-patched  (on pilprod/mattermost)
   → reviewer accepts/rejects residual risk
   → production approval → dev scaled to 0 → rolling prod rollout
 ```
+
+For a dev-only product/compliance iteration, use `v11.9.0-dev.1` and
+increment the final number for every immutable attempt. It builds the image
+and runs the dev rollout, but marks the release
+`release-channel=experimental`; Google Cloud MCP refuses its production
+promotion. When testing is complete, guarded rejection scales dev to zero and
+verifies the replica count before rejecting any already-created pending
+production rollout. If no prod rollout was created, `deploy_cleanup_dev`
+performs only the verified scale-to-zero step.
 
 **Cut a platform release** — use one semver tag, without component tags:
 

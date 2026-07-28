@@ -136,6 +136,30 @@ spec:
         - { protocol: TCP, port: 987 }
         - { protocol: TCP, port: 988 }
 {{- end }}
+{{- if .Values.defaults.networkPolicy.allowKubernetesApi }}
+---
+# Guarded release rejection queries and scales only explicitly RBAC-allowlisted
+# dev Deployments. The network exception is pinned to the Kubernetes Service
+# ClusterIP rather than opening the control-plane subnet.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-kubernetes-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/part-of: mcp-servers
+spec:
+  podSelector:
+    matchLabels:
+      app: {{ include "mcp-servers.serverName" (dict "root" . "name" "google-cloud") }}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock:
+            cidr: {{ .Values.defaults.networkPolicy.kubernetesApiCidr | quote }}
+      ports:
+        - { protocol: TCP, port: 443 }
+{{- end }}
 {{- if .Values.tunnel.enabled }}
 ---
 # cloudflared is the sole cross-namespace caller. Its namespace is isolated by

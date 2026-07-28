@@ -92,11 +92,19 @@ variable "image_name" {
 
 variable "builds" {
   type = map(object({
-    tag_regex = string
+    tag_regex       = string
+    release_channel = optional(string, "production")
   }))
-  description = "Map of image name => git tag regex. Each entry creates one tag-triggered Cloud Build trigger pushing the unified image path. Build once on the tag pattern (^v.*-patched$) and promote that artifact dev -> prod, rather than rebuilding per environment."
+  description = "Map of trigger name => tag regex and release channel. Production images may be promoted dev -> prod; experimental images are built and deployed to dev only."
   default = {
-    mattermost = { tag_regex = "^v.*-patched$" }
+    mattermost = {
+      tag_regex       = "^v[0-9]+\\.[0-9]+\\.[0-9]+-patched$"
+      release_channel = "production"
+    }
+    mattermost-dev = {
+      tag_regex       = "^v[0-9]+\\.[0-9]+\\.[0-9]+-dev\\.[0-9]+$"
+      release_channel = "experimental"
+    }
   }
 }
 

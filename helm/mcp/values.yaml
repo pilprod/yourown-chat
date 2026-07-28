@@ -74,6 +74,8 @@ defaults:
     enabled: true
     namespaceDefaults: true
     allowGkeMetadata: false
+    allowKubernetesApi: false
+    kubernetesApiCidr: "10.30.0.1/32"
     allowTunnel: true
     # cloudflared is the only cross-namespace caller. Interactive Mattermost,
     # Claude and ChatGPT clients all traverse the Cloudflare MCP Portal.
@@ -143,6 +145,8 @@ servers:
       GOOGLE_CLOUD_DEPLOY_PROJECT: "yourown-chat"
       GOOGLE_CLOUD_DEPLOY_LOCATION: "europe-west3"
       GOOGLE_CLOUD_DEPLOY_PIPELINE_TARGETS: "mattermost=mattermost-dev|mattermost-prod,mcp=mcp-dev|mcp-prod"
+      GOOGLE_CLOUD_DEPLOY_CLEANUP_ENABLED: "true"
+      GOOGLE_CLOUD_DEPLOY_DEV_WORKLOADS: "mattermost=dev/dev-mattermost,mcp=dev/dev-mcp-terraform-stacks|dev/dev-mcp-google-cloud"
       GOOGLE_CLOUD_BUILD_PROJECT: "yourown-chat"
       GOOGLE_CLOUD_BUILD_LOCATION: "europe-west3"
       GOOGLE_CLOUD_BILLING_PROJECT: "yourown-chat"

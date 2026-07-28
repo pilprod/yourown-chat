@@ -14,7 +14,7 @@ slug() {
 
 image_version="$(
   printf '%s' "${image_tag}" |
-    sed -E 's/^v//; s/-patched$//'
+    sed -E 's/^v//; s/-patched$//; s/-dev\./-dev-/'
 )"
 image_slug="$(slug "${image_version}")"
 [ -n "${image_slug}" ] || {

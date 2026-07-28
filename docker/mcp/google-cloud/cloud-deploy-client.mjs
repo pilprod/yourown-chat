@@ -307,6 +307,13 @@ export class CloudDeployClient {
         `Release ${release} is not promotable: render=${currentRelease.renderState}, abandoned=${currentRelease.abandoned ?? false}`,
       );
     }
+    const releaseChannel =
+      currentRelease.annotations?.["release-channel"] ?? "legacy";
+    if (target.endsWith("-prod") && releaseChannel === "experimental") {
+      throw new Error(
+        `Release ${release} is dev-only (release-channel=experimental) and cannot be promoted to ${target}`,
+      );
+    }
 
     const rollouts = await this.listRollouts({
       pipeline,
@@ -414,6 +421,47 @@ export class CloudDeployClient {
     });
     return {
       approved: true,
+      rollout: current.resource_name,
+      target: current.target_id,
+      inspected_etag: expectedEtag,
+      reason,
+    };
+  }
+
+  async reject({
+    pipeline,
+    release,
+    rollout,
+    expectedEtag,
+    reason,
+  }) {
+    const current = await this.inspectRollout({ pipeline, release, rollout });
+    this.assertTarget(pipeline, current.target_id);
+    if (!current.target_id.endsWith("-prod")) {
+      throw new Error(
+        `Only production approval rollouts may be rejected: ${current.target_id}`,
+      );
+    }
+    if (current.etag !== expectedEtag) {
+      throw new Error(
+        `Rollout etag changed: expected ${expectedEtag}, current ${current.etag}`,
+      );
+    }
+    if (
+      current.approval_state !== "NEEDS_APPROVAL" &&
+      current.approval_state !== "PENDING_APPROVAL"
+    ) {
+      throw new Error(
+        `Rollout ${rollout} is not waiting for approval: ${current.approval_state}`,
+      );
+    }
+    await this.request(`${current.resource_name}:approve`, {
+      method: "POST",
+      body: { approved: false },
+    });
+    return {
+      approved: false,
+      rejected: true,
       rollout: current.resource_name,
       target: current.target_id,
       inspected_etag: expectedEtag,

@@ -108,6 +108,12 @@ resource "kubernetes_role_binding_v1" "mattermost_cleanup" {
     kind      = "User"
     name      = var.cleanup_service_account_emails.mattermost
   }
+
+  subject {
+    kind      = "ServiceAccount"
+    name      = var.cleanup_kubernetes_service_account.name
+    namespace = var.cleanup_kubernetes_service_account.namespace
+  }
 }
 
 resource "kubernetes_role_v1" "mcp_cleanup" {
@@ -140,5 +146,11 @@ resource "kubernetes_role_binding_v1" "mcp_cleanup" {
     api_group = "rbac.authorization.k8s.io"
     kind      = "User"
     name      = var.cleanup_service_account_emails.mcp
+  }
+
+  subject {
+    kind      = "ServiceAccount"
+    name      = var.cleanup_kubernetes_service_account.name
+    namespace = var.cleanup_kubernetes_service_account.namespace
   }
 }

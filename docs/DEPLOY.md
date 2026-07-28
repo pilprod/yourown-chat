@@ -8,7 +8,7 @@ or unrelated component from being reapplied during every release.
 
 ```mermaid
 flowchart TD
-  MT["pilprod/mattermost tag<br/>v*.*-patched"] --> BUILD["Build and push image"]
+  MT["pilprod/mattermost tag<br/>vX.Y.Z-patched or vX.Y.Z-dev.N"] --> BUILD["Build and push image"]
   BUILD --> MMTEST["mattermost / dev<br/>migration + smoke"]
   MMTEST --> MMAPPROVE["approval"]
   MMAPPROVE --> MMCLEAN["predeploy: scale dev Mattermost to 0"]
@@ -44,7 +44,9 @@ in the Cloud Build execution environment under a dedicated
 `cleanup-mattermost` or `cleanup-mcp` Google service account. Each identity can
 read cluster metadata and is bound inside Kubernetes only to `get`, `patch`,
 and `update` its exact disposable Deployment names. There is no cleanup
-ServiceAccount, API-egress NetworkPolicy, or idle cleanup pod in GKE.
+pod in GKE. The existing production Google Cloud MCP KSA shares only those
+resource-name-scoped Scale permissions for guarded rejection and has a
+dedicated egress exception to the Kubernetes API Service IP; dev MCP does not.
 
 `dev-postgres` consists of Terraform-managed Kubernetes resources. Its PVC
 survives application releases and provides a continuous migration history. The
@@ -73,6 +75,30 @@ short release-source commit plus the short Cloud Build ID when the production
 rollout name remains within 63 characters:
 `mattermost-11-9-0-img-a1b2c3d4-12345678`. If it does not fit, only the
 optional build suffix is dropped; the source commit is retained.
+
+### A dev-only product experiment
+
+Use `vX.Y.Z-dev.N`, for example `v11.9.0-dev.1`, for licensing,
+rebranding, migration, or product experiments that must never reach
+production:
+
+```bash
+git tag v11.9.0-dev.1
+git push origin v11.9.0-dev.1
+```
+
+The dedicated trigger builds and pushes the immutable image, creates the
+Cloud Deploy release with `release-channel=experimental`, and deploys/verifies
+the first `mattermost-dev` target. Google Cloud MCP refuses to plan promotion
+of that release to `mattermost-prod`.
+
+After manual testing, call `deploy_cleanup_dev` and leave the release at dev
+without creating a prod rollout. If a prod rollout was already created, use
+`deploy_reject_rollout`: it first scales the exact RBAC-allowlisted dev
+Deployment to zero, waits until both desired and observed replicas are zero,
+then rechecks the rollout etag and rejects it. `deploy_inspect_dev_scale`
+performs the same replica check after rollback. A plain Cloud Deploy reject
+does not execute the prod target's predeploy cleanup.
 
 ### A unified platform tag
 
@@ -145,6 +171,10 @@ exact previous release, review the validated configuration, then call
 new auditable rollout from the previous frozen release and preserves rollout
 history, deploy parameters, policy checks, and notifications. Do not use
 `helm rollback`: native GKE targets have no installed Helm release state.
+The frozen production target includes `cleanup-mattermost-dev` as its
+predeploy action, so rollback repeats the idempotent scale-to-zero operation.
+After rollback succeeds, call `deploy_inspect_dev_scale` and require zero
+desired and observed replicas.
 
 ### Google Workspace SMTP Relay
 

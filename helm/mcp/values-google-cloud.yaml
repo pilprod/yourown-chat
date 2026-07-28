@@ -8,6 +8,9 @@ defaults:
     # ADC uses Workload Identity Federation through the node-local GKE
     # metadata server. Keep this exception scoped to this release/namespace.
     allowGkeMetadata: true
+    # Production Google Cloud MCP may only call the in-cluster Scale
+    # subresource for exact dev Deployments granted by Terraform RBAC.
+    allowKubernetesApi: true
 
 servers:
   terraform-stacks:
