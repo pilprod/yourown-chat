@@ -273,6 +273,12 @@ customActions:
                     if expected & identities:
                         matches.append(server)
 
+                if not matches:
+                    print(
+                        f"{alias}: configured server no longer exists; skipping",
+                        flush=True,
+                    )
+                    return None
                 if len(matches) != 1:
                     raise RuntimeError(
                         f"{alias}: expected one current Cloudflare MCP server, "
@@ -289,8 +295,11 @@ customActions:
                     )
                 return str(server_id)
 
+            synced_server_ids = set()
             for alias, configured_id in configured_servers:
                 server_id = resolve_server_id(str(alias), str(configured_id))
+                if server_id is None or server_id in synced_server_ids:
+                    continue
                 encoded_id = urllib.parse.quote(server_id, safe="")
                 server_url = f"{root}/{encoded_id}"
                 result = request(f"{server_url}/sync", method="POST")
@@ -334,6 +343,15 @@ customActions:
                 print(
                     f"{server_id}: ready, tools={len(tools)}, prompts={len(prompts)}",
                     flush=True,
+                )
+                synced_server_ids.add(server_id)
+
+            required_server_ids = {"google-cloud", "terraform-stacks"}
+            missing_servers = required_server_ids - synced_server_ids
+            if missing_servers:
+                raise RuntimeError(
+                    "capability sync omitted required MCP servers: "
+                    f"{sorted(missing_servers)}"
                 )
             PY
 
