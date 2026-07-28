@@ -35,10 +35,10 @@ test("aggregator exposes official observability and guarded deploy tools", async
       GOOGLE_CLOUD_DEPLOY_PROJECT: "yourown-chat",
       GOOGLE_CLOUD_DEPLOY_LOCATION: "europe-west3",
       GOOGLE_CLOUD_DEPLOY_PIPELINE_TARGETS:
-        "mattermost=mattermost-dev|mattermost-prod,mcp=mcp-dev|mcp-prod",
+        "mattermost=mattermost-dev|mattermost-prod,mattermost-preview=mattermost-preview-dev,mcp=mcp-dev|mcp-prod",
       GOOGLE_CLOUD_DEPLOY_CLEANUP_ENABLED: "true",
       GOOGLE_CLOUD_DEPLOY_DEV_WORKLOADS:
-        "mattermost=dev/dev-mattermost,mcp=dev/dev-mcp-google-cloud",
+        "mattermost=dev/dev-mattermost,mattermost-preview=dev/dev-mattermost,mcp=dev/dev-mcp-google-cloud",
       KUBERNETES_SERVICE_HOST: "10.30.0.1",
       GOOGLE_CLOUD_SECURITY_LOCATION: "europe-west3",
       GOOGLE_CLOUD_SECURITY_REPOSITORIES: "docker",

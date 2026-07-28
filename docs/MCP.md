@@ -234,8 +234,9 @@ Google Cloud administration:
 - fixed project `yourown-chat` and location `europe-west3`;
 - Cloud Build access is read-only: list builds, inspect complete step/result
   state, and read build-scoped Cloud Logging entries;
-- only the `mattermost` and `mcp` pipelines and their committed dev/prod
-  targets are accepted;
+- only the `mattermost`, dev-only `mattermost-preview`, and `mcp` pipelines
+  and their committed targets are accepted; `mattermost-preview` exposes only
+  `mattermost-preview-dev` and therefore cannot be promoted to production;
 - releases, rollouts, phases, and their deploy/verify/pre/post job runs can be
   listed and inspected without the Cloud SDK;
 - promotion is a two-call `plan_promote` → `promote` flow and requires the
