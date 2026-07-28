@@ -100,4 +100,9 @@ variable "mattermost_deliveries" {
     source_bucket_name              = string
   }))
   description = "Named Mattermost delivery destinations. Preview branches select a dev-only pipeline; release tags select the normal dev-to-prod pipeline."
+
+  validation {
+    condition     = length(distinct([for delivery in values(var.mattermost_deliveries) : delivery.source_bucket_name])) == 1
+    error_message = "All Mattermost deliveries must share the same release source bucket."
+  }
 }

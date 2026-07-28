@@ -1,7 +1,21 @@
 locals {
   # Shared out-of-band Cloud Build 2nd-gen connection (console OAuth, README.md).
-  connection_id   = "projects/${var.project_id}/locations/${var.region}/connections/${var.connection_name}"
-  image_repo_path = "${var.artifact_registry_location}-docker.pkg.dev/${var.project_id}/${var.artifact_registry_repository_id}/${var.image_name}"
+  connection_id         = "projects/${var.project_id}/locations/${var.region}/connections/${var.connection_name}"
+  image_repo_path       = "${var.artifact_registry_location}-docker.pkg.dev/${var.project_id}/${var.artifact_registry_repository_id}/${var.image_name}"
+  release_source_bucket = one(toset([for delivery in values(var.mattermost_deliveries) : delivery.source_bucket_name]))
+}
+
+# Preserve the existing production IAM objects while widening the module to
+# two delivery destinations. These are address changes only; no permission is
+# revoked and re-granted during the migration.
+moved {
+  from = google_clouddeploy_delivery_pipeline_iam_member.releaser
+  to   = google_clouddeploy_delivery_pipeline_iam_member.releaser["production"]
+}
+
+moved {
+  from = google_service_account_iam_member.build_acts_as_exec
+  to   = google_service_account_iam_member.build_acts_as_exec["production"]
 }
 
 resource "google_cloudbuildv2_repository" "this" {
@@ -60,17 +74,13 @@ resource "google_service_account_iam_member" "build_acts_as_exec" {
 }
 
 resource "google_storage_bucket_iam_member" "release_source" {
-  for_each = toset(distinct([for delivery in values(var.mattermost_deliveries) : delivery.source_bucket_name]))
-
-  bucket = each.value
+  bucket = local.release_source_bucket
   role   = "roles/storage.objectAdmin"
   member = "serviceAccount:${google_service_account.build.email}"
 }
 
 resource "google_storage_bucket_iam_member" "release_source_bucket_read" {
-  for_each = toset(distinct([for delivery in values(var.mattermost_deliveries) : delivery.source_bucket_name]))
-
-  bucket = each.value
+  bucket = local.release_source_bucket
   role   = "roles/storage.legacyBucketReader"
   member = "serviceAccount:${google_service_account.build.email}"
 }
