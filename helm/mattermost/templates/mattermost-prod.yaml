@@ -44,7 +44,7 @@ spec:
     - name: MM_GOOGLESETTINGS_SCOPE
       value: "openid email profile"
     - name: MM_GOOGLESETTINGS_BUTTONTEXT
-      value: "Continue with Google"
+      value: {{ required "mattermost_google_button_text is required" .Values.mattermost_google_button_text | quote }}
     - name: MM_GOOGLESETTINGS_ALLOWEDHOSTEDDOMAINS
       value: {{ .Values.mattermost_google_hosted_domains | quote }}
     - name: MM_GOOGLESETTINGS_ALLOWEDDOMAINS

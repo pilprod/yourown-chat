@@ -18,6 +18,7 @@ aop_verify_client: ""
 mattermost_mfa_enabled: false
 mattermost_mfa_enforced: false
 mattermost_google_auth_enabled: false
+mattermost_google_button_text: "Google Workspace"
 mattermost_google_hosted_domains: ""
 mattermost_google_email_domains: ""
 
