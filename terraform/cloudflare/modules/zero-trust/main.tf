@@ -185,8 +185,7 @@ resource "cloudflare_zero_trust_access_ai_controls_mcp_portal" "this" {
     # Use the server's Access service token. Per-user upstream authorization is
     # redundant: Google Cloud and Terraform already use shared workload
     # credentials after the MCP request reaches the cluster.
-    on_behalf     = false
-    updated_tools = []
+    on_behalf = false
   }]
 
   lifecycle {
