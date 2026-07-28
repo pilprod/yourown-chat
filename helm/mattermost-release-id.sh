@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-source_ref="${1:?usage: mattermost-release-id.sh SOURCE_REF COMMIT_SHA BUILD_ID}"
-commit_sha="${2:?usage: mattermost-release-id.sh SOURCE_REF COMMIT_SHA BUILD_ID}"
+source_ref="${1:?usage: mattermost-release-id.sh SOURCE_REF COMMIT_SHA BUILD_ID [TARGET_NAME]}"
+commit_sha="${2:?usage: mattermost-release-id.sh SOURCE_REF COMMIT_SHA BUILD_ID [TARGET_NAME]}"
 build_id="${3:-}"
+target_name="${4:-mattermost-prod}"
 
 slug() {
   printf '%s' "${1}" |
@@ -37,9 +38,10 @@ short_commit="$(printf '%s' "${commit_sha}" | tr '[:upper:]' '[:lower:]' | cut -
 short_build="$(slug "${build_id}" | cut -c1-8)"
 identity="${image_slug}-img-${short_commit}"
 
-# Cloud Deploy derives rollout IDs by appending the target suffix. Production
-# is one character longer than development, so validate against it.
-rollout_suffix="-to-mattermost-prod-0001"
+# Cloud Deploy derives rollout IDs by appending the initial target suffix.
+# Account for the concrete delivery pipeline target so previews with a longer
+# target name remain valid without shortening production release IDs.
+rollout_suffix="-to-$(slug "${target_name}")-0001"
 max_release_length=$((63 - ${#rollout_suffix}))
 release_id="mattermost-${identity}"
 

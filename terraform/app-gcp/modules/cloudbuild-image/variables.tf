@@ -94,12 +94,13 @@ variable "builds" {
 variable "mattermost_deliveries" {
   type = map(object({
     pipeline_name                   = string
+    initial_target_name             = string
     execution_service_account_email = string
     deploy_repository_uri           = string
     deploy_repository_ref           = optional(string, "main")
     source_bucket_name              = string
   }))
-  description = "Named Mattermost delivery destinations. Preview branches select a dev-only pipeline; release tags select the normal dev-to-prod pipeline."
+  description = "Named Mattermost delivery destinations. initial_target_name bounds the Cloud Deploy-generated rollout ID. Preview branches select a dev-only pipeline; release tags select the normal dev-to-prod pipeline."
 
   validation {
     condition     = length(distinct([for delivery in values(var.mattermost_deliveries) : delivery.source_bucket_name])) == 1

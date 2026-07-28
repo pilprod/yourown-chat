@@ -246,7 +246,8 @@ resource "google_cloudbuild_trigger" "this" {
             /workspace/yourown-chat/helm/mattermost-release-id.sh \
             "$$source_ref" \
             "$COMMIT_SHA" \
-            "$BUILD_ID")"
+            "$BUILD_ID" \
+            "${var.mattermost_deliveries[each.value.delivery].initial_target_name}")"
 
           # Chart.appVersion describes the exact immutable image promoted by
           # this release. The deploy repository keeps a neutral placeholder;

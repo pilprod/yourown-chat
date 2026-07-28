@@ -397,6 +397,7 @@ component "mattermost_image" {
     mattermost_deliveries = {
       production = {
         pipeline_name                    = component.clouddeploy.delivery_pipeline_name
+        initial_target_name              = component.clouddeploy.target_names["dev"]
         execution_service_account_email = component.clouddeploy.execution_service_account_email
         deploy_repository_uri            = var.github_deploy_remote_uri
         deploy_repository_ref            = "main"
@@ -404,6 +405,7 @@ component "mattermost_image" {
       }
       preview = {
         pipeline_name                    = component.clouddeploy_mattermost_preview.delivery_pipeline_name
+        initial_target_name              = component.clouddeploy_mattermost_preview.target_names["dev"]
         execution_service_account_email = component.clouddeploy_mattermost_preview.execution_service_account_email
         deploy_repository_uri            = var.github_deploy_remote_uri
         deploy_repository_ref            = "main"
