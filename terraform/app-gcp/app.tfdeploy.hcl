@@ -81,12 +81,18 @@ deployment "eu" {
     github_connection_name = "pilprod-github"
     github_remote_uri      = "https://github.com/pilprod/mattermost.git"
     image_name             = "mattermost"
-    # One trigger builds both production and dev-only product tags. The build
-    # derives release-channel from the matched tag; guarded promotion refuses
-    # experimental releases.
+    # Release branches are structurally preview-only. Immutable patched tags
+    # use the normal dev -> smoke -> approval -> prod pipeline.
     builds = {
       mattermost = {
-        tag_regex = "^v[0-9]+\\.[0-9]+\\.[0-9]+-(patched|dev\\.[0-9]+)$"
+        tag_regex       = "^v[0-9]+\\.[0-9]+\\.[0-9]+-patched$"
+        delivery        = "production"
+        release_channel = "production"
+      }
+      mattermost-preview = {
+        branch_regex    = "^release-[0-9]+\\.[0-9]+-patched$"
+        delivery        = "preview"
+        release_channel = "experimental"
       }
     }
 

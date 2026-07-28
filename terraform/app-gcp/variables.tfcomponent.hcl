@@ -92,12 +92,22 @@ variable "image_name" {
 
 variable "builds" {
   type = map(object({
-    tag_regex = string
+    branch_regex    = optional(string)
+    tag_regex       = optional(string)
+    delivery        = string
+    release_channel = string
   }))
-  description = "Map of trigger name => tag regex. The build derives production or experimental release-channel from the immutable source tag."
+  description = "Mattermost build entrypoints. Release branches are preview-only; immutable patched tags use the normal production flow."
   default = {
     mattermost = {
-      tag_regex = "^v[0-9]+\\.[0-9]+\\.[0-9]+-(patched|dev\\.[0-9]+)$"
+      tag_regex       = "^v[0-9]+\\.[0-9]+\\.[0-9]+-patched$"
+      delivery        = "production"
+      release_channel = "production"
+    }
+    mattermost-preview = {
+      branch_regex    = "^release-[0-9]+\\.[0-9]+-patched$"
+      delivery        = "preview"
+      release_channel = "experimental"
     }
   }
 }

@@ -56,6 +56,47 @@ component "clouddeploy" {
   }
 }
 
+component "clouddeploy_mattermost_preview" {
+  source = "./modules/clouddeploy"
+
+  inputs = {
+    project_id     = var.project_id
+    region         = var.region
+    gke_cluster_id = var.gke_cluster_id
+    pipeline_name  = "mattermost-preview"
+    release_manager_members = [
+      var.workload_identity_members.mcp,
+    ]
+
+    # Deliberately no production stage: a release-branch artifact cannot be
+    # promoted to prod through Cloud Deploy, the UI, or the MCP.
+    stages = [
+      {
+        name             = "dev"
+        profiles         = var.matterbridge_enabled ? ["mattermost-dev", "matterbridge"] : ["mattermost-dev"]
+        require_approval = false
+        verify           = true
+      },
+    ]
+
+    deploy_parameters = {
+      filestore_bucket       = var.gcs_bucket_name
+      mattermost_cloudsql_ip = var.cloudsql_private_ip
+      mattermost_gsa         = var.workload_identity_emails.mattermost
+      mattermost_dev_gsa     = var.workload_identity_emails.dev
+      matterbridge_gsa       = var.workload_identity_emails.matterbridge
+      aop_verify_client      = var.aop_enabled ? "on" : "off"
+    }
+
+    labels = local.common_labels
+  }
+
+  providers = {
+    google      = provider.google.this
+    google-beta = provider.google-beta.this
+  }
+}
+
 component "clouddeploy_mcp" {
   source = "./modules/clouddeploy"
 
@@ -353,12 +394,21 @@ component "mattermost_image" {
     image_name = var.image_name
     builds     = var.builds
 
-    mattermost_delivery = {
-      pipeline_name                    = component.clouddeploy.delivery_pipeline_name
-      execution_service_account_email = component.clouddeploy.execution_service_account_email
-      deploy_repository_uri            = var.github_deploy_remote_uri
-      deploy_repository_ref            = "main"
-      source_bucket_name               = component.deploy_release.source_bucket_name
+    mattermost_deliveries = {
+      production = {
+        pipeline_name                    = component.clouddeploy.delivery_pipeline_name
+        execution_service_account_email = component.clouddeploy.execution_service_account_email
+        deploy_repository_uri            = var.github_deploy_remote_uri
+        deploy_repository_ref            = "main"
+        source_bucket_name               = component.deploy_release.source_bucket_name
+      }
+      preview = {
+        pipeline_name                    = component.clouddeploy_mattermost_preview.delivery_pipeline_name
+        execution_service_account_email = component.clouddeploy_mattermost_preview.execution_service_account_email
+        deploy_repository_uri            = var.github_deploy_remote_uri
+        deploy_repository_ref            = "main"
+        source_bucket_name               = component.deploy_release.source_bucket_name
+      }
     }
   }
 

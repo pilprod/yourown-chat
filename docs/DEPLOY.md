@@ -8,7 +8,10 @@ or unrelated component from being reapplied during every release.
 
 ```mermaid
 flowchart TD
-  MT["pilprod/mattermost tag<br/>vX.Y.Z-patched or vX.Y.Z-dev.N"] --> BUILD["Build and push image"]
+  PREVIEW["pilprod/mattermost branch<br/>release-X.Y-patched"] --> PBUILD["Build immutable git-SHA image"]
+  PBUILD --> PDEV["mattermost-preview / dev<br/>migration + smoke; no prod stage"]
+
+  MT["pilprod/mattermost tag<br/>vX.Y.Z-patched"] --> BUILD["Build and push image"]
   BUILD --> MMTEST["mattermost / dev<br/>migration + smoke"]
   MMTEST --> MMAPPROVE["approval"]
   MMAPPROVE --> MMCLEAN["predeploy: scale dev Mattermost to 0"]
@@ -24,10 +27,11 @@ flowchart TD
   PG["Terraform Helm release<br/>dev-postgres"] --> MMTEST
 ```
 
-There are two Cloud Deploy pipelines:
+There are three Cloud Deploy pipelines:
 
 | Pipeline | Automatic stage | Review gate | After approval |
 |---|---|---|---|
+| `mattermost-preview` | `mattermost-preview-dev`; previews each `release-X.Y-patched` commit | none | nothing: this pipeline has no production target |
 | `mattermost` | `mattermost-dev`; exercises migrations against persistent `dev-postgres` | verified dev stays running for reviewer checks | predeploy scales dev to zero, then the operator performs a rolling rollout |
 | `mcp` | `mcp-dev`; creates readiness-gated `dev-mcp-*` deployments in the shared `dev` namespace | ready dev stays running for reviewer checks | predeploy scales dev to zero, then MCP prod deploys and executes read-only credential/API verification |
 
@@ -76,22 +80,22 @@ rollout name remains within 63 characters:
 `mattermost-11-9-0-img-a1b2c3d4-12345678`. If it does not fit, only the
 optional build suffix is dropped; the source commit is retained.
 
-### A dev-only product experiment
+### A dev-only release branch
 
-Use `vX.Y.Z-dev.N`, for example `v11.9.0-dev.1`, for licensing,
-rebranding, migration, or product experiments that must never reach
-production:
+Use `release-X.Y-patched`, for example `release-11.9-patched`, for licensing,
+rebranding, migration, or product experiments:
 
 ```bash
-git tag v11.9.0-dev.1
-git push origin v11.9.0-dev.1
+git switch -c release-11.9-patched
+git push -u origin release-11.9-patched
 ```
 
-The single Mattermost image trigger accepts both production `-patched` and
-experimental `-dev.N` tags. It derives `release-channel` from the immutable
-tag, creates the Cloud Deploy release, and deploys/verifies the first
-`mattermost-dev` target. Google Cloud MCP refuses to plan promotion of an
-experimental release to `mattermost-prod`.
+Every pushed commit produces `mattermost:git-<full SHA>` plus a moving
+`release-11.9-patched-latest` convenience tag. Cloud Deploy freezes the digest
+and deploys it to `mattermost-preview-dev`. The `mattermost-preview` pipeline
+has no prod stage, so these releases cannot reach production through Cloud
+Deploy UI, API, or MCP. This is stronger than relying on release metadata or a
+client-side promotion guard.
 
 Every Mattermost build publishes BuildKit SBOM and max-mode provenance
 attestations alongside the immutable registry digest. Before Cloud Deploy
@@ -100,13 +104,8 @@ source/revision/version OCI labels, Team-only binary metadata, and embedded
 license and modification notices. A failed compliance check stops the pipeline
 before the dev rollout.
 
-After manual testing, call `deploy_cleanup_dev` and leave the release at dev
-without creating a prod rollout. If a prod rollout was already created, use
-`deploy_reject_rollout`: it first scales the exact RBAC-allowlisted dev
-Deployment to zero, waits until both desired and observed replicas are zero,
-then rechecks the rollout etag and rejects it. `deploy_inspect_dev_scale`
-performs the same replica check after rollback. A plain Cloud Deploy reject
-does not execute the prod target's predeploy cleanup.
+After review, put `vX.Y.Z-patched` on the exact accepted commit. Only that
+immutable tag starts the production-capable `mattermost` flow.
 
 ### A unified platform tag
 

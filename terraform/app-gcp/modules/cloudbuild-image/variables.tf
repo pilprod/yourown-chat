@@ -62,24 +62,42 @@ variable "dockerfile" {
 
 variable "builds" {
   type = map(object({
-    tag_regex = string
+    branch_regex    = optional(string)
+    tag_regex       = optional(string)
+    delivery        = string
+    release_channel = string
   }))
-  description = "Map of trigger name => tag regex. The build derives production or experimental release-channel from the immutable source tag."
+  description = "Build entrypoints. Exactly one of branch_regex or tag_regex must be set; delivery selects a structurally isolated Cloud Deploy pipeline."
 
   validation {
     condition     = length(var.builds) > 0
     error_message = "Provide at least one build."
   }
 
+  validation {
+    condition = alltrue([
+      for build in values(var.builds) :
+      (build.branch_regex != null) != (build.tag_regex != null)
+    ])
+    error_message = "Every build must set exactly one of branch_regex or tag_regex."
+  }
+
+  validation {
+    condition = alltrue([
+      for build in values(var.builds) :
+      contains(keys(var.mattermost_deliveries), build.delivery)
+    ])
+    error_message = "Every build.delivery must reference a mattermost_deliveries key."
+  }
 }
 
-variable "mattermost_delivery" {
-  type = object({
+variable "mattermost_deliveries" {
+  type = map(object({
     pipeline_name                   = string
     execution_service_account_email = string
     deploy_repository_uri           = string
     deploy_repository_ref           = optional(string, "main")
     source_bucket_name              = string
-  })
-  description = "Mattermost Cloud Deploy destination created only after the patched image has been pushed successfully."
+  }))
+  description = "Named Mattermost delivery destinations. Preview branches select a dev-only pipeline; release tags select the normal dev-to-prod pipeline."
 }

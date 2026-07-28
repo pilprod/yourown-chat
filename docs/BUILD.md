@@ -21,9 +21,12 @@ stack owns:
 
 - the Cloud Build second-generation repository link to `pilprod/mattermost`;
 - the `img-build` service account;
-- the `^v.*-patched$` trigger;
-- narrowly scoped permissions to push the image and create a release only in
-  the `mattermost` pipeline.
+- a `release-X.Y-patched` branch trigger targeting the structurally dev-only
+  `mattermost-preview` pipeline;
+- the `^vX.Y.Z-patched$` tag trigger targeting the normal `mattermost`
+  dev-to-prod pipeline;
+- narrowly scoped permissions to push the image and create releases only in
+  those two pipelines.
 
 The shared `pilprod-github` connection is authorized once in the Google Cloud
 console and must have access to both `pilprod/mattermost` and
@@ -55,6 +58,12 @@ the registry moves that tag to another digest.
 The deployment is started only after the push succeeds. There is no need to
 edit both Mattermost manifests or create a second platform tag for a normal
 image upgrade.
+
+For iterative testing, push to `release-11.9-patched`. Each commit is tagged
+in Artifact Registry as `git-<full SHA>` and deployed only through
+`mattermost-preview-dev`. The preview Cloud Deploy pipeline has no prod target.
+After review, put `vX.Y.Z-patched` on the exact accepted commit to enter the
+production-capable flow.
 
 Verify the artifact:
 

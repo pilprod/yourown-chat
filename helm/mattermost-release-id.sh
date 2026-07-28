@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-image_tag="${1:?usage: mattermost-release-id.sh IMAGE_TAG COMMIT_SHA BUILD_ID}"
-commit_sha="${2:?usage: mattermost-release-id.sh IMAGE_TAG COMMIT_SHA BUILD_ID}"
+source_ref="${1:?usage: mattermost-release-id.sh SOURCE_REF COMMIT_SHA BUILD_ID}"
+commit_sha="${2:?usage: mattermost-release-id.sh SOURCE_REF COMMIT_SHA BUILD_ID}"
 build_id="${3:-}"
 
 slug() {
@@ -12,14 +12,18 @@ slug() {
     sed -E 's/^-+//; s/-+$//; s/-+/-/g'
 }
 
-image_version="$(
-  printf '%s' "${image_tag}" |
-    sed -E 's/^v//; s/-patched$//; s/-dev\./-dev-/'
-)"
+case "${source_ref}" in
+  refs/heads/release-* | release-*)
+    image_version="$(printf '%s' "${source_ref}" | sed -E 's|^refs/heads/||; s/^release-//')"
+    ;;
+  *)
+    image_version="$(printf '%s' "${source_ref}" | sed -E 's/^v//; s/-patched$//')"
+    ;;
+esac
 image_slug="$(slug "${image_version}")"
 [ -n "${image_slug}" ] || {
-  printf 'Mattermost image tag does not contain a usable version: %s\n' \
-    "${image_tag}" >&2
+  printf 'Mattermost source ref does not contain a usable version: %s\n' \
+    "${source_ref}" >&2
   exit 2
 }
 

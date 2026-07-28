@@ -20,28 +20,26 @@ assert_id() {
 }
 
 assert_id \
+  "mattermost-11-9-patched-img-deadbeef" \
+  "release-11.9-patched" \
+  "deadbeefcafebabe" \
+  "12345678-1234-1234-1234-123456789abc"
+
+assert_id \
   "mattermost-11-9-0-img-deadbeef-12345678" \
   "v11.9.0-patched" \
   "deadbeefcafebabe" \
   "12345678-1234-1234-1234-123456789abc"
 
 assert_id \
-  "mattermost-11-9-0-dev-1-img-deadbeef" \
-  "v11.9.0-dev.1" \
-  "deadbeefcafebabe" \
-  "12345678-1234-1234-1234-123456789abc"
-
-# The full version + commit + build identity is two characters too long, so
-# only the optional build suffix is dropped.
-assert_id \
-  "mattermost-11-10-12-img-deadbeef" \
-  "v11.10.12-patched" \
+  "mattermost-11-10-patched-img-deadbeef" \
+  "refs/heads/release-11.10-patched" \
   "deadbeefcafebabe" \
   "12345678-1234-1234-1234-123456789abc"
 
 long_id="$(
   bash "${generator}" \
-    "v123456789.123456789.123456789-patched" \
+    "release-123456789.123456789-patched" \
     "deadbeefcafebabe" \
     "12345678-1234-1234-1234-123456789abc"
 )"
@@ -55,7 +53,7 @@ long_id="$(
 }
 ((${#long_id} + ${#rollout_suffix} <= 63))
 
-if bash "${generator}" "v11.9.0-patched" "not-a-sha" "12345678" \
+if bash "${generator}" "release-11.9-patched" "not-a-sha" "12345678" \
   >/dev/null 2>&1; then
   printf 'expected a non-SHA commit identity to be rejected\n' >&2
   exit 1
