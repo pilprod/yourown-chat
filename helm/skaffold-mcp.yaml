@@ -250,6 +250,13 @@ customActions:
                     f"mcp-{short_alias}".lower(),
                     configured_id.lower(),
                 }
+                legacy_aliases = {
+                    "terraform": {
+                        "terraform-stacks",
+                        "mcp-terraform-stacks",
+                    },
+                }
+                expected.update(legacy_aliases.get(short_alias.lower(), set()))
                 matches = []
                 for server in catalog:
                     if not isinstance(server, dict):
