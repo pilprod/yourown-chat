@@ -6,6 +6,7 @@
 !billing-cost-client.mjs
 !cloud-build-client.mjs
 !cloud-deploy-client.mjs
+!kubernetes-scale-client.mjs
 !server.mjs
 !tool-name-compat.mjs
 !tool-result.mjs
