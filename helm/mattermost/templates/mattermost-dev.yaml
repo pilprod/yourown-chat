@@ -77,6 +77,14 @@ spec:
               value: /mattermost/data
             - name: MM_SERVICESETTINGS_SITEURL
               value: https://dev.yourown.chat
+            - name: MM_GUESTACCOUNTSSETTINGS_ENABLE
+              value: {{ .Values.mattermost_guest_access_enabled | quote }}
+            - name: MM_TEAMSETTINGS_SITENAME
+              value: {{ required "mattermost_site_name is required" .Values.mattermost_site_name | quote }}
+            - name: MM_TEAMSETTINGS_TEAMMATENAMEDISPLAY
+              value: {{ required "mattermost_teammate_name_display is required" .Values.mattermost_teammate_name_display | quote }}
+            - name: MM_TEAMSETTINGS_LOCKTEAMMATENAMEDISPLAY
+              value: {{ .Values.mattermost_lock_teammate_name_display | quote }}
             - name: MM_GOOGLESETTINGS_ENABLE
               value: {{ .Values.mattermost_google_auth_enabled | quote }}
             - name: MM_GOOGLESETTINGS_ID

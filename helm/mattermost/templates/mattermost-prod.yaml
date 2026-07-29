@@ -20,6 +20,16 @@ spec:
   replicas: 1
 
   mattermostEnv:
+    # Keep product identity and user display policy declarative. Environment
+    # variables intentionally make these settings read-only in System Console.
+    - name: MM_GUESTACCOUNTSSETTINGS_ENABLE
+      value: {{ .Values.mattermost_guest_access_enabled | quote }}
+    - name: MM_TEAMSETTINGS_SITENAME
+      value: {{ required "mattermost_site_name is required" .Values.mattermost_site_name | quote }}
+    - name: MM_TEAMSETTINGS_TEAMMATENAMEDISPLAY
+      value: {{ required "mattermost_teammate_name_display is required" .Values.mattermost_teammate_name_display | quote }}
+    - name: MM_TEAMSETTINGS_LOCKTEAMMATENAMEDISPLAY
+      value: {{ .Values.mattermost_lock_teammate_name_display | quote }}
     # Native TOTP protects email/password accounts. Keep enforcement disabled
     # for the first rollout so existing users can enroll. Google SSO users must
     # have 2-Step Verification enforced by Google Workspace.

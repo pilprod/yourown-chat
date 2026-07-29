@@ -22,6 +22,14 @@ mattermost_google_button_text: "Google Workspace"
 mattermost_google_hosted_domains: ""
 mattermost_google_email_domains: ""
 
+# Site identity and display policy. Supplying these settings as environment
+# variables keeps them consistent across dev/prod and prevents System Console
+# changes from drifting away from the declared configuration.
+mattermost_guest_access_enabled: true
+mattermost_site_name: "YourOwn.Chat"
+mattermost_teammate_name_display: "full_name"
+mattermost_lock_teammate_name_display: true
+
 # Google Workspace SMTP Relay. Production/dev overlays opt in with distinct
 # From addresses. Relay authentication is the Terraform-managed static Cloud
 # NAT IP, so no SMTP user password is stored in Kubernetes or Terraform.

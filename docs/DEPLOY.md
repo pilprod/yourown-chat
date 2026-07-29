@@ -161,6 +161,11 @@ to become Ready before retiring the old instance. Do not change the production
 strategy to `Recreate`; confirm the generated rollout before approving a
 version that changes the operator or CR schema.
 
+Dev and production set guest access, the `YourOwn.Chat` site name, and the
+locked `full_name` teammate display policy through Mattermost environment
+variables. These settings are intentionally read-only in System Console and
+must be changed in `helm/mattermost/values.yaml`.
+
 Agents operate Cloud Build and Cloud Deploy through the production Google
 Cloud MCP, not through the Cloud SDK:
 
