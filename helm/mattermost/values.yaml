@@ -31,14 +31,14 @@ mattermost_teammate_name_display: "full_name"
 mattermost_lock_teammate_name_display: true
 
 # Mattermost Calls. Kubernetes production uses the supported standalone RTCD
-# topology. The source image is pinned to the v1.2.5 multi-arch OCI index; the
+# topology. The source image is pinned to the v1.2.6 multi-arch OCI index; the
 # platform release mirrors its selected architecture into our Artifact Registry
 # and overrides this value with the resulting repository@digest reference.
 mattermost_calls_enabled: true
 mattermost_calls_default_enabled: true
 mattermost_calls_allow_screen_sharing: true
 mattermost_calls_max_participants: 10
-mattermost_rtcd_image: "mattermost/rtcd@sha256:3c315dd67c329cbbc1540f883997122ba10b5427da55559db901828160cdb392"
+mattermost_rtcd_image: "mattermost/rtcd@sha256:a8c3c1c3fa2937527d3a96351534fa116106b88aca777bed49d6a360fb2eacd3"
 mattermost_calls_ip: ""
 
 # Google Workspace SMTP Relay. Production/dev overlays opt in with distinct

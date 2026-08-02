@@ -181,10 +181,10 @@ The 1 GiB RTCD registration database uses the `rtcd-cmek` CSI StorageClass,
 whose persistent disk is encrypted with the platform HSM key and retained if
 the PVC is accidentally deleted.
 
-The RTCD source image is pinned by digest and the release trigger mirrors the
-selected architecture into the platform Artifact Registry. Cloud Deploy then
-freezes the mirrored digest alongside the Mattermost digest. The bounded
-production vulnerability window must be enabled before the release tag is
+The RTCD v1.2.6 source image is pinned by digest and the release trigger
+mirrors the selected architecture into the platform Artifact Registry. Cloud
+Deploy then freezes the mirrored digest alongside the Mattermost digest. The
+bounded production vulnerability window must be enabled before the release tag is
 pushed, because Artifact Analysis does not retroactively scan images already
 present in the repository. It must scan both frozen digests before approval.
 Both RTCD Deployments also expose the exact frozen URI in the
