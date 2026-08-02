@@ -10,9 +10,11 @@
 # `yourown-chat`, so a yourown-chat-* prefix would just repeat it. `environment`
 # drives labels only.
 #
-# TOPOLOGY: the budget-optimized default is ONE zonal GKE cluster with one
-# autoscaling pool; Kubernetes priorities/quotas isolate workload tiers. See
-# platform.tfdeploy.hcl and the README for the rationale and the scale-out path.
+# TOPOLOGY: the budget-optimized default is ONE zonal GKE cluster with an
+# autoscaling general pool; when Calls is enabled, RTCD gets the dedicated
+# tainted node required for Kubernetes media routing. Kubernetes priorities and
+# quotas isolate the remaining workload tiers. See platform.tfdeploy.hcl and
+# the README for the rationale and the scale-out path.
 # ---------------------------------------------------------------------------
 
 variable "project_id" {
@@ -243,6 +245,12 @@ variable "kms_rotation_period" {
 variable "public_ingress_enabled" {
   type        = bool
   description = "Reserve the static external ingress IP (the Cloudflare-facing 'white address'). The cloudflare stack's apex A record consumes it via upstream_input, and its edge component is gated on the SAME flag there -- keep the values in sync. Enable for prod only; dev stays private."
+  default     = false
+}
+
+variable "mattermost_calls_enabled" {
+  type        = bool
+  description = "Provision the dedicated Mattermost RTCD node pool and stable external media IP."
   default     = false
 }
 

@@ -7,3 +7,4 @@ mattermost_smtp_enabled: true
 mattermost_smtp_feedback_name: "YourOwn.Chat Dev"
 mattermost_smtp_feedback_email: "noreply-dev@yourown.chat"
 mattermost_smtp_reply_to: "ilya@papou.email"
+mattermost_calls_enabled: true

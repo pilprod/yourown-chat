@@ -86,7 +86,7 @@ resource "kubernetes_role_v1" "mattermost_cleanup" {
   rule {
     api_groups     = ["apps"]
     resources      = ["deployments", "deployments/scale"]
-    resource_names = ["dev-mattermost"]
+    resource_names = ["dev-mattermost", "dev-rtcd"]
     verbs          = ["get", "patch", "update"]
   }
 }

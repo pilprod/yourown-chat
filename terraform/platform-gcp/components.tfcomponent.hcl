@@ -304,6 +304,7 @@ component "network" {
 
     # Reserve the Cloudflare-facing static IP only where a public ingress exists.
     ingress_static_ip = var.public_ingress_enabled
+    calls_static_ip   = var.mattermost_calls_enabled
   }
 
   providers = {

@@ -49,6 +49,12 @@ output "ingress_ip_address" {
   value       = component.network.ingress_ip_address
 }
 
+output "calls_ip_address" {
+  type        = string
+  description = "Reserved external IP advertised by the Mattermost RTCD media service."
+  value       = component.network.calls_ip_address
+}
+
 output "nat_egress_ip_address" {
   type        = string
   description = "Reserved static Cloud NAT egress IP. Allowlist this address in Google Workspace SMTP Relay."

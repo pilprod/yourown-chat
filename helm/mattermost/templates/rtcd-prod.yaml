@@ -1,0 +1,242 @@
+{{- if and (eq .Values.environment "prod") .Values.mattermost_calls_enabled }}
+# Standalone RTCD is the supported Mattermost Calls media topology on
+# Kubernetes. Signalling remains on https://yourown.chat; clients connect
+# directly to the stable GCP L4 address below on TCP/UDP 8443.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mattermost-rtcd-state
+  namespace: mattermost-rtcd
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: rtcd-cmek
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mattermost-rtcd
+  namespace: mattermost-rtcd
+  labels:
+    app: mattermost-rtcd
+spec:
+  type: ClusterIP
+  selector:
+    app: mattermost-rtcd
+  ports:
+    - name: api
+      port: 8045
+      targetPort: api
+      protocol: TCP
+---
+# Separate TCP and UDP Services deliberately share one reserved address. This
+# works on older GKE versions too and avoids making Calls availability depend
+# on the newer mixed-protocol Service controller.
+apiVersion: v1
+kind: Service
+metadata:
+  name: mattermost-rtcd-udp
+  namespace: mattermost-rtcd
+  annotations:
+    cloud.google.com/l4-rbs: "enabled"
+  labels:
+    app: mattermost-rtcd
+spec:
+  type: LoadBalancer
+  loadBalancerIP: {{ required "mattermost_calls_ip is required when production Calls is enabled" .Values.mattermost_calls_ip | quote }}
+  externalTrafficPolicy: Local
+  selector:
+    app: mattermost-rtcd
+  ports:
+    - name: rtc-udp
+      port: 8443
+      targetPort: rtc-udp
+      protocol: UDP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mattermost-rtcd-tcp
+  namespace: mattermost-rtcd
+  annotations:
+    cloud.google.com/l4-rbs: "enabled"
+  labels:
+    app: mattermost-rtcd
+spec:
+  type: LoadBalancer
+  loadBalancerIP: {{ required "mattermost_calls_ip is required when production Calls is enabled" .Values.mattermost_calls_ip | quote }}
+  externalTrafficPolicy: Local
+  selector:
+    app: mattermost-rtcd
+  ports:
+    - name: rtc-tcp
+      port: 8443
+      targetPort: rtc-tcp
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mattermost-rtcd
+  namespace: mattermost-rtcd
+  labels:
+    app: mattermost-rtcd
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: mattermost-rtcd
+  template:
+    metadata:
+      labels:
+        app: mattermost-rtcd
+    spec:
+      priorityClassName: production
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 300
+      nodeSelector:
+        pool: rtcd
+      tolerations:
+        - key: workload
+          operator: Equal
+          value: rtcd
+          effect: NoSchedule
+      securityContext:
+        # The pinned distroless image defines calls:65532. fsGroup makes the
+        # dynamically provisioned registration volume writable without root.
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: rtcd
+          image: {{ required "mattermost_rtcd_image is required when Calls is enabled" .Values.mattermost_rtcd_image | quote }}
+          imagePullPolicy: IfNotPresent
+          env:
+            # The API is ClusterIP-only and additionally restricted by
+            # NetworkPolicy to the Mattermost namespace.
+            - name: RTCD_API_SECURITY_ALLOWSELFREGISTRATION
+              value: "true"
+            - name: RTCD_STORE_DATASOURCE
+              value: "/var/lib/rtcd/rtcd_db"
+            - name: RTCD_RTC_ICEHOSTOVERRIDE
+              value: {{ required "mattermost_calls_ip is required when production Calls is enabled" .Values.mattermost_calls_ip | quote }}
+            - name: RTCD_RTC_ICEPORTUDP
+              value: "8443"
+            - name: RTCD_RTC_ICEPORTTCP
+              value: "8443"
+            - name: RTCD_RTC_NACKDISABLECOPY
+              value: "false"
+            - name: RTCD_LOGGER_CONSOLEJSON
+              value: "true"
+            - name: RTCD_LOGGER_ENABLEFILE
+              value: "false"
+          ports:
+            - { name: api, containerPort: 8045, protocol: TCP }
+            - { name: rtc-tcp, containerPort: 8443, protocol: TCP }
+            - { name: rtc-udp, containerPort: 8443, protocol: UDP }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            httpGet: { path: /version, port: api }
+            periodSeconds: 5
+            failureThreshold: 24
+          livenessProbe:
+            httpGet: { path: /version, port: api }
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 500m, memory: 512Mi }
+            limits: { cpu: "2", memory: 2Gi }
+          volumeMounts:
+            - { name: state, mountPath: /var/lib/rtcd }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: state
+          persistentVolumeClaim:
+            claimName: mattermost-rtcd-state
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: mattermost-rtcd
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-mattermost-api
+  namespace: mattermost-rtcd
+spec:
+  podSelector:
+    matchLabels:
+      app: mattermost-rtcd
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: mattermost
+      ports:
+        - { protocol: TCP, port: 8045 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-public-media
+  namespace: mattermost-rtcd
+spec:
+  podSelector:
+    matchLabels:
+      app: mattermost-rtcd
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - { protocol: UDP, port: 8443 }
+        - { protocol: TCP, port: 8443 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-and-public-media-egress
+  namespace: mattermost-rtcd
+spec:
+  podSelector:
+    matchLabels:
+      app: mattermost-rtcd
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 169.254.0.0/16
+{{- end }}

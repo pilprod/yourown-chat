@@ -85,6 +85,22 @@ spec:
               value: {{ required "mattermost_teammate_name_display is required" .Values.mattermost_teammate_name_display | quote }}
             - name: MM_TEAMSETTINGS_LOCKTEAMMATENAMEDISPLAY
               value: {{ .Values.mattermost_lock_teammate_name_display | quote }}
+            {{- if .Values.mattermost_calls_enabled }}
+            - name: MM_PLUGINSETTINGS_ENABLE
+              value: "true"
+            - name: MM_PLUGINSETTINGS_AUTOMATICPREPACKAGEDPLUGINS
+              value: "true"
+            - name: MM_PLUGINSETTINGS_PLUGINSTATES_COM_MATTERMOST_CALLS
+              value: "true"
+            - name: MM_CALLS_RTCD_SERVICE_URL
+              value: "http://dev-rtcd.dev.svc.cluster.local:8045"
+            - name: MM_CALLS_DEFAULT_ENABLED
+              value: {{ .Values.mattermost_calls_default_enabled | quote }}
+            - name: MM_CALLS_ALLOW_SCREEN_SHARING
+              value: {{ .Values.mattermost_calls_allow_screen_sharing | quote }}
+            - name: MM_CALLS_MAX_CALL_PARTICIPANTS
+              value: {{ .Values.mattermost_calls_max_participants | quote }}
+            {{- end }}
             - name: MM_GOOGLESETTINGS_ENABLE
               value: {{ .Values.mattermost_google_auth_enabled | quote }}
             - name: MM_GOOGLESETTINGS_ID
@@ -149,4 +165,95 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: dev-mattermost-data
+{{- if .Values.mattermost_calls_enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dev-rtcd
+  namespace: dev
+  labels:
+    app: dev-rtcd
+spec:
+  selector:
+    app: dev-rtcd
+  ports:
+    - name: api
+      port: 8045
+      targetPort: api
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dev-rtcd
+  namespace: dev
+  labels:
+    app: dev-rtcd
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: dev-rtcd
+  template:
+    metadata:
+      labels:
+        app: dev-rtcd
+    spec:
+      priorityClassName: {{ .Values.priorityClassName }}
+      automountServiceAccountToken: false
+      securityContext:
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: rtcd
+          image: {{ required "mattermost_rtcd_image is required when Calls is enabled" .Values.mattermost_rtcd_image | quote }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: RTCD_API_SECURITY_ALLOWSELFREGISTRATION
+              value: "true"
+            - name: RTCD_STORE_DATASOURCE
+              value: "/var/lib/rtcd/rtcd_db"
+            - name: RTCD_LOGGER_CONSOLEJSON
+              value: "true"
+            - name: RTCD_LOGGER_ENABLEFILE
+              value: "false"
+            - name: RTCD_RTC_NACKDISABLECOPY
+              value: "false"
+          ports:
+            - { name: api, containerPort: 8045, protocol: TCP }
+            - { name: rtc-tcp, containerPort: 8443, protocol: TCP }
+            - { name: rtc-udp, containerPort: 8443, protocol: UDP }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            httpGet: { path: /version, port: api }
+            periodSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            httpGet: { path: /version, port: api }
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 512Mi }
+          volumeMounts:
+            - { name: state, mountPath: /var/lib/rtcd }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: state
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+{{- end }}
 {{- end }}

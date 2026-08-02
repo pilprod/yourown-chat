@@ -64,6 +64,12 @@ variable "ingress_static_ip" {
   default     = false
 }
 
+variable "calls_static_ip" {
+  type        = bool
+  description = "Reserve a regional external static IP for the Mattermost RTCD media load balancers."
+  default     = false
+}
+
 variable "nat_min_ports_per_vm" {
   type        = number
   description = "Minimum NAT source ports per VM."

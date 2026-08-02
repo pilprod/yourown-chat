@@ -12,6 +12,7 @@ locals {
   psa_range_name         = "psa"
   internal_firewall_name = "allow-internal"
   ingress_ip_name        = "ingress-${var.region}"
+  calls_ip_name          = "calls-${var.region}"
 }
 
 # Custom-mode VPC: no auto subnets so ranges are explicit and predictable.
@@ -137,6 +138,20 @@ resource "google_compute_address" "ingress" {
 
   project      = var.project_id
   name         = local.ingress_ip_name
+  region       = var.region
+  address_type = "EXTERNAL"
+  network_tier = "PREMIUM"
+  labels       = var.labels
+}
+
+# Calls media bypasses the HTTP ingress and Cloudflare: WebRTC clients connect
+# directly to RTCD on TCP/UDP 8443. Keep that endpoint stable across Service
+# and forwarding-rule replacement without reusing the Cloudflare origin IP.
+resource "google_compute_address" "calls" {
+  count = var.calls_static_ip ? 1 : 0
+
+  project      = var.project_id
+  name         = local.calls_ip_name
   region       = var.region
   address_type = "EXTERNAL"
   network_tier = "PREMIUM"

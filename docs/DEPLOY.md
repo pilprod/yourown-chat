@@ -149,11 +149,12 @@ the tag and in Cloud Deploy that no release carries that version.
 
 ## Mattermost guarantees
 
-The dev stage deploys one Mattermost instance and waits for
-`/api/v4/system/ping`. Application startup therefore has to complete any
-database migrations before verification succeeds. Dev stays running for
-review; after production approval, the prod rollout's predeploy action scales
-dev Mattermost to zero, leaving PostgreSQL running.
+The dev stage deploys Mattermost plus a disposable RTCD and waits for the
+Mattermost ping, Calls plugin version, and RTCD version endpoints. Application
+startup therefore has to complete any database migrations before verification
+succeeds. Dev stays running for review; after production approval, the prod
+rollout's predeploy action scales both dev deployments to zero, leaving
+PostgreSQL running.
 
 Production has one replica and must not delete the old pod first. The
 Mattermost operator's rolling behavior starts the replacement and waits for it
@@ -165,6 +166,33 @@ Dev and production set guest access, the `YourOwn.Chat` site name, and the
 locked `full_name` teammate display policy through Mattermost environment
 variables. These settings are intentionally read-only in System Console and
 must be changed in `helm/mattermost/values.yaml`.
+
+### Mattermost Calls
+
+Production Calls uses standalone RTCD, the only supported Kubernetes media
+topology. RTCD runs as one replica on its own tainted `e2-standard-2` node and
+publishes one reserved regional shared LoadBalancer VIP on both TCP and UDP
+8443. Media goes directly from clients to this address and deliberately does
+not traverse the HTTP ingress or Cloudflare. Mattermost reaches the private
+RTCD API Service on TCP 8045; NetworkPolicies deny that API to every other
+namespace.
+
+The 1 GiB RTCD registration database uses the `rtcd-cmek` CSI StorageClass,
+whose persistent disk is encrypted with the platform HSM key and retained if
+the PVC is accidentally deleted.
+
+The RTCD source image is pinned by digest and the release trigger mirrors the
+selected architecture into the platform Artifact Registry. Cloud Deploy then
+freezes the mirrored digest alongside the Mattermost digest. The bounded
+production vulnerability window must scan both digests before approval.
+Production verification checks the Mattermost ping, the Calls plugin version,
+and the private RTCD version endpoint. A real browser call remains the final
+WebRTC media check because an HTTP smoke job cannot prove bidirectional UDP.
+
+Calls starts in live mode with screen sharing enabled and a maximum of 10
+participants per call. Recording, transcription, and TURN are not enabled.
+Clients on networks that block both direct UDP and TCP 8443 will need a future
+TURN deployment.
 
 Agents operate Cloud Build and Cloud Deploy through the production Google
 Cloud MCP, not through the Cloud SDK:
@@ -326,8 +354,8 @@ independent `agent-registry-gcp` stack after `platform-gcp` has enabled
   identities, and dedicated external predeploy cleanup identities;
 - creates the unified platform-tag trigger and Mattermost image trigger.
 
-The platform now has one shared `general` pool using `e2-standard-2`
-(`min=1`, `max=3`).
+The platform has one shared `general` pool using `e2-standard-2`
+(`min=1`, `max=3`) plus a fixed one-node `rtcd` pool using `e2-standard-2`.
 Production MCP uses the `production` PriorityClass, operator-generated
 Mattermost and platform pods inherit `platform-default`, and all disposable dev
 workloads explicitly use `development` (negative priority). The `dev` namespace

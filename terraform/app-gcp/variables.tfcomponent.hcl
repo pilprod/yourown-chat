@@ -154,6 +154,12 @@ variable "ingress_ip_address" {
   default     = null
 }
 
+variable "calls_ip_address" {
+  type        = string
+  description = "Reserved external IPv4 address advertised by RTCD and assigned to its TCP/UDP LoadBalancer Services."
+  default     = null
+}
+
 variable "mattermost_operator_chart_version" {
   type        = string
   description = "mattermost/mattermost-operator chart version (https://helm.mattermost.com). Pinned for reproducible bootstrap; bump deliberately."

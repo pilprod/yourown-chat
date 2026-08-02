@@ -46,6 +46,7 @@ deployment "eu" {
     cmek_key_id                     = upstream_input.platform.cmek_key_id
     workload_identity_members       = upstream_input.platform.workload_identity_members
     ingress_ip_address              = upstream_input.platform.ingress_ip_address
+    calls_ip_address                = upstream_input.platform.calls_ip_address
 
     # Derived from the cloudflare stack's published outputs -- no hand-kept
     # mirror toggles. origin_tls_ready is true exactly when the Origin CA

@@ -38,7 +38,9 @@ deployment "eu" {
     region             = local.gcp_region
     zone               = local.gcp_zone
 
-    # ONE zonal cluster (GKE free tier), one autoscaling general-purpose pool.
+    # ONE zonal cluster (GKE free tier), an autoscaling general-purpose pool,
+    # plus one dedicated RTCD media node required by the supported Calls
+    # Kubernetes topology.
     # Kubernetes PriorityClass + requests/quotas protect prod capacity; dev
     # workloads are preemptible and scaled down after release verification.
     gke_regional            = false
@@ -61,6 +63,26 @@ deployment "eu" {
         }
         taints = []
       }
+      # RTCD handles real-time media on a dedicated node as required by the
+      # supported Mattermost Calls Kubernetes topology. The taint prevents
+      # ordinary workloads from consuming its deterministic media capacity.
+      rtcd = {
+        machine_type   = "e2-standard-2"
+        spot           = false
+        min_count      = 1
+        max_count      = 1
+        disk_size_gb   = 30
+        disk_type      = "pd-standard"
+        cmek_boot_disk = true
+        labels = {
+          pool = "rtcd"
+        }
+        taints = [{
+          key    = "workload"
+          value  = "rtcd"
+          effect = "NO_SCHEDULE"
+        }]
+      }
     }
 
     master_authorized_networks = local.master_authorized_networks
@@ -79,6 +101,7 @@ deployment "eu" {
     cloudsql_password_rotation = "2026-07-12"
 
     public_ingress_enabled = true
+    mattermost_calls_enabled = true
 
     # One shared HSM CMEK key for Cloud SQL, GCS, Secret Manager, GKE etcd,
     # sensitive PVCs and the replacement GKE node-pool boot disks (~$1/mo).
@@ -105,6 +128,11 @@ deployment "eu" {
 publish_output "ingress_ip_address" {
   description = "Reserved static ingress IP the Cloudflare apex A record points at."
   value       = deployment.eu.ingress_ip_address
+}
+
+publish_output "calls_ip_address" {
+  description = "Stable public address for direct Mattermost RTCD TCP/UDP media traffic."
+  value       = deployment.eu.calls_ip_address
 }
 
 publish_output "nat_egress_ip_address" {

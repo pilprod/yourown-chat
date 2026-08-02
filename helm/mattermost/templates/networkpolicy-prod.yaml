@@ -63,6 +63,27 @@ spec:
             cidr: {{ printf "%s/32" (required "Cloud Deploy parameter mattermost_cloudsql_ip is required" .Values.mattermost_cloudsql_ip) | quote }}
       ports:
         - { protocol: TCP, port: 5432 }
+{{- if .Values.mattermost_calls_enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-rtcd-api
+  namespace: mattermost
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: mattermost-rtcd
+          podSelector:
+            matchLabels:
+              app: mattermost-rtcd
+      ports:
+        - { protocol: TCP, port: 8045 }
+{{- end }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

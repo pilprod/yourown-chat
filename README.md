@@ -631,7 +631,7 @@ policies. A server cannot connect directly to another MCP namespace.
 flowchart LR
   API["Enabled Google APIs"] --> TF["platform-gcp Terraform Stack"]
   TF --> N["Network<br/>VPC · subnet · firewall · NAT · PSA"]
-  TF --> C["Compute<br/>private GKE · general node pool"]
+  TF --> C["Compute<br/>private GKE · general + RTCD pools"]
   TF --> D["Data<br/>Cloud SQL · GCS · BigQuery"]
   TF --> S["Supply chain<br/>Artifact Registry · on-demand scanning"]
   TF --> I["Identity and keys<br/>Workload Identity · HSM KMS"]
@@ -649,7 +649,7 @@ flowchart LR
   E --> GCS["GCS<br/>Mattermost objects + deploy source"]
   E --> SM["Secret Manager<br/>regional replicas"]
   E --> ETCD["GKE etcd<br/>Kubernetes Secrets"]
-  E --> ND["GKE general pool<br/>node boot disks"]
+  E --> ND["GKE general + RTCD pools<br/>node boot disks"]
 ```
 
 ```mermaid
@@ -664,9 +664,11 @@ The billing dataset is separate from application data and gives the Google
 Cloud MCP read-only cost visibility. Google-managed encryption is still
 encryption at rest, but those services are deliberately not presented as
 CMEK-controlled in this configuration. There is no separate dev node pool:
-dev and production pods share the autoscaling `general` pool and Kubernetes
-PriorityClasses decide scheduling/preemption priority. Its replacement boot
-disks use the same HSM CMEK as the rest of the platform. Default-class PVCs
+dev and ordinary production pods share the autoscaling `general` pool and
+Kubernetes PriorityClasses decide scheduling/preemption priority. Calls RTCD
+is the exception: the supported Kubernetes media topology requires one
+dedicated tainted node. Both pools' replacement boot disks use the same HSM
+CMEK as the rest of the platform. Default-class PVCs
 currently hold only replaceable dev Mattermost and dev PostgreSQL data and
 remain Google-managed. Production Mattermost state is in CMEK-protected Cloud
 SQL and GCS, and Kubernetes Secrets are application-layer encrypted with CMEK
@@ -806,9 +808,9 @@ resource type.
 | Owner | Resources |
 |---|---|
 | **platform-gcp / APIs** | Service Usage entries for Compute, GKE, Service Networking, Cloud SQL, KMS, Storage, Cloud Deploy, Logging, Monitoring, Cloud Build, Cloud Billing, Billing Budgets, BigQuery, BigQuery Data Transfer, Recommender, Artifact Registry, Artifact Analysis, Agent Registry and Google Workspace MCP APIs |
-| **platform-gcp / network** | Custom VPC, regional subnet with pod/service secondary ranges, internal firewall, Cloud Router, Cloud NAT with a reserved egress IP for Workspace SMTP Relay, reserved external ingress IP, PSA address and Service Networking connection |
+| **platform-gcp / network** | Custom VPC, regional subnet with pod/service secondary ranges, internal firewall, Cloud Router, Cloud NAT with a reserved egress IP for Workspace SMTP Relay, reserved external ingress IP, reserved shared Calls media VIP, PSA address and Service Networking connection |
 | **platform-gcp / encryption** | Regional HSM KMS key ring and key, rotation policy, IAM grants for GKE, Compute Engine, Cloud SQL, GCS and Secret Manager service agents |
-| **platform-gcp / compute** | One zonal private GKE Standard cluster, HSM-CMEK autoscaling `general` node pool, shielded nodes, node service account, CSI drivers, etcd application-layer encryption and GKE cost allocation |
+| **platform-gcp / compute** | One zonal private GKE Standard cluster, HSM-CMEK autoscaling `general` node pool, dedicated tainted RTCD node pool, shielded nodes, node service account, CSI drivers, etcd application-layer encryption and GKE cost allocation |
 | **platform-gcp / data** | Private Cloud SQL PostgreSQL instance, database/user/password secrets, GCS Mattermost bucket, HMAC service account and secrets, EU BigQuery `billing` dataset |
 | **platform-gcp / supply chain** | Regional Artifact Registry `docker` repository, cleanup policy, default-off scanning gate and least-privilege MCP scanning controller |
 | **platform-gcp / identities** | Separate Google service accounts and Workload Identity bindings for Mattermost, dev, Matterbridge, every MCP server and cloudflared |
@@ -824,6 +826,7 @@ resource type.
 | Namespace | Long-lived workload | External dependencies |
 |---|---|---|
 | `mattermost` | Production Mattermost | Cloud SQL, GCS, Secret Manager |
+| `mattermost-rtcd` | Production Calls media service | Direct client TCP/UDP 8443 through a reserved GCP L4 VIP |
 | `dev` | Persistent dev PostgreSQL; disposable Mattermost/MCP test workloads | Secret Manager |
 | `matterbridge` | Matterbridge integration | Mattermost and configured chat networks |
 | `mcp-google-cloud` | Google Cloud operations, observability, security and billing MCP | Google Cloud APIs and BigQuery billing export |
@@ -1118,14 +1121,16 @@ Details: [`docs/BUILD.md`](docs/BUILD.md).
 
 ## Design decisions & tradeoffs
 
-### One cluster, ~$100/month
+### One cluster, Calls-ready footprint
 
 The brief asks for production practices **and** the cheapest practical GKE
 footprint around a ~$100/month target. GKE's free tier waives the management fee
 for exactly one zonal cluster — a second cluster would add ~$74/month. So dev
-and prod share **one cluster and one node pool**:
+and prod share **one cluster**:
 
 - one on-demand `general` pool (`e2-standard-2`) autoscaling from one to three nodes;
+- one fixed, tainted `rtcd` pool (`e2-standard-2`) required by the supported
+  Mattermost Calls Kubernetes topology;
 - production PriorityClass can preempt disposable dev workloads; accurate
   requests, a dev ResourceQuota and LimitRange bound resource contention;
 - verified dev Mattermost/MCP stays available for review; production approval
@@ -1141,11 +1146,13 @@ and prod share **one cluster and one node pool**:
 |---|---|---|
 | GKE control plane | 1 zonal cluster | $0 (free tier) |
 | shared nodes | 1× `e2-standard-2` baseline | ≈$49 |
+| Calls media node | 1× dedicated `e2-standard-2` | ≈$49 |
+| Calls L4 networking | TCP/UDP forwarding and traffic processing | usage-dependent |
 | rollout capacity | temporary autoscaled nodes | typically <$1–2 |
 | Cloud SQL | `db-f1-micro`, 20 GiB, PITR | ≈$12–15 |
 | GCS + PVCs | small | ≈$3 |
 | Buffer | egress/growth | ≈$10–15 |
-| **Total** | | **≈$75–85** |
+| **Total** | | **≈$124–140 plus media egress** |
 
 Every knob has a hardening path — flip a variable, don't re-architect:
 `gke_regional = true` for an HA control plane, `REGIONAL` for HA Cloud SQL,

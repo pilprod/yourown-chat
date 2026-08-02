@@ -75,7 +75,7 @@ variable "node_pools" {
       effect = string
     })), [])
   }))
-  description = "Map of node pool name => spec. The budget topology uses one shared pool and Kubernetes scheduling policy for workload tiers."
+  description = "Map of node pool name => spec. The general pool uses Kubernetes scheduling policy for workload tiers; dedicated workloads such as RTCD can add tainted pools."
   default     = { primary = {} }
 
   validation {

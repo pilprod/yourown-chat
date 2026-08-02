@@ -32,7 +32,11 @@ profiles:
           args:
             - >-
               curl -sSf --retry 30 --retry-connrefused --retry-delay 5
-              http://dev-mattermost.dev.svc.cluster.local:8065/api/v4/system/ping
+              http://dev-mattermost.dev.svc.cluster.local:8065/api/v4/system/ping &&
+              curl -sSf --retry 30 --retry-connrefused --retry-delay 5
+              http://dev-mattermost.dev.svc.cluster.local:8065/plugins/com.mattermost.calls/version &&
+              curl -sSf --retry 30 --retry-connrefused --retry-delay 5
+              http://dev-rtcd.dev.svc.cluster.local:8045/version
         executionMode:
           kubernetesCluster:
             jobManifestPath: mattermost/verify/job.yaml
@@ -57,6 +61,23 @@ profiles:
             valuesFiles:
               - mattermost/values.yaml
               - mattermost/values-prod.yaml
+    verify:
+      - name: prod-calls-smoke
+        container:
+          name: smoke-test
+          image: curlimages/curl:8.10.1
+          command: ["/bin/sh", "-c"]
+          args:
+            - >-
+              curl -sSf --retry 30 --retry-connrefused --retry-delay 5
+              https://yourown.chat/api/v4/system/ping &&
+              curl -sSf --retry 30 --retry-connrefused --retry-delay 5
+              https://yourown.chat/plugins/com.mattermost.calls/version &&
+              curl -sSf --retry 30 --retry-connrefused --retry-delay 5
+              http://mattermost-rtcd.mattermost-rtcd.svc.cluster.local:8045/version
+        executionMode:
+          kubernetesCluster:
+            jobManifestPath: mattermost/verify/prod-job.yaml
 
 # Cloud Deploy executes this PREDEPLOY action in Cloud Build under the
 # dedicated cleanup service account, not as a pod in GKE.
@@ -76,4 +97,8 @@ customActions:
             gcloud container clusters get-credentials "${cluster_name}" \
               --project "${cluster_project}" \
               --location "${cluster_location}"
-            kubectl --namespace dev scale deployment/dev-mattermost --replicas=0
+            for dev_deployment in dev-mattermost dev-rtcd; do
+              if kubectl --namespace dev get "deployment/${dev_deployment}" >/dev/null 2>&1; then
+                kubectl --namespace dev scale "deployment/${dev_deployment}" --replicas=0
+              fi
+            done

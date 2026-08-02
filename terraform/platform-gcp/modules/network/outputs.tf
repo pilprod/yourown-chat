@@ -48,6 +48,11 @@ output "ingress_ip_address" {
   value       = one(google_compute_address.ingress[*].address)
 }
 
+output "calls_ip_address" {
+  description = "Reserved regional external IP used by Mattermost RTCD TCP/UDP media load balancers."
+  value       = one(google_compute_address.calls[*].address)
+}
+
 output "nat_egress_ip_address" {
   description = "Reserved regional external IP used by Cloud NAT for stable outbound allowlists such as Google Workspace SMTP Relay."
   value       = google_compute_address.nat.address

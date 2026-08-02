@@ -33,7 +33,7 @@ component "clouddeploy" {
         name              = "prod"
         profiles          = ["mattermost-prod"]
         require_approval  = true
-        verify            = false
+        verify            = true
         predeploy_actions = ["cleanup-mattermost-dev"]
       },
     ]
@@ -45,6 +45,7 @@ component "clouddeploy" {
       mattermost_dev_gsa      = var.workload_identity_emails.dev
       matterbridge_gsa        = var.workload_identity_emails.matterbridge
       aop_verify_client       = var.aop_enabled ? "on" : "off"
+      mattermost_calls_ip     = var.calls_ip_address
     }
 
     labels = local.common_labels
@@ -86,6 +87,7 @@ component "clouddeploy_mattermost_preview" {
       mattermost_dev_gsa     = var.workload_identity_emails.dev
       matterbridge_gsa       = var.workload_identity_emails.matterbridge
       aop_verify_client      = var.aop_enabled ? "on" : "off"
+      mattermost_calls_ip    = var.calls_ip_address
     }
 
     labels = local.common_labels
@@ -272,6 +274,7 @@ component "cluster_secrets" {
       {
         dev        = { labels = { tier = "dev", "part-of" = "yourown-chat" } }
         mattermost = { labels = { tier = "prod", "part-of" = "yourown-chat" } }
+        mattermost-rtcd = { labels = { tier = "prod", "part-of" = "yourown-chat", "component" = "rtcd" } }
         # Every MCP server is an independent tenant.  This prevents a
         # compromised server from reaching another server merely because both
         # happen to be MCP workloads.  The Tunnel connector is isolated too.
@@ -285,7 +288,18 @@ component "cluster_secrets" {
     )
     adopt_existing_namespaces = var.adopt_existing_namespaces
 
-    storage_classes = {}
+    storage_classes = {
+      rtcd-cmek = {
+        provisioner = "pd.csi.storage.gke.io"
+        parameters = {
+          type                    = "pd-standard"
+          disk-encryption-kms-key = var.cmek_key_id
+        }
+        reclaim_policy         = "Retain"
+        volume_binding_mode    = "WaitForFirstConsumer"
+        allow_volume_expansion = true
+      }
+    }
 
     secrets = merge(
       {
@@ -474,9 +488,10 @@ component "gke_auth" {
   }
 }
 
-# One shared node pool relies on Kubernetes scheduling policy, not permanent
+# The general pool relies on Kubernetes scheduling policy rather than permanent
 # per-environment VMs: prod can preempt dev, while the dev namespace has a hard
-# compute budget and safe defaults.
+# compute budget and safe defaults. The dedicated RTCD pool is managed by the
+# platform stack and accepts only its tainted Calls media workload.
 component "workload_scheduling" {
   source = "./modules/workload-scheduling"
 

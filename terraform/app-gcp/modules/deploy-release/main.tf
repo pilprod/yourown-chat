@@ -237,6 +237,38 @@ resource "google_cloudbuild_trigger" "release" {
       dir = var.source_subdir
     }
 
+    # Mirror the version-pinned RTCD image into the same Artifact Registry as
+    # Mattermost. This removes Docker Hub from the runtime trust path and lets
+    # the bounded production vulnerability gate inspect the exact media image.
+    step {
+      id         = "mirror-mattermost-rtcd"
+      name       = "gcr.io/cloud-builders/docker"
+      entrypoint = "bash"
+      args = [
+        "-ceu",
+        <<-EOT
+          previous_tag="$$(cat /workspace/previous-platform-tag)"
+          mattermost_changed="$$(bash route-components.sh \
+            /workspace/changed-files mattermost "$$previous_tag")"
+
+          if [ "$$mattermost_changed" = "true" ]; then
+            source_image="$$(awk -F ': ' \
+              '$$1 == "mattermost_rtcd_image" {gsub(/"/, "", $$2); print $$2}' \
+              mattermost/values.yaml)"
+            [ -n "$$source_image" ] || { echo "mattermost_rtcd_image is empty"; exit 1; }
+            destination_image="${local.artifact_repository_prefix}/mattermost-rtcd:$COMMIT_SHA"
+            docker pull "$$source_image"
+            docker tag "$$source_image" "$$destination_image"
+            docker push "$$destination_image"
+            printf '%s' "$$destination_image" > /workspace/mattermost-rtcd-image-tag
+          else
+            echo "No Mattermost deployment changes; skipping RTCD mirror"
+          fi
+        EOT
+      ]
+      dir = var.source_subdir
+    }
+
     step {
       id         = "release"
       name       = "gcr.io/google.com/cloudsdktool/cloud-sdk:slim"
@@ -283,6 +315,13 @@ resource "google_cloudbuild_trigger" "release" {
             deploy_parameters="$$(bash mattermost-image-parameters.sh \
               "$$image_repo" \
               "$$digest")"
+            rtcd_tag_ref="$$(cat /workspace/mattermost-rtcd-image-tag)"
+            rtcd_digest="$$(gcloud artifacts docker images describe \
+              "$$rtcd_tag_ref" \
+              --format='value(image_summary.digest)')"
+            rtcd_repository="$${rtcd_tag_ref%:*}"
+            rtcd_image="$$rtcd_repository@$$rtcd_digest"
+            deploy_parameters="$$deploy_parameters,mattermost_rtcd_image=$$rtcd_image"
             mattermost_release_id="$$(bash mattermost-release-id.sh \
               "$$mattermost_tag" \
               "$COMMIT_SHA" \
@@ -290,7 +329,7 @@ resource "google_cloudbuild_trigger" "release" {
             create_release \
               mattermost \
               "$$mattermost_release_id" \
-              "git-tag=$TAG_NAME,git-sha=$COMMIT_SHA,build-id=$BUILD_ID,previous-tag=$$previous_tag,image-tag=$$mattermost_tag,image-digest=$$digest" \
+              "git-tag=$TAG_NAME,git-sha=$COMMIT_SHA,build-id=$BUILD_ID,previous-tag=$$previous_tag,image-tag=$$mattermost_tag,image-digest=$$digest,rtcd-image-digest=$$rtcd_digest" \
               --deploy-parameters "$$deploy_parameters"
           fi
           if [ "${var.mcp_enabled}" = "true" ]; then

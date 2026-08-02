@@ -1,0 +1,17 @@
+# On-cluster production verification for Mattermost signalling and RTCD API.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: mattermost-calls-smoke
+  namespace: mattermost
+spec:
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 120
+  template:
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      priorityClassName: production
+      containers:
+        - name: smoke-test
+          image: curlimages/curl:8.10.1

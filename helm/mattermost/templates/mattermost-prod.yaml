@@ -30,6 +30,25 @@ spec:
       value: {{ required "mattermost_teammate_name_display is required" .Values.mattermost_teammate_name_display | quote }}
     - name: MM_TEAMSETTINGS_LOCKTEAMMATENAMEDISPLAY
       value: {{ .Values.mattermost_lock_teammate_name_display | quote }}
+    {{- if .Values.mattermost_calls_enabled }}
+    # Calls v1.12.1 is prepackaged and already active in the product image.
+    # Keep the plugin framework and Calls policy declarative while RTCD handles
+    # all WebRTC media outside the Mattermost application pod.
+    - name: MM_PLUGINSETTINGS_ENABLE
+      value: "true"
+    - name: MM_PLUGINSETTINGS_AUTOMATICPREPACKAGEDPLUGINS
+      value: "true"
+    - name: MM_PLUGINSETTINGS_PLUGINSTATES_COM_MATTERMOST_CALLS
+      value: "true"
+    - name: MM_CALLS_RTCD_SERVICE_URL
+      value: "http://mattermost-rtcd.mattermost-rtcd.svc.cluster.local:8045"
+    - name: MM_CALLS_DEFAULT_ENABLED
+      value: {{ .Values.mattermost_calls_default_enabled | quote }}
+    - name: MM_CALLS_ALLOW_SCREEN_SHARING
+      value: {{ .Values.mattermost_calls_allow_screen_sharing | quote }}
+    - name: MM_CALLS_MAX_CALL_PARTICIPANTS
+      value: {{ .Values.mattermost_calls_max_participants | quote }}
+    {{- end }}
     # Native TOTP protects email/password accounts. Keep enforcement disabled
     # for the first rollout so existing users can enroll. Google SSO users must
     # have 2-Step Verification enforced by Google Workspace.
