@@ -30,7 +30,7 @@ resource "google_cloudbuild_trigger" "rtcd_preview" {
       # Compile every package and its tests. RTCD's integration tests require
       # external services and are intentionally run in their dedicated suite;
       # this remains a deterministic Go test gate for each release build.
-      args       = ["-ceu", "go mod verify && go test -mod=readonly -run '^$' ./..."]
+      args = ["-ceu", "go mod verify && go test -mod=readonly -run '^$' ./..."]
     }
 
     step {
@@ -63,8 +63,14 @@ resource "google_cloudbuild_trigger" "rtcd_preview" {
       args = [
         "-ceu",
         <<-EOT
+          token="$$(wget -qO- --header='Metadata-Flavor: Google' \
+            http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token | \
+            sed -n 's/.*"access_token":"\\([^"\\]*\\)".*/\\1/p')"
+          test -n "$$token"
           trivy image --exit-code 1 --severity HIGH,CRITICAL \
-            --ignore-unfixed --no-progress "$$(cat /workspace/rtcd-image-tag)"
+            --ignore-unfixed --no-progress \
+            --username oauth2accesstoken --password "$$token" \
+            "$$(cat /workspace/rtcd-image-tag)"
         EOT
       ]
     }
