@@ -18,6 +18,11 @@ output "trigger_id" {
   value       = google_cloudbuild_trigger.release.id
 }
 
+output "rtcd_preview_trigger_id" {
+  description = "ID of the branch-triggered, dev-only RTCD preview build."
+  value       = google_cloudbuild_trigger.rtcd_preview.id
+}
+
 output "source_bucket_name" {
   description = "Name of the private source-staging bucket the release tarballs are uploaded to."
   value       = google_storage_bucket.source.name

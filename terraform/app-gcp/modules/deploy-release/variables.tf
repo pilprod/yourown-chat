@@ -37,6 +37,30 @@ variable "github_remote_uri" {
   }
 }
 
+variable "rtcd_repository_name" {
+  type        = string
+  description = "Cloud Build repository resource name for the custom RTCD source."
+  default     = "yourown-chat-rtcd"
+}
+
+variable "rtcd_github_remote_uri" {
+  type        = string
+  description = "HTTPS GitHub URL of the custom RTCD source repository."
+  default     = "https://github.com/pilprod/yourown-chat-rtcd.git"
+}
+
+variable "rtcd_preview_branch_regex" {
+  type        = string
+  description = "Branches allowed to build and deploy RTCD to the dev-only Mattermost preview pipeline."
+  default     = "^release-[0-9]+\\.[0-9]+-patched$"
+}
+
+variable "rtcd_preview_mattermost_image_tag" {
+  type        = string
+  description = "Moving Mattermost preview image tag paired with an RTCD-only dev preview release."
+  default     = "release-11.9-patched-latest"
+}
+
 # --- Cloud Deploy target (from the clouddeploy component) --------------------
 variable "delivery_pipelines" {
   type = map(object({
