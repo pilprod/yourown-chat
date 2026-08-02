@@ -1,5 +1,5 @@
 # The release pipeline accepts only this immutable RTCD source revision.
 # Update it through the RTCD public-patched/release/tag process.
 RTCD_SOURCE_REPOSITORY=https://github.com/pilprod/yourown-chat-rtcd.git
-RTCD_SOURCE_COMMIT=825b657c711ecdc3af828b5c3b0bdb9b07789714
+RTCD_SOURCE_COMMIT=6838826c25b42c506ebe448a40458304b16e60e8
 RTCD_BUILD_VERSION=v1.2.6-yourown.2
