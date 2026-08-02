@@ -18,9 +18,9 @@ output "trigger_id" {
   value       = google_cloudbuild_trigger.release.id
 }
 
-output "rtcd_preview_trigger_id" {
-  description = "ID of the branch-triggered, dev-only RTCD preview build."
-  value       = google_cloudbuild_trigger.rtcd_preview.id
+output "rtcd_image_trigger_id" {
+  description = "ID of the RTCD source-tag image build trigger."
+  value       = google_cloudbuild_trigger.rtcd_image.id
 }
 
 output "source_bucket_name" {

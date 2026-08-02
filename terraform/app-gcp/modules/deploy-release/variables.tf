@@ -49,16 +49,10 @@ variable "rtcd_github_remote_uri" {
   default     = "https://github.com/pilprod/yourown-chat-rtcd.git"
 }
 
-variable "rtcd_preview_branch_regex" {
+variable "rtcd_release_tag_regex" {
   type        = string
-  description = "Branches allowed to build and deploy RTCD to the dev-only Mattermost preview pipeline."
-  default     = "^release-[0-9]+\\.[0-9]+-patched$"
-}
-
-variable "rtcd_preview_mattermost_image_tag" {
-  type        = string
-  description = "Moving Mattermost preview image tag paired with an RTCD-only dev preview release."
-  default     = "release-11.9-patched-latest"
+  description = "Immutable RTCD source tags allowed to build audited release images."
+  default     = "^v[0-9]+\\.[0-9]+\\.[0-9]+-yourown\\.[0-9]+$"
 }
 
 # --- Cloud Deploy target (from the clouddeploy component) --------------------
