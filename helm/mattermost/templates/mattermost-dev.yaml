@@ -199,6 +199,8 @@ spec:
       app: dev-rtcd
   template:
     metadata:
+      annotations:
+        yourown.chat/rtcd-image: {{ required "mattermost_rtcd_image is required when Calls is enabled" .Values.mattermost_rtcd_image | quote }}
       labels:
         app: dev-rtcd
     spec:
