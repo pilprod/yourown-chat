@@ -90,8 +90,10 @@ spec:
               value: "true"
             - name: MM_PLUGINSETTINGS_AUTOMATICPREPACKAGEDPLUGINS
               value: "true"
-            - name: MM_PLUGINSETTINGS_PLUGINSTATES_COM_MATTERMOST_CALLS
-              value: "true"
+            # PluginStates is a map and must be overridden as JSON. A flattened
+            # environment key below this map is ignored by Mattermost.
+            - name: MM_PLUGINSETTINGS_PLUGINSTATES
+              value: '{"com.mattermost.nps":{"Enable":true},"com.mattermost.calls":{"Enable":true},"playbooks":{"Enable":true},"mattermost-ai":{"Enable":true}}'
             - name: MM_CALLS_RTCD_SERVICE_URL
               value: "http://dev-rtcd.dev.svc.cluster.local:8045"
             - name: MM_CALLS_DEFAULT_ENABLED

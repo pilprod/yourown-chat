@@ -29,13 +29,23 @@ helm template mattermost-prod "${chart}" \
   --set mattermost_calls_ip=203.0.113.10 > "${render_dir}/prod.yaml"
 
 grep -Fq 'name: MM_CALLS_RTCD_SERVICE_URL' "${render_dir}/dev.yaml"
-grep -Fq 'name: MM_PLUGINSETTINGS_PLUGINSTATES_COM_MATTERMOST_CALLS' "${render_dir}/dev.yaml"
+grep -Fq 'name: MM_PLUGINSETTINGS_PLUGINSTATES' "${render_dir}/dev.yaml"
+grep -Fq 'com.mattermost.calls":{"Enable":true}' "${render_dir}/dev.yaml"
+if grep -Fq 'MM_PLUGINSETTINGS_PLUGINSTATES_COM_MATTERMOST_CALLS' "${render_dir}/dev.yaml"; then
+  echo "flattened PluginStates environment override is ignored by Mattermost" >&2
+  exit 1
+fi
 grep -Fq 'value: "http://dev-rtcd.dev.svc.cluster.local:8045"' "${render_dir}/dev.yaml"
 grep -Fq 'name: dev-rtcd' "${render_dir}/dev.yaml"
 
 grep -Fq 'name: mattermost-rtcd-udp' "${render_dir}/prod.yaml"
 grep -Fq 'name: mattermost-rtcd-tcp' "${render_dir}/prod.yaml"
-grep -Fq 'name: MM_PLUGINSETTINGS_PLUGINSTATES_COM_MATTERMOST_CALLS' "${render_dir}/prod.yaml"
+grep -Fq 'name: MM_PLUGINSETTINGS_PLUGINSTATES' "${render_dir}/prod.yaml"
+grep -Fq 'com.mattermost.calls":{"Enable":true}' "${render_dir}/prod.yaml"
+if grep -Fq 'MM_PLUGINSETTINGS_PLUGINSTATES_COM_MATTERMOST_CALLS' "${render_dir}/prod.yaml"; then
+  echo "flattened PluginStates environment override is ignored by Mattermost" >&2
+  exit 1
+fi
 grep -Fq 'storageClassName: rtcd-cmek' "${render_dir}/prod.yaml"
 grep -Fq 'fsGroup: 65532' "${render_dir}/prod.yaml"
 [[ "$(grep -Fc 'loadBalancerIP: "203.0.113.10"' "${render_dir}/prod.yaml")" == 2 ]]

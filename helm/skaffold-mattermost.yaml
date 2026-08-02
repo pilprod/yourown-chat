@@ -30,13 +30,18 @@ profiles:
           image: curlimages/curl:8.10.1
           command: ["/bin/sh", "-c"]
           args:
-            - >-
-              curl -sSf --retry 30 --retry-connrefused --retry-delay 5
-              http://dev-mattermost.dev.svc.cluster.local:8065/api/v4/system/ping &&
-              curl -sSf --retry 30 --retry-connrefused --retry-delay 5
-              http://dev-mattermost.dev.svc.cluster.local:8065/plugins/com.mattermost.calls/version &&
-              curl -sSf --retry 30 --retry-connrefused --retry-delay 5
-              http://dev-rtcd.dev.svc.cluster.local:8045/version
+            - |
+              set -eu
+              check() {
+                label="$1"
+                url="$2"
+                echo "[calls-verify] checking ${label}: ${url}"
+                curl -sSf --retry 30 --retry-connrefused --retry-delay 5 "${url}"
+                echo
+              }
+              check "Mattermost API" "http://dev-mattermost.dev.svc.cluster.local:8065/api/v4/system/ping"
+              check "Calls plugin" "http://dev-mattermost.dev.svc.cluster.local:8065/plugins/com.mattermost.calls/version"
+              check "RTCD private API" "http://dev-rtcd.dev.svc.cluster.local:8045/version"
         executionMode:
           kubernetesCluster:
             jobManifestPath: mattermost/verify/job.yaml
@@ -68,13 +73,18 @@ profiles:
           image: curlimages/curl:8.10.1
           command: ["/bin/sh", "-c"]
           args:
-            - >-
-              curl -sSf --retry 30 --retry-connrefused --retry-delay 5
-              https://yourown.chat/api/v4/system/ping &&
-              curl -sSf --retry 30 --retry-connrefused --retry-delay 5
-              https://yourown.chat/plugins/com.mattermost.calls/version &&
-              curl -sSf --retry 30 --retry-connrefused --retry-delay 5
-              http://mattermost-rtcd.mattermost-rtcd.svc.cluster.local:8045/version
+            - |
+              set -eu
+              check() {
+                label="$1"
+                url="$2"
+                echo "[calls-verify] checking ${label}: ${url}"
+                curl -sSf --retry 30 --retry-connrefused --retry-delay 5 "${url}"
+                echo
+              }
+              check "Mattermost API" "https://yourown.chat/api/v4/system/ping"
+              check "Calls plugin" "https://yourown.chat/plugins/com.mattermost.calls/version"
+              check "RTCD private API" "http://mattermost-rtcd.mattermost-rtcd.svc.cluster.local:8045/version"
         executionMode:
           kubernetesCluster:
             jobManifestPath: mattermost/verify/prod-job.yaml

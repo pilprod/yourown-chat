@@ -38,8 +38,11 @@ spec:
       value: "true"
     - name: MM_PLUGINSETTINGS_AUTOMATICPREPACKAGEDPLUGINS
       value: "true"
-    - name: MM_PLUGINSETTINGS_PLUGINSTATES_COM_MATTERMOST_CALLS
-      value: "true"
+    # PluginStates is a map, so Mattermost accepts it only as one JSON
+    # environment override. Flattened keys below the map are silently ignored.
+    # Preserve the 11.9 defaults while making Calls activation immutable.
+    - name: MM_PLUGINSETTINGS_PLUGINSTATES
+      value: '{"com.mattermost.nps":{"Enable":true},"com.mattermost.calls":{"Enable":true},"playbooks":{"Enable":true},"mattermost-ai":{"Enable":true}}'
     - name: MM_CALLS_RTCD_SERVICE_URL
       value: "http://mattermost-rtcd.mattermost-rtcd.svc.cluster.local:8045"
     - name: MM_CALLS_DEFAULT_ENABLED
