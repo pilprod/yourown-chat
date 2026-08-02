@@ -172,12 +172,31 @@ resource "google_cloudbuild_trigger" "release" {
     }
 
     step {
-      id         = "prepare-mcp-image-sources"
+      id         = "prepare-image-sources"
       name       = "gcr.io/cloud-builders/git"
       entrypoint = "bash"
       args = [
         "-ceu",
         <<-EOT
+          previous_tag="$$(cat /workspace/previous-platform-tag)"
+          mattermost_changed="$$(bash route-components.sh \
+            /workspace/changed-files mattermost "$$previous_tag")"
+
+          if [ "$$mattermost_changed" = "true" ]; then
+            rtcd_source=/workspace/rtcd-source
+            git clone --no-checkout https://github.com/mattermost/rtcd.git "$$rtcd_source"
+            git -C "$$rtcd_source" checkout --detach b3dee597998db880193b2fe863752cbfae8cdc89
+            test "$$(git -C "$$rtcd_source" rev-parse HEAD)" = \
+              b3dee597998db880193b2fe863752cbfae8cdc89
+            git -C "$$rtcd_source" apply \
+              "$$PWD/mattermost/rtcd/dependencies.patch"
+            git -C "$$rtcd_source" diff --check
+            test "$$(git -C "$$rtcd_source" diff --name-only | sort | tr '\n' ' ')" = \
+              "go.mod go.sum "
+          else
+            echo "No Mattermost deployment changes; skipping RTCD source preparation"
+          fi
+
           mcp_inputs_changed="$$(bash route-components.sh \
             /workspace/changed-files mcp)"
 
@@ -237,11 +256,11 @@ resource "google_cloudbuild_trigger" "release" {
       dir = var.source_subdir
     }
 
-    # Mirror the version-pinned RTCD image into the same Artifact Registry as
-    # Mattermost. This removes Docker Hub from the runtime trust path and lets
-    # the bounded production vulnerability gate inspect the exact media image.
+    # Build the exact RTCD v1.2.6 source with the reviewed security dependency
+    # patch. This avoids inheriting the known CVEs in Mattermost's published
+    # binary while preserving a pinned and auditable upstream application tree.
     step {
-      id         = "mirror-mattermost-rtcd"
+      id         = "build-mattermost-rtcd"
       name       = "gcr.io/cloud-builders/docker"
       entrypoint = "bash"
       args = [
@@ -252,17 +271,15 @@ resource "google_cloudbuild_trigger" "release" {
             /workspace/changed-files mattermost "$$previous_tag")"
 
           if [ "$$mattermost_changed" = "true" ]; then
-            source_image="$$(awk -F ': ' \
-              '$$1 == "mattermost_rtcd_image" {gsub(/"/, "", $$2); print $$2}' \
-              mattermost/values.yaml)"
-            [ -n "$$source_image" ] || { echo "mattermost_rtcd_image is empty"; exit 1; }
             destination_image="${local.artifact_repository_prefix}/mattermost-rtcd:$COMMIT_SHA"
-            docker pull "$$source_image"
-            docker tag "$$source_image" "$$destination_image"
+            docker build \
+              --file mattermost/rtcd/Dockerfile \
+              --tag "$$destination_image" \
+              /workspace/rtcd-source
             docker push "$$destination_image"
             printf '%s' "$$destination_image" > /workspace/mattermost-rtcd-image-tag
           else
-            echo "No Mattermost deployment changes; skipping RTCD mirror"
+            echo "No Mattermost deployment changes; skipping RTCD security build"
           fi
         EOT
       ]
@@ -329,7 +346,7 @@ resource "google_cloudbuild_trigger" "release" {
             create_release \
               mattermost \
               "$$mattermost_release_id" \
-              "git-tag=$TAG_NAME,git-sha=$COMMIT_SHA,build-id=$BUILD_ID,previous-tag=$$previous_tag,image-tag=$$mattermost_tag,image-digest=$$digest,rtcd-image-digest=$$rtcd_digest" \
+              "git-tag=$TAG_NAME,git-sha=$COMMIT_SHA,build-id=$BUILD_ID,previous-tag=$$previous_tag,image-tag=$$mattermost_tag,image-digest=$$digest,rtcd-image-digest=$$rtcd_digest,rtcd-upstream=b3dee597998db880193b2fe863752cbfae8cdc89,rtcd-security-build=v1.2.6-yourown.1" \
               --deploy-parameters "$$deploy_parameters"
           fi
           if [ "${var.mcp_enabled}" = "true" ]; then

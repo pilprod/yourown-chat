@@ -44,6 +44,66 @@ grep -Fq 'name: RTCD_RTC_ICEHOSTOVERRIDE' "${render_dir}/prod.yaml"
 grep -Fq 'name: allow-mattermost-api' "${render_dir}/prod.yaml"
 grep -Fq 'name: allow-rtcd-api' "${render_dir}/prod.yaml"
 
+extract_resource() {
+  local kind="$1"
+  local name="$2"
+  local output="$3"
+  awk -v kind="${kind}" -v name="${name}" '
+    BEGIN { RS = "---" }
+    $0 ~ "kind: " kind && $0 ~ "name: " name "([[:space:]]|$)" { print }
+  ' "${render_dir}/prod.yaml" > "${output}"
+  test -s "${output}"
+}
+
+# The direct Calls address is intentionally a media-only edge. The RTCD API
+# must never become part of either public forwarding rule.
+extract_resource Service mattermost-rtcd "${render_dir}/rtcd-api.yaml"
+extract_resource Service mattermost-rtcd-udp "${render_dir}/rtcd-udp.yaml"
+extract_resource Service mattermost-rtcd-tcp "${render_dir}/rtcd-tcp.yaml"
+
+grep -Fq 'type: ClusterIP' "${render_dir}/rtcd-api.yaml"
+grep -Fq 'port: 8045' "${render_dir}/rtcd-api.yaml"
+! grep -Fq 'type: LoadBalancer' "${render_dir}/rtcd-api.yaml"
+
+grep -Fq 'type: LoadBalancer' "${render_dir}/rtcd-udp.yaml"
+grep -Fq 'port: 8443' "${render_dir}/rtcd-udp.yaml"
+grep -Fq 'protocol: UDP' "${render_dir}/rtcd-udp.yaml"
+! grep -Eq 'port: (443|8045|8065)$' "${render_dir}/rtcd-udp.yaml"
+
+grep -Fq 'type: LoadBalancer' "${render_dir}/rtcd-tcp.yaml"
+grep -Fq 'port: 8443' "${render_dir}/rtcd-tcp.yaml"
+grep -Fq 'protocol: TCP' "${render_dir}/rtcd-tcp.yaml"
+! grep -Eq 'port: (443|8045|8065)$' "${render_dir}/rtcd-tcp.yaml"
+
+# A compromised media pod gets neither Kubernetes credentials nor a route to
+# RFC1918/link-local destinations (Mattermost, MCP, Cloud SQL, metadata).
+extract_resource Deployment mattermost-rtcd "${render_dir}/rtcd-deployment.yaml"
+grep -Fq 'automountServiceAccountToken: false' "${render_dir}/rtcd-deployment.yaml"
+grep -Fq 'readOnlyRootFilesystem: true' "${render_dir}/rtcd-deployment.yaml"
+grep -Fq 'allowPrivilegeEscalation: false' "${render_dir}/rtcd-deployment.yaml"
+grep -Fq 'drop: ["ALL"]' "${render_dir}/rtcd-deployment.yaml"
+
+extract_resource NetworkPolicy allow-dns-and-public-media-egress \
+  "${render_dir}/rtcd-egress.yaml"
+for blocked_cidr in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 169.254.0.0/16; do
+  grep -Fq -- "- ${blocked_cidr}" "${render_dir}/rtcd-egress.yaml"
+done
+
+extract_resource NetworkPolicy allow-public-media "${render_dir}/rtcd-public.yaml"
+grep -Fq 'cidr: 0.0.0.0/0' "${render_dir}/rtcd-public.yaml"
+grep -Fq 'protocol: UDP, port: 8443' "${render_dir}/rtcd-public.yaml"
+grep -Fq 'protocol: TCP, port: 8443' "${render_dir}/rtcd-public.yaml"
+! grep -Eq 'port: (443|8045|8065)' "${render_dir}/rtcd-public.yaml"
+
+extract_resource NetworkPolicy allow-mattermost-api "${render_dir}/rtcd-api-ingress.yaml"
+grep -Fq 'kubernetes.io/metadata.name: mattermost' "${render_dir}/rtcd-api-ingress.yaml"
+grep -Fq 'protocol: TCP, port: 8045' "${render_dir}/rtcd-api-ingress.yaml"
+
+extract_resource NetworkPolicy allow-rtcd-api "${render_dir}/mattermost-rtcd-egress.yaml"
+grep -Fq 'kubernetes.io/metadata.name: mattermost-rtcd' \
+  "${render_dir}/mattermost-rtcd-egress.yaml"
+grep -Fq 'protocol: TCP, port: 8045' "${render_dir}/mattermost-rtcd-egress.yaml"
+
 grep -Fq 'http://dev-rtcd.dev.svc.cluster.local:8045/version' \
   "${repo_root}/helm/skaffold-mattermost.yaml"
 grep -Fq 'http://mattermost-rtcd.mattermost-rtcd.svc.cluster.local:8045/version' \

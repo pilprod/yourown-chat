@@ -11,7 +11,7 @@ case "${component}" in
     # Mattermost image-triggered release; deployment parameters carry the
     # immutable digest. Chart.yaml metadata alone must not start a second
     # Mattermost release from the platform semver tag.
-    workload_regex='^helm/(mattermost/(templates/|values[^/]*\.yaml$|verify/)|matterbridge/)'
+    workload_regex='^helm/(mattermost/(templates/|values[^/]*\.yaml$|verify/|rtcd/)|matterbridge/)'
     config_path='helm/skaffold-mattermost.yaml'
     ;;
   mcp)

@@ -38,6 +38,8 @@ mattermost_calls_enabled: true
 mattermost_calls_default_enabled: true
 mattermost_calls_allow_screen_sharing: true
 mattermost_calls_max_participants: 10
+# Safe rendering fallback. The release pipeline always replaces this with the
+# immutable Artifact Registry digest of our audited RTCD security rebuild.
 mattermost_rtcd_image: "mattermost/rtcd@sha256:a8c3c1c3fa2937527d3a96351534fa116106b88aca777bed49d6a360fb2eacd3"
 mattermost_calls_ip: ""
 
