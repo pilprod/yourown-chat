@@ -157,8 +157,10 @@ spec:
             httpGet: { path: /version, port: api }
             initialDelaySeconds: 20
             periodSeconds: 10
+          # RTCD is ~13Mi at idle. Keep a small scheduling reservation while
+          # retaining the existing burst headroom for active calls.
           resources:
-            requests: { cpu: 500m, memory: 512Mi }
+            requests: { cpu: 100m, memory: 64Mi }
             limits: { cpu: "2", memory: 2Gi }
           volumeMounts:
             - { name: state, mountPath: /var/lib/rtcd }
