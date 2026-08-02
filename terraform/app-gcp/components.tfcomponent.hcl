@@ -451,6 +451,9 @@ component "deploy_release" {
       mattermost = {
         execution_service_account_email = component.clouddeploy.execution_service_account_email
       }
+      mattermost-preview = {
+        execution_service_account_email = component.clouddeploy_mattermost_preview.execution_service_account_email
+      }
       mcp = {
         execution_service_account_email = component.clouddeploy_mcp.execution_service_account_email
       }
