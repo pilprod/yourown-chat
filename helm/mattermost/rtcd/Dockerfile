@@ -1,6 +1,6 @@
 # Reproducible security rebuild of the exact Mattermost RTCD v1.2.6 source.
 # The source tree is prepared and verified by Cloud Build before this stage.
-FROM --platform=$BUILDPLATFORM golang:1.25.12-bookworm@sha256:ea341baa9bd5ba6784f6d7161ace70544349a6242d54d34a0fbfd2c4d51c9d58 AS builder
+FROM golang:1.25.12-bookworm@sha256:ea341baa9bd5ba6784f6d7161ace70544349a6242d54d34a0fbfd2c4d51c9d58 AS builder
 
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
@@ -23,7 +23,7 @@ RUN go mod verify && \
         -X github.com/mattermost/rtcd/service.goVersion=1.25.12" \
       -o /out/rtcd ./cmd/rtcd
 
-FROM --platform=$TARGETPLATFORM gcr.io/distroless/static@sha256:d6fa9db9548b5772860fecddb11d84f9ebd7e0321c0cb3c02870402680cc315f
+FROM gcr.io/distroless/static@sha256:d6fa9db9548b5772860fecddb11d84f9ebd7e0321c0cb3c02870402680cc315f
 
 LABEL org.opencontainers.image.title="YourOwn.Chat RTCD security rebuild" \
       org.opencontainers.image.version="v1.2.6-yourown.1" \
