@@ -61,6 +61,15 @@ spec:
     - name: MM_CALLS_MAX_CALL_PARTICIPANTS
       value: {{ .Values.mattermost_calls_max_participants | quote }}
     {{- end }}
+    # db-f1-micro has a small PostgreSQL connection ceiling. The upstream
+    # Mattermost default pool can consume it before Calls opens its own store;
+    # keep a bounded core pool so Calls and background plugins can activate.
+    - name: MM_SQLSETTINGS_MAXOPENCONNS
+      value: "10"
+    - name: MM_SQLSETTINGS_MAXIDLECONNS
+      value: "5"
+    - name: MM_SQLSETTINGS_CONNMAXLIFETIME
+      value: "3600000"
     # Native TOTP protects email/password accounts. Keep enforcement disabled
     # for the first rollout so existing users can enroll. Google SSO users must
     # have 2-Step Verification enforced by Google Workspace.

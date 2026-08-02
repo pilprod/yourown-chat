@@ -71,6 +71,14 @@ spec:
               value: postgres
             - name: MM_SQLSETTINGS_DATASOURCE
               value: "postgres://mmuser:$(POSTGRES_PASSWORD)@dev-postgres:5432/mattermost?sslmode=disable&connect_timeout=10"
+            # Keep dev behaviour aligned with prod: Calls owns a separate
+            # database store and needs headroom beyond the core server pool.
+            - name: MM_SQLSETTINGS_MAXOPENCONNS
+              value: "10"
+            - name: MM_SQLSETTINGS_MAXIDLECONNS
+              value: "5"
+            - name: MM_SQLSETTINGS_CONNMAXLIFETIME
+              value: "3600000"
             - name: MM_FILESETTINGS_DRIVERNAME
               value: local
             - name: MM_FILESETTINGS_DIRECTORY
