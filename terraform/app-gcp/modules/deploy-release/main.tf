@@ -178,25 +178,6 @@ resource "google_cloudbuild_trigger" "release" {
       args = [
         "-ceu",
         <<-EOT
-          previous_tag="$$(cat /workspace/previous-platform-tag)"
-          mattermost_changed="$$(bash route-components.sh \
-            /workspace/changed-files mattermost "$$previous_tag")"
-
-          if [ "$$mattermost_changed" = "true" ]; then
-            rtcd_source=/workspace/rtcd-source
-            . mattermost/rtcd/source.lock
-            test "$$RTCD_SOURCE_REPOSITORY" = \
-              "https://github.com/pilprod/yourown-chat-rtcd.git"
-            printf '%s\n' "$$RTCD_SOURCE_COMMIT" | grep -Eq '^[0-9a-f]{40}$$'
-            git clone --no-checkout "$$RTCD_SOURCE_REPOSITORY" "$$rtcd_source"
-            git -C "$$rtcd_source" checkout --detach "$$RTCD_SOURCE_COMMIT"
-            test "$$(git -C "$$rtcd_source" rev-parse HEAD)" = \
-              "$$RTCD_SOURCE_COMMIT"
-            test -f "$$rtcd_source/build/yourown/Dockerfile"
-          else
-            echo "No Mattermost deployment changes; skipping RTCD source preparation"
-          fi
-
           mcp_inputs_changed="$$(bash route-components.sh \
             /workspace/changed-files mcp)"
 
@@ -256,45 +237,6 @@ resource "google_cloudbuild_trigger" "release" {
       dir = var.source_subdir
     }
 
-    # Build the audited RTCD source from the immutable commit in source.lock.
-    # The build definition lives alongside RTCD code, not in this deployment
-    # repository, so code, dependency updates and image hardening are reviewed
-    # and released as one component.
-    step {
-      id         = "build-mattermost-rtcd"
-      name       = "gcr.io/cloud-builders/docker"
-      entrypoint = "bash"
-      args = [
-        "-ceu",
-        <<-EOT
-          previous_tag="$$(cat /workspace/previous-platform-tag)"
-          mattermost_changed="$$(bash route-components.sh \
-            /workspace/changed-files mattermost "$$previous_tag")"
-
-          if [ "$$mattermost_changed" = "true" ]; then
-            . mattermost/rtcd/source.lock
-            destination_image="${local.artifact_repository_prefix}/mattermost-rtcd:$COMMIT_SHA"
-            docker buildx create --name rtcd-cloudbuild --use || \
-              docker buildx use rtcd-cloudbuild
-            docker buildx build \
-              --file /workspace/rtcd-source/build/yourown/Dockerfile \
-              --build-arg RTCD_SOURCE_COMMIT="$$RTCD_SOURCE_COMMIT" \
-              --build-arg RTCD_BUILD_VERSION="$$RTCD_BUILD_VERSION" \
-              --build-arg RTCD_BUILD_DATE="$$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-              --tag "$$destination_image" \
-              --attest=type=sbom \
-              --attest=type=provenance,mode=max \
-              --push \
-              /workspace/rtcd-source
-            printf '%s' "$$destination_image" > /workspace/mattermost-rtcd-image-tag
-          else
-            echo "No Mattermost deployment changes; skipping RTCD security build"
-          fi
-        EOT
-      ]
-      dir = var.source_subdir
-    }
-
     step {
       id         = "release"
       name       = "gcr.io/google.com/cloudsdktool/cloud-sdk:slim"
@@ -342,7 +284,7 @@ resource "google_cloudbuild_trigger" "release" {
             deploy_parameters="$$(bash mattermost-image-parameters.sh \
               "$$image_repo" \
               "$$digest")"
-            rtcd_tag_ref="$$(cat /workspace/mattermost-rtcd-image-tag)"
+            rtcd_tag_ref="${local.artifact_repository_prefix}/mattermost-rtcd:$$RTCD_SOURCE_COMMIT"
             rtcd_digest="$$(gcloud artifacts docker images describe \
               "$$rtcd_tag_ref" \
               --format='value(image_summary.digest)')"
