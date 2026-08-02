@@ -31,9 +31,9 @@ mattermost_teammate_name_display: "full_name"
 mattermost_lock_teammate_name_display: true
 
 # Mattermost Calls. Kubernetes production uses the supported standalone RTCD
-# topology. The source image is pinned to the v1.2.6 multi-arch OCI index; the
-# platform release mirrors its selected architecture into our Artifact Registry
-# and overrides this value with the resulting repository@digest reference.
+# topology. The platform release builds the source locked under
+# helm/mattermost/rtcd/ in our Artifact Registry and overrides this fallback
+# with the resulting repository@digest reference.
 mattermost_calls_enabled: true
 mattermost_calls_default_enabled: true
 mattermost_calls_allow_screen_sharing: true

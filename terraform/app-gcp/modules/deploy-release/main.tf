@@ -184,15 +184,15 @@ resource "google_cloudbuild_trigger" "release" {
 
           if [ "$$mattermost_changed" = "true" ]; then
             rtcd_source=/workspace/rtcd-source
-            git clone --no-checkout https://github.com/mattermost/rtcd.git "$$rtcd_source"
-            git -C "$$rtcd_source" checkout --detach b3dee597998db880193b2fe863752cbfae8cdc89
+            . mattermost/rtcd/source.lock
+            test "$$RTCD_SOURCE_REPOSITORY" = \
+              "https://github.com/pilprod/yourown-chat-rtcd.git"
+            printf '%s\n' "$$RTCD_SOURCE_COMMIT" | grep -Eq '^[0-9a-f]{40}$$'
+            git clone --no-checkout "$$RTCD_SOURCE_REPOSITORY" "$$rtcd_source"
+            git -C "$$rtcd_source" checkout --detach "$$RTCD_SOURCE_COMMIT"
             test "$$(git -C "$$rtcd_source" rev-parse HEAD)" = \
-              b3dee597998db880193b2fe863752cbfae8cdc89
-            git -C "$$rtcd_source" apply \
-              "$$PWD/mattermost/rtcd/dependencies.patch"
-            git -C "$$rtcd_source" diff --check
-            test "$$(git -C "$$rtcd_source" diff --name-only | sort | tr '\n' ' ')" = \
-              "go.mod go.sum "
+              "$$RTCD_SOURCE_COMMIT"
+            test -f "$$rtcd_source/build/yourown/Dockerfile"
           else
             echo "No Mattermost deployment changes; skipping RTCD source preparation"
           fi
@@ -256,9 +256,10 @@ resource "google_cloudbuild_trigger" "release" {
       dir = var.source_subdir
     }
 
-    # Build the exact RTCD v1.2.6 source with the reviewed security dependency
-    # patch. This avoids inheriting the known CVEs in Mattermost's published
-    # binary while preserving a pinned and auditable upstream application tree.
+    # Build the audited RTCD source from the immutable commit in source.lock.
+    # The build definition lives alongside RTCD code, not in this deployment
+    # repository, so code, dependency updates and image hardening are reviewed
+    # and released as one component.
     step {
       id         = "build-mattermost-rtcd"
       name       = "gcr.io/cloud-builders/docker"
@@ -271,12 +272,20 @@ resource "google_cloudbuild_trigger" "release" {
             /workspace/changed-files mattermost "$$previous_tag")"
 
           if [ "$$mattermost_changed" = "true" ]; then
+            . mattermost/rtcd/source.lock
             destination_image="${local.artifact_repository_prefix}/mattermost-rtcd:$COMMIT_SHA"
-            docker build \
-              --file mattermost/rtcd/Dockerfile \
+            docker buildx create --name rtcd-cloudbuild --use || \
+              docker buildx use rtcd-cloudbuild
+            docker buildx build \
+              --file /workspace/rtcd-source/build/yourown/Dockerfile \
+              --build-arg RTCD_SOURCE_COMMIT="$$RTCD_SOURCE_COMMIT" \
+              --build-arg RTCD_BUILD_VERSION="$$RTCD_BUILD_VERSION" \
+              --build-arg RTCD_BUILD_DATE="$$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
               --tag "$$destination_image" \
+              --attest=type=sbom \
+              --attest=type=provenance,mode=max \
+              --push \
               /workspace/rtcd-source
-            docker push "$$destination_image"
             printf '%s' "$$destination_image" > /workspace/mattermost-rtcd-image-tag
           else
             echo "No Mattermost deployment changes; skipping RTCD security build"
@@ -320,6 +329,7 @@ resource "google_cloudbuild_trigger" "release" {
           }
 
           if [ "$$mattermost_changed" = "true" ]; then
+            . mattermost/rtcd/source.lock
             image_repo="${local.artifact_repository_prefix}/${var.mattermost_image_repository.image_name}"
             mattermost_tag="$$(gcloud artifacts docker tags list "$$image_repo" \
               --filter="tag~'/tags/v.*-patched$$'" \
@@ -346,7 +356,7 @@ resource "google_cloudbuild_trigger" "release" {
             create_release \
               mattermost \
               "$$mattermost_release_id" \
-              "git-tag=$TAG_NAME,git-sha=$COMMIT_SHA,build-id=$BUILD_ID,previous-tag=$$previous_tag,image-tag=$$mattermost_tag,image-digest=$$digest,rtcd-image-digest=$$rtcd_digest,rtcd-upstream=b3dee597998db880193b2fe863752cbfae8cdc89,rtcd-security-build=v1.2.6-yourown.1" \
+              "git-tag=$TAG_NAME,git-sha=$COMMIT_SHA,build-id=$BUILD_ID,previous-tag=$$previous_tag,image-tag=$$mattermost_tag,image-digest=$$digest,rtcd-image-digest=$$rtcd_digest,rtcd-source=$$RTCD_SOURCE_COMMIT,rtcd-security-build=$$RTCD_BUILD_VERSION" \
               --deploy-parameters "$$deploy_parameters"
           fi
           if [ "${var.mcp_enabled}" = "true" ]; then

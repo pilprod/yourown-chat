@@ -1,32 +1,16 @@
-# RTCD security rebuild
+# RTCD integration lock
 
-The release pipeline builds RTCD from the exact Mattermost `v1.2.6` source
-commit `b3dee597998db880193b2fe863752cbfae8cdc89`. It does not reuse or modify
-the published Mattermost binary image.
+RTCD source, dependency hardening, and the Dockerfile belong to
+[`pilprod/yourown-chat-rtcd`](https://github.com/pilprod/yourown-chat-rtcd).
+This directory intentionally contains only `source.lock`, the deployment
+allow-list for the exact source commit.
 
-`dependencies.patch` updates the Go toolchain and vulnerable transitive
-dependencies while leaving RTCD application code unchanged. Cloud Build
-clones the pinned commit, verifies the checkout, applies the patch, verifies
-the resulting module graph, builds a non-root distroless image, and publishes
-it to the private Artifact Registry. Cloud Deploy passes only its immutable
-digest to Helm.
+Cloud Build clones the repository from `RTCD_SOURCE_REPOSITORY`, checks out
+the full `RTCD_SOURCE_COMMIT`, and fails if the checked-out commit or the
+component Dockerfile differs. It then builds the non-root distroless image
+inside our project, attaches SBOM/provenance, and Cloud Deploy receives only
+its Artifact Registry digest.
 
-Pinned security build inputs:
-
-- RTCD source: `v1.2.6` / `b3dee597998db880193b2fe863752cbfae8cdc89`
-- Go: `1.25.12`
-- Build image: `golang:1.25.12-bookworm` at the digest in `Dockerfile`
-- Runtime image: `gcr.io/distroless/static` at the digest in `Dockerfile`
-- Build version: `v1.2.6-yourown.1`
-
-The source license explicitly distinguishes official Mattermost-compiled
-binaries from third-party builds. Operating this image therefore requires
-either a commercial Mattermost license that covers the build or compliance
-with the source license (including AGPL obligations where applicable). The
-upstream `LICENSE.txt` is copied into the image. This repository does not
-reclassify the image as Mattermost's MIT-licensed official compiled binary.
-
-When Mattermost publishes a fixed RTCD release, prefer returning to the
-official signed upstream artifact after compatibility and vulnerability gates
-pass. Until then, this fork is supported only for the pinned source and
-dependency set above.
+Updating `source.lock` is a Mattermost release input, so it follows the same
+dev-preview, verification, approval and production path as a server change.
+Floating RTCD branches, upstream images, and `latest` tags are not deployable.
