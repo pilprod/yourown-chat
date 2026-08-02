@@ -83,7 +83,10 @@ profiles:
                 echo
               }
               check "Mattermost API" "https://yourown.chat/api/v4/system/ping"
-              check "Calls plugin" "https://yourown.chat/plugins/com.mattermost.calls/version"
+              # Check the application before the Cloudflare-facing route. This
+              # distinguishes a plugin activation failure from edge routing.
+              check "Calls plugin (cluster origin)" "http://mattermost.mattermost.svc.cluster.local:8065/plugins/com.mattermost.calls/version"
+              check "Calls plugin (public edge)" "https://yourown.chat/plugins/com.mattermost.calls/version"
               check "RTCD private API" "http://mattermost-rtcd.mattermost-rtcd.svc.cluster.local:8045/version"
         executionMode:
           kubernetesCluster:

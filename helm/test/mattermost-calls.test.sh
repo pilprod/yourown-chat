@@ -42,6 +42,9 @@ grep -Fq 'name: mattermost-rtcd-udp' "${render_dir}/prod.yaml"
 grep -Fq 'name: mattermost-rtcd-tcp' "${render_dir}/prod.yaml"
 grep -Fq 'name: MM_PLUGINSETTINGS_PLUGINSTATES' "${render_dir}/prod.yaml"
 grep -Fq 'com.mattermost.calls":{"Enable":true}' "${render_dir}/prod.yaml"
+grep -Fq 'name: MM_LOGSETTINGS_ENABLECONSOLE' "${render_dir}/prod.yaml"
+grep -Fq 'name: MM_LOGSETTINGS_CONSOLELEVEL' "${render_dir}/prod.yaml"
+grep -Fq 'name: MM_LOGSETTINGS_CONSOLEJSON' "${render_dir}/prod.yaml"
 if grep -Fq 'MM_PLUGINSETTINGS_PLUGINSTATES_COM_MATTERMOST_CALLS' "${render_dir}/prod.yaml"; then
   echo "flattened PluginStates environment override is ignored by Mattermost" >&2
   exit 1
@@ -117,6 +120,10 @@ grep -Fq 'protocol: TCP, port: 8045' "${render_dir}/mattermost-rtcd-egress.yaml"
 grep -Fq 'http://dev-rtcd.dev.svc.cluster.local:8045/version' \
   "${repo_root}/helm/skaffold-mattermost.yaml"
 grep -Fq 'http://mattermost-rtcd.mattermost-rtcd.svc.cluster.local:8045/version' \
+  "${repo_root}/helm/skaffold-mattermost.yaml"
+grep -Fq 'http://mattermost.mattermost.svc.cluster.local:8065/plugins/com.mattermost.calls/version' \
+  "${repo_root}/helm/skaffold-mattermost.yaml"
+grep -Fq 'https://yourown.chat/plugins/com.mattermost.calls/version' \
   "${repo_root}/helm/skaffold-mattermost.yaml"
 grep -Fq 'dev-mattermost dev-rtcd' "${repo_root}/helm/skaffold-mattermost.yaml"
 

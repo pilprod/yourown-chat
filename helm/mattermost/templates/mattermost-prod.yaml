@@ -20,6 +20,15 @@ spec:
   replicas: 1
 
   mattermostEnv:
+    # Keep startup and plugin lifecycle diagnostics in Cloud Logging. The
+    # operator's persisted config may otherwise route all application logs to
+    # /mattermost/logs, which is not observable after a failed rollout.
+    - name: MM_LOGSETTINGS_ENABLECONSOLE
+      value: "true"
+    - name: MM_LOGSETTINGS_CONSOLELEVEL
+      value: "INFO"
+    - name: MM_LOGSETTINGS_CONSOLEJSON
+      value: "true"
     # Keep product identity and user display policy declarative. Environment
     # variables intentionally make these settings read-only in System Console.
     - name: MM_GUESTACCOUNTSSETTINGS_ENABLE
