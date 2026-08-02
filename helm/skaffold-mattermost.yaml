@@ -36,7 +36,8 @@ profiles:
                 label="$1"
                 url="$2"
                 echo "[calls-verify] checking ${label}: ${url}"
-                curl -sSf --retry 30 --retry-connrefused --retry-delay 5 "${url}"
+                curl -sSf --connect-timeout 3 --max-time 10 \
+                  --retry 12 --retry-connrefused --retry-delay 5 "${url}"
                 echo
               }
               check "Mattermost API" "http://dev-mattermost.dev.svc.cluster.local:8065/api/v4/system/ping"
@@ -79,7 +80,8 @@ profiles:
                 label="$1"
                 url="$2"
                 echo "[calls-verify] checking ${label}: ${url}"
-                curl -sSf --retry 30 --retry-connrefused --retry-delay 5 "${url}"
+                curl -sSf --connect-timeout 3 --max-time 10 \
+                  --retry 12 --retry-connrefused --retry-delay 5 "${url}"
                 echo
               }
               check "Mattermost API" "https://yourown.chat/api/v4/system/ping"

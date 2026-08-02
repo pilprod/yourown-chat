@@ -117,6 +117,22 @@ grep -Fq 'kubernetes.io/metadata.name: mattermost-rtcd' \
   "${render_dir}/mattermost-rtcd-egress.yaml"
 grep -Fq 'protocol: TCP, port: 8045' "${render_dir}/mattermost-rtcd-egress.yaml"
 
+# The prod verifier gets only the same-namespace 8065 path it needs. It does
+# not weaken the default deny or grant Mattermost access to MCP namespaces.
+extract_resource NetworkPolicy allow-calls-smoke-ingress \
+  "${render_dir}/calls-smoke-ingress.yaml"
+extract_resource NetworkPolicy allow-calls-smoke-egress \
+  "${render_dir}/calls-smoke-egress.yaml"
+grep -Fq 'app: mattermost-calls-smoke' "${render_dir}/calls-smoke-ingress.yaml"
+grep -Fq 'protocol: TCP, port: 8065' "${render_dir}/calls-smoke-ingress.yaml"
+grep -Fq 'app: mattermost-calls-smoke' "${render_dir}/calls-smoke-egress.yaml"
+grep -Fq 'protocol: TCP, port: 8065' "${render_dir}/calls-smoke-egress.yaml"
+! grep -Eq 'port: (443|8045|8443)' "${render_dir}/calls-smoke-ingress.yaml"
+! grep -Eq 'port: (443|8045|8443)' "${render_dir}/calls-smoke-egress.yaml"
+
+grep -Fq 'app: mattermost-calls-smoke' \
+  "${repo_root}/helm/mattermost/verify/prod-job.yaml"
+
 grep -Fq 'http://dev-rtcd.dev.svc.cluster.local:8045/version' \
   "${repo_root}/helm/skaffold-mattermost.yaml"
 grep -Fq 'http://mattermost-rtcd.mattermost-rtcd.svc.cluster.local:8045/version' \
@@ -125,6 +141,8 @@ grep -Fq 'http://mattermost.mattermost.svc.cluster.local:8065/plugins/com.matter
   "${repo_root}/helm/skaffold-mattermost.yaml"
 grep -Fq 'https://yourown.chat/plugins/com.mattermost.calls/version' \
   "${repo_root}/helm/skaffold-mattermost.yaml"
+[[ "$(grep -Fc -- '--connect-timeout 3 --max-time 10' \
+  "${repo_root}/helm/skaffold-mattermost.yaml")" == 2 ]]
 grep -Fq 'dev-mattermost dev-rtcd' "${repo_root}/helm/skaffold-mattermost.yaml"
 
 printf 'Mattermost Calls rendering tests passed\n'

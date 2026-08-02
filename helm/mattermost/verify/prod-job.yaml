@@ -4,10 +4,15 @@ kind: Job
 metadata:
   name: mattermost-calls-smoke
   namespace: mattermost
+  labels:
+    app: mattermost-calls-smoke
 spec:
   backoffLimit: 1
   ttlSecondsAfterFinished: 120
   template:
+    metadata:
+      labels:
+        app: mattermost-calls-smoke
     spec:
       restartPolicy: Never
       automountServiceAccountToken: false
