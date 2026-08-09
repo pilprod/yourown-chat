@@ -50,13 +50,14 @@ resource "google_sql_database_instance" "this" {
   encryption_key_name = var.encryption_key_name
 
   settings {
-    tier              = var.tier
-    edition           = var.edition
-    availability_type = var.availability_type
-    disk_size         = var.disk_size_gb
-    disk_type         = var.disk_type
-    disk_autoresize   = var.disk_autoresize
-    user_labels       = var.user_labels
+    tier                        = var.tier
+    edition                     = var.edition
+    availability_type           = var.availability_type
+    disk_size                   = var.disk_size_gb
+    disk_type                   = var.disk_type
+    disk_autoresize             = var.disk_autoresize
+    user_labels                 = var.user_labels
+    deletion_protection_enabled = var.deletion_protection
 
     # Pin the primary zone for a ZONAL instance so the "-b" in its name is truthful
     # (GCP otherwise picks a zone). Omitted for REGIONAL, where GCP manages the

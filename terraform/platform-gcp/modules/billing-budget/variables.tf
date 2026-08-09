@@ -3,6 +3,11 @@ variable "billing_account_id" {
   description = "Cloud Billing account monitored by the monthly budget."
 }
 
+variable "project_number" {
+  type        = string
+  description = "Numeric GCP project number whose usage is included in the budget."
+}
+
 variable "display_name" {
   type        = string
   description = "Human-readable budget name."
