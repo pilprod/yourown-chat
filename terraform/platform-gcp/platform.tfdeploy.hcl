@@ -80,7 +80,7 @@ deployment "eu" {
     # consumers so they pick up the new connection secret.
     cloudsql_password_rotation = "2026-07-12"
 
-    public_ingress_enabled = true
+    public_ingress_enabled   = true
     mattermost_calls_enabled = true
 
     # One shared HSM CMEK key for Cloud SQL, GCS, Secret Manager, GKE etcd,
@@ -153,6 +153,11 @@ publish_output "gcs_bucket_name" {
 publish_output "cloudsql_private_ip" {
   description = "Exact private Cloud SQL address consumed by the production Mattermost NetworkPolicy."
   value       = deployment.eu.cloudsql_private_ip
+}
+
+publish_output "cloudsql_instance_name" {
+  description = "Cloud SQL instance name consumed by database-owning application components."
+  value       = deployment.eu.cloudsql_instance_name
 }
 
 publish_output "workload_identity_emails" {

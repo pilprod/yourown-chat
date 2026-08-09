@@ -21,8 +21,13 @@ Self-hosted чат-платформа Mattermost в Google Cloud за Cloudflare
 |---|---|---|---|
 | **platform-gcp** | `terraform/platform-gcp` | Stateful-фундамент: API, сеть + статический ingress-IP, CMEK-ключ, GKE-кластер, Cloud SQL, хранилище, реестр образов, Workload Identity SA | Редко |
 | **cloudflare** | `terraform/cloudflare` | Публичный edge `yourown.chat`: DNS, TLS/security-настройки, DNSSEC, WAF, Origin CA cert + origin-TLS секреты | Иногда |
-| **app-gcp** | `terraform/app-gcp` | Секреты, отдельные пайплайны Mattermost и MCP, постоянный dev PostgreSQL, CI образа, роутинг тегов и бутстрап кластера | Часто |
+| **app-gcp** | `terraform/app-gcp` | Секреты, отдельные пайплайны Mattermost, MCP и пилота агентов, постоянный dev PostgreSQL, CI образа, роутинг тегов и бутстрап кластера | Часто |
 | **agent-registry-gcp** | `terraform/agent-registry-gcp` | Каталог Google Cloud Agent Registry для внешних API и vendor-hosted MCP; GKE и Google MCP регистрируются автоматически | Редко |
+
+Архитектура агентов и границы репозиториев описаны в
+[каноническом документе](docs/AGENT_PLATFORM.md), а порядок tag-driven выпуска
+и защищённого запуска Temporal — в
+[релизном руководстве](docs/AGENT_PLATFORM_BUILD_RELEASE.md).
 
 Платформенный стек **публикует** ключевые значения (ingress-IP, ID кластера,
 координаты реестра, CMEK-ключ, WI-члены); **cloudflare** и **app-gcp**
@@ -50,7 +55,7 @@ graph LR
 | Kubernetes | Один зональный GKE Standard, приватные ноды, один autoscaling pool `general` (`e2-standard-2`, 1–3 ноды) |
 | Реестр образов | Один Artifact Registry (`docker`), опциональное сканирование уязвимостей |
 | CI | Cloud Build собирает образ Mattermost по git-тегу `v*-patched` |
-| CD | Отдельные Mattermost и MCP пайплайны; временные тестовые поды; единый semver-тег запускает только изменённые компоненты |
+| CD | Отдельные Mattermost, MCP и агентский пайплайны; временные тестовые поды; единый semver-тег запускает только изменённые компоненты |
 | Секреты | Всё в Secret Manager, монтируется через CSI-аддон + Workload Identity |
 | Шифрование | Один общий Cloud KMS **HSM**-ключ (CMEK, ротация 90 дней) на Cloud SQL, GCS, Secret Manager и **etcd GKE** (application-layer шифрование Kubernetes Secrets) |
 | Edge | Cloudflare-прокси: Full (Strict) TLS, DNSSEC, HSTS, редирект www→apex, Origin CA cert из Terraform |
@@ -89,7 +94,7 @@ graph TD
    Manager. Приватный ключ не покидает этот стек — linked stacks не публикуют
    sensitive-значения, поэтому секреты создаются там, где рождается серт.
 3. **app-gcp** подключает доставку: Cloud Build следит за тегами в
-   `pilprod/mattermost` и после успешной сборки запускает Mattermost pipeline.
+   `pilprod/yourown-chat-mattermost` и после успешной сборки запускает Mattermost pipeline.
    Semver-тег на **этом** репо сравнивается с предыдущим и направляет изменения
    Mattermost и/или MCP в независимые пайплайны.
    Он же бутстрапит сам кластер — Mattermost Operator и закрытый на Cloudflare
@@ -111,24 +116,43 @@ terraform/
                          #   бутстрап кластера: operator + ingress-nginx Helm-релизы)
   agent-registry-gcp/    # стек 4: GCP-каталог внешних endpoint/MCP (Google provider 7.x)
                          # в каждом: *.tfcomponent.hcl + *.tfdeploy.hcl + modules/ + свой lock
+  components/
+    temporal/            # официальный Temporal, schema lifecycle и private SQL wiring
+  modules/               # общие PostgreSQL/GCS-примитивы для компонентов проекта
 helm/                    # Kubernetes-workloads, доставляются Cloud Deploy
   skaffold-mattermost.yaml # рендер и cleanup только для Mattermost
   skaffold-mcp.yaml        # рендер, smoke и cleanup только для MCP
-  mattermost/            # prod Mattermost (operator CR + SecretProviderClass)
+  skaffold-agents.yaml     # независимый подтверждаемый запуск/пауза пилота
+  agent-platform/          # управляющий интерфейс и два исполнителя
   matterbridge/          # изолированный деплой моста
   mattermost/            # единый chart Mattermost с values для dev и prod
   mcp/                   # chart MCP, smoke-тесты и cleanup
   ingress-nginx/         # values только-для-Cloudflare + ранбук
-docs/BUILD.md            # процесс сборки образа подробно
+docs/BUILD.md            # процесс сборки Mattermost и фабрики образов
+docs/AGENT_PLATFORM.md               # границы репозиториев и runtime
+docs/AGENT_PLATFORM_BUILD_RELEASE.md # теги, выпуски и запуск Temporal
 ```
+
+Исходный код исполнителей процессов и операций уже находится в
+[`pilprod/yourown-chat-agents`](https://github.com/pilprod/yourown-chat-agents),
+а управляющий API — в
+[`pilprod/yourown-chat-server`](https://github.com/pilprod/yourown-chat-server).
+Go-код собственных MCP находится в `pilprod/yourown-chat-mcp`. В этом публичном
+репозитории остаются только Terraform, Helm, Docker build definitions,
+архитектура и маршрутизация релизов.
+
+Точная граница закреплена в [`docs/AGENT_PLATFORM.md`](docs/AGENT_PLATFORM.md),
+а согласованный выпуск по тегам — в
+[`docs/AGENT_PLATFORM_BUILD_RELEASE.md`](docs/AGENT_PLATFORM_BUILD_RELEASE.md).
 
 Важные структурные детали:
 
 - **Один стек = одна директория.** HCP читает по стеку на working directory —
   четыре HCP-стека смотрят на четыре директории.
-- **Модули не шарятся между стеками.** Бандлер Stacks не ходит по `../`,
-  поэтому у каждого стека свои `modules/` (маленький `secrets`-модуль
-  существует дважды сознательно).
+- **Переиспользуемые примитивы универсальны.** Новые общие модули PostgreSQL и
+  GCS лежат в `terraform/modules/`, а Temporal-specific композиция — в
+  `terraform/components/temporal`. Старые stack-local модули остаются на месте
+  до отдельной безопасной миграции.
 - **У каждого стека свой lock** (`.terraform.lock.hcl`) и пин версии
   Terraform (`.terraform-version`, сейчас 1.15.8).
 
@@ -188,7 +212,7 @@ cloudflare — `yourown-chat` (зона глобальна, единица де�
 промоутится, а не пересобирается:
 
 ```
-git tag v9.11.3-patched  (на pilprod/mattermost)
+git tag v9.11.3-patched  (на pilprod/yourown-chat-mattermost)
   → Cloud Build собирает и пушит docker/mattermost:v9.11.3-patched
 ```
 

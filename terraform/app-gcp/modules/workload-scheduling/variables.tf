@@ -4,6 +4,18 @@ variable "dev_namespace" {
   default     = "dev"
 }
 
+variable "agent_namespace" {
+  type        = string
+  description = "Namespace containing the agent pilot and its narrow verification service account."
+  default     = "yourown-agents"
+}
+
+variable "agent_enabled" {
+  type        = bool
+  description = "Create verifier RBAC only when the agent pilot namespace exists."
+  default     = false
+}
+
 variable "mcp_dev_deployments" {
   type        = set(string)
   description = "Ephemeral MCP Deployments in the dev namespace that the Cloud Deploy cleanup identity may scale to zero."

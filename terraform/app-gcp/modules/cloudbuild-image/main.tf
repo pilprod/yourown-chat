@@ -163,7 +163,7 @@ resource "google_cloudbuild_trigger" "this" {
             --build-arg BUILD_HASH="$$PIPELINE_COMMIT_SHA" \
             --build-arg EE_BUILD_HASH="$$PIPELINE_BUILD_ID" \
             --build-arg BUILD_DATE="$$pipeline_build_date" \
-            --build-arg SOURCE_URL="https://github.com/pilprod/mattermost/tree/$$PIPELINE_COMMIT_SHA" \
+            --build-arg SOURCE_URL="https://github.com/pilprod/yourown-chat-mattermost/tree/$$PIPELINE_COMMIT_SHA" \
             --tag "${local.image_repo_path}:$$image_tag" \
             --tag "${local.image_repo_path}:$$moving_tag" \
             --attest=type=sbom \
@@ -191,7 +191,7 @@ resource "google_cloudbuild_trigger" "this" {
             image="${local.image_repo_path}:git-$COMMIT_SHA"
             pipeline_version="$BRANCH_NAME-$SHORT_SHA"
           fi
-          source_url="https://github.com/pilprod/mattermost/tree/$COMMIT_SHA"
+          source_url="https://github.com/pilprod/yourown-chat-mattermost/tree/$COMMIT_SHA"
           docker pull "$$image"
           sh scripts/verify-product-image.sh \
             "$$image" \
@@ -265,7 +265,7 @@ resource "google_cloudbuild_trigger" "this" {
             --skaffold-file "skaffold-mattermost.yaml" \
             --gcs-source-staging-dir "gs://${var.mattermost_deliveries[each.value.delivery].source_bucket_name}/source" \
             --deploy-parameters "$$deploy_parameters" \
-            --annotations "source-repo=pilprod/mattermost,source-ref=$$source_ref,source-branch=$BRANCH_NAME,git-tag=$TAG_NAME,git-sha=$COMMIT_SHA,build-id=$BUILD_ID,image-digest=$$digest,release-channel=${each.value.release_channel}"
+            --annotations "source-repo=pilprod/yourown-chat-mattermost,source-ref=$$source_ref,source-branch=$BRANCH_NAME,git-tag=$TAG_NAME,git-sha=$COMMIT_SHA,build-id=$BUILD_ID,image-digest=$$digest,release-channel=${each.value.release_channel}"
         EOT
       ]
     }

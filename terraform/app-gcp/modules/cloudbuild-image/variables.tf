@@ -22,7 +22,7 @@ variable "connection_name" {
 
 variable "github_remote_uri" {
   type        = string
-  description = "HTTPS clone URL of the source repository, e.g. https://github.com/pilprod/mattermost.git."
+  description = "HTTPS clone URL of the source repository, e.g. https://github.com/pilprod/yourown-chat-mattermost.git."
 
   validation {
     condition     = can(regex("^https://github\\.com/.+\\.git$", var.github_remote_uri))
@@ -33,7 +33,7 @@ variable "github_remote_uri" {
 variable "repository_name" {
   type        = string
   description = "Name of the Cloud Build 2nd-gen repository resource linking the connection to the source repo."
-  default     = "mattermost"
+  default     = "yourown-chat-mattermost"
 }
 
 # --- Target registry (ONE unified repository, owned by the artifact_registry component) -----

@@ -27,3 +27,13 @@ output "source_bucket_name" {
   description = "Name of the private source-staging bucket the release tarballs are uploaded to."
   value       = google_storage_bucket.source.name
 }
+
+output "application_source_repository_ids" {
+  description = "Cloud Build repository links for the independent server and agent sources."
+  value       = { for name, repository in google_cloudbuildv2_repository.source : name => repository.id }
+}
+
+output "application_source_trigger_ids" {
+  description = "Branch and immutable-tag build triggers for the server and agent sources."
+  value       = { for name, trigger in google_cloudbuild_trigger.source_image : name => trigger.id }
+}

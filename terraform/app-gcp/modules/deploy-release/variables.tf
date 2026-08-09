@@ -51,8 +51,92 @@ variable "rtcd_github_remote_uri" {
 
 variable "rtcd_release_tag_regex" {
   type        = string
-  description = "Immutable RTCD source tags allowed to build audited release images."
-  default     = "^v[0-9]+\\.[0-9]+\\.[0-9]+-yourown\\.[0-9]+$"
+  description = "Immutable patched-fork RTCD source tags allowed to build audited release images."
+  default     = "^v[0-9]+\\.[0-9]+\\.[0-9]+-patched$"
+}
+
+variable "backend_repository_name" {
+  type        = string
+  description = "Cloud Build repository resource for the product backend source."
+  default     = "yourown-chat-server"
+}
+
+variable "backend_github_remote_uri" {
+  type        = string
+  description = "HTTPS GitHub URL of the product backend source repository."
+  default     = "https://github.com/pilprod/yourown-chat-server.git"
+}
+
+variable "agents_repository_name" {
+  type        = string
+  description = "Cloud Build repository resource for the agent workload source."
+  default     = "yourown-chat-agents"
+}
+
+variable "agents_github_remote_uri" {
+  type        = string
+  description = "HTTPS GitHub URL of the agent workload source repository."
+  default     = "https://github.com/pilprod/yourown-chat-agents.git"
+}
+
+variable "mcp_repository_name" {
+  type        = string
+  description = "Cloud Build repository resource for private owned MCP server source."
+  default     = "yourown-chat-mcp"
+}
+
+variable "mcp_github_remote_uri" {
+  type        = string
+  description = "HTTPS GitHub URL of the private owned MCP server source repository."
+  default     = "https://github.com/pilprod/yourown-chat-mcp.git"
+}
+
+variable "mcp_branch_regex" {
+  type        = string
+  description = "Reviewed MCP branch built, tested and scanned without deployment."
+  default     = "^main$"
+}
+
+variable "mcp_release_tag_regex" {
+  type        = string
+  description = "Immutable MCP source tags allowed into the approval-gated MCP pipeline."
+  default     = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+}
+
+variable "backend_branch_regex" {
+  type        = string
+  description = "Reviewed backend branch built and scanned in GCP without deployment."
+  default     = "^main$"
+}
+
+variable "backend_release_tag_regex" {
+  type        = string
+  description = "Immutable server source tags that publish the control API image."
+  default     = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+}
+
+variable "backend_image_prefix" {
+  type        = string
+  description = "Artifact Registry prefix for the client-facing control API image."
+  default     = "yourown-chat"
+}
+
+variable "agents_branch_regex" {
+  type        = string
+  description = "Reviewed agent workload branch built and scanned in GCP without deployment."
+  default     = "^main$"
+}
+
+variable "agents_release_tag_regex" {
+  type        = string
+  description = "Immutable agent workload tags that publish both worker images."
+  default     = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+}
+
+variable "agents_image_prefix" {
+  type        = string
+  description = "Artifact Registry prefix for workflow and activity worker images."
+  default     = "yourown-chat"
 }
 
 # --- Cloud Deploy target (from the clouddeploy component) --------------------
@@ -66,6 +150,18 @@ variable "delivery_pipelines" {
 variable "mcp_enabled" {
   type        = bool
   description = "Whether the unified platform tag router may create MCP releases. Mattermost routing remains enabled independently."
+}
+
+variable "agents_enabled" {
+  type        = bool
+  description = "Whether agent delivery and the separate backend tag release trigger are enabled."
+  default     = false
+}
+
+variable "agents_runtime_enabled" {
+  type        = bool
+  description = "Choose whether a semver release renders the static agent start or pause profile. Operational start/pause releases may still be cut explicitly."
+  default     = false
 }
 
 variable "mattermost_image_repository" {

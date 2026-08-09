@@ -39,7 +39,7 @@ output "connection_id" {
 
 output "source_repository_id" {
   type        = string
-  description = "Cloud Build 2nd-gen repository ID linking the connection to github.com/pilprod/mattermost."
+  description = "Cloud Build 2nd-gen repository ID linking the connection to github.com/pilprod/yourown-chat-mattermost."
   value       = component.mattermost_image.repository_id
 }
 
@@ -72,6 +72,18 @@ output "release_source_bucket" {
   type        = string
   description = "Private staging bucket the release source tarballs are uploaded to."
   value       = component.deploy_release.source_bucket_name
+}
+
+output "application_source_trigger_ids" {
+  type        = map(string)
+  description = "Cloud Build CI and immutable-image triggers for yourown-chat-server and yourown-chat-agents."
+  value       = component.deploy_release.application_source_trigger_ids
+}
+
+output "temporal_enabled" {
+  type        = bool
+  description = "Whether the explicit Terraform launch gate currently permits the Temporal component."
+  value       = var.temporal_enabled
 }
 
 # --- Cluster bootstrap --------------------------------------------------------

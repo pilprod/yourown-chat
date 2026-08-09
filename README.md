@@ -18,8 +18,13 @@ own the platform with separate state and blast radius:
 |---|---|---|---|
 | **platform-gcp** | `terraform/platform-gcp` | The stateful foundation: APIs, network + reserved ingress IP, CMEK key, GKE cluster, Cloud SQL, object storage, container registry, active billing dataset, Workload Identity SAs | Rarely |
 | **cloudflare** | `terraform/cloudflare` | The public edge for `yourown.chat`: DNS, TLS/security settings, DNSSEC, WAF, Origin CA cert + the origin-TLS secrets it fills | Sometimes |
-| **app-gcp** | `terraform/app-gcp` | App secrets; independent Mattermost and MCP delivery pipelines; persistent dev PostgreSQL; image CI; tag routing; cluster bootstrap | Often |
+| **app-gcp** | `terraform/app-gcp` | App secrets; independent Mattermost, MCP and agent-pilot delivery pipelines; persistent dev PostgreSQL; image CI; tag routing; cluster bootstrap | Often |
 | **agent-registry-gcp** | `terraform/agent-registry-gcp` | Google Cloud Agent Registry catalog entries for external APIs and vendor-hosted MCP servers; GKE and Google MCPs register automatically | Rarely |
+
+The self-hosted agent architecture and repository boundaries are documented in
+[the agent platform contract](docs/AGENT_PLATFORM.md); its tag-driven delivery
+and guarded Temporal bootstrap are in
+[the release runbook](docs/AGENT_PLATFORM_BUILD_RELEASE.md).
 
 The platform stack **publishes** its key values (ingress IP, cluster ID,
 registry coordinates, CMEK key, Workload Identity members); **cloudflare** and
@@ -40,8 +45,8 @@ holds the VPC, the cluster and the database — and the Cloudflare API token
 | Object storage | GCS bucket with S3-compatible HMAC creds for Mattermost ("filestore") |
 | Kubernetes | One zonal GKE Standard cluster, private nodes, one autoscaling `general` pool (`e2-standard-2`, 1–3 nodes) |
 | Container registry | One Artifact Registry repo (`docker`) with a shared hardened runtime base; paid Artifact Analysis scanning is off by default and opened through a guarded MCP action only for selected build windows |
-| CI | Cloud Build previews `release-X.Y-patched` branches in a dev-only pipeline; immutable `vX.Y.Z-patched` tags use the normal dev-to-prod flow; one catalog-driven MCP builder creates shared OS/language bases and mirrors pinned vendor images into Artifact Registry |
-| CD | Separate Mattermost and MCP pipelines; ephemeral test workloads; one semver platform tag routes only changed components |
+| CI | Mattermost patch branches and immutable tags use their dev-to-prod flow; private MCP Go source has independent main/tag triggers that test, attest, scan and release two images through one public Dockerfile |
+| CD | Separate Mattermost, MCP and agent-pilot pipelines; ephemeral test workloads; one semver platform tag routes only changed components |
 | Agent-operated delivery | An agent can author a change, inspect CI/CD and Terraform plans, promote a verified release, and request the guarded production approval through MCP; write actions remain Human-in-the-loop |
 | Secrets | Everything in Secret Manager, mounted via the CSI add-on + Workload Identity |
 | Encryption | One shared Cloud KMS **HSM** key (CMEK, 90-day rotation) over Cloud SQL, GCS, Secret Manager and **GKE etcd** (application-layer Kubernetes Secrets encryption) |
@@ -427,7 +432,7 @@ gcloud projects get-iam-policy "$PROJECT_ID" \
 
 ### 8. Create the Cloud Build GitHub connection
 
-Two repos feed CI/CD: `pilprod/mattermost` (image source) and
+Two repos feed CI/CD: `pilprod/yourown-chat-mattermost` (image source) and
 `pilprod/yourown-chat` (this repo, holds `helm/`). Both link to **one** shared
 2nd-gen connection you authorize **once in the console** — Terraform then
 attaches the repository links and triggers to it, but never owns the
@@ -841,7 +846,7 @@ The flow in plain words:
    The private key never leaves this stack — linked stacks can't publish
    sensitive values, so the secrets are created where the cert is born.
 3. **app-gcp** wires up delivery: Cloud Build watches
-   `pilprod/mattermost` for image tags and immediately starts the Mattermost
+   `pilprod/yourown-chat-mattermost` for image tags and immediately starts the Mattermost
    delivery pipeline after a successful build. A semver tag on **this** repo
    compares changes with the preceding platform tag and routes only Mattermost
    and/or MCP changes to their own pipelines. It also bootstraps the cluster
@@ -865,9 +870,14 @@ terraform/
                          #   cluster bootstrap: operator + ingress-nginx Helm releases)
   agent-registry-gcp/    # stack 4: GCP endpoint/MCP governance catalog (Google provider 7.x)
                          # each stack: *.tfcomponent.hcl + *.tfdeploy.hcl + modules/ + its own lock file
+  components/
+    temporal/            # Terraform-owned official Temporal, schema and private SQL wiring
+  modules/               # project-wide PostgreSQL/GCS primitives shared by components
 helm/                    # Kubernetes workloads, delivered by Cloud Deploy
   skaffold-mattermost.yaml # Mattermost-only dev/prod render and cleanup
   skaffold-mcp.yaml        # MCP-only dev/prod render, smoke, and cleanup
+  skaffold-agents.yaml     # approval-gated agent pilot start/pause
+  agent-platform/          # control API, workflow worker and activity worker
   matterbridge/          # isolated bridge deployment
   mattermost/            # one chart, promoted with dev/prod values
   mcp/                   # MCP Helm chart, dev probes and prod credential/API smoke
@@ -875,21 +885,35 @@ helm/                    # Kubernetes workloads, delivered by Cloud Deploy
 docker/
   images.tsv             # declarative build/mirror/audit/deploy catalog
   *-images.sh            # shared Cloud Build and local image tooling
-  base/                  # OS base plus Node.js/Python language runtimes
-  mcp/                   # thin application Dockerfiles and pinned inputs
+  base/                  # retained vendor/application runtime bases
+  mcp/                   # one pinned Go multi-service Dockerfile
 docs/BUILD.md            # image build flow in detail
+docs/AGENT_PLATFORM.md               # repository and runtime boundaries
+docs/AGENT_PLATFORM_BUILD_RELEASE.md # tag releases and Temporal launch runbook
 ```
+
+Agent workflow and activity worker source lives in
+[`pilprod/yourown-chat-agents`](https://github.com/pilprod/yourown-chat-agents).
+The client-facing control API lives in
+[`pilprod/yourown-chat-server`](https://github.com/pilprod/yourown-chat-server).
+Owned MCP Go source lives in
+[`pilprod/yourown-chat-mcp`](https://github.com/pilprod/yourown-chat-mcp).
+This public platform repository contains no application source; it owns the
+GCP repository links, build definitions, Terraform, Helm and release routing.
 
 The target Mattermost/Temporal/multi-agent boundaries and identity evolution
 are recorded in [`docs/AGENT_PLATFORM.md`](docs/AGENT_PLATFORM.md).
+The build, vulnerability review, coordinated tags and Temporal launch order are recorded in
+[`docs/AGENT_PLATFORM_BUILD_RELEASE.md`](docs/AGENT_PLATFORM_BUILD_RELEASE.md).
 
 A few structural notes worth knowing:
 
 - **One stack per directory.** HCP Terraform reads one stack per working
   directory, so there are four HCP Stacks pointing at the four directories.
-- **Modules are not shared across stacks.** The Stacks bundler can't follow
-  `../` paths, so each stack carries its own `modules/` (the small `secrets`
-  module exists twice on purpose).
+- **Reusable primitives are generic.** New cross-project PostgreSQL and GCS
+  modules live under `terraform/modules/`; Temporal-specific composition lives
+  under `terraform/components/temporal`. Stack-local legacy modules remain in
+  place until they are migrated independently.
 - **Each stack pins its own providers** (`.terraform.lock.hcl`) and Terraform
   version (`.terraform-version`, currently 1.15.8).
 
@@ -922,7 +946,7 @@ short version:
    auth is keyless OIDC end to end.
 2. **Authorize the Cloud Build GitHub connection** (once, in the console):
    one OAuth connection named `pilprod-github` covering both
-   `pilprod/mattermost` and `pilprod/yourown-chat`.
+   `pilprod/yourown-chat-mattermost` and `pilprod/yourown-chat`.
 3. **Create the Cloudflare API token** (zone-scoped, the only static secret)
    and store it in an HCP variable set attached to the cloudflare stack.
 4. **Create the four HCP Stacks** — names must be exactly `platform-gcp`,
@@ -948,7 +972,7 @@ artifact is automatically tested against persistent dev PostgreSQL and offered
 for production approval:
 
 ```
-git tag v9.11.3-patched  (on pilprod/mattermost)
+git tag v9.11.3-patched  (on pilprod/yourown-chat-mattermost)
   → Cloud Build builds & pushes docker/mattermost:v9.11.3-patched
   → Mattermost dev rollout + migration smoke
   → scan final immutable digest → agent risk assessment
@@ -982,7 +1006,7 @@ do not depend on the optional paid vulnerability scanner.
 git tag 1.2.3  (on pilprod/yourown-chat)
   → diff against the previous semver tag
   → route helm/mattermost|matterbridge changes to Mattermost
-  → route helm/mcp or docker changes to MCP
+  → route helm/mcp changes to MCP (private MCP source tags own application images)
   → route each component's skaffold-<component>.yaml only to its own pipeline
 ```
 

@@ -4,6 +4,7 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 catalog="${IMAGE_CATALOG:-${script_dir}/images.tsv}"
 output_dir="${OUTPUT_DIR:-/workspace}"
+deploy_parameter_filter="${DEPLOY_PARAMETER_FILTER:-.*}"
 
 : "${AR_PREFIX:?AR_PREFIX must be set, for example europe-west3-docker.pkg.dev/project/docker}"
 
@@ -11,6 +12,7 @@ parameters=()
 
 while IFS=$'\t' read -r name artifact_path kind dockerfile context parent_arg parent source_env change_regex audit deploy_parameter source description repository_env revision_env version_env; do
   [[ -z "${name}" || "${name}" == \#* || "${deploy_parameter}" == "-" ]] && continue
+  [[ "${deploy_parameter}" =~ ${deploy_parameter_filter} ]] || continue
 
   repository="${AR_PREFIX}/${artifact_path}"
   built_image_file="${output_dir}/${name}-image"

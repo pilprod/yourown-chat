@@ -1,0 +1,68 @@
+apiVersion: skaffold/v4beta11
+kind: Config
+metadata:
+  name: yourown-chat-agents
+
+deploy:
+  kubectl: {}
+
+profiles:
+  - name: agents-paused
+    manifests:
+      helm:
+        releases:
+          - name: agent-platform
+            chartPath: agent-platform
+            namespace: yourown-agents
+            createNamespace: false
+            valuesFiles: [agent-platform/values.yaml]
+    verify:
+      - name: agent-platform-smoke
+        container:
+          name: verify
+          image: curlimages/curl:8.10.1
+          command: ["/bin/sh", "-ceu"]
+          args:
+            - |
+              token="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
+              deployment="$(curl --fail --silent --show-error \
+                --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
+                -H "Authorization: Bearer ${token}" \
+                https://kubernetes.default.svc/apis/apps/v1/namespaces/yourown-agents/deployments/yourown-chat-control-api)"
+              replicas="$(printf '%s' "${deployment}" | sed -n 's/.*"replicas":\([0-9][0-9]*\).*/\1/p' | head -n1)"
+              [ "${replicas}" = "0" ] || { echo "Expected a paused API, found ${replicas} replicas"; exit 1; }
+              echo 'Agent pilot is paused at zero replicas'
+        executionMode:
+          kubernetesCluster:
+            jobManifestPath: agent-platform/verify/job.yaml
+
+  - name: agents-running
+    manifests:
+      helm:
+        releases:
+          - name: agent-platform
+            chartPath: agent-platform
+            namespace: yourown-agents
+            createNamespace: false
+            valuesFiles: [agent-platform/values.yaml, agent-platform/values-running.yaml]
+    verify:
+      - name: agent-platform-smoke
+        container:
+          name: verify
+          image: curlimages/curl:8.10.1
+          command: ["/bin/sh", "-ceu"]
+          args:
+            - |
+              token="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
+              deployment="$(curl --fail --silent --show-error \
+                --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
+                -H "Authorization: Bearer ${token}" \
+                https://kubernetes.default.svc/apis/apps/v1/namespaces/yourown-agents/deployments/yourown-chat-control-api)"
+              replicas="$(printf '%s' "${deployment}" | sed -n 's/.*"replicas":\([0-9][0-9]*\).*/\1/p' | head -n1)"
+              [ "${replicas}" = "1" ] || { echo "Expected one API replica, found ${replicas}"; exit 1; }
+              curl --fail --silent --show-error \
+                --retry 30 --retry-all-errors --retry-delay 5 \
+                http://yourown-chat-control-api.yourown-agents.svc.cluster.local:8080/readyz
+        executionMode:
+          kubernetesCluster:
+            jobManifestPath: agent-platform/verify/job.yaml

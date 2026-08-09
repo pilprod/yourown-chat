@@ -10,12 +10,15 @@ locals {
   # Kubernetes tenants (namespace / KSA) that use Workload Identity. Every MCP
   # runtime gets its own identity so CSI-mounted credentials stay isolated.
   ns = {
-    mattermost            = { namespace = "mattermost", ksa = "mattermost" }
-    matterbridge          = { namespace = "matterbridge", ksa = "matterbridge" }
-    dev                   = { namespace = "dev", ksa = "dev-app" }
-    mcp                   = { namespace = "mcp-google-cloud", ksa = "mcp-servers" }
-    mcp-terraform-stacks  = { namespace = "mcp-terraform-stacks", ksa = "mcp-terraform-stacks" }
-    mcp-tunnel            = { namespace = "mcp-tunnel", ksa = "mcp-tunnel" }
+    mattermost           = { namespace = "mattermost", ksa = "mattermost" }
+    matterbridge         = { namespace = "matterbridge", ksa = "matterbridge" }
+    dev                  = { namespace = "dev", ksa = "dev-app" }
+    mcp                  = { namespace = "mcp-google-cloud", ksa = "mcp-servers" }
+    mcp-terraform-stacks = { namespace = "mcp-terraform-stacks", ksa = "mcp-terraform-stacks" }
+    mcp-tunnel           = { namespace = "mcp-tunnel", ksa = "mcp-tunnel" }
+    backend-control-api   = { namespace = "yourown-agents", ksa = "backend-control-api" }
+    agents-workflow      = { namespace = "yourown-agents", ksa = "agent-workflow-worker" }
+    agents-activity      = { namespace = "yourown-agents", ksa = "agent-activity-worker" }
   }
 
   common_labels = merge({
@@ -186,12 +189,12 @@ component "billing_budget" {
   source = "./modules/billing-budget"
 
   inputs = {
-    billing_account_id = var.billing_account_id
-    project_number     = var.project_number
-    display_name       = "YourOwn.Chat monthly USD budget"
-    currency_code      = "USD"
-    monthly_units      = 100
-    actual_thresholds  = [0.5, 0.75, 0.9, 1.0]
+    billing_account_id  = var.billing_account_id
+    project_number      = var.project_number
+    display_name        = "YourOwn.Chat monthly USD budget"
+    currency_code       = "USD"
+    monthly_units       = 200
+    actual_thresholds   = [0.5, 0.75, 0.9, 1.0]
     forecast_thresholds = [1.0]
   }
 
@@ -289,6 +292,53 @@ component "workload_identity_mcp_tunnel" {
     display_name = "Cloudflare MCP Tunnel Secret Manager identity"
     namespace    = local.ns["mcp-tunnel"].namespace
     ksa_name     = local.ns["mcp-tunnel"].ksa
+  }
+
+  providers  = { google = provider.google.this }
+  depends_on = [component.gke]
+}
+
+component "workload_identity_agents" {
+  source = "./modules/workload-identity"
+
+  inputs = {
+    project_id   = component.project_services.project_id
+    # Preserve the existing GSA resource name while narrowing its only KSA
+    # binding to the side-effecting activity worker.
+    account_id   = "agent-platform"
+    display_name = "AI agent activity worker identity"
+    namespace    = local.ns["agents-activity"].namespace
+    ksa_name     = local.ns["agents-activity"].ksa
+  }
+
+  providers  = { google = provider.google.this }
+  depends_on = [component.gke]
+}
+
+component "workload_identity_backend_control_api" {
+  source = "./modules/workload-identity"
+
+  inputs = {
+    project_id   = component.project_services.project_id
+    account_id   = "backend-control-api"
+    display_name = "YourOwn.Chat backend control API identity"
+    namespace    = local.ns["backend-control-api"].namespace
+    ksa_name     = local.ns["backend-control-api"].ksa
+  }
+
+  providers  = { google = provider.google.this }
+  depends_on = [component.gke]
+}
+
+component "workload_identity_agent_workflow" {
+  source = "./modules/workload-identity"
+
+  inputs = {
+    project_id   = component.project_services.project_id
+    account_id   = "agent-workflow-worker"
+    display_name = "AI agent deterministic workflow worker identity"
+    namespace    = local.ns["agents-workflow"].namespace
+    ksa_name     = local.ns["agents-workflow"].ksa
   }
 
   providers  = { google = provider.google.this }

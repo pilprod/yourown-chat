@@ -81,7 +81,13 @@ variable "github_connection_name" {
 variable "github_remote_uri" {
   type        = string
   description = "HTTPS clone URL of the Mattermost source repository."
-  default     = "https://github.com/pilprod/mattermost.git"
+  default     = "https://github.com/pilprod/yourown-chat-mattermost.git"
+}
+
+variable "github_repository_name" {
+  type        = string
+  description = "Cloud Build repository resource name for the YourOwn.Chat Mattermost fork."
+  default     = "yourown-chat-mattermost"
 }
 
 variable "image_name" {
@@ -119,6 +125,42 @@ variable "github_deploy_remote_uri" {
   default     = "https://github.com/pilprod/yourown-chat.git"
 }
 
+variable "github_backend_remote_uri" {
+  type        = string
+  description = "HTTPS clone URL of the YourOwn.Chat backend repository linked to the shared Cloud Build GitHub connection."
+  default     = "https://github.com/pilprod/yourown-chat-server.git"
+}
+
+variable "github_agents_remote_uri" {
+  type        = string
+  description = "HTTPS clone URL of the YourOwn.Chat agent workload repository linked to the shared Cloud Build GitHub connection."
+  default     = "https://github.com/pilprod/yourown-chat-agents.git"
+}
+
+variable "github_mcp_remote_uri" {
+  type        = string
+  description = "HTTPS clone URL of the private YourOwn.Chat MCP source repository linked to the shared Cloud Build GitHub connection."
+  default     = "https://github.com/pilprod/yourown-chat-mcp.git"
+}
+
+variable "mcp_release_tag_regex" {
+  type        = string
+  description = "Immutable MCP source tags that build, scan and release all owned MCP server images."
+  default     = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+}
+
+variable "backend_release_tag_regex" {
+  type        = string
+  description = "Immutable server tags that build the client-facing control API image."
+  default     = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+}
+
+variable "agents_release_tag_regex" {
+  type        = string
+  description = "Immutable agent tags that build the workflow and activity worker images."
+  default     = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+}
+
 variable "release_tag_regex" {
   type        = string
   description = "Git tag regex (on the deploy repo) that triggers an automatic Cloud Deploy release cut. Defaults to semantic MAJOR.MINOR.PATCH — the *.*.* pattern (e.g. 1.2.3)."
@@ -140,6 +182,29 @@ variable "gcs_bucket_name" {
 variable "cloudsql_private_ip" {
   type        = string
   description = "Exact private Cloud SQL address allowed by the production Mattermost NetworkPolicy."
+}
+
+variable "cloudsql_instance_name" {
+  type        = string
+  description = "Cloud SQL instance name used by database-owning components."
+}
+
+variable "temporal_chart_version" {
+  type        = string
+  description = "Pinned official Temporal Helm chart installed directly by Terraform."
+  default     = "1.2.0"
+}
+
+variable "temporal_password_rotation" {
+  type        = string
+  description = "Manual rotation trigger for the Temporal database password."
+  default     = "1"
+}
+
+variable "agent_results_retention_days" {
+  type        = number
+  description = "Automatic retention for artifacts in the Temporal component result bucket."
+  default     = 30
 }
 
 variable "workload_identity_emails" {
@@ -203,6 +268,24 @@ variable "matterbridge_enabled" {
 variable "mcp_servers_enabled" {
   type        = bool
   description = "Enable the in-cluster MCP delivery path. true lets unified platform tags route helm/mcp changes through the mcp dev -> prod pipeline; false skips MCP releases. Vendor-hosted remote MCP endpoints are unaffected -- see docs/MCP.md."
+  default     = false
+}
+
+variable "agent_platform_enabled" {
+  type        = bool
+  description = "Create the agent pilot delivery path and allow semver tags to route agent changes. Persistent storage is owned separately by platform-gcp."
+  default     = false
+}
+
+variable "temporal_enabled" {
+  type        = bool
+  description = "Explicit launch gate for Terraform-owned Temporal infrastructure. Keep false until the prerequisite MCP production release has passed verification."
+  default     = false
+}
+
+variable "agent_platform_runtime_enabled" {
+  type        = bool
+  description = "Default semver release mode for the agent pilot. false routes the release through the static pause profile; true uses the static running profile. Both preserve Cloud SQL and GCS state."
   default     = false
 }
 

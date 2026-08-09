@@ -8,10 +8,10 @@ or unrelated component from being reapplied during every release.
 
 ```mermaid
 flowchart TD
-  PREVIEW["pilprod/mattermost branch<br/>release-X.Y-patched"] --> PBUILD["Build immutable git-SHA image"]
+  PREVIEW["pilprod/yourown-chat-mattermost branch<br/>release-X.Y-patched"] --> PBUILD["Build immutable git-SHA image"]
   PBUILD --> PDEV["mattermost-preview / dev<br/>migration + smoke; no prod stage"]
 
-  MT["pilprod/mattermost tag<br/>vX.Y.Z-patched"] --> BUILD["Build and push image"]
+  MT["pilprod/yourown-chat-mattermost tag<br/>vX.Y.Z-patched"] --> BUILD["Build and push image"]
   BUILD --> MMTEST["mattermost / dev<br/>migration + smoke"]
   MMTEST --> MMAPPROVE["approval"]
   MMAPPROVE --> MMCLEAN["predeploy: scale dev Mattermost to 0"]
@@ -61,7 +61,7 @@ Terraform apply; it contains no important data.
 
 ### A patched Mattermost source tag
 
-Pushing `v*.*-patched` in `pilprod/mattermost` starts the image build. Only
+Pushing `v*.*-patched` in `pilprod/yourown-chat-mattermost` starts the image build. Only
 after the image is successfully pushed does that build clone `yourown-chat`
 `main` and create a release in the `mattermost` pipeline. Both stages receive
 the same immutable image digest. The source tag remains in Chart metadata and

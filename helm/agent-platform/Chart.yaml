@@ -1,0 +1,6 @@
+apiVersion: v2
+name: agent-platform
+description: Управляющий сервер и исполнители пилота ИИ-агентов YourOwn.Chat
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

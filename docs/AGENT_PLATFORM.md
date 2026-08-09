@@ -1,54 +1,86 @@
-# Agent platform direction
+# Agent platform architecture
 
-This document records the target architecture; it is not all implemented yet.
+This document is the canonical architecture and repository-boundary contract
+for the YourOwn.Chat agent platform. Build, release and first-launch operations
+are defined in [AGENT_PLATFORM_BUILD_RELEASE.md](AGENT_PLATFORM_BUILD_RELEASE.md).
 
-## Stable boundaries
+## Repository boundaries
 
-- `tools.yourown.chat/mcp` is the shared Cloudflare MCP tool gateway for
-  Mattermost, Claude, ChatGPT and future autonomous agents.
-- `agents.yourown.chat` is reserved for a future agent control-plane API/UI.
-- Mattermost is the human interface: task threads, questions, progress,
-  approvals and audit-visible outcomes.
-- Temporal is the durable owner of long-running task state, timers, retries,
-  cancellation and human waits.
-- LangGraph (or an equivalent graph runtime) runs bounded supervisor/subagent
-  reasoning inside Temporal activities. LLM and MCP calls never run in
-  deterministic Temporal workflow code.
-- MCP servers provide tools. They do not own task orchestration or human
-  conversation state.
+| Repository | Owns | Must not own |
+|---|---|---|
+| [`pilprod/yourown-chat`](https://github.com/pilprod/yourown-chat) | Public architecture, Terraform, Helm, Docker build definitions and delivery routing | Product backend, worker or MCP source code |
+| [`pilprod/yourown-chat-server`](https://github.com/pilprod/yourown-chat-server) | `control-api`, Mattermost authorization, commands, approvals, cancellation and Temporal state projection | Workflow/activity execution or MCP implementations |
+| [`pilprod/yourown-chat-agents`](https://github.com/pilprod/yourown-chat-agents) | Temporal workflow and activity workers, deterministic orchestration, agent execution and replay tests | Client-facing authorization or infrastructure ownership |
+| [`pilprod/yourown-chat-mcp`](https://github.com/pilprod/yourown-chat-mcp) | Go source for all owned MCP servers and their protocol/tool tests | Terraform, Helm or production credentials |
 
-## Planned flow
+The source split is complete: `yourown-chat-server` builds only `control-api`;
+`yourown-chat-agents` builds `workflow-worker` and `activity-worker`; and the
+owned MCP implementations live only in `yourown-chat-mcp`.
 
-1. A Jira issue or Mattermost command starts a Temporal workflow.
-2. The Mattermost Agent Gateway creates one thread and stores the mapping
-   `jira_issue ↔ workflow_id ↔ root_post_id`.
-3. A supervisor delegates bounded work to domain agents and a review agent.
-4. Agents call tools through the common Cloudflare Portal.
-5. Questions and risky actions pause the workflow. A Mattermost reply or
-   Approve/Edit/Reject action resumes it through a Temporal Signal.
-6. Every action records workflow, issue, thread, agent, human identity, model,
-   tool, arguments, decision and result.
+## Runtime flow
 
-## Identity evolution
+```text
+YourOwn.Chat client
+  -> Mattermost + yourown-chat-server
+  -> Temporal wire contract
+  -> yourown-chat-agents workers
+  -> authenticated MCP gateway
+  -> isolated MCP server
+  -> explicitly allowed external system
+```
 
-The first integration uses Cloudflare Portal OAuth for interactive Mattermost
-users while upstream MCP registrations retain shared workload credentials
-(`on_behalf = false`). This gives a user identity at the Portal boundary but
-does not yet propagate it into each adapter.
+The server starts workflows, submits human decisions and reads state. Workers
+consume Temporal task queues. They do not call each other directly or import
+each other's internal Go packages. MCP servers expose tools; they do not own
+workflow state, approvals or human conversation state.
 
-The autonomous Agent Gateway will receive a separate workload identity. Do not
-reuse an interactive user's OAuth grant or the Cloudflare AI Controls upstream
-token for background workflows.
+## Shared contract
 
-The later RBAC phase propagates signed Mattermost identity/claims through the
-Gateway and validates user, role, agent and tool policy inside adapters. It
-must preserve the public `tools.yourown.chat/mcp` contract.
+Workflow types, task-queue names, Temporal query/update names and serializable
+input, state, decision, event and report schemas are versioned wire contracts.
+Both application modules currently retain matching `internal/contracts` types.
+A neutral schema becomes the generation source before contract version two.
 
-## Network boundary
+An incompatible change is expanded and contracted:
 
-Production namespaces are independent tenants. Mattermost can reach public
-HTTPS and its exact Cloud SQL address, but no MCP ClusterIP. MCP namespaces
-admit only the isolated `mcp-tunnel` connector and cannot initiate traffic to
-one another. Matterbridge reaches Mattermost through the public
-`https://yourown.chat` edge rather than a cross-namespace Service. The shared
-`dev` namespace remains one disposable tenant.
+1. the server reads old and new contract versions;
+2. workers start writing the new version;
+3. replay and compatibility tests cover existing histories;
+4. support for the old version is removed only after its workflows complete.
+
+## Identity and network boundaries
+
+- `control-api`, `workflow-worker` and `activity-worker` use separate Workload
+  Identity service accounts and Kubernetes service accounts.
+- The workflow worker talks only to Temporal. The activity worker receives only
+  the explicitly required MCP/model/storage access.
+- Temporal has no public ingress and uses two logical databases on the private
+  Cloud SQL address.
+- MCP servers remain separate namespace tenants. A compromised MCP cannot reach
+  another MCP or Mattermost through an internal service.
+- Interactive identity and agent workload identity are never interchangeable.
+- Risky mutations pause in Temporal and resume only with an auditable human
+  approve/edit/reject decision.
+
+## Lifecycle ownership
+
+Temporal is platform infrastructure. Terraform installs the pinned official
+chart, creates its databases, secret, result bucket, namespace, quota and
+network policy. It is not copied into Helm delivery and has no custom image.
+
+The three custom Go workloads are delivered by Cloud Deploy using immutable
+digests. A normal pause scales agent workers to zero while retaining Temporal
+history and reports. The server and agent compute remain independently
+deployable units even though their first compatible release uses one shared
+version tag.
+
+## First safe slice
+
+The pilot builds a plan, waits for an explicit human decision, executes an
+idempotent dry-run activity without external side effects and returns a
+structured report. Mattermost/Jira adapters, MCP calls, model routing and real
+mutations are added one activity at a time after this durable approval path is
+verified.
+
+ClickHouse, a separate vector database and Langfuse are deliberately excluded
+until measured event volume proves Cloud SQL and standard logs insufficient.

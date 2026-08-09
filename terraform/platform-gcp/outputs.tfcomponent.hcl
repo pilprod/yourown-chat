@@ -64,8 +64,14 @@ output "nat_egress_ip_address" {
 # --- Cloud SQL -----------------------------------------------------------------
 output "cloudsql_connection_name" {
   type        = string
-  description = "Cloud SQL connection name for the Auth Proxy (null when Cloud SQL is disabled)."
+  description = "Cloud SQL instance connection name (null when Cloud SQL is disabled)."
   value       = one([for c in component.cloudsql : c.connection_name])
+}
+
+output "cloudsql_instance_name" {
+  type        = string
+  description = "Cloud SQL instance name used to add logical pilot databases."
+  value       = one([for database in component.cloudsql : database.instance_name])
 }
 
 output "cloudsql_password_secret_id" {
@@ -110,13 +116,17 @@ output "workload_identity_emails" {
   type        = map(string)
   description = "Tenant => Google SA email to annotate the matching KSA (iam.gke.io/gcp-service-account)."
   value = {
-    mattermost            = component.workload_identity_mattermost.email
-    matterbridge          = component.workload_identity_matterbridge.email
-    dev                   = component.workload_identity_dev.email
-    mcp                   = component.workload_identity_mcp.email
-    mcp-dev               = component.workload_identity_mcp_dev.email
-    mcp-terraform-stacks  = component.workload_identity_mcp_terraform_stacks.email
-    mcp-tunnel            = component.workload_identity_mcp_tunnel.email
+    mattermost           = component.workload_identity_mattermost.email
+    matterbridge         = component.workload_identity_matterbridge.email
+    dev                  = component.workload_identity_dev.email
+    mcp                  = component.workload_identity_mcp.email
+    mcp-dev              = component.workload_identity_mcp_dev.email
+    mcp-terraform-stacks = component.workload_identity_mcp_terraform_stacks.email
+    mcp-tunnel           = component.workload_identity_mcp_tunnel.email
+    agents               = component.workload_identity_agents.email
+    backend-control-api   = component.workload_identity_backend_control_api.email
+    agents-workflow      = component.workload_identity_agent_workflow.email
+    agents-activity      = component.workload_identity_agents.email
   }
 }
 
@@ -124,13 +134,17 @@ output "workload_identity_members" {
   type        = map(string)
   description = "Tenant => IAM member string (serviceAccount:<email>). Consumed by the app-gcp stack as least-privilege secretAccessor grants."
   value = {
-    mattermost            = component.workload_identity_mattermost.iam_member
-    matterbridge          = component.workload_identity_matterbridge.iam_member
-    dev                   = component.workload_identity_dev.iam_member
-    mcp                   = component.workload_identity_mcp.iam_member
-    mcp-dev               = component.workload_identity_mcp_dev.iam_member
-    mcp-terraform-stacks  = component.workload_identity_mcp_terraform_stacks.iam_member
-    mcp-tunnel            = component.workload_identity_mcp_tunnel.iam_member
+    mattermost           = component.workload_identity_mattermost.iam_member
+    matterbridge         = component.workload_identity_matterbridge.iam_member
+    dev                  = component.workload_identity_dev.iam_member
+    mcp                  = component.workload_identity_mcp.iam_member
+    mcp-dev              = component.workload_identity_mcp_dev.iam_member
+    mcp-terraform-stacks = component.workload_identity_mcp_terraform_stacks.iam_member
+    mcp-tunnel           = component.workload_identity_mcp_tunnel.iam_member
+    agents               = component.workload_identity_agents.iam_member
+    backend-control-api   = component.workload_identity_backend_control_api.iam_member
+    agents-workflow      = component.workload_identity_agent_workflow.iam_member
+    agents-activity      = component.workload_identity_agents.iam_member
   }
 }
 
