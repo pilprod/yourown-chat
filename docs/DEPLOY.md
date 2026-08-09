@@ -359,8 +359,9 @@ independent `agent-registry-gcp` stack after `platform-gcp` has enabled
 - creates the unified platform-tag trigger and Mattermost image trigger.
 
 The platform has one shared `general` pool using `e2-standard-2`
-(`min=1`, `max=3`) plus a fixed one-node `rtcd` pool using `e2-standard-2`.
-Production MCP uses the `production` PriorityClass, operator-generated
+(`min=1`, `max=3`). Standalone RTCD shares it with a production-priority
+request instead of keeping an otherwise idle dedicated node. Production MCP
+uses the `production` PriorityClass, operator-generated
 Mattermost and platform pods inherit `platform-default`, and all disposable dev
 workloads explicitly use `development` (negative priority). The `dev` namespace
 also has a ResourceQuota and LimitRange. Cluster Autoscaler can therefore add a
