@@ -14,6 +14,15 @@ function fixtureFetch({
   runStatus = "pre_deploying_pending_operator",
   planStatus = "pending_operator",
   existingApproval = false,
+  diagnostics = [],
+  planDescription = {
+    terraform_stack_change_description: 1,
+    applyable: true,
+    plan_mode: "normal",
+    components: [],
+    resource_instances: [],
+    output_changes: {},
+  },
   deployments = [{ id: "std-one", attributes: { name: "yourown-chat" } }],
   repository = "pilprod/yourown-chat",
   workingDirectory = "terraform/cloudflare",
@@ -281,15 +290,20 @@ function fixtureFetch({
         "/api/v2/stack-deployment-steps/sds-plan1/stack-diagnostics?",
       )
     ) {
-      return jsonResponse({ data: [] });
+      return jsonResponse({ data: diagnostics });
     }
     if (
       path ===
       "/api/v2/stack-deployment-steps/sds-plan1/artifacts?name=plan-description"
     ) {
-      return new Response("Plan: 1 to add, 0 to change, 0 to destroy", {
-        headers: { "content-type": "text/plain" },
-      });
+      return new Response(
+        typeof planDescription === "string"
+          ? planDescription
+          : JSON.stringify(planDescription),
+        {
+          headers: { "content-type": "text/plain" },
+        },
+      );
     }
     if (
       path ===
@@ -341,6 +355,98 @@ test("lists only allowlisted Stack runs", async () => {
   await assert.rejects(
     client(fixture.fetchImpl).listRuns({ stackName: "untrusted" }),
     /not in TFE_STACK_ALLOWLIST/,
+  );
+});
+
+test("inspectRun returns only sanitized plan actions and diagnostic metadata", async () => {
+  const secret = "must-not-leave-terraform-state";
+  const fixture = fixtureFetch({
+    diagnostics: [
+      {
+        id: "std-secret1",
+        attributes: {
+          severity: "warning",
+          summary: `provider returned ${secret}`,
+          detail: secret,
+        },
+      },
+    ],
+    planDescription: {
+      terraform_stack_change_description: 1,
+      applyable: true,
+      plan_mode: "normal",
+      components: [
+        {
+          address: "component.secrets",
+          component_address: "component.secrets",
+          actions: ["update"],
+          complete: true,
+        },
+      ],
+      resource_instances: [
+        {
+          component_instance_address: "component.secrets",
+          address: "google_secret_manager_secret_version.example",
+          mode: "managed",
+          type: "google_secret_manager_secret_version",
+          provider_name: "registry.terraform.io/hashicorp/google",
+          resource_name: "example",
+          index: null,
+          action_reason: "ResourceInstanceChangeNoReason",
+          change: {
+            actions: ["update"],
+            before: { secret_data: secret },
+            after: { secret_data: secret },
+            before_sensitive: { secret_data: true },
+            after_sensitive: { secret_data: true },
+          },
+        },
+      ],
+      output_changes: {
+        endpoint: {
+          change: {
+            actions: ["update"],
+            before: secret,
+            after: secret,
+          },
+        },
+      },
+    },
+  });
+
+  const inspected = await client(fixture.fetchImpl).inspectRun(
+    "cloudflare",
+    "sdr-run1",
+  );
+  const serialized = JSON.stringify(inspected);
+
+  assert.equal(serialized.includes(secret), false);
+  assert.deepEqual(inspected.steps[0].diagnostics, [
+    { id: "std-secret1", severity: "warning", content_omitted: true },
+  ]);
+  assert.equal(
+    inspected.steps[0].plan_description.format,
+    "sanitized-action-summary-v1",
+  );
+  assert.deepEqual(
+    inspected.steps[0].plan_description.resource_changes[0].actions,
+    ["update"],
+  );
+  assert.equal(inspected.steps[0].plan_description.values_omitted, true);
+});
+
+test("inspectRun omits an unparseable raw plan artifact", async () => {
+  const secret = "raw-secret-must-not-be-returned";
+  const fixture = fixtureFetch({ planDescription: `not-json ${secret}` });
+  const inspected = await client(fixture.fetchImpl).inspectRun(
+    "cloudflare",
+    "sdr-run1",
+  );
+
+  assert.equal(JSON.stringify(inspected).includes(secret), false);
+  assert.match(
+    inspected.steps[0].plan_description.unavailable,
+    /raw artifact was omitted/,
   );
 });
 

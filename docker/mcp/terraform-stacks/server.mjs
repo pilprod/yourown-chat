@@ -485,7 +485,7 @@ function createServer() {
     {
       title: "HCP Terraform · Stacks · Inspect deployment",
       description:
-        "Read a Stack deployment run, every plan/apply step, diagnostics, and plan description before approval.",
+        "Read a Stack deployment run and a sanitized action-only plan summary before approval. Resource values and diagnostic content are always omitted.",
       inputSchema: {
         stack_name: z.string().min(1),
         run_id: z.string().regex(/^sdr-[A-Za-z0-9]+$/),

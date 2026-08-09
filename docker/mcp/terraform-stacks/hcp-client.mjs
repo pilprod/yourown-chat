@@ -70,11 +70,82 @@ function resourceSummary(resource) {
   };
 }
 
-function boundedArtifact(value, maxLength = 200_000) {
-  if (typeof value !== "string" || value.length <= maxLength) {
-    return value;
+function diagnosticMetadata(resource) {
+  const summary = resourceSummary(resource);
+  return {
+    id: summary.id,
+    severity: summary.severity ?? "unknown",
+    content_omitted: true,
+  };
+}
+
+function planDescriptionSummary(value, maxResources = 5_000) {
+  let plan = value;
+  if (typeof plan === "string") {
+    try {
+      plan = JSON.parse(plan);
+    } catch {
+      return {
+        format: "sanitized-action-summary-v1",
+        unavailable:
+          "The plan description was not valid JSON; the raw artifact was omitted.",
+      };
+    }
   }
-  return `${value.slice(0, maxLength)}\n\n[truncated ${value.length - maxLength} characters]`;
+
+  if (!plan || typeof plan !== "object" || Array.isArray(plan)) {
+    return {
+      format: "sanitized-action-summary-v1",
+      unavailable:
+        "The plan description had an unsupported shape; the raw artifact was omitted.",
+    };
+  }
+
+  const components = Array.isArray(plan.components)
+    ? plan.components.map((component) => ({
+        address: component.address,
+        component_address: component.component_address,
+        actions: component.actions ?? [],
+        complete: component.complete,
+      }))
+    : [];
+
+  const resourceInstances = Array.isArray(plan.resource_instances)
+    ? plan.resource_instances
+    : [];
+  const resourceChanges = resourceInstances
+    .slice(0, maxResources)
+    .map((resource) => ({
+      component_instance_address: resource.component_instance_address,
+      address: resource.address,
+      mode: resource.mode,
+      type: resource.type,
+      provider_name: resource.provider_name,
+      resource_name: resource.resource_name,
+      index: resource.index,
+      action_reason: resource.action_reason,
+      actions: resource.change?.actions ?? [],
+    }));
+
+  const outputEntries = Array.isArray(plan.output_changes)
+    ? plan.output_changes.map((output) => [output.address, output])
+    : Object.entries(plan.output_changes ?? {});
+  const outputChanges = outputEntries.map(([address, output]) => ({
+    address,
+    actions: output?.change?.actions ?? output?.actions ?? [],
+  }));
+
+  return {
+    format: "sanitized-action-summary-v1",
+    applyable: plan.applyable,
+    plan_mode: plan.plan_mode,
+    components,
+    resource_changes: resourceChanges,
+    resource_change_count: resourceInstances.length,
+    resource_changes_truncated: resourceInstances.length > maxResources,
+    output_changes: outputChanges,
+    values_omitted: true,
+  };
 }
 
 export class HcpStacksClient {
@@ -711,19 +782,22 @@ export class HcpStacksClient {
         let planDescription = null;
         if (step.attributes["operation-type"] === "plan") {
           try {
-            planDescription = boundedArtifact(
+            planDescription = planDescriptionSummary(
               await this.request(
                 `stack-deployment-steps/${step.id}/artifacts?name=plan-description`,
                 { accept: "text/plain, application/json" },
               ),
             );
-          } catch (error) {
-            planDescription = { unavailable: error.message };
+          } catch {
+            planDescription = {
+              format: "sanitized-action-summary-v1",
+              unavailable: "The sanitized plan summary could not be retrieved.",
+            };
           }
         }
         return {
           ...resourceSummary(step),
-          diagnostics: diagnosticsPayload.data.map(resourceSummary),
+          diagnostics: diagnosticsPayload.data.map(diagnosticMetadata),
           plan_description: planDescription,
         };
       }),

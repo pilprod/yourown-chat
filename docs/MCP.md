@@ -415,6 +415,13 @@ Available delivery tools remain:
 - `approve_deployment_run`;
 - `cancel_deployment_run`.
 
+`inspect_deployment_run` deliberately returns only resource addresses, action
+types, step status, and diagnostic severity. Terraform values, output values,
+raw plan artifacts, and diagnostic text are omitted even when HCP marks them
+non-sensitive. This prevents state-backed credentials from crossing the MCP
+boundary while preserving the exact resource/action list required for an
+approval decision.
+
 Rollout order for the Google Cloud server: apply **platform-gcp first** (creates
 the `mcp` GSA + Workload Identity binding and publishes it in
 `workload_identity_emails`), then app-gcp (injects the GSA into the KSA
