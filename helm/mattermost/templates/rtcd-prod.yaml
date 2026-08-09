@@ -101,12 +101,7 @@ spec:
       automountServiceAccountToken: false
       terminationGracePeriodSeconds: 300
       nodeSelector:
-        pool: rtcd
-      tolerations:
-        - key: workload
-          operator: Equal
-          value: rtcd
-          effect: NoSchedule
+        pool: general
       securityContext:
         # The pinned distroless image defines calls:65532. fsGroup makes the
         # dynamically provisioned registration volume writable without root.

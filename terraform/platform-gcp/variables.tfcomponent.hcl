@@ -11,10 +11,9 @@
 # drives labels only.
 #
 # TOPOLOGY: the budget-optimized default is ONE zonal GKE cluster with an
-# autoscaling general pool; when Calls is enabled, RTCD gets the dedicated
-# tainted node required for Kubernetes media routing. Kubernetes priorities and
-# quotas isolate the remaining workload tiers. See platform.tfdeploy.hcl and
-# the README for the rationale and the scale-out path.
+# autoscaling general pool shared by application workloads and standalone RTCD.
+# Kubernetes priorities, requests and quotas isolate workload tiers. See
+# platform.tfdeploy.hcl and the README for the rationale and the scale-out path.
 # ---------------------------------------------------------------------------
 
 variable "project_id" {
@@ -250,7 +249,7 @@ variable "public_ingress_enabled" {
 
 variable "mattermost_calls_enabled" {
   type        = bool
-  description = "Provision the dedicated Mattermost RTCD node pool and stable external media IP."
+  description = "Provision the stable external media IP used by Mattermost RTCD."
   default     = false
 }
 

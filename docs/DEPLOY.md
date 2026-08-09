@@ -170,12 +170,12 @@ must be changed in `helm/mattermost/values.yaml`.
 ### Mattermost Calls
 
 Production Calls uses standalone RTCD, the only supported Kubernetes media
-topology. RTCD runs as one replica on its own tainted `e2-standard-2` node and
-publishes one reserved regional shared LoadBalancer VIP on both TCP and UDP
-8443. Media goes directly from clients to this address and deliberately does
-not traverse the HTTP ingress or Cloudflare. Mattermost reaches the private
-RTCD API Service on TCP 8045; NetworkPolicies deny that API to every other
-namespace.
+topology. RTCD runs as one production-priority replica on the autoscaling
+`general` pool and publishes one reserved regional shared LoadBalancer VIP on
+both TCP and UDP 8443. Media goes directly from clients to this address and
+deliberately does not traverse the HTTP ingress or Cloudflare. Mattermost
+reaches the private RTCD API Service on TCP 8045; NetworkPolicies deny that API
+to every other namespace.
 
 The 1 GiB RTCD registration database uses the `rtcd-cmek` CSI StorageClass,
 whose persistent disk is encrypted with the platform HSM key and retained if
