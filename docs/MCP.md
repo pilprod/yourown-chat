@@ -102,29 +102,28 @@ constraints (especially for consumer services without a public API).
 | Service | Server | Credentials |
 |---|---|---|
 | Terraform Stacks management | internally built `mcp-terraform-stacks` adapter over the official HCP Terraform Stacks API; guarded stack settings, configuration lifecycle, deployment inspection, run-scoped approve/cancel and safe stack deletion | HCP user token in Secret Manager (`mcp-terraform-hcp-token`, placeholder seeded), with Project Maintain or higher and its owner authorized for the repository's HCP GitHub App |
-| Google Cloud (Observability + Artifact Analysis + guarded Cloud Deploy lifecycle) | internally built `mcp-google-cloud` image: `@google-cloud/observability-mcp@0.2.3` (Google, preview) behind a native Streamable HTTP aggregator | **none — keyless**: separate Workload Identity principals for prod lifecycle and disposable read-only dev; quota project is `yourown-chat` |
+| Google Cloud (Observability + Artifact Analysis + guarded Cloud Deploy lifecycle) | internally built static Go `mcp-google-cloud` server using the official Tier-1 MCP Go SDK | **none — keyless**: separate Workload Identity principals for prod lifecycle and disposable read-only dev; quota project is `yourown-chat` |
 
-The Google Cloud server is published as an npm/stdio package, not a container
-with native HTTP transport. The platform therefore builds
-`docker/mcp/google-cloud/Dockerfile` itself. Its committed
-`package-lock.json` pins the complete dependency graph; the image contains the
-official package and exposes it through the aggregator's native Streamable HTTP
-transport.
-The local aggregator proxies the official tool catalog unchanged and adds
+The private `pilprod/yourown-chat-mcp` repository contains both Go commands and
+their tests. This public platform contains only one hardened, parameterized
+`docker/mcp/Dockerfile`, Terraform, Helm and lifecycle documentation. The Go
+server implements the observability tool catalog and adds
 Cloud Deploy lifecycle, Artifact Analysis, Billing Export, Budgets, and
-Recommender tools; it does not fork or patch Google's package. Custom protocol
+Recommender tools. Every observability resource is additionally constrained to
+the configured project; workload credentials cannot be redirected to another
+project through a caller-supplied resource name. Custom protocol
 names omit the server identity (`build_list_builds`, not
 `google_cloud_build_list_builds`) because Cloudflare Portal already namespaces
 them with `google-cloud`. This prevents duplicated client labels while
 structured titles remain `Google Cloud · Build · List builds`.
-There is no package download, writable npm cache, or init container at runtime.
+The scratch runtime contains only a static binary and CA roots; there is no
+package manager, shell, writable dependency cache or init container.
 
-When `docker/mcp/google-cloud/**` or the shared `docker/base/**` changes, the
-unified release trigger
-audits, builds, and pushes
-`europe-west3-docker.pkg.dev/yourown-chat/docker/mcp-google-cloud:<git-sha>`
-before it creates an MCP release. Other MCP-only changes reuse the newest
-internal image rather than rebuilding identical dependencies. The trigger
+Pushes and immutable source tags in `pilprod/yourown-chat-mcp` run formatting,
+module verification, vet, race tests and `govulncheck`, then build both images
+with the public unified Dockerfile. BuildKit emits SBOM/provenance and Google
+On-Demand Scanning blocks HIGH or CRITICAL findings. Only an immutable
+`X.Y.Z` source tag can create an MCP release. The trigger
 resolves the selected digest and passes
 `mcp_google_cloud_image=<repository>@sha256:...` to Cloud Deploy, so both dev
 and prod promote the exact same artifact. Paid automatic Artifact Analysis
@@ -207,14 +206,12 @@ retroactive; CUD metadata is useful only after commitments are purchased.
 FOCUS (Preview) is useful for future normalized multi-cloud reporting but does
 not replace the native Detailed export used for GCP resource optimization.
 
-The Google Cloud aggregator terminates Streamable HTTP itself and shares one
-official Observability stdio child across all client sessions. This avoids the
-old supergateway process fan-out where every Portal/client session retained a
-separate aggregator and Observability process until timeout. The container has
-a 2 GiB limit for temporary JSON materialization; its scheduling request
-remains 256 MiB. Swap or a writable cache/PVC would not solve this workload
-because the memory belongs to live Node.js processes and in-flight response
-objects rather than reusable on-disk data.
+The static Go server terminates Streamable HTTP directly and performs bounded
+Google REST calls without subprocesses. This removes the old stdio child and
+per-session Node.js process overhead. The container keeps its existing memory
+headroom for large Logging, Artifact Analysis and BigQuery JSON responses, but
+the Go transport caps every incoming MCP body at 1 MiB and API clients apply
+bounded response and query limits.
 
 Keep Observability calls bounded even with this headroom:
 
@@ -280,10 +277,9 @@ The Cloud SDK remains only a human bootstrap/debugging fallback. Agents must
 not use `gcloud builds ...` or `gcloud deploy ...` when the production Google
 Cloud MCP is available.
 
-Google's preview server has no environment variable for a global page-size or
-time-range ceiling, so callers must currently supply these constraints. A
-first-party transport wrapper can clamp arguments later if stricter
-multi-client enforcement becomes necessary.
+The Go server clamps page sizes and rejects resource names outside its
+configured project. Callers must still supply narrow time intervals because a
+small result page can require a broad and expensive upstream scan.
 
 Inspect deployed image digests and findings with
 `security_list_images`, then pass the selected immutable URI to
@@ -291,8 +287,8 @@ Inspect deployed image digests and findings with
 provider advisory.
 
 Artifact Analysis updates findings for an existing digest as its vulnerability
-database changes. A rebuild is required only to consume fixed base packages or
-an updated npm lock.
+database changes. A rebuild is required only to consume fixed Go or OS
+dependencies.
 
 `docker/base/Dockerfile` produces the internally scanned
 `base` image from a pinned Alpine digest and installs all available package
@@ -308,28 +304,22 @@ The Python runtime copies the official standalone `uv` binaries and does not
 carry pip/setuptools metadata.
 
 `docker/images.tsv` is the single image catalog for built and mirrored images.
-Both the tag-triggered and manual Cloud Build paths call
-`docker/prepare-images.sh`, `docker/audit-images.sh`, and
-`docker/build-images.sh`; they do not maintain per-image checkout or build
-snippets. External Git contexts and their pinned revisions, plus OCI title,
-source, description, revision and version labels, all come from the catalog.
-Parent changes propagate through the catalog, missing
-`runtime` tags bootstrap automatically, and every published image also gets an
-immutable build tag. Mattermost remains on its upstream image. Cloudflared is
+Public vendor rebuilds use `docker/prepare-images.sh`,
+`docker/audit-images.sh`, and `docker/build-images.sh`. First-party MCP Go
+source follows the independent private-source lifecycle described above.
+Mattermost remains on its upstream image. Cloudflared is
 compiled from
 the unmodified commit behind the pinned official release tag with a patched
 pinned Go toolchain and copied into the same pinned distroless runtime family
 used upstream.
 
-For a local build, build the base once and pass it explicitly:
+For a local MCP build, use the private source checkout as the build context and
+this public Dockerfile:
 
 ```bash
-docker build -t base:local docker/base
-docker build -f docker/base/node.Dockerfile \
-  --build-arg BASE_IMAGE=base:local \
-  -t node:local docker/base
-docker build --build-arg RUNTIME_IMAGE=node:local \
-  -t mcp-terraform-stacks:local docker/mcp/terraform-stacks
+docker build -f ../yourown-chat/docker/mcp/Dockerfile \
+  --build-arg SERVICE=terraform-stacks \
+  -t mcp-terraform-stacks:local ../yourown-chat-mcp
 ```
 
 `docker/mcp/upstreams.env` is the reviewable upstream lock for the other

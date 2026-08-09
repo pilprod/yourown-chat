@@ -74,6 +74,48 @@ resource "kubernetes_limit_range_v1" "dev" {
   }
 }
 
+resource "kubernetes_resource_quota_v1" "agent_pilot" {
+  count = var.agent_enabled ? 1 : 0
+
+  metadata {
+    name      = "compute-budget"
+    namespace = var.agent_namespace
+  }
+
+  spec {
+    hard = {
+      "pods"            = "15"
+      "requests.cpu"    = "1"
+      "requests.memory" = "2Gi"
+      "limits.cpu"      = "4"
+      "limits.memory"   = "4Gi"
+    }
+  }
+}
+
+resource "kubernetes_limit_range_v1" "agent_pilot" {
+  count = var.agent_enabled ? 1 : 0
+
+  metadata {
+    name      = "container-defaults"
+    namespace = var.agent_namespace
+  }
+
+  spec {
+    limit {
+      type = "Container"
+      default = {
+        cpu    = "500m"
+        memory = "512Mi"
+      }
+      default_request = {
+        cpu    = "10m"
+        memory = "32Mi"
+      }
+    }
+  }
+}
+
 # Cleanup runs as a Cloud Deploy PREDEPLOY hook outside the cluster.
 # Long-lived RBAC remains platform policy and grants its dedicated Google
 # service accounts permission to scale only the named disposable Deployments.
@@ -152,5 +194,54 @@ resource "kubernetes_role_binding_v1" "mcp_cleanup" {
     kind      = "ServiceAccount"
     name      = var.cleanup_kubernetes_service_account.name
     namespace = var.cleanup_kubernetes_service_account.namespace
+  }
+}
+
+# Cloud Deploy verification reads only the desired replica count of the pilot
+# API. The verifier can therefore distinguish a healthy running release from a
+# correctly paused zero-replica release without broad cluster read access.
+resource "kubernetes_service_account_v1" "agent_verify" {
+  count = var.agent_enabled ? 1 : 0
+
+  metadata {
+    name      = "agent-platform-verify"
+    namespace = var.agent_namespace
+  }
+}
+
+resource "kubernetes_role_v1" "agent_verify" {
+  count = var.agent_enabled ? 1 : 0
+
+  metadata {
+    name      = "agent-platform-verify"
+    namespace = var.agent_namespace
+  }
+
+  rule {
+    api_groups     = ["apps"]
+    resources      = ["deployments"]
+    resource_names = ["yourown-chat-control-api"]
+    verbs          = ["get"]
+  }
+}
+
+resource "kubernetes_role_binding_v1" "agent_verify" {
+  count = var.agent_enabled ? 1 : 0
+
+  metadata {
+    name      = "agent-platform-verify"
+    namespace = var.agent_namespace
+  }
+
+  role_ref {
+    api_group = "rbac.authorization.k8s.io"
+    kind      = "Role"
+    name      = kubernetes_role_v1.agent_verify[0].metadata[0].name
+  }
+
+  subject {
+    kind      = "ServiceAccount"
+    name      = kubernetes_service_account_v1.agent_verify[0].metadata[0].name
+    namespace = var.agent_namespace
   }
 }

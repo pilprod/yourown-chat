@@ -39,13 +39,13 @@ component "clouddeploy" {
     ]
 
     deploy_parameters = {
-      filestore_bucket        = var.gcs_bucket_name
-      mattermost_cloudsql_ip  = var.cloudsql_private_ip
-      mattermost_gsa          = var.workload_identity_emails.mattermost
-      mattermost_dev_gsa      = var.workload_identity_emails.dev
-      matterbridge_gsa        = var.workload_identity_emails.matterbridge
-      aop_verify_client       = var.aop_enabled ? "on" : "off"
-      mattermost_calls_ip     = var.calls_ip_address
+      filestore_bucket       = var.gcs_bucket_name
+      mattermost_cloudsql_ip = var.cloudsql_private_ip
+      mattermost_gsa         = var.workload_identity_emails.mattermost
+      mattermost_dev_gsa     = var.workload_identity_emails.dev
+      matterbridge_gsa       = var.workload_identity_emails.matterbridge
+      aop_verify_client      = var.aop_enabled ? "on" : "off"
+      mattermost_calls_ip    = var.calls_ip_address
     }
 
     labels = local.common_labels
@@ -113,17 +113,17 @@ component "clouddeploy_mcp" {
 
     stages = [
       {
-        name               = "dev"
-        profiles           = ["mcp-dev"]
-        require_approval   = false
-        verify             = false
+        name             = "dev"
+        profiles         = ["mcp-dev"]
+        require_approval = false
+        verify           = false
       },
       {
-        name                = "prod"
-        profiles            = ["mcp-prod"]
-        require_approval    = true
-        verify              = true
-        predeploy_actions   = ["cleanup-mcp-dev"]
+        name              = "prod"
+        profiles          = ["mcp-prod"]
+        require_approval  = true
+        verify            = true
+        predeploy_actions = ["cleanup-mcp-dev"]
         postdeploy_actions = var.mcp_capability_sync_enabled ? [
           "sync-cloudflare-mcp-capabilities",
         ] : []
@@ -131,11 +131,81 @@ component "clouddeploy_mcp" {
     ]
 
     deploy_parameters = {
-      mcp_secret_project        = var.project_id
-      mcp_google_cloud_gsa      = lookup(var.workload_identity_emails, "mcp", "")
-      mcp_google_cloud_dev_gsa  = lookup(var.workload_identity_emails, "mcp-dev", "")
-      mcp_terraform_stacks_gsa  = lookup(var.workload_identity_emails, "mcp-terraform-stacks", "")
-      mcp_tunnel_gsa            = lookup(var.workload_identity_emails, "mcp-tunnel", "")
+      mcp_secret_project       = var.project_id
+      mcp_google_cloud_gsa     = lookup(var.workload_identity_emails, "mcp", "")
+      mcp_google_cloud_dev_gsa = lookup(var.workload_identity_emails, "mcp-dev", "")
+      mcp_terraform_stacks_gsa = lookup(var.workload_identity_emails, "mcp-terraform-stacks", "")
+      mcp_tunnel_gsa           = lookup(var.workload_identity_emails, "mcp-tunnel", "")
+    }
+
+    labels = local.common_labels
+  }
+
+  providers = {
+    google      = provider.google.this
+    google-beta = provider.google-beta.this
+  }
+}
+
+component "clouddeploy_agents_start" {
+  source = "./modules/clouddeploy"
+
+  inputs = {
+    project_id              = var.project_id
+    region                  = var.region
+    gke_cluster_id          = var.gke_cluster_id
+    pipeline_name           = "agents-start"
+    release_manager_members = [var.workload_identity_members.mcp]
+
+    stages = [{
+      name             = "pilot"
+      profiles         = ["agents-running"]
+      require_approval = true
+      verify           = true
+    }]
+
+    deploy_parameters = {
+      backend_control_api_gsa     = lookup(var.workload_identity_emails, "backend-control-api", "")
+      agent_workflow_worker_gsa = lookup(var.workload_identity_emails, "agents-workflow", "")
+      agent_activity_worker_gsa = lookup(var.workload_identity_emails, "agents-activity", "")
+      agent_secret_project      = var.project_id
+      agent_results_bucket      = coalesce(component.temporal.results_bucket_name, "")
+    }
+
+    labels = local.common_labels
+  }
+
+  providers = {
+    google      = provider.google.this
+    google-beta = provider.google-beta.this
+  }
+}
+
+component "clouddeploy_agents_pause" {
+  source = "./modules/clouddeploy"
+
+  inputs = {
+    project_id              = var.project_id
+    region                  = var.region
+    gke_cluster_id          = var.gke_cluster_id
+    pipeline_name           = "agents-pause"
+    release_manager_members = [var.workload_identity_members.mcp]
+
+    stages = [{
+      name             = "pilot"
+      profiles         = ["agents-paused"]
+      require_approval = true
+      verify           = true
+    }]
+
+    # Keep the exact same immutable infrastructure inputs as the running
+    # release. Only the authored Skaffold profile changes workload replicas.
+    deploy_parameters = {
+      backend_control_api_gsa     = lookup(var.workload_identity_emails, "backend-control-api", "")
+      agent_workflow_worker_gsa = lookup(var.workload_identity_emails, "agents-workflow", "")
+      agent_activity_worker_gsa = lookup(var.workload_identity_emails, "agents-activity", "")
+      agent_secret_project      = var.project_id
+      agent_results_bucket      = coalesce(component.temporal.results_bucket_name, "")
     }
 
     labels = local.common_labels
@@ -220,6 +290,11 @@ component "secrets" {
         value     = "REPLACE_ME_HCP_TEAM_TOKEN"
         accessors = [var.workload_identity_members["mcp-terraform-stacks"]]
       }
+      "backend-control-api-token" = {
+        generate  = true
+        special   = false
+        accessors = [var.workload_identity_members["backend-control-api"]]
+      }
     }
   }
 
@@ -272,8 +347,8 @@ component "cluster_secrets" {
   inputs = {
     namespaces = merge(
       {
-        dev        = { labels = { tier = "dev", "part-of" = "yourown-chat" } }
-        mattermost = { labels = { tier = "prod", "part-of" = "yourown-chat" } }
+        dev             = { labels = { tier = "dev", "part-of" = "yourown-chat" } }
+        mattermost      = { labels = { tier = "prod", "part-of" = "yourown-chat" } }
         mattermost-rtcd = { labels = { tier = "prod", "part-of" = "yourown-chat", "component" = "rtcd" } }
         # Every MCP server is an independent tenant.  This prevents a
         # compromised server from reaching another server merely because both
@@ -284,6 +359,9 @@ component "cluster_secrets" {
       },
       var.matterbridge_enabled ? {
         matterbridge = { labels = { tier = "dev", "part-of" = "yourown-chat" } }
+      } : {},
+      var.agent_platform_enabled ? {
+        yourown-agents = { labels = { tier = "pilot", "part-of" = "yourown-chat", component = "agents" } }
       } : {},
     )
     adopt_existing_namespaces = var.adopt_existing_namespaces
@@ -375,6 +453,34 @@ component "cluster_secrets" {
   }
 }
 
+# Temporal is shared platform infrastructure, not a custom application image.
+# Terraform installs the pinned official chart directly and connects it to the
+# separately managed Cloud SQL databases. It never enters Cloud Deploy.
+component "temporal" {
+  source = "../components/temporal"
+
+  inputs = {
+    enabled                   = var.temporal_enabled
+    project_id                = var.project_id
+    region                    = var.region
+    cloudsql_instance_name    = var.cloudsql_instance_name
+    cloudsql_private_ip       = var.cloudsql_private_ip
+    kms_key_name              = var.cmek_key_id
+    activity_worker_member    = var.workload_identity_members["agents-activity"]
+    chart_version             = var.temporal_chart_version
+    password_rotation         = var.temporal_password_rotation
+    results_retention_days    = var.agent_results_retention_days
+    labels                    = local.common_labels
+  }
+
+  providers = {
+    google     = provider.google.this
+    random     = provider.random.this
+    helm       = provider.helm.this
+    kubernetes = provider.kubernetes.this
+  }
+}
+
 # Terraform-owned because Cloud Deploy's execution SA (container.developer) is
 # forbidden by GKE from creating RBAC objects.
 component "dev_rbac" {
@@ -400,6 +506,7 @@ component "mattermost_image" {
     apply_service_account_email = var.service_account_email
 
     connection_name   = var.github_connection_name
+    repository_name   = var.github_repository_name
     github_remote_uri = var.github_remote_uri
 
     artifact_registry_location      = var.artifact_registry_location
@@ -410,20 +517,20 @@ component "mattermost_image" {
 
     mattermost_deliveries = {
       production = {
-        pipeline_name                    = component.clouddeploy.delivery_pipeline_name
-        initial_target_name              = component.clouddeploy.target_names["dev"]
+        pipeline_name                   = component.clouddeploy.delivery_pipeline_name
+        initial_target_name             = component.clouddeploy.target_names["dev"]
         execution_service_account_email = component.clouddeploy.execution_service_account_email
-        deploy_repository_uri            = var.github_deploy_remote_uri
-        deploy_repository_ref            = "main"
-        source_bucket_name               = component.deploy_release.source_bucket_name
+        deploy_repository_uri           = var.github_deploy_remote_uri
+        deploy_repository_ref           = "main"
+        source_bucket_name              = component.deploy_release.source_bucket_name
       }
       preview = {
-        pipeline_name                    = component.clouddeploy_mattermost_preview.delivery_pipeline_name
-        initial_target_name              = component.clouddeploy_mattermost_preview.target_names["dev"]
+        pipeline_name                   = component.clouddeploy_mattermost_preview.delivery_pipeline_name
+        initial_target_name             = component.clouddeploy_mattermost_preview.target_names["dev"]
         execution_service_account_email = component.clouddeploy_mattermost_preview.execution_service_account_email
-        deploy_repository_uri            = var.github_deploy_remote_uri
-        deploy_repository_ref            = "main"
-        source_bucket_name               = component.deploy_release.source_bucket_name
+        deploy_repository_uri           = var.github_deploy_remote_uri
+        deploy_repository_ref           = "main"
+        source_bucket_name              = component.deploy_release.source_bucket_name
       }
     }
   }
@@ -447,6 +554,13 @@ component "deploy_release" {
     connection_name   = var.github_connection_name
     github_remote_uri = var.github_deploy_remote_uri
 
+    backend_github_remote_uri = var.github_backend_remote_uri
+    agents_github_remote_uri  = var.github_agents_remote_uri
+    mcp_github_remote_uri     = var.github_mcp_remote_uri
+    mcp_release_tag_regex     = var.mcp_release_tag_regex
+    backend_release_tag_regex = var.backend_release_tag_regex
+    agents_release_tag_regex  = var.agents_release_tag_regex
+
     delivery_pipelines = {
       mattermost = {
         execution_service_account_email = component.clouddeploy.execution_service_account_email
@@ -457,10 +571,18 @@ component "deploy_release" {
       mcp = {
         execution_service_account_email = component.clouddeploy_mcp.execution_service_account_email
       }
+      agents-start = {
+        execution_service_account_email = component.clouddeploy_agents_start.execution_service_account_email
+      }
+      agents-pause = {
+        execution_service_account_email = component.clouddeploy_agents_pause.execution_service_account_email
+      }
     }
 
-    release_tag_regex = var.release_tag_regex
-    mcp_enabled       = var.mcp_servers_enabled
+    release_tag_regex      = var.release_tag_regex
+    mcp_enabled            = var.mcp_servers_enabled
+    agents_enabled         = var.agent_platform_enabled && var.temporal_enabled
+    agents_runtime_enabled = var.agent_platform_runtime_enabled
     mattermost_image_repository = {
       location      = var.artifact_registry_location
       repository_id = var.artifact_registry_repository_id
@@ -501,6 +623,7 @@ component "workload_scheduling" {
   depends_on = [component.cluster_secrets]
 
   inputs = {
+    agent_enabled = var.agent_platform_enabled
     cleanup_service_account_emails = {
       mattermost = component.clouddeploy.cleanup_service_account_email
       mcp        = component.clouddeploy_mcp.cleanup_service_account_email

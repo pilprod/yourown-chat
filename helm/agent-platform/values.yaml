@@ -1,0 +1,66 @@
+# Без оверлея running вычисления стоят в нуле. Данные Temporal сохраняются в
+# Cloud SQL и не зависят от количества реплик этого чарта.
+yourown_chat_control_api_image: ""
+yourown_chat_workflow_worker_image: ""
+yourown_chat_activity_worker_image: ""
+backend_control_api_gsa: ""
+agent_workflow_worker_gsa: ""
+agent_activity_worker_gsa: ""
+agent_secret_project: ""
+agent_results_bucket: ""
+agent_runtime_enabled: false
+
+temporal:
+  address: temporal-frontend.temporal.svc.cluster.local:7233
+  namespace: yourown-chat
+  workflowTaskQueue: agent-orchestration-go-v1
+  activityTaskQueue: agent-activities-go-v1
+
+mattermost:
+  url: http://mattermost.mattermost.svc.cluster.local:8065
+
+api:
+  replicaCount: 1
+  port: 8080
+  resources:
+    requests: { cpu: 25m, memory: 96Mi }
+    limits: { cpu: 250m, memory: 256Mi }
+
+workflowWorker:
+  replicaCount: 1
+  metricsPort: 9464
+  resources:
+    requests: { cpu: 25m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+
+activityWorker:
+  replicaCount: 1
+  metricsPort: 9464
+  resources:
+    requests: { cpu: 50m, memory: 256Mi }
+    limits: { cpu: "1", memory: 1Gi }
+
+priorityClassName: development
+serviceAccounts:
+  controlApi: backend-control-api
+  workflowWorker: agent-workflow-worker
+  activityWorker: agent-activity-worker
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile: { type: RuntimeDefault }
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities: { drop: ["ALL"] }
+
+networkPolicy:
+  enabled: true
+  # На пилоте запросы приходят из Mattermost либо из проверочного задания в
+  # том же пространстве имён. Rocket.Chat позднее использует отдельный адаптер.
+  allowedCallerNamespaces: [mattermost, yourown-agents]
+  activityNamespaces: [mattermost, mcp-google-cloud, mcp-terraform-stacks]

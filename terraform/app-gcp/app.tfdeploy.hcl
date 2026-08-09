@@ -35,11 +35,12 @@ deployment "eu" {
     region      = local.gcp_region
 
     # --- platform-gcp published values (linked stack, last-applied) -----------
-    gke_cluster_id                  = upstream_input.platform.gke_cluster_id
-    gcs_bucket_name                 = upstream_input.platform.gcs_bucket_name
+    gke_cluster_id  = upstream_input.platform.gke_cluster_id
+    gcs_bucket_name = upstream_input.platform.gcs_bucket_name
     # Exact address published by platform-gcp; used only to render the
     # production Mattermost /32 egress policy.
     cloudsql_private_ip             = upstream_input.platform.cloudsql_private_ip
+    cloudsql_instance_name          = upstream_input.platform.cloudsql_instance_name
     workload_identity_emails        = upstream_input.platform.workload_identity_emails
     artifact_registry_location      = upstream_input.platform.artifact_registry_location
     artifact_registry_repository_id = upstream_input.platform.artifact_registry_repository_id
@@ -59,6 +60,7 @@ deployment "eu" {
     # Chart pins -- bump deliberately.
     mattermost_operator_chart_version = "1.0.5"
     ingress_nginx_chart_version       = "4.15.1"
+    temporal_chart_version            = "1.2.0"
     # One-shot recovery toggles: flip true for a single adoption apply only.
     adopt_existing_cluster_bootstrap_releases = false
     adopt_existing_namespaces                 = false
@@ -67,6 +69,18 @@ deployment "eu" {
 
     # Per-server on/off lives in helm/mcp/values.yaml.
     mcp_servers_enabled = true
+
+    # The delivery path and cheap persistent state stay present. This switch
+    # chooses the static start/pause profile used by the next semver release.
+    # Operational start/pause releases remain explicit and approval-gated.
+    # The delivery plumbing and source triggers are prepared now, but Temporal
+    # must not launch until the new MCP image release has passed production
+    # verification. Flip only temporal_enabled in the follow-up Terraform run.
+    agent_platform_enabled         = true
+    temporal_enabled               = false
+    agent_platform_runtime_enabled = false
+    temporal_password_rotation     = "1"
+    agent_results_retention_days   = 30
 
     # Derived from the cloudflare stack's published outputs -- origin_tls_ready
     # and zero_trust_ready are true when Secret Manager versions exist.
@@ -78,9 +92,10 @@ deployment "eu" {
     mcp_capability_sync_enabled = true
 
     # Cloud Build 2nd-gen GitHub connection, authorized once out-of-band in the
-    # console (README.md); both repos are linked to it.
+    # console (README.md); Mattermost, platform and backend repos are linked to it.
     github_connection_name = "pilprod-github"
-    github_remote_uri      = "https://github.com/pilprod/mattermost.git"
+    github_repository_name = "yourown-chat-mattermost"
+    github_remote_uri      = "https://github.com/pilprod/yourown-chat-mattermost.git"
     image_name             = "mattermost"
     # Release branches are structurally preview-only. Immutable patched tags
     # use the normal dev -> smoke -> approval -> prod pipeline.
@@ -100,6 +115,15 @@ deployment "eu" {
     # Semver tag on THIS repo cuts a Cloud Deploy release automatically.
     github_deploy_remote_uri = "https://github.com/pilprod/yourown-chat.git"
     release_tag_regex        = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+
+    # Product backend and agent workloads are independent repositories with
+    # independent CI/tag triggers and build identities.
+    github_backend_remote_uri = "https://github.com/pilprod/yourown-chat-server.git"
+    github_agents_remote_uri  = "https://github.com/pilprod/yourown-chat-agents.git"
+    github_mcp_remote_uri     = "https://github.com/pilprod/yourown-chat-mcp.git"
+    mcp_release_tag_regex     = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    backend_release_tag_regex = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    agents_release_tag_regex  = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
 
     extra_labels = { cost-center = "platform" }
   }

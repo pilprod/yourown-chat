@@ -1,10 +1,14 @@
 # Mattermost image CI
 
+Независимая сборка пользовательской серверной части и двух исполнителей
+агентов, проверка их точных контрольных сумм и выпуск с подтверждением описаны в
+[AGENT_PLATFORM_BUILD_RELEASE.md](AGENT_PLATFORM_BUILD_RELEASE.md).
+
 The platform builds one patched Mattermost image and promotes its exact digest
 through the `mattermost` Cloud Deploy pipeline.
 
 ```text
-pilprod/mattermost v*.*-patched
+pilprod/yourown-chat-mattermost v*.*-patched
   -> Cloud Build
   -> Artifact Registry docker/mattermost:<tag>
   -> Cloud Deploy mattermost/dev
@@ -19,7 +23,7 @@ pilprod/mattermost v*.*-patched
 The `platform-gcp` stack owns the Artifact Registry repository. The `app-gcp`
 stack owns:
 
-- the Cloud Build second-generation repository link to `pilprod/mattermost`;
+- the Cloud Build second-generation repository link to `pilprod/yourown-chat-mattermost`;
 - the `img-build` service account;
 - a `release-X.Y-patched` branch trigger targeting the structurally dev-only
   `mattermost-preview` pipeline;
@@ -29,8 +33,9 @@ stack owns:
   those two pipelines.
 
 The shared `pilprod-github` connection is authorized once in the Google Cloud
-console and must have access to both `pilprod/mattermost` and
-`pilprod/yourown-chat`.
+console and must have access to `pilprod/yourown-chat-mattermost`,
+`pilprod/yourown-chat`, the product backend `pilprod/yourown-chat-server`, and
+the agent workloads `pilprod/yourown-chat-agents`.
 
 ## Build and deliver
 
@@ -101,15 +106,18 @@ when that process fails. Publish a new semver tag for the corrected commit.
 Deleting and recreating a tag is allowed only when Cloud Build has never
 started for it and Cloud Deploy has no release derived from it.
 
-## MCP image factory
+## Image factories and private MCP source
 
-MCP images use one declarative factory rather than per-image Cloud Build
-snippets:
+The image catalog owns public runtimes and vendor source rebuilds. First-party
+MCP application code lives only in the private `pilprod/yourown-chat-mcp`
+repository. Its Terraform-managed Cloud Build trigger uses the single
+parameterized `docker/mcp/Dockerfile` in this repository to build two separate
+static Go images, attest them, scan them and release immutable source tags.
 
 - `docker/images.tsv` separates the stable logical image name from its
   Artifact Registry path and describes build or mirror mode, Dockerfile,
   context, parent runtime, upstream source, change selector, audit, Cloud
-  Deploy parameter, OCI metadata and optional external Git source/revision;
+  Deploy parameter and OCI metadata;
 - `docker/prepare-images.sh` materialises every catalogued external build
   context at its pinned revision;
 - `docker/audit-images.sh` applies the catalogued language audit policy;
@@ -128,19 +136,26 @@ docker/                         # one Artifact Registry repository
 ├── python
 ├── mcp-cloudflared
 ├── mcp-google-cloud
-└── mcp-terraform-stacks
+├── mcp-terraform-stacks
+├── yourown-chat-control-api
+├── yourown-chat-workflow-worker
+└── yourown-chat-activity-worker
 ```
 
-Each internal package gets an immutable `<git-sha>` tag and a moving `runtime`
-tag used to resolve the newest approved digest. The runtime dependency graph
-is:
+`yourown-chat-control-api` is built from `pilprod/yourown-chat-server`.
+`yourown-chat-workflow-worker` and `yourown-chat-activity-worker` are built from
+`pilprod/yourown-chat-agents`. Separate Cloud Build identities and triggers
+enforce this source boundary. Matching immutable tags coordinate the three
+digests into one workload release.
+
+Owned MCP images are built directly from the private Go source repository with
+one pinned multi-service Dockerfile. The retained base/runtime catalog is for
+vendor and other application images; it is not an MCP source dependency:
 
 ```text
-base (pinned Alpine)
-├── node
-│   ├── mcp-google-cloud
-│   └── mcp-terraform-stacks
-└── python
+yourown-chat-mcp tag
+  -> mcp-google-cloud@sha256:...
+  -> mcp-terraform-stacks@sha256:...
 ```
 
 Cloudflared is built from the exact commit behind an official release tag with

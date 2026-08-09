@@ -1,0 +1,15 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: agent-platform-verify
+  namespace: yourown-agents
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      serviceAccountName: agent-platform-verify
+      restartPolicy: Never
+      containers:
+        - name: verify
+          image: curlimages/curl:8.10.1

@@ -15,8 +15,12 @@ case "${component}" in
     config_path='helm/skaffold-mattermost.yaml'
     ;;
   mcp)
-    workload_regex='^(helm/mcp/|docker/)'
+    workload_regex='^helm/mcp/'
     config_path='helm/skaffold-mcp.yaml'
+    ;;
+  agents)
+    workload_regex='^helm/agent-platform/'
+    config_path='helm/skaffold-agents.yaml'
     ;;
   *)
     printf 'Unknown release component: %s\n' "${component}" >&2
