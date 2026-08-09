@@ -169,7 +169,7 @@ component "clouddeploy_agents_start" {
       agent_workflow_worker_gsa = lookup(var.workload_identity_emails, "agents-workflow", "")
       agent_activity_worker_gsa = lookup(var.workload_identity_emails, "agents-activity", "")
       agent_secret_project      = var.project_id
-      agent_results_bucket      = coalesce(component.temporal.results_bucket_name, "")
+      agent_results_bucket      = var.agent_results_bucket
     }
 
     labels = local.common_labels
@@ -205,7 +205,7 @@ component "clouddeploy_agents_pause" {
       agent_workflow_worker_gsa = lookup(var.workload_identity_emails, "agents-workflow", "")
       agent_activity_worker_gsa = lookup(var.workload_identity_emails, "agents-activity", "")
       agent_secret_project      = var.project_id
-      agent_results_bucket      = coalesce(component.temporal.results_bucket_name, "")
+      agent_results_bucket      = var.agent_results_bucket
     }
 
     labels = local.common_labels
@@ -453,34 +453,6 @@ component "cluster_secrets" {
   }
 }
 
-# Temporal is shared platform infrastructure, not a custom application image.
-# Terraform installs the pinned official chart directly and connects it to the
-# separately managed Cloud SQL databases. It never enters Cloud Deploy.
-component "temporal" {
-  source = "../components/temporal"
-
-  inputs = {
-    enabled                   = var.temporal_enabled
-    project_id                = var.project_id
-    region                    = var.region
-    cloudsql_instance_name    = var.cloudsql_instance_name
-    cloudsql_private_ip       = var.cloudsql_private_ip
-    kms_key_name              = var.cmek_key_id
-    activity_worker_member    = var.workload_identity_members["agents-activity"]
-    chart_version             = var.temporal_chart_version
-    password_rotation         = var.temporal_password_rotation
-    results_retention_days    = var.agent_results_retention_days
-    labels                    = local.common_labels
-  }
-
-  providers = {
-    google     = provider.google.this
-    random     = provider.random.this
-    helm       = provider.helm.this
-    kubernetes = provider.kubernetes.this
-  }
-}
-
 # Terraform-owned because Cloud Deploy's execution SA (container.developer) is
 # forbidden by GKE from creating RBAC objects.
 component "dev_rbac" {
@@ -602,7 +574,7 @@ component "deploy_release" {
 # Data-only cluster auth; separate from cluster_bootstrap because a component
 # cannot both feed a provider's configuration and consume that provider.
 component "gke_auth" {
-  source = "./modules/gke-auth"
+  source = "../modules/gke-auth"
 
   inputs = {
     gke_cluster_id = var.gke_cluster_id

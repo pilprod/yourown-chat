@@ -51,10 +51,11 @@ bucket. Kubernetes receives only digest-qualified image references.
 
 ## Temporal launch gate
 
-`agent_platform_enabled=true` prepares namespaces, delivery pipelines, source
-repository links and all four server/agent Cloud Build triggers.
-`temporal_enabled=false` is a separate hard launch gate and is the committed
-default. While it is false:
+`agent_platform_enabled=true` in `app-gcp` prepares namespaces, delivery
+pipelines, source repository links and all four server/agent Cloud Build
+triggers. `temporal_enabled=false` belongs to `platform-gcp`; it is a separate
+hard launch gate and the committed default. `app-gcp` consumes this value only
+through the published platform output. While it is false:
 
 - Terraform does not create Temporal databases, password, bucket, namespace or
   Helm release;
@@ -68,14 +69,18 @@ rollout.
 
 1. In the Cloud Build GitHub connection, authorize `yourown-chat-mcp`,
    `yourown-chat-server` and `yourown-chat-agents`.
-2. Apply `app-gcp` with `temporal_enabled=false`. Verify repository links and
-   the `*-ci` / `*-image` triggers exist.
+2. Apply `platform-gcp` with `temporal_enabled=false`, then apply the linked
+   `app-gcp` plan. Verify repository links and the `*-ci` / `*-image` triggers
+   exist.
 3. Tag `yourown-chat-mcp` with the next immutable release tag. Let Cloud Deploy
    pass dev verification, approve prod and complete prod verification.
-4. Change only `temporal_enabled` to `true`, review the `app-gcp` plan and apply
-   it. Terraform creates the two logical databases, Secret Manager password,
-   results bucket, isolated namespace and pinned official Temporal chart.
-5. Verify the Temporal frontend and schema jobs before deploying custom
+4. Change only `temporal_enabled` to `true` in `platform-gcp`, review and apply
+   that plan. Terraform extends the existing Cloud SQL/storage owners with the
+   two logical databases, Secret Manager password and results bucket, then
+   installs the isolated pinned official Temporal chart.
+5. Review and apply the automatically linked `app-gcp` plan so delivery receives
+   the platform readiness and result-bucket outputs. Verify the Temporal
+   frontend and schema jobs before deploying custom
    workloads.
 6. Create the same new immutable release tag in `yourown-chat-server` and
    `yourown-chat-agents`. The coordinated tag build creates one paused agent
@@ -86,8 +91,9 @@ rollout.
    `cloud-pause-now` only for a reversible emergency scale-to-zero, then
    reconcile with the normal pause release.
 
-Do not flip `temporal_enabled` in the same apply that first creates the GitHub
-repository links. Do not reuse or move a release tag.
+Do not flip `platform-gcp.temporal_enabled` before the first `app-gcp` trigger
+apply and the prerequisite MCP production verification. Do not reuse or move a
+release tag.
 
 ## Expected triggers
 
@@ -112,6 +118,7 @@ MCP, server and agents repositories use plain `MAJOR.MINOR.PATCH`.
 Before applying:
 
 ```bash
+terraform stacks -chdir=terraform/platform-gcp validate
 terraform -chdir=terraform/app-gcp/modules/deploy-release validate
 terraform stacks -chdir=terraform/app-gcp validate
 bash helm/test/agent-platform.test.sh

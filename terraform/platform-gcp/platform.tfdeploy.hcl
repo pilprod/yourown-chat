@@ -80,6 +80,13 @@ deployment "eu" {
     # consumers so they pick up the new connection secret.
     cloudsql_password_rotation = "2026-07-12"
 
+    # Temporal is a platform-gcp service. Keep the launch gate closed until the
+    # prerequisite MCP image has passed production verification.
+    temporal_enabled             = false
+    temporal_chart_version       = "1.2.0"
+    temporal_password_rotation   = "1"
+    agent_results_retention_days = 30
+
     public_ingress_enabled   = true
     mattermost_calls_enabled = true
 
@@ -163,4 +170,14 @@ publish_output "cloudsql_instance_name" {
 publish_output "workload_identity_emails" {
   description = "Tenant => GSA email, rendered into the KSA annotations via Cloud Deploy deploy parameters."
   value       = deployment.eu.workload_identity_emails
+}
+
+publish_output "temporal_enabled" {
+  description = "Platform-owned Temporal launch state consumed by app-gcp delivery gates."
+  value       = deployment.eu.temporal_enabled
+}
+
+publish_output "temporal_results_bucket_name" {
+  description = "Platform-owned agent result bucket consumed by application delivery parameters."
+  value       = deployment.eu.temporal_results_bucket_name
 }

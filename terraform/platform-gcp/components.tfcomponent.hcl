@@ -407,6 +407,15 @@ component "storage" {
     create_filestore_hmac      = true
     filestore_secret_accessors = [component.workload_identity_mattermost.iam_member]
     secret_replica_locations   = [var.region]
+
+    additional_buckets = var.temporal_enabled ? {
+      agent-results = {
+        name           = "agent-results-${var.project_id}-${var.region}"
+        retention_days = var.agent_results_retention_days
+        force_destroy  = false
+        members        = [component.workload_identity_agents.iam_member]
+      }
+    } : {}
   }
 
   providers = {
@@ -435,6 +444,20 @@ component "gke" {
     # The same shared key protects etcd Secrets and opted-in node boot disks.
     # Referencing kms orders both the key and service-agent grants first.
     database_encryption_key = one([for k in component.kms : k.crypto_key_id])
+  }
+
+  providers = {
+    google = provider.google.this
+  }
+}
+
+# Data-only cluster authentication shared by the platform-owned official Helm
+# services. It creates no GKE resources and uses the same keyless apply SA.
+component "gke_auth" {
+  source = "../modules/gke-auth"
+
+  inputs = {
+    gke_cluster_id = component.gke.cluster_id
   }
 
   providers = {
@@ -475,6 +498,15 @@ component "cloudsql" {
 
     password_rotation = var.cloudsql_password_rotation
 
+    additional_database_users = var.temporal_enabled ? {
+      temporal = {
+        database_names            = ["temporal", "temporal_visibility"]
+        password_secret_id        = "temporal-db-password"
+        password_secret_accessors = []
+        password_rotation         = var.temporal_password_rotation
+      }
+    } : {}
+
     user_labels = local.common_labels
   }
 
@@ -482,6 +514,28 @@ component "cloudsql" {
     google = provider.google.this
     random = provider.random.this
   }
+}
+
+# Temporal is an official platform service. Its GCP persistence is composed
+# through the existing Cloud SQL and storage owners above; this module owns only
+# the in-cluster namespace, policy, secret and pinned official Helm release.
+component "temporal" {
+  source = "./modules/temporal"
+
+  inputs = {
+    enabled             = var.temporal_enabled
+    cloudsql_private_ip = one([for database in component.cloudsql : database.private_ip_address])
+    database_password   = try(one([for database in component.cloudsql : database.additional_passwords["temporal"]]), "")
+    chart_version       = var.temporal_chart_version
+    labels              = local.common_labels
+  }
+
+  providers = {
+    helm       = provider.helm.this
+    kubernetes = provider.kubernetes.this
+  }
+
+  depends_on = [component.cloudsql, component.storage]
 }
 
 component "artifact_registry" {

@@ -6,34 +6,6 @@ locals {
   })
 }
 
-module "databases" {
-  count  = var.enabled ? 1 : 0
-  source = "../../modules/postgresql-databases"
-
-  project_id         = var.project_id
-  instance_name      = var.cloudsql_instance_name
-  database_names     = ["temporal", "temporal_visibility"]
-  user_name          = "temporal"
-  password_secret_id = "temporal-db-password"
-  secret_location    = var.region
-  kms_key_name       = var.kms_key_name
-  labels             = var.labels
-  password_rotation  = var.password_rotation
-}
-
-module "results" {
-  count  = var.enabled ? 1 : 0
-  source = "../../modules/gcs-bucket"
-
-  project_id     = var.project_id
-  name           = "agent-results-${var.project_id}-${var.region}"
-  location       = var.region
-  kms_key_name   = var.kms_key_name
-  labels         = var.labels
-  retention_days = var.results_retention_days
-  members        = [var.activity_worker_member]
-}
-
 resource "kubernetes_namespace_v1" "this" {
   count = var.enabled ? 1 : 0
 
@@ -55,7 +27,7 @@ resource "kubernetes_secret_v1" "database" {
     labels    = local.labels
   }
 
-  data = { password = module.databases[0].password }
+  data = { password = var.database_password }
 }
 
 resource "kubernetes_resource_quota_v1" "this" {

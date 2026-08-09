@@ -27,6 +27,14 @@ required_providers {
     source  = "hashicorp/random"
     version = "~> 3.5"
   }
+  helm = {
+    source  = "hashicorp/helm"
+    version = "~> 3.0"
+  }
+  kubernetes = {
+    source  = "hashicorp/kubernetes"
+    version = "~> 2.37.0"
+  }
 }
 
 # --- GCP: keyless WIF (impersonate the least-privilege apply SA) -------------
@@ -57,3 +65,21 @@ provider "google-beta" "this" {
 }
 
 provider "random" "this" {}
+
+provider "helm" "this" {
+  config {
+    kubernetes = {
+      host                   = component.gke_auth.host
+      cluster_ca_certificate = component.gke_auth.cluster_ca_certificate
+      token                  = component.gke_auth.access_token
+    }
+  }
+}
+
+provider "kubernetes" "this" {
+  config {
+    host                   = component.gke_auth.host
+    cluster_ca_certificate = component.gke_auth.cluster_ca_certificate
+    token                  = component.gke_auth.access_token
+  }
+}

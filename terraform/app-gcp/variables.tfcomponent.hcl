@@ -184,29 +184,6 @@ variable "cloudsql_private_ip" {
   description = "Exact private Cloud SQL address allowed by the production Mattermost NetworkPolicy."
 }
 
-variable "cloudsql_instance_name" {
-  type        = string
-  description = "Cloud SQL instance name used by database-owning components."
-}
-
-variable "temporal_chart_version" {
-  type        = string
-  description = "Pinned official Temporal Helm chart installed directly by Terraform."
-  default     = "1.2.0"
-}
-
-variable "temporal_password_rotation" {
-  type        = string
-  description = "Manual rotation trigger for the Temporal database password."
-  default     = "1"
-}
-
-variable "agent_results_retention_days" {
-  type        = number
-  description = "Automatic retention for artifacts in the Temporal component result bucket."
-  default     = 30
-}
-
 variable "workload_identity_emails" {
   type        = map(string)
   description = "Tenant (mattermost/matterbridge/dev) => GSA email. Published by the platform-gcp stack; rendered into the KSA iam.gke.io/gcp-service-account annotations via Cloud Deploy deploy parameters."
@@ -281,6 +258,12 @@ variable "temporal_enabled" {
   type        = bool
   description = "Explicit launch gate for Terraform-owned Temporal infrastructure. Keep false until the prerequisite MCP production release has passed verification."
   default     = false
+}
+
+variable "agent_results_bucket" {
+  type        = string
+  description = "Platform-owned result bucket passed to agent workload delivery. Empty while Temporal is disabled."
+  default     = ""
 }
 
 variable "agent_platform_runtime_enabled" {

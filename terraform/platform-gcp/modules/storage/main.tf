@@ -158,3 +158,43 @@ resource "google_secret_manager_secret_iam_member" "filestore_secret_accessor" {
   role      = "roles/secretmanager.secretAccessor"
   member    = each.value
 }
+
+locals {
+  additional_bucket_members = merge([
+    for bucket_key, settings in var.additional_buckets : {
+      for member in settings.members : "${bucket_key}/${member}" => {
+        bucket_key = bucket_key
+        member     = member
+      }
+    }
+  ]...)
+}
+
+resource "google_storage_bucket" "additional" {
+  for_each                    = var.additional_buckets
+  project                     = var.project_id
+  name                        = each.value.name
+  location                    = var.location
+  storage_class               = var.storage_class
+  uniform_bucket_level_access = true
+  public_access_prevention    = "enforced"
+  force_destroy               = each.value.force_destroy
+  labels                      = var.labels
+
+  dynamic "encryption" {
+    for_each = var.kms_key_name == null ? [] : [var.kms_key_name]
+    content { default_kms_key_name = encryption.value }
+  }
+
+  lifecycle_rule {
+    condition { age = each.value.retention_days }
+    action { type = "Delete" }
+  }
+}
+
+resource "google_storage_bucket_iam_member" "additional" {
+  for_each = local.additional_bucket_members
+  bucket   = google_storage_bucket.additional[each.value.bucket_key].name
+  role     = "roles/storage.objectAdmin"
+  member   = each.value.member
+}

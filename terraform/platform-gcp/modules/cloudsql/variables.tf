@@ -191,3 +191,14 @@ variable "password_rotation" {
   description = "Rotation trigger for the DB user password. Any change regenerates the password and updates the SQL user + both secrets in one apply (restart consumers afterwards). Bump deliberately (e.g. '2', or a date '2026-07-13'); no time-based auto-rotation on purpose."
   default     = "1"
 }
+
+variable "additional_database_users" {
+  type = map(object({
+    database_names            = set(string)
+    password_secret_id        = string
+    password_secret_accessors = optional(set(string), [])
+    password_rotation         = optional(string, "1")
+  }))
+  description = "Additional logical database groups and users hosted by this shared Cloud SQL instance. The map key is the PostgreSQL user name."
+  default     = {}
+}
