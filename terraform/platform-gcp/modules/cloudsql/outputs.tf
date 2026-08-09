@@ -37,3 +37,22 @@ output "password_secret_version_id" {
   description = "Secret Manager secret version resource ID."
   value       = google_secret_manager_secret_version.db_password.id
 }
+
+output "additional_database_names" {
+  description = "Additional database group => created logical database names."
+  value = {
+    for user_name, settings in var.additional_database_users :
+    user_name => sort(tolist(settings.database_names))
+  }
+}
+
+output "additional_password_secret_ids" {
+  description = "Additional database user => Secret Manager password secret ID."
+  value       = { for user_name, secret in google_secret_manager_secret.additional_password : user_name => secret.secret_id }
+}
+
+output "additional_passwords" {
+  description = "Additional database user => generated password, for same-Stack Kubernetes secret creation only."
+  value       = { for user_name, password in random_password.additional : user_name => password.result }
+  sensitive   = true
+}

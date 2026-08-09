@@ -66,7 +66,32 @@ An incompatible change is expanded and contracted:
 
 Temporal is platform infrastructure. Terraform installs the pinned official
 chart, creates its databases, secret, result bucket, namespace, quota and
-network policy. It is not copied into Helm delivery and has no custom image.
+network policy from `platform-gcp`. It is not copied into Helm delivery and has
+no custom image.
+
+### Terraform ownership rule for future agents
+
+Every durable resource has exactly one Stack owner. Before adding a Terraform
+module or Stack, find the existing owner of the underlying resource and extend
+that owner's module first. A feature name is not a valid reason to introduce a
+parallel infrastructure module.
+
+- `platform-gcp` owns GKE, the shared Cloud SQL instance and its logical
+  databases/users, KMS, GCS platform buckets, Workload Identity and official
+  platform services such as Temporal.
+- `app-gcp` owns delivery rails and application runtime configuration. It must
+  consume platform outputs and must not create a second database, bucket or
+  platform-service lifecycle.
+- Common modules are extracted only when multiple existing Stack owners need
+  the same resource abstraction without sharing resource ownership.
+- A new Stack is justified only by an independently approved lifecycle and
+  state boundary. It must not recreate or partially claim a resource already
+  owned by another Stack.
+
+For Temporal this means extending the existing `platform-gcp` Cloud SQL and
+storage modules, then composing the official chart inside `platform-gcp`.
+Creating `components/temporal`, `temporal-storage` or a second Cloud SQL/GCS
+module outside the owning Stack violates this rule.
 
 The three custom Go workloads are delivered by Cloud Deploy using immutable
 digests. A normal pause scales agent workers to zero while retaining Temporal

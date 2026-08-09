@@ -202,3 +202,82 @@ resource "google_secret_manager_secret_iam_member" "connection_accessor" {
   role      = "roles/secretmanager.secretAccessor"
   member    = each.value
 }
+
+# Additional platform databases share the existing protected Cloud SQL
+# instance. Keeping them here prevents a second module or Stack from claiming
+# ownership of the same instance.
+locals {
+  additional_databases = merge([
+    for user_name, settings in var.additional_database_users : {
+      for database_name in settings.database_names : "${user_name}/${database_name}" => {
+        user_name     = user_name
+        database_name = database_name
+      }
+    }
+  ]...)
+
+  additional_password_accessors = merge([
+    for user_name, settings in var.additional_database_users : {
+      for member in settings.password_secret_accessors : "${user_name}/${member}" => {
+        user_name = user_name
+        member    = member
+      }
+    }
+  ]...)
+}
+
+resource "random_password" "additional" {
+  for_each         = var.additional_database_users
+  length           = 32
+  special          = true
+  override_special = "-_.~"
+  keepers          = { rotation = each.value.password_rotation }
+}
+
+resource "google_sql_database" "additional" {
+  for_each = local.additional_databases
+  project  = var.project_id
+  instance = google_sql_database_instance.this.name
+  name     = each.value.database_name
+}
+
+resource "google_sql_user" "additional" {
+  for_each = var.additional_database_users
+  project  = var.project_id
+  instance = google_sql_database_instance.this.name
+  name     = each.key
+  password = random_password.additional[each.key].result
+}
+
+resource "google_secret_manager_secret" "additional_password" {
+  for_each  = var.additional_database_users
+  project   = var.project_id
+  secret_id = each.value.password_secret_id
+  labels    = var.user_labels
+
+  replication {
+    user_managed {
+      replicas {
+        location = var.region
+        dynamic "customer_managed_encryption" {
+          for_each = var.encryption_key_name == null ? [] : [var.encryption_key_name]
+          content { kms_key_name = customer_managed_encryption.value }
+        }
+      }
+    }
+  }
+}
+
+resource "google_secret_manager_secret_version" "additional_password" {
+  for_each    = var.additional_database_users
+  secret      = google_secret_manager_secret.additional_password[each.key].id
+  secret_data = random_password.additional[each.key].result
+}
+
+resource "google_secret_manager_secret_iam_member" "additional_password_accessor" {
+  for_each  = local.additional_password_accessors
+  project   = var.project_id
+  secret_id = google_secret_manager_secret.additional_password[each.value.user_name].secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = each.value.member
+}

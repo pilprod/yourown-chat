@@ -40,7 +40,6 @@ deployment "eu" {
     # Exact address published by platform-gcp; used only to render the
     # production Mattermost /32 egress policy.
     cloudsql_private_ip             = upstream_input.platform.cloudsql_private_ip
-    cloudsql_instance_name          = upstream_input.platform.cloudsql_instance_name
     workload_identity_emails        = upstream_input.platform.workload_identity_emails
     artifact_registry_location      = upstream_input.platform.artifact_registry_location
     artifact_registry_repository_id = upstream_input.platform.artifact_registry_repository_id
@@ -60,7 +59,6 @@ deployment "eu" {
     # Chart pins -- bump deliberately.
     mattermost_operator_chart_version = "1.0.5"
     ingress_nginx_chart_version       = "4.15.1"
-    temporal_chart_version            = "1.2.0"
     # One-shot recovery toggles: flip true for a single adoption apply only.
     adopt_existing_cluster_bootstrap_releases = false
     adopt_existing_namespaces                 = false
@@ -73,14 +71,12 @@ deployment "eu" {
     # The delivery path and cheap persistent state stay present. This switch
     # chooses the static start/pause profile used by the next semver release.
     # Operational start/pause releases remain explicit and approval-gated.
-    # The delivery plumbing and source triggers are prepared now, but Temporal
-    # must not launch until the new MCP image release has passed production
-    # verification. Flip only temporal_enabled in the follow-up Terraform run.
+    # The delivery plumbing and source triggers are prepared now. Runtime
+    # release permission follows the platform-owned Temporal launch state.
     agent_platform_enabled         = true
-    temporal_enabled               = false
+    temporal_enabled               = upstream_input.platform.temporal_enabled
+    agent_results_bucket           = try(upstream_input.platform.temporal_results_bucket_name, "")
     agent_platform_runtime_enabled = false
-    temporal_password_rotation     = "1"
-    agent_results_retention_days   = 30
 
     # Derived from the cloudflare stack's published outputs -- origin_tls_ready
     # and zero_trust_ready are true when Secret Manager versions exist.

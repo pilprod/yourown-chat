@@ -86,3 +86,14 @@ variable "secret_replica_locations" {
   description = "Regions the filestore secrets are replicated to (keep data in-region)."
   default     = ["europe-west3"]
 }
+
+variable "additional_buckets" {
+  type = map(object({
+    name           = string
+    retention_days = optional(number, 30)
+    force_destroy  = optional(bool, false)
+    members        = optional(set(string), [])
+  }))
+  description = "Additional private platform buckets keyed by function."
+  default     = {}
+}

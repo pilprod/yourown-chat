@@ -173,3 +173,22 @@ output "artifact_registry_repository_id" {
   description = "Artifact Registry repository ID. Consumed by the app-gcp stack's image CI."
   value       = component.artifact_registry.repository_id
 }
+
+# --- Temporal platform service ----------------------------------------------
+output "temporal_enabled" {
+  type        = bool
+  description = "Whether platform-gcp has enabled the official Temporal service."
+  value       = var.temporal_enabled
+}
+
+output "temporal_results_bucket_name" {
+  type        = string
+  description = "Private agent result bucket created by platform-gcp when Temporal is enabled."
+  value       = try(component.storage.additional_bucket_names["agent-results"], null)
+}
+
+output "temporal_release_name" {
+  type        = string
+  description = "Installed official Temporal Helm release name, or null while the launch gate is closed."
+  value       = component.temporal.release_name
+}

@@ -27,3 +27,8 @@ output "filestore_secret_key_secret_id" {
   description = "Secret Manager secret ID holding the S3-compatible secret key (null unless create_filestore_hmac = true)."
   value       = local.filestore_enabled ? google_secret_manager_secret.filestore_secret_key[0].secret_id : null
 }
+
+output "additional_bucket_names" {
+  description = "Additional platform bucket key => bucket name."
+  value       = { for bucket_key, bucket in google_storage_bucket.additional : bucket_key => bucket.name }
+}

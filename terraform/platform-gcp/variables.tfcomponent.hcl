@@ -271,3 +271,28 @@ variable "cloudsql_password_rotation" {
   description = "Rotation trigger for the Cloud SQL user password. Bump the committed value in platform.tfdeploy.hcl (e.g. to a date) and apply: the password, SQL user and both Secret Manager secrets update in one apply -- then restart the Mattermost pods (the CSI mount refreshes on pod start). A committed literal on purpose: varset values are ephemeral in Stacks and cannot feed persisted state, and time-based keepers would rotate as a side effect of unrelated applies."
   default     = "1"
 }
+
+# --- Temporal platform service ----------------------------------------------
+variable "temporal_enabled" {
+  type        = bool
+  description = "Create the Temporal logical databases, result bucket and pinned official chart inside platform-gcp."
+  default     = false
+}
+
+variable "temporal_chart_version" {
+  type        = string
+  description = "Pinned official Temporal Helm chart version."
+  default     = "1.2.0"
+}
+
+variable "temporal_password_rotation" {
+  type        = string
+  description = "Explicit rotation trigger for the Temporal database user."
+  default     = "1"
+}
+
+variable "agent_results_retention_days" {
+  type        = number
+  description = "Retention period for agent report objects in the platform results bucket."
+  default     = 30
+}

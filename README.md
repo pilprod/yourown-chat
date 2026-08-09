@@ -910,10 +910,13 @@ A few structural notes worth knowing:
 
 - **One stack per directory.** HCP Terraform reads one stack per working
   directory, so there are four HCP Stacks pointing at the four directories.
-- **Reusable primitives are generic.** New cross-project PostgreSQL and GCS
-  modules live under `terraform/modules/`; Temporal-specific composition lives
-  under `terraform/components/temporal`. Stack-local legacy modules remain in
-  place until they are migrated independently.
+- **One owner extends its modules.** `platform-gcp` owns the shared Cloud SQL
+  instance, logical databases/users, platform buckets, GKE and official
+  services such as Temporal. A feature must extend those existing owner modules
+  instead of adding a parallel database/storage module or feature Stack. Only
+  genuinely owner-neutral helpers such as keyless GKE authentication live under
+  `terraform/modules/`. The canonical rule is in
+  [`docs/AGENT_PLATFORM.md`](docs/AGENT_PLATFORM.md#terraform-ownership-rule-for-future-agents).
 - **Each stack pins its own providers** (`.terraform.lock.hcl`) and Terraform
   version (`.terraform-version`, currently 1.15.8).
 
