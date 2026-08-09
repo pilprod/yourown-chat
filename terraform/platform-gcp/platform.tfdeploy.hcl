@@ -38,9 +38,9 @@ deployment "eu" {
     region             = local.gcp_region
     zone               = local.gcp_zone
 
-    # ONE zonal cluster (GKE free tier), an autoscaling general-purpose pool,
-    # plus one dedicated RTCD media node required by the supported Calls
-    # Kubernetes topology.
+    # ONE zonal cluster (GKE free tier) with an autoscaling general-purpose
+    # pool. Standalone RTCD shares this pool; its requests and production
+    # PriorityClass preserve media capacity without paying for an idle node.
     # Kubernetes PriorityClass + requests/quotas protect prod capacity; dev
     # workloads are preemptible and scaled down after release verification.
     gke_regional            = false
@@ -62,26 +62,6 @@ deployment "eu" {
           pool = "general"
         }
         taints = []
-      }
-      # RTCD handles real-time media on a dedicated node as required by the
-      # supported Mattermost Calls Kubernetes topology. The taint prevents
-      # ordinary workloads from consuming its deterministic media capacity.
-      rtcd = {
-        machine_type   = "e2-standard-2"
-        spot           = false
-        min_count      = 1
-        max_count      = 1
-        disk_size_gb   = 30
-        disk_type      = "pd-standard"
-        cmek_boot_disk = true
-        labels = {
-          pool = "rtcd"
-        }
-        taints = [{
-          key    = "workload"
-          value  = "rtcd"
-          effect = "NO_SCHEDULE"
-        }]
       }
     }
 

@@ -810,7 +810,7 @@ resource type.
 | **platform-gcp / APIs** | Service Usage entries for Compute, GKE, Service Networking, Cloud SQL, KMS, Storage, Cloud Deploy, Logging, Monitoring, Cloud Build, Cloud Billing, Billing Budgets, BigQuery, BigQuery Data Transfer, Recommender, Artifact Registry, Artifact Analysis, Agent Registry and Google Workspace MCP APIs |
 | **platform-gcp / network** | Custom VPC, regional subnet with pod/service secondary ranges, internal firewall, Cloud Router, Cloud NAT with a reserved egress IP for Workspace SMTP Relay, reserved external ingress IP, reserved shared Calls media VIP, PSA address and Service Networking connection |
 | **platform-gcp / encryption** | Regional HSM KMS key ring and key, rotation policy, IAM grants for GKE, Compute Engine, Cloud SQL, GCS and Secret Manager service agents |
-| **platform-gcp / compute** | One zonal private GKE Standard cluster, HSM-CMEK autoscaling `general` node pool, dedicated tainted RTCD node pool, shielded nodes, node service account, CSI drivers, etcd application-layer encryption and GKE cost allocation |
+| **platform-gcp / compute** | One zonal private GKE Standard cluster, one HSM-CMEK autoscaling `general` node pool shared by application workloads and standalone RTCD, shielded nodes, node service account, CSI drivers, etcd application-layer encryption and GKE cost allocation |
 | **platform-gcp / data** | Private Cloud SQL PostgreSQL instance, database/user/password secrets, GCS Mattermost bucket, HMAC service account and secrets, EU BigQuery `billing` dataset |
 | **platform-gcp / supply chain** | Regional Artifact Registry `docker` repository, cleanup policy, default-off scanning gate and least-privilege MCP scanning controller |
 | **platform-gcp / identities** | Separate Google service accounts and Workload Identity bindings for Mattermost, dev, Matterbridge, every MCP server and cloudflared |
@@ -1129,8 +1129,9 @@ for exactly one zonal cluster — a second cluster would add ~$74/month. So dev
 and prod share **one cluster**:
 
 - one on-demand `general` pool (`e2-standard-2`) autoscaling from one to three nodes;
-- one fixed, tainted `rtcd` pool (`e2-standard-2`) required by the supported
-  Mattermost Calls Kubernetes topology;
+- standalone RTCD shares the `general` pool and keeps its production priority,
+  explicit requests and burst limits; add a tainted media pool only when Calls
+  traffic demonstrates that hard resource isolation is worth another VM;
 - production PriorityClass can preempt disposable dev workloads; accurate
   requests, a dev ResourceQuota and LimitRange bound resource contention;
 - verified dev Mattermost/MCP stays available for review; production approval
@@ -1146,13 +1147,12 @@ and prod share **one cluster**:
 |---|---|---|
 | GKE control plane | 1 zonal cluster | $0 (free tier) |
 | shared nodes | 1× `e2-standard-2` baseline | ≈$49 |
-| Calls media node | 1× dedicated `e2-standard-2` | ≈$49 |
 | Calls L4 networking | TCP/UDP forwarding and traffic processing | usage-dependent |
 | rollout capacity | temporary autoscaled nodes | typically <$1–2 |
 | Cloud SQL | `db-f1-micro`, 20 GiB, PITR | ≈$12–15 |
 | GCS + PVCs | small | ≈$3 |
 | Buffer | egress/growth | ≈$10–15 |
-| **Total** | | **≈$124–140 plus media egress** |
+| **Total** | | **≈$75–91 plus media egress** |
 
 Every knob has a hardening path — flip a variable, don't re-architect:
 `gke_regional = true` for an HA control plane, `REGIONAL` for HA Cloud SQL,

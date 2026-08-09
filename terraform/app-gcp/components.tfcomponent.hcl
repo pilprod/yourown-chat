@@ -493,8 +493,8 @@ component "gke_auth" {
 
 # The general pool relies on Kubernetes scheduling policy rather than permanent
 # per-environment VMs: prod can preempt dev, while the dev namespace has a hard
-# compute budget and safe defaults. The dedicated RTCD pool is managed by the
-# platform stack and accepts only its tainted Calls media workload.
+# compute budget and safe defaults. RTCD uses the same pool with production
+# priority and explicit requests so idle media capacity does not require a VM.
 component "workload_scheduling" {
   source = "./modules/workload-scheduling"
 
