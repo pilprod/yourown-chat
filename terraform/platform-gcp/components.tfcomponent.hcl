@@ -170,7 +170,6 @@ component "billing_export" {
   inputs = {
     project_id         = component.project_services.project_id
     billing_account_id = var.billing_account_id
-    project_number     = var.project_number
     dataset_id         = "billing"
     location           = "EU"
     reader_member      = component.workload_identity_mcp.iam_member
@@ -188,6 +187,7 @@ component "billing_budget" {
 
   inputs = {
     billing_account_id = var.billing_account_id
+    project_number     = var.project_number
     display_name       = "YourOwn.Chat monthly USD budget"
     currency_code      = "USD"
     monthly_units      = 100
