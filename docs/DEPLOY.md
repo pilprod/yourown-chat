@@ -8,10 +8,10 @@ or unrelated component from being reapplied during every release.
 
 ```mermaid
 flowchart TD
-  PREVIEW["pilprod/yourown-chat-mattermost branch<br/>release-X.Y-patched"] --> PBUILD["Build immutable git-SHA image"]
+  PREVIEW["pilprod/yourown-chat-mattermost<br/>release-X.Y or X.Y.Z-suffix"] --> PBUILD["Build immutable preview image"]
   PBUILD --> PDEV["mattermost-preview / dev<br/>migration + smoke; no prod stage"]
 
-  MT["pilprod/yourown-chat-mattermost tag<br/>vX.Y.Z-patched"] --> BUILD["Build and push image"]
+  MT["pilprod/yourown-chat-mattermost tag<br/>X.Y.Z"] --> BUILD["Build and push image"]
   BUILD --> MMTEST["mattermost / dev<br/>migration + smoke"]
   MMTEST --> MMAPPROVE["approval"]
   MMAPPROVE --> MMCLEAN["predeploy: scale dev Mattermost to 0"]
@@ -31,7 +31,7 @@ There are three Cloud Deploy pipelines:
 
 | Pipeline | Automatic stage | Review gate | After approval |
 |---|---|---|---|
-| `mattermost-preview` | `mattermost-preview-dev`; previews each `release-X.Y-patched` commit | none | nothing: this pipeline has no production target |
+| `mattermost-preview` | `mattermost-preview-dev`; previews each `release-X.Y` commit or `X.Y.Z-suffix` tag | none | nothing: this pipeline has no production target |
 | `mattermost` | `mattermost-dev`; exercises migrations against persistent `dev-postgres` | verified dev stays running for reviewer checks | predeploy scales dev to zero, then the operator performs a rolling rollout |
 | `mcp` | `mcp-dev`; creates readiness-gated `dev-mcp-*` deployments in the shared `dev` namespace | ready dev stays running for reviewer checks | predeploy scales dev to zero, then MCP prod deploys and executes read-only credential/API verification |
 
@@ -59,9 +59,9 @@ Terraform apply; it contains no important data.
 
 ## What starts a release
 
-### A patched Mattermost source tag
+### A stable Mattermost assembly tag
 
-Pushing `v*.*-patched` in `pilprod/yourown-chat-mattermost` starts the image build. Only
+Pushing stable `X.Y.Z` in `pilprod/yourown-chat-mattermost` starts the image build. Only
 after the image is successfully pushed does that build clone `yourown-chat`
 `main` and create a release in the `mattermost` pipeline. Both stages receive
 the same immutable image digest. The source tag remains in Chart metadata and
@@ -69,8 +69,8 @@ release annotations for readability, but is never used as the Kubernetes image
 identity.
 
 ```bash
-git tag v9.11.3-patched
-git push origin v9.11.3-patched
+git tag 11.9.0
+git push origin 11.9.0
 ```
 
 This path needs no second tag in `yourown-chat`.
@@ -82,16 +82,16 @@ optional build suffix is dropped; the source commit is retained.
 
 ### A dev-only release branch
 
-Use `release-X.Y-patched`, for example `release-11.9-patched`, for licensing,
+Use `release-X.Y`, for example `release-11.9`, for licensing,
 rebranding, migration, or product experiments:
 
 ```bash
-git switch -c release-11.9-patched
-git push -u origin release-11.9-patched
+git switch -c release-11.9
+git push -u origin release-11.9
 ```
 
 Every pushed commit produces `mattermost:git-<full SHA>` plus a moving
-`release-11.9-patched-latest` convenience tag. Cloud Deploy freezes the digest
+`release-11.9-latest` convenience tag. Cloud Deploy freezes the digest
 and deploys it to `mattermost-preview-dev`. The `mattermost-preview` pipeline
 has no prod stage, so these releases cannot reach production through Cloud
 Deploy UI, API, or MCP. This is stronger than relying on release metadata or a
@@ -104,8 +104,10 @@ source/revision/version OCI labels, Team-only binary metadata, and embedded
 license and modification notices. A failed compliance check stops the pipeline
 before the dev rollout.
 
-After review, put `vX.Y.Z-patched` on the exact accepted commit. Only that
-immutable tag starts the production-capable `mattermost` flow.
+For immutable candidates, use `X.Y.Z-suffix`, for example `11.9.0-rc.1`; these
+tags are also structurally limited to the preview pipeline. After review, put
+stable `X.Y.Z` on the exact accepted commit. Only that tag starts the
+production-capable `mattermost` flow.
 
 ### A unified platform tag
 
@@ -121,7 +123,7 @@ compares the tagged commit with the previous semver platform tag:
 - unrelated changes create no Cloud Deploy release.
 
 For a routed Mattermost release, the trigger resolves the newest
-`v*-patched` tag in Artifact Registry, freezes its current digest, and passes
+stable semver tag in Artifact Registry, freezes its current digest, and passes
 that immutable digest to both stages. A later platform release therefore
 cannot accidentally restore the static chart default or skip a rollout because
 a mutable tag string stayed unchanged.

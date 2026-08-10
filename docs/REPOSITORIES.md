@@ -9,7 +9,7 @@ operator identities.
 | Repository | Owns | Must not own | Canonical lifecycle |
 |---|---|---|---|
 | `pilprod/yourown-chat` | Public architecture, Terraform Stacks, Helm/Skaffold delivery, shared Dockerfiles and release runbooks | Mattermost, MCP, backend or agent application source | `main`; immutable `MAJOR.MINOR.PATCH` platform tags |
-| `pilprod/yourown-chat-mattermost` | Reproducible product image assembly and pinned Mattermost/web submodules | Server or web feature development | `main`; `release-X.Y-patched` dev previews; `vX.Y.Z-patched` releases |
+| `pilprod/yourown-chat-mattermost` | Reproducible product image assembly and pinned Mattermost/web submodules | Server or web feature development | `main`; `release-X.Y` dev previews; `X.Y.Z-suffix` prereleases; stable `X.Y.Z` releases |
 | `pilprod/mattermost` | Patched public Mattermost Team Edition server fork | Web client, platform IaC or enterprise source | `public-patched` plus immutable `public-patched-X.Y.Z`; `vX.Y.Z-patched` source tags |
 | `pilprod/yourown-chat-web` | Standalone web client source and tests | Server code or image release orchestration | `main`; revision is pinned by the assembly repository |
 | `pilprod/yourown-chat-mobile` | iOS/Android client source and client-specific CI | Backend or platform resources | `main`; client release tags follow the client store lifecycle |
@@ -39,8 +39,10 @@ revisions:
 ## Release invariants
 
 - A tag is immutable after any Cloud Build has observed it.
-- Source repositories use plain `MAJOR.MINOR.PATCH`; maintained upstream forks
-  use `vX.Y.Z-patched`.
+- First-party sources and the Mattermost assembly use plain
+  `MAJOR.MINOR.PATCH`. The assembly additionally accepts prerelease tags such
+  as `11.9.0-rc.1`, but routes them only to dev. Maintained upstream forks use
+  `vX.Y.Z-patched`.
 - `main` builds verify commit-addressed artifacts and do not deploy.
 - A release build runs tests, emits SBOM and provenance, scans the digest and
   blocks on High or Critical findings before creating Cloud Deploy state.

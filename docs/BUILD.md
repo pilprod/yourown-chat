@@ -10,7 +10,7 @@ Cloud Deploy pipeline. Repository responsibilities are indexed in
 [REPOSITORIES.md](REPOSITORIES.md).
 
 ```text
-pilprod/yourown-chat-mattermost v*.*-patched
+pilprod/yourown-chat-mattermost X.Y.Z
   -> Cloud Build
   -> Artifact Registry docker/mattermost:<tag>
   -> Cloud Deploy mattermost/dev
@@ -27,10 +27,11 @@ stack owns:
 
 - the Cloud Build second-generation repository link to `pilprod/yourown-chat-mattermost`;
 - the `img-build` service account;
-- a `release-X.Y-patched` branch trigger targeting the structurally dev-only
+- a `release-X.Y` branch trigger targeting the structurally dev-only
   `mattermost-preview` pipeline;
-- the `^vX.Y.Z-patched$` tag trigger targeting the normal `mattermost`
-  dev-to-prod pipeline;
+- an `X.Y.Z-suffix` prerelease trigger targeting the same dev-only pipeline;
+- the stable `^X.Y.Z$` tag trigger targeting the normal `mattermost` dev-to-prod
+  pipeline;
 - narrowly scoped permissions to push the image and create releases only in
   those two pipelines.
 
@@ -42,8 +43,8 @@ the agent workloads `pilprod/yourown-chat-agents`.
 ## Build and deliver
 
 ```bash
-git tag v9.11.3-patched
-git push origin v9.11.3-patched
+git tag 11.9.0
+git push origin 11.9.0
 ```
 
 The build:
@@ -70,10 +71,11 @@ The deployment is started only after the push succeeds. There is no need to
 edit both Mattermost manifests or create a second platform tag for a normal
 image upgrade.
 
-For iterative testing, push to `release-11.9-patched`. Each commit is tagged
+For iterative testing, push to `release-11.9`. Each commit is tagged
 in Artifact Registry as `git-<full SHA>` and deployed only through
 `mattermost-preview-dev`. The preview Cloud Deploy pipeline has no prod target.
-After review, put `vX.Y.Z-patched` on the exact accepted commit to enter the
+An immutable tag such as `11.9.0-rc.1` follows the same dev-only route. After
+review, put stable `X.Y.Z` on the exact accepted commit to enter the
 production-capable flow.
 
 Verify the artifact:

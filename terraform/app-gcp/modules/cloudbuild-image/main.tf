@@ -303,7 +303,8 @@ resource "google_cloudbuild_trigger" "this" {
 
     # Only after image push and compliance verification do we freeze its
     # digest and create Cloud Deploy state. The selected destination is static:
-    # release branches go to a dev-only pipeline, patched tags to dev -> prod.
+    # Release branches and prerelease tags go to the dev-only pipeline; stable
+    # semver tags go through dev -> approval -> prod.
     step {
       id         = "mattermost-release"
       name       = "gcr.io/google.com/cloudsdktool/cloud-sdk:slim"
