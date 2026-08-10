@@ -48,6 +48,7 @@ locals {
     "recommender.googleapis.com",
     "artifactregistry.googleapis.com",
     "containeranalysis.googleapis.com",
+    "ondemandscanning.googleapis.com",
     # Keep the API ready for a bounded MCP-controlled scan window. The paid
     # repository gate remains DISABLED during routine builds.
     "containerscanning.googleapis.com",
