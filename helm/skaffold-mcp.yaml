@@ -79,6 +79,7 @@ profiles:
                 url="$2"
                 tool="$3"
                 arguments="$4"
+                origin="${url%/mcp}"
                 headers="/tmp/${name}.headers"
                 body="/tmp/${name}.body"
 
@@ -88,7 +89,8 @@ profiles:
                   -D "$headers" -o "$body" -X POST \
                   -H 'Content-Type: application/json' \
                   -H 'Accept: application/json, text/event-stream' \
-                  -H 'Origin: https://yourown.chat' \
+                  -H "Origin: $origin" \
+                  -H 'Sec-Fetch-Site: same-origin' \
                   --data "$init" "$url"; then
                   echo "[$name] initialize request failed" >&2
                   cat "$body" >&2 || true
@@ -113,7 +115,8 @@ profiles:
                   --max-time 45 -o "$body" -X POST \
                   -H 'Content-Type: application/json' \
                   -H 'Accept: application/json, text/event-stream' \
-                  -H 'Origin: https://yourown.chat' \
+                  -H "Origin: $origin" \
+                  -H 'Sec-Fetch-Site: same-origin' \
                   -H "Mcp-Session-Id: $session_id" \
                   --data '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
                   "$url"; then
@@ -130,7 +133,8 @@ profiles:
                   --max-time 45 -o "$body" -X POST \
                   -H 'Content-Type: application/json' \
                   -H 'Accept: application/json, text/event-stream' \
-                  -H 'Origin: https://yourown.chat' \
+                  -H "Origin: $origin" \
+                  -H 'Sec-Fetch-Site: same-origin' \
                   -H "Mcp-Session-Id: $session_id" \
                   --data "$payload" "$url"; then
                   echo "[$name] tools/call request failed" >&2
