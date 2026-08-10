@@ -4,6 +4,11 @@ locals {
   releaser_sa_id             = "releaser-${var.region}"
   source_bucket_name         = "deploy-source-${var.region}"
   artifact_repository_prefix = "${var.mattermost_image_repository.location}-docker.pkg.dev/${var.project_id}/${var.mattermost_image_repository.repository_id}"
+
+  # On-Demand Scanning is an optional gcloud component and is not present in
+  # the slim image. Use the versioned all-components image and pin its manifest
+  # digest so release gates cannot change underneath an immutable source tag.
+  scan_cli_image = "gcr.io/google.com/cloudsdktool/google-cloud-cli:573.0.0@sha256:f0b4abeb30773243f9ae95abe201ec01de07d5ed582b56ca52879eb3dbe209c3"
 }
 
 resource "google_cloudbuildv2_repository" "this" {

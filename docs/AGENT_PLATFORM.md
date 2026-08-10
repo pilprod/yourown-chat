@@ -82,8 +82,10 @@ parallel infrastructure module.
 - `app-gcp` owns delivery rails and application runtime configuration. It must
   consume platform outputs and must not create a second database, bucket or
   platform-service lifecycle.
-- Common modules are extracted only when multiple existing Stack owners need
-  the same resource abstraction without sharing resource ownership.
+- Terraform modules live under their owning Stack (`platform-gcp/modules` or
+  `app-gcp/modules`). Do not add a shared `terraform/modules` directory. Small
+  data-only helpers are duplicated when necessary so ownership, provider
+  configuration and state boundaries remain local to each Stack.
 - A new Stack is justified only by an independently approved lifecycle and
   state boundary. It must not recreate or partially claim a resource already
   owned by another Stack.
