@@ -19,6 +19,7 @@ RUN case "${SERVICE}" in google-cloud|terraform-stacks) ;; *) exit 64 ;; esac \
 
 FROM scratch
 
+COPY --from=build /etc/os-release /etc/os-release
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=build --chown=65532:65532 /out/mcp-server /mcp-server
 
