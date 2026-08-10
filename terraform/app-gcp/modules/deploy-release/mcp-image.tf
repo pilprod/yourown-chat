@@ -166,7 +166,7 @@ resource "google_cloudbuild_trigger" "mcp_source" {
 
     step {
       id         = "scan-mcp-images"
-      name       = "gcr.io/google.com/cloudsdktool/cloud-sdk:slim"
+      name       = local.scan_cli_image
       entrypoint = "bash"
       args = ["-ceu", <<-EOT
         image_tag="git-$COMMIT_SHA"

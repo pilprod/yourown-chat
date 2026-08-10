@@ -574,7 +574,7 @@ component "deploy_release" {
 # Data-only cluster auth; separate from cluster_bootstrap because a component
 # cannot both feed a provider's configuration and consume that provider.
 component "gke_auth" {
-  source = "../modules/gke-auth"
+  source = "./modules/gke-auth"
 
   inputs = {
     gke_cluster_id = var.gke_cluster_id

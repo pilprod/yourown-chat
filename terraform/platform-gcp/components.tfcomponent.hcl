@@ -454,7 +454,7 @@ component "gke" {
 # Data-only cluster authentication shared by the platform-owned official Helm
 # services. It creates no GKE resources and uses the same keyless apply SA.
 component "gke_auth" {
-  source = "../modules/gke-auth"
+  source = "./modules/gke-auth"
 
   inputs = {
     gke_cluster_id = component.gke.cluster_id
