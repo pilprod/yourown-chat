@@ -4,8 +4,10 @@
 агентов, проверка их точных контрольных сумм и выпуск с подтверждением описаны в
 [AGENT_PLATFORM_BUILD_RELEASE.md](AGENT_PLATFORM_BUILD_RELEASE.md).
 
-The platform builds one patched Mattermost image and promotes its exact digest
-through the `mattermost` Cloud Deploy pipeline.
+The platform builds one patched Mattermost image from the exact assembly,
+server and web revisions and promotes its digest through the `mattermost`
+Cloud Deploy pipeline. Repository responsibilities are indexed in
+[REPOSITORIES.md](REPOSITORIES.md).
 
 ```text
 pilprod/yourown-chat-mattermost v*.*-patched
@@ -46,15 +48,19 @@ git push origin v9.11.3-patched
 
 The build:
 
-1. builds and pushes
+1. initializes the two pinned assembly submodules and validates all three full
+   commit SHAs;
+2. builds and pushes
    `europe-west3-docker.pkg.dev/yourown-chat/docker/mattermost:$TAG_NAME`;
-2. resolves its digest;
-3. clones `pilprod/yourown-chat` at `main`;
-4. creates a `mattermost` release from `helm/`;
-5. passes `repository@sha256:...` to dev and the same `sha256:...` to the
+3. verifies OCI source labels, Team Edition metadata and license notices;
+4. emits SBOM/provenance, scans the pushed digest and blocks High/Critical
+   findings while retaining scan evidence;
+5. clones `pilprod/yourown-chat` at `main`;
+6. creates a `mattermost` release from `helm/`;
+7. passes `repository@sha256:...` to dev and the same `sha256:...` to the
    Mattermost Operator's digest-aware `spec.version` in prod;
-6. records the source tag, commit, build ID, and digest in the release identity
-   and annotations.
+8. records the assembly, server and web SHAs, build ID, and digest in release
+   annotations.
 
 Resolving the tag before creating the release is mandatory. Reusing a mutable
 tag string in a Deployment pod template does not create a new ReplicaSet when

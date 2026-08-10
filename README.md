@@ -25,6 +25,8 @@ The self-hosted agent architecture and repository boundaries are documented in
 [the agent platform contract](docs/AGENT_PLATFORM.md); its tag-driven delivery
 and guarded Temporal bootstrap are in
 [the release runbook](docs/AGENT_PLATFORM_BUILD_RELEASE.md).
+The complete public ownership and release map is maintained in
+[the repository catalog](docs/REPOSITORIES.md).
 
 The platform stack **publishes** its key values (ingress IP, cluster ID,
 registry coordinates, CMEK key, Workload Identity members); **cloudflare** and
