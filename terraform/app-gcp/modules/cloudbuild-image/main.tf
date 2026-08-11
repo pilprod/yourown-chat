@@ -165,6 +165,9 @@ resource "google_cloudbuild_trigger" "this" {
       args = [
         "-ceu",
         <<-EOT
+          # Initialize public source before any private credential exists.
+          sh scripts/init-sources.sh mattermost
+
           access_token="$$(gcloud auth print-access-token)"
           token_url="https://cloudbuild.googleapis.com/v2/${google_cloudbuildv2_repository.web_source.id}:accessReadToken"
           read_token="$$(python3 -c 'import json,sys,urllib.request; request=urllib.request.Request(sys.argv[1], data=b"{}", headers={"Authorization":"Bearer "+sys.argv[2], "Content-Type":"application/json"}, method="POST"); print(json.load(urllib.request.urlopen(request))["token"])' "$$token_url" "$$access_token")"
@@ -185,7 +188,7 @@ resource "google_cloudbuild_trigger" "this" {
           CLOUD_BUILD_REPO_TOKEN="$$read_token" \
             GIT_ASKPASS="$$askpass" \
             GIT_TERMINAL_PROMPT=0 \
-            sh scripts/init-sources.sh
+            sh scripts/init-sources.sh web
           unset access_token read_token
           rm -f "$$askpass"
           trap - EXIT
