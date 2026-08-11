@@ -8,6 +8,11 @@ output "repository_id" {
   value       = google_cloudbuildv2_repository.this.id
 }
 
+output "web_source_repository_id" {
+  description = "Fully-qualified Cloud Build 2nd-gen repository ID used for short-lived private web-source credentials."
+  value       = google_cloudbuildv2_repository.web_source.id
+}
+
 output "build_service_account_email" {
   description = "Email of the least-privilege image-build service account."
   value       = google_service_account.build.email

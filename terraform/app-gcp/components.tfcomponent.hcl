@@ -481,6 +481,9 @@ component "mattermost_image" {
     repository_name   = var.github_repository_name
     github_remote_uri = var.github_remote_uri
 
+    web_repository_name   = var.github_web_repository_name
+    web_github_remote_uri = var.github_web_remote_uri
+
     artifact_registry_location      = var.artifact_registry_location
     artifact_registry_repository_id = var.artifact_registry_repository_id
 

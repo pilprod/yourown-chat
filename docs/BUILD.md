@@ -26,6 +26,9 @@ The `platform-gcp` stack owns the Artifact Registry repository. The `app-gcp`
 stack owns:
 
 - the Cloud Build second-generation repository link to `pilprod/yourown-chat-mattermost`;
+- a second-generation repository link to the private `pilprod/yourown-chat-web`
+  source, used only to mint short-lived read tokens while initializing the
+  pinned assembly submodule;
 - the `img-build` service account;
 - a `release-X.Y` branch trigger targeting the structurally dev-only
   `mattermost-preview` pipeline;
@@ -37,8 +40,16 @@ stack owns:
 
 The shared `pilprod-github` connection is authorized once in the Google Cloud
 console and must have access to `pilprod/yourown-chat-mattermost`,
+`pilprod/yourown-chat-web`,
 `pilprod/yourown-chat`, the product backend `pilprod/yourown-chat-server`, and
 the agent workloads `pilprod/yourown-chat-agents`.
+
+The build identity can only call
+`cloudbuild.repositories.accessReadToken`, with an IAM condition restricting
+the permission to the `yourown-chat-web` repository resource. The resulting GitHub credential is
+kept in the source-initialization process, passed through `GIT_ASKPASS`, and
+removed before the image build. No long-lived GitHub PAT or deploy key is
+stored in Terraform, Secret Manager, the image, or Cloud Build substitutions.
 
 ## Build and deliver
 

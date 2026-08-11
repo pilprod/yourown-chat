@@ -90,6 +90,18 @@ variable "github_repository_name" {
   default     = "yourown-chat-mattermost"
 }
 
+variable "github_web_remote_uri" {
+  type        = string
+  description = "HTTPS clone URL of the private web source pinned by the Mattermost assembly."
+  default     = "https://github.com/pilprod/yourown-chat-web.git"
+}
+
+variable "github_web_repository_name" {
+  type        = string
+  description = "Cloud Build repository resource name for the private YourOwn.Chat web source."
+  default     = "yourown-chat-web"
+}
+
 variable "image_name" {
   type        = string
   description = "Image name (last path segment) pushed under the unified Artifact Registry repository."
