@@ -3,6 +3,7 @@ locals {
   connection_id         = "projects/${var.project_id}/locations/${var.region}/connections/${var.connection_name}"
   image_repo_path       = "${var.artifact_registry_location}-docker.pkg.dev/${var.project_id}/${var.artifact_registry_repository_id}/${var.image_name}"
   release_source_bucket = one(toset([for delivery in values(var.mattermost_deliveries) : delivery.source_bucket_name]))
+  scan_cli_image        = "gcr.io/google.com/cloudsdktool/google-cloud-cli:573.0.0@sha256:f0b4abeb30773243f9ae95abe201ec01de07d5ed582b56ca52879eb3dbe209c3"
 }
 
 # Preserve the existing production IAM objects while widening the module to
@@ -37,6 +38,12 @@ resource "google_service_account" "build" {
 resource "google_project_iam_member" "build_logs" {
   project = var.project_id
   role    = "roles/logging.logWriter"
+  member  = "serviceAccount:${google_service_account.build.email}"
+}
+
+resource "google_project_iam_member" "build_on_demand_scan" {
+  project = var.project_id
+  role    = "roles/ondemandscanning.admin"
   member  = "serviceAccount:${google_service_account.build.email}"
 }
 
@@ -120,6 +127,35 @@ resource "google_cloudbuild_trigger" "this" {
     # images would trigger a second redundant push.
 
     step {
+      id         = "initialize-product-sources"
+      name       = "gcr.io/cloud-builders/git"
+      entrypoint = "bash"
+      args = [
+        "-ceu",
+        <<-EOT
+          sh scripts/init-sources.sh
+
+          assembly_sha="$$(git rev-parse HEAD)"
+          server_sha="$$(git -C sources/mattermost rev-parse HEAD)"
+          web_sha="$$(git -C sources/web rev-parse HEAD)"
+          [ "$$assembly_sha" = "$COMMIT_SHA" ] || {
+            echo "Cloud Build revision does not match the assembly checkout" >&2
+            exit 1
+          }
+          for sha in "$$assembly_sha" "$$server_sha" "$$web_sha"; do
+            printf '%s\n' "$$sha" | grep -Eq '^[0-9a-f]{40}$' || {
+              echo "Product source is not pinned to a full lowercase Git SHA: $$sha" >&2
+              exit 1
+            }
+          done
+          printf 'ASSEMBLY_SHA=%s\nSERVER_SHA=%s\nWEB_SHA=%s\n' \
+            "$$assembly_sha" "$$server_sha" "$$web_sha" \
+            > /workspace/mattermost-source.env
+        EOT
+      ]
+    }
+
+    step {
       id   = "docker-build"
       name = "gcr.io/cloud-builders/docker"
       # buildx required: the Dockerfile uses RUN --mount=type=cache.
@@ -152,6 +188,7 @@ resource "google_cloudbuild_trigger" "this" {
             moving_tag="$$pipeline_branch-latest"
           fi
           pipeline_build_date="$$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          . /workspace/mattermost-source.env
 
           docker buildx create --name cloudbuild --use || docker buildx use cloudbuild
           docker buildx build \
@@ -160,10 +197,13 @@ resource "google_cloudbuild_trigger" "this" {
             --cache-to=type=registry,ref="${local.image_repo_path}:buildcache",mode=max \
             --no-cache-filter=server-builder,runtime \
             --build-arg BUILD_NUMBER="$$pipeline_version" \
-            --build-arg BUILD_HASH="$$PIPELINE_COMMIT_SHA" \
-            --build-arg EE_BUILD_HASH="$$PIPELINE_BUILD_ID" \
+            --build-arg BUILD_HASH="$$SERVER_SHA" \
             --build-arg BUILD_DATE="$$pipeline_build_date" \
-            --build-arg SOURCE_URL="https://github.com/pilprod/yourown-chat-mattermost/tree/$$PIPELINE_COMMIT_SHA" \
+            --build-arg SOURCE_URL="https://github.com/pilprod/mattermost/tree/$$SERVER_SHA" \
+            --build-arg WEB_BUILD_HASH="$$WEB_SHA" \
+            --build-arg WEB_SOURCE_URL="https://github.com/pilprod/yourown-chat-web/tree/$$WEB_SHA" \
+            --build-arg ASSEMBLY_BUILD_HASH="$$ASSEMBLY_SHA" \
+            --build-arg ASSEMBLY_SOURCE_URL="https://github.com/pilprod/yourown-chat-mattermost/tree/$$ASSEMBLY_SHA" \
             --tag "${local.image_repo_path}:$$image_tag" \
             --tag "${local.image_repo_path}:$$moving_tag" \
             --attest=type=sbom \
@@ -184,6 +224,7 @@ resource "google_cloudbuild_trigger" "this" {
       args = [
         "-ceu",
         <<-EOT
+          . /workspace/mattermost-source.env
           if [ -n "$TAG_NAME" ]; then
             image="${local.image_repo_path}:$TAG_NAME"
             pipeline_version="$TAG_NAME"
@@ -191,13 +232,59 @@ resource "google_cloudbuild_trigger" "this" {
             image="${local.image_repo_path}:git-$COMMIT_SHA"
             pipeline_version="$BRANCH_NAME-$SHORT_SHA"
           fi
-          source_url="https://github.com/pilprod/yourown-chat-mattermost/tree/$COMMIT_SHA"
+          server_url="https://github.com/pilprod/mattermost/tree/$$SERVER_SHA"
+          web_url="https://github.com/pilprod/yourown-chat-web/tree/$$WEB_SHA"
+          assembly_url="https://github.com/pilprod/yourown-chat-mattermost/tree/$$ASSEMBLY_SHA"
           docker pull "$$image"
           sh scripts/verify-product-image.sh \
             "$$image" \
             "$$pipeline_version" \
-            "$COMMIT_SHA" \
-            "$$source_url"
+            "$$SERVER_SHA" \
+            "$$server_url" \
+            "$$WEB_SHA" \
+            "$$web_url" \
+            "$$ASSEMBLY_SHA" \
+            "$$assembly_url"
+        EOT
+      ]
+    }
+
+    step {
+      id         = "scan-product-image"
+      name       = local.scan_cli_image
+      entrypoint = "bash"
+      args = [
+        "-ceu",
+        <<-EOT
+          . /workspace/mattermost-source.env
+          if [ -n "$TAG_NAME" ]; then image_tag="$TAG_NAME"; else image_tag="git-$COMMIT_SHA"; fi
+          image_path="${local.image_repo_path}"
+          digest="$$(gcloud artifacts docker images describe \
+            "$$image_path:$$image_tag" --format='value(image_summary.digest)')"
+          [ -n "$$digest" ] || { echo "Mattermost image digest was not found" >&2; exit 1; }
+          image="$$image_path@$$digest"
+          scan="$$(gcloud artifacts docker images scan \
+            "$$image" --remote --location=europe --format='value(response.scan)')"
+          [ -n "$$scan" ] || { echo "On-Demand scan ID was not returned" >&2; exit 1; }
+          gcloud artifacts docker images list-vulnerabilities "$$scan" \
+            --format=json > /workspace/mattermost-vulnerabilities.json
+          gcloud artifacts docker images list-vulnerabilities "$$scan" \
+            --format='value(vulnerability.effectiveSeverity)' > /workspace/mattermost-severities.txt
+          if grep -Exq 'CRITICAL|HIGH' /workspace/mattermost-severities.txt; then
+            echo "High or Critical vulnerability blocks the Mattermost image" >&2
+            exit 1
+          fi
+          printf '%s' "$$digest" > /workspace/mattermost-image-digest
+          printf '%s' "$$image" > /workspace/mattermost-image-uri
+          printf '%s' "$$scan" > /workspace/mattermost-scan-id
+          gcloud storage cp \
+            /workspace/mattermost-image-digest \
+            /workspace/mattermost-image-uri \
+            /workspace/mattermost-scan-id \
+            /workspace/mattermost-severities.txt \
+            /workspace/mattermost-vulnerabilities.json \
+            /workspace/mattermost-source.env \
+            "gs://${local.release_source_bucket}/evidence/yourown-chat-mattermost/$BUILD_ID/"
         EOT
       ]
     }
@@ -216,7 +303,8 @@ resource "google_cloudbuild_trigger" "this" {
 
     # Only after image push and compliance verification do we freeze its
     # digest and create Cloud Deploy state. The selected destination is static:
-    # release branches go to a dev-only pipeline, patched tags to dev -> prod.
+    # Release branches and prerelease tags go to the dev-only pipeline; stable
+    # semver tags go through dev -> approval -> prod.
     step {
       id         = "mattermost-release"
       name       = "gcr.io/google.com/cloudsdktool/cloud-sdk:slim"
@@ -224,6 +312,7 @@ resource "google_cloudbuild_trigger" "this" {
       args = [
         "-ceu",
         <<-EOT
+          . /workspace/mattermost-source.env
           if [ -n "$TAG_NAME" ]; then
             image="${local.image_repo_path}:$TAG_NAME"
             source_ref="$TAG_NAME"
@@ -265,7 +354,7 @@ resource "google_cloudbuild_trigger" "this" {
             --skaffold-file "skaffold-mattermost.yaml" \
             --gcs-source-staging-dir "gs://${var.mattermost_deliveries[each.value.delivery].source_bucket_name}/source" \
             --deploy-parameters "$$deploy_parameters" \
-            --annotations "source-repo=pilprod/yourown-chat-mattermost,source-ref=$$source_ref,source-branch=$BRANCH_NAME,git-tag=$TAG_NAME,git-sha=$COMMIT_SHA,build-id=$BUILD_ID,image-digest=$$digest,release-channel=${each.value.release_channel}"
+            --annotations "source-repo=pilprod/yourown-chat-mattermost,source-ref=$$source_ref,source-branch=$BRANCH_NAME,git-tag=$TAG_NAME,assembly-sha=$$ASSEMBLY_SHA,server-sha=$$SERVER_SHA,web-sha=$$WEB_SHA,build-id=$BUILD_ID,image-digest=$$digest,release-channel=${each.value.release_channel}"
         EOT
       ]
     }
@@ -283,6 +372,7 @@ resource "google_cloudbuild_trigger" "this" {
   depends_on = [
     google_service_account_iam_member.apply_acts_as_build,
     google_project_iam_member.build_logs,
+    google_project_iam_member.build_on_demand_scan,
     google_artifact_registry_repository_iam_member.writer,
     google_clouddeploy_delivery_pipeline_iam_member.releaser,
     google_project_iam_member.clouddeploy_viewer,

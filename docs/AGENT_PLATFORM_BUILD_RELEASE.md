@@ -109,9 +109,11 @@ yourown-chat-agents-ci
 yourown-chat-agents-image
 ```
 
-Mattermost and RTCD are maintained upstream forks and keep independent
-`vMAJOR.MINOR.PATCH-patched` tag-driven pipelines. First-party `yourown-chat`,
-MCP, server and agents repositories use plain `MAJOR.MINOR.PATCH`.
+Mattermost server source and RTCD are maintained upstream forks and keep their
+`vMAJOR.MINOR.PATCH-patched` source lifecycle. The
+`yourown-chat-mattermost` assembly uses stable `MAJOR.MINOR.PATCH` tags and
+dev-only `MAJOR.MINOR.PATCH-suffix` prereleases. First-party `yourown-chat`,
+MCP, server and agents repositories also use plain `MAJOR.MINOR.PATCH`.
 
 ## Verification commands
 

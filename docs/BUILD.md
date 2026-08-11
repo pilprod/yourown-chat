@@ -4,11 +4,13 @@
 агентов, проверка их точных контрольных сумм и выпуск с подтверждением описаны в
 [AGENT_PLATFORM_BUILD_RELEASE.md](AGENT_PLATFORM_BUILD_RELEASE.md).
 
-The platform builds one patched Mattermost image and promotes its exact digest
-through the `mattermost` Cloud Deploy pipeline.
+The platform builds one patched Mattermost image from the exact assembly,
+server and web revisions and promotes its digest through the `mattermost`
+Cloud Deploy pipeline. Repository responsibilities are indexed in
+[REPOSITORIES.md](REPOSITORIES.md).
 
 ```text
-pilprod/yourown-chat-mattermost v*.*-patched
+pilprod/yourown-chat-mattermost X.Y.Z
   -> Cloud Build
   -> Artifact Registry docker/mattermost:<tag>
   -> Cloud Deploy mattermost/dev
@@ -25,10 +27,11 @@ stack owns:
 
 - the Cloud Build second-generation repository link to `pilprod/yourown-chat-mattermost`;
 - the `img-build` service account;
-- a `release-X.Y-patched` branch trigger targeting the structurally dev-only
+- a `release-X.Y` branch trigger targeting the structurally dev-only
   `mattermost-preview` pipeline;
-- the `^vX.Y.Z-patched$` tag trigger targeting the normal `mattermost`
-  dev-to-prod pipeline;
+- an `X.Y.Z-suffix` prerelease trigger targeting the same dev-only pipeline;
+- the stable `^X.Y.Z$` tag trigger targeting the normal `mattermost` dev-to-prod
+  pipeline;
 - narrowly scoped permissions to push the image and create releases only in
   those two pipelines.
 
@@ -40,21 +43,25 @@ the agent workloads `pilprod/yourown-chat-agents`.
 ## Build and deliver
 
 ```bash
-git tag v9.11.3-patched
-git push origin v9.11.3-patched
+git tag 11.9.0
+git push origin 11.9.0
 ```
 
 The build:
 
-1. builds and pushes
+1. initializes the two pinned assembly submodules and validates all three full
+   commit SHAs;
+2. builds and pushes
    `europe-west3-docker.pkg.dev/yourown-chat/docker/mattermost:$TAG_NAME`;
-2. resolves its digest;
-3. clones `pilprod/yourown-chat` at `main`;
-4. creates a `mattermost` release from `helm/`;
-5. passes `repository@sha256:...` to dev and the same `sha256:...` to the
+3. verifies OCI source labels, Team Edition metadata and license notices;
+4. emits SBOM/provenance, scans the pushed digest and blocks High/Critical
+   findings while retaining scan evidence;
+5. clones `pilprod/yourown-chat` at `main`;
+6. creates a `mattermost` release from `helm/`;
+7. passes `repository@sha256:...` to dev and the same `sha256:...` to the
    Mattermost Operator's digest-aware `spec.version` in prod;
-6. records the source tag, commit, build ID, and digest in the release identity
-   and annotations.
+8. records the assembly, server and web SHAs, build ID, and digest in release
+   annotations.
 
 Resolving the tag before creating the release is mandatory. Reusing a mutable
 tag string in a Deployment pod template does not create a new ReplicaSet when
@@ -64,10 +71,11 @@ The deployment is started only after the push succeeds. There is no need to
 edit both Mattermost manifests or create a second platform tag for a normal
 image upgrade.
 
-For iterative testing, push to `release-11.9-patched`. Each commit is tagged
+For iterative testing, push to `release-11.9`. Each commit is tagged
 in Artifact Registry as `git-<full SHA>` and deployed only through
 `mattermost-preview-dev`. The preview Cloud Deploy pipeline has no prod target.
-After review, put `vX.Y.Z-patched` on the exact accepted commit to enter the
+An immutable tag such as `11.9.0-rc.1` follows the same dev-only route. After
+review, put stable `X.Y.Z` on the exact accepted commit to enter the
 production-capable flow.
 
 Verify the artifact:

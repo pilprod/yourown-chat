@@ -231,9 +231,9 @@ resource "google_cloudbuild_trigger" "release" {
             . mattermost/rtcd/source.lock
             image_repo="${local.artifact_repository_prefix}/${var.mattermost_image_repository.image_name}"
             mattermost_tag="$$(gcloud artifacts docker tags list "$$image_repo" \
-              --filter="tag~'/tags/v.*-patched$$'" \
+              --filter="tag~'/tags/[0-9]+\\.[0-9]+\\.[0-9]+$$'" \
               --format='value(tag)' | sort -V | tail -n1)"
-            [ -n "$$mattermost_tag" ] || { echo "No v*-patched Mattermost image tag found"; exit 1; }
+            [ -n "$$mattermost_tag" ] || { echo "No stable semver Mattermost image tag found"; exit 1; }
             mattermost_tag="$${mattermost_tag##*/}"
             digest="$$(gcloud artifacts docker images describe \
               "$$image_repo:$$mattermost_tag" \
