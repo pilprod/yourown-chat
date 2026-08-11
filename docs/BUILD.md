@@ -46,10 +46,12 @@ the agent workloads `pilprod/yourown-chat-agents`.
 
 The build identity can only call
 `cloudbuild.repositories.accessReadToken`, with an IAM condition restricting
-the permission to the `yourown-chat-web` repository resource. The resulting GitHub credential is
-kept in the source-initialization process, passed through `GIT_ASKPASS`, and
-removed before the image build. No long-lived GitHub PAT or deploy key is
-stored in Terraform, Secret Manager, the image, or Cloud Build substitutions.
+the permission to the `yourown-chat-web` repository resource. The resulting
+GitHub credential is passed through `GIT_ASKPASS` only to the private web
+submodule initialization process and removed before the image build. The
+public Mattermost submodule is initialized before the credential is minted. No
+long-lived GitHub PAT or deploy key is stored in Terraform, Secret Manager, the
+image, or Cloud Build substitutions.
 
 ## Build and deliver
 
