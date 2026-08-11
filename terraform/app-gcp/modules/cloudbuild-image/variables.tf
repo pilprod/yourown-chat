@@ -36,6 +36,22 @@ variable "repository_name" {
   default     = "yourown-chat-mattermost"
 }
 
+variable "web_github_remote_uri" {
+  type        = string
+  description = "HTTPS clone URL of the private web source pinned by the Mattermost assembly submodule."
+
+  validation {
+    condition     = can(regex("^https://github\\.com/.+\\.git$", var.web_github_remote_uri))
+    error_message = "web_github_remote_uri must be an https github.com URL ending in .git."
+  }
+}
+
+variable "web_repository_name" {
+  type        = string
+  description = "Name of the Cloud Build 2nd-gen repository resource used to mint short-lived read tokens for the private web source."
+  default     = "yourown-chat-web"
+}
+
 # --- Target registry (ONE unified repository, owned by the artifact_registry component) -----
 variable "artifact_registry_location" {
   type        = string

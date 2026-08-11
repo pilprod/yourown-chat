@@ -43,6 +43,12 @@ output "source_repository_id" {
   value       = component.mattermost_image.repository_id
 }
 
+output "web_source_repository_id" {
+  type        = string
+  description = "Cloud Build 2nd-gen repository ID used to mint short-lived credentials for the private web submodule."
+  value       = component.mattermost_image.web_source_repository_id
+}
+
 output "build_service_account_email" {
   type        = string
   description = "Email of the least-privilege image-build service account (repo-scoped writer on the unified registry)."

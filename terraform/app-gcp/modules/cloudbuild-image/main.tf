@@ -27,6 +27,18 @@ resource "google_cloudbuildv2_repository" "this" {
   remote_uri        = var.github_remote_uri
 }
 
+# A v2 connection checks out only the triggering repository; Git does not
+# inherit those credentials for private submodules. Link the private web source
+# explicitly so the build can request a short-lived read token instead of
+# storing a GitHub PAT or deploy key.
+resource "google_cloudbuildv2_repository" "web_source" {
+  project           = var.project_id
+  location          = var.region
+  name              = var.web_repository_name
+  parent_connection = local.connection_id
+  remote_uri        = var.web_github_remote_uri
+}
+
 # --- Least-privilege build identity ----------------------------------------
 resource "google_service_account" "build" {
   project      = var.project_id
@@ -39,6 +51,26 @@ resource "google_project_iam_member" "build_logs" {
   project = var.project_id
   role    = "roles/logging.logWriter"
   member  = "serviceAccount:${google_service_account.build.email}"
+}
+
+resource "google_project_iam_custom_role" "source_reader" {
+  project     = var.project_id
+  role_id     = "mattermostSourceReader"
+  title       = "Mattermost private source reader"
+  description = "Mint short-lived read tokens for Cloud Build v2 repositories used by the Mattermost assembly."
+  permissions = ["cloudbuild.repositories.accessReadToken"]
+}
+
+resource "google_project_iam_member" "build_source_reader" {
+  project = var.project_id
+  role    = google_project_iam_custom_role.source_reader.id
+  member  = "serviceAccount:${google_service_account.build.email}"
+
+  condition {
+    title       = "mattermost_private_web_source_only"
+    description = "The Mattermost build can mint a token only for its pinned private web source."
+    expression  = "resource.name == '${google_cloudbuildv2_repository.web_source.id}'"
+  }
 }
 
 resource "google_project_iam_member" "build_on_demand_scan" {
@@ -128,12 +160,35 @@ resource "google_cloudbuild_trigger" "this" {
 
     step {
       id         = "initialize-product-sources"
-      name       = "gcr.io/cloud-builders/git"
+      name       = local.scan_cli_image
       entrypoint = "bash"
       args = [
         "-ceu",
         <<-EOT
-          sh scripts/init-sources.sh
+          access_token="$$(gcloud auth print-access-token)"
+          token_url="https://cloudbuild.googleapis.com/v2/${google_cloudbuildv2_repository.web_source.id}:accessReadToken"
+          read_token="$$(python3 -c 'import json,sys,urllib.request; request=urllib.request.Request(sys.argv[1], data=b"{}", headers={"Authorization":"Bearer "+sys.argv[2], "Content-Type":"application/json"}, method="POST"); print(json.load(urllib.request.urlopen(request))["token"])' "$$token_url" "$$access_token")"
+          [ -n "$$read_token" ] || {
+            echo "Cloud Build returned an empty private-source read token" >&2
+            exit 1
+          }
+
+          askpass="$$(mktemp /workspace/mattermost-git-askpass.XXXXXX)"
+          trap 'rm -f "$$askpass"' EXIT
+          printf '%s\n' \
+            '#!/bin/sh' \
+            'case "$$1" in' \
+            '  *Username*) printf "%s\\n" x-access-token ;;' \
+            '  *Password*) printf "%s\\n" "$$CLOUD_BUILD_REPO_TOKEN" ;;' \
+            'esac' > "$$askpass"
+          chmod 700 "$$askpass"
+          CLOUD_BUILD_REPO_TOKEN="$$read_token" \
+            GIT_ASKPASS="$$askpass" \
+            GIT_TERMINAL_PROMPT=0 \
+            sh scripts/init-sources.sh
+          unset access_token read_token
+          rm -f "$$askpass"
+          trap - EXIT
 
           assembly_sha="$$(git rev-parse HEAD)"
           server_sha="$$(git -C sources/mattermost rev-parse HEAD)"
@@ -372,6 +427,7 @@ resource "google_cloudbuild_trigger" "this" {
   depends_on = [
     google_service_account_iam_member.apply_acts_as_build,
     google_project_iam_member.build_logs,
+    google_project_iam_member.build_source_reader,
     google_project_iam_member.build_on_demand_scan,
     google_artifact_registry_repository_iam_member.writer,
     google_clouddeploy_delivery_pipeline_iam_member.releaser,

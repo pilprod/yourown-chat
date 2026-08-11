@@ -92,6 +92,8 @@ deployment "eu" {
     github_connection_name = "pilprod-github"
     github_repository_name = "yourown-chat-mattermost"
     github_remote_uri      = "https://github.com/pilprod/yourown-chat-mattermost.git"
+    github_web_repository_name = "yourown-chat-web"
+    github_web_remote_uri      = "https://github.com/pilprod/yourown-chat-web.git"
     image_name             = "mattermost"
     # Stable assembly tags use dev -> smoke -> approval -> prod. Prerelease
     # tags and release branches are structurally limited to dev preview.
