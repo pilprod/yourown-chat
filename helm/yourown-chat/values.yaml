@@ -1,0 +1,98 @@
+yourown_chat_control_api_image: ""
+yourown_chat_identity_api_image: ""
+yourown_chat_identity_admin_image: ""
+yourown_chat_identity_migrate_image: ""
+yourown_chat_control_api_enabled: false
+yourown_chat_ingress_enabled: true
+yourown_chat_registration_enabled: false
+keycloak_enabled: true
+keycloak_issuer: "https://yourown.chat/auth/realms/yourown-chat"
+keycloak_internal_userinfo_url: "http://keycloak.keycloak.svc.cluster.local:8080/auth/realms/yourown-chat/protocol/openid-connect/userinfo"
+
+backend_control_api_gsa: ""
+identity_api_gsa: ""
+identity_admin_gsa: ""
+identity_migrate_gsa: ""
+server_secret_project: ""
+identity_runtime_database_connection_secret_id: "yourown-chat-identity-runtime-database-url"
+identity_migrate_database_connection_secret_id: "yourown-chat-identity-database-url"
+cloudsql_private_ip: ""
+
+identity:
+  replicaCount: 1
+  port: 8081
+  sessionTTL: 720h
+  passwordMaxConcurrency: 2
+  loginMaxFailures: 5
+  loginFailureWindow: 15m
+  # Mattermost is reached through its private ClusterIP. The corresponding
+  # egress policy permits only the mattermost namespace on port 8065.
+  allowInsecureMattermost: true
+  resources:
+    requests: { cpu: 25m, memory: 96Mi }
+    limits: { cpu: 250m, memory: 256Mi }
+
+identityAdmin:
+  replicaCount: 1
+  port: 8082
+  resources:
+    requests: { cpu: 10m, memory: 48Mi }
+    limits: { cpu: 100m, memory: 128Mi }
+
+controlApi:
+  replicaCount: 1
+  port: 8080
+  resources:
+    requests: { cpu: 25m, memory: 96Mi }
+    limits: { cpu: 250m, memory: 256Mi }
+
+temporal:
+  address: temporal-frontend.temporal.svc.cluster.local:7233
+  namespace: yourown-chat
+  workflowTaskQueue: agent-orchestration-go-v1
+
+mattermost:
+  url: http://mattermost.mattermost.svc.cluster.local:8065
+
+# Idempotently reconciled by identity-admin at startup. This is product
+# topology, not user data: no Mattermost or Keycloak account is committed.
+workspaceBootstrap:
+  id: d43e8c20-9b99-4a1c-9a6b-84c9de45f786
+  slug: yourown-chat
+  displayName: YourOwn.Chat
+  publicURL: https://yourown.chat
+  mattermostURL: http://mattermost.mattermost.svc.cluster.local:8065
+  teamID: ""
+
+ingress:
+  className: nginx
+  host: yourown.chat
+  tlsSecretName: yourown-chat-server-origin-tls
+  authLimitConnections: 2
+  authLimitRPS: 1
+  authLimitBurstMultiplier: 2
+  keycloakAdminLimitRPS: 2
+  keycloakServiceName: yourown-chat-keycloak
+
+priorityClassName: production
+serviceAccounts:
+  identityApi: yourown-chat-identity-api
+  identityAdmin: yourown-chat-identity-admin
+  identityMigrate: yourown-chat-identity-migrate
+  controlApi: yourown-chat-control-api
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile: { type: RuntimeDefault }
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities: { drop: ["ALL"] }
+
+networkPolicy:
+  enabled: true
+  allowExternalMattermost: false

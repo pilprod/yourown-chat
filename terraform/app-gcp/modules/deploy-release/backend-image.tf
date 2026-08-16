@@ -1,8 +1,11 @@
 locals {
   workload_image_paths = {
-    control_api     = "${local.artifact_repository_prefix}/${var.backend_image_prefix}-control-api"
-    workflow_worker = "${local.artifact_repository_prefix}/${var.agents_image_prefix}-workflow-worker"
-    activity_worker = "${local.artifact_repository_prefix}/${var.agents_image_prefix}-activity-worker"
+    control_api      = "${local.artifact_repository_prefix}/${var.backend_image_prefix}-control-api"
+    identity_api     = "${local.artifact_repository_prefix}/${var.backend_image_prefix}-identity-api"
+    identity_admin   = "${local.artifact_repository_prefix}/${var.backend_image_prefix}-identity-admin"
+    identity_migrate = "${local.artifact_repository_prefix}/${var.backend_image_prefix}-identity-migrate"
+    workflow_worker  = "${local.artifact_repository_prefix}/${var.agents_image_prefix}-workflow-worker"
+    activity_worker  = "${local.artifact_repository_prefix}/${var.agents_image_prefix}-activity-worker"
   }
 
   source_repositories = {
@@ -33,7 +36,7 @@ locals {
         builder  = builder
         pipeline = pipeline
         settings = settings
-      } if startswith(pipeline, "agents-")
+      } if startswith(pipeline, "agents-") || (builder == "backend" && pipeline == "yourown-chat")
     }
   ]...)
 
@@ -43,7 +46,7 @@ locals {
       branch        = var.backend_branch_regex
       tag           = null
       release       = false
-      services      = "control-api"
+      services      = "control-api identity-api identity-admin identity-migrate"
       workflowcheck = false
     }
     "yourown-chat-server-image" = {
@@ -51,7 +54,7 @@ locals {
       branch        = null
       tag           = var.backend_release_tag_regex
       release       = true
-      services      = "control-api"
+      services      = "control-api identity-api identity-admin identity-migrate"
       workflowcheck = false
     }
     "yourown-chat-agents-ci" = {
@@ -197,9 +200,27 @@ resource "google_cloudbuild_trigger" "source_image" {
   build {
     step {
       id         = "verify-go"
-      name       = "golang:1.26.5-bookworm@sha256:6c5605ab3a9a9fb3c4eafe5b3d63cdbf3881caf113262b67862547b54a9db599"
+      name       = "golang:1.26.6-bookworm@sha256:116d58cbd88c1297624acc6e967a060012422bacf9930927e23fb719189c6f36"
       entrypoint = "bash"
       args = ["-ceu", <<-EOT
+        if [ -n "$TAG_NAME" ]; then
+          release_main_ref="refs/remotes/release-check/main"
+          if [ "$$(git rev-parse --is-shallow-repository)" = "true" ]; then
+            git fetch --no-tags --force --unshallow \
+              "${local.source_repositories[each.value.source].remote_uri}" \
+              "refs/heads/main:$$release_main_ref"
+          else
+            git fetch --no-tags --force \
+              "${local.source_repositories[each.value.source].remote_uri}" \
+              "refs/heads/main:$$release_main_ref"
+          fi
+          if ! git merge-base --is-ancestor "$COMMIT_SHA" "$$release_main_ref"; then
+            echo "Release tag $TAG_NAME points to $COMMIT_SHA, which is not on reviewed ${each.value.source} main" >&2
+            echo "Merge the release change to main and create a new immutable tag on the resulting commit" >&2
+            exit 1
+          fi
+        fi
+
         go mod tidy
         go mod verify
         gofmt -w .
@@ -231,11 +252,9 @@ resource "google_cloudbuild_trigger" "source_image" {
         docker buildx create --name ${each.value.source}-cloudbuild --use || docker buildx use ${each.value.source}-cloudbuild
         for service in ${each.value.services}; do
           image_path="${local.artifact_repository_prefix}/${var.backend_image_prefix}-$$service"
+          service_arg="--build-arg SERVICE=$$service"
           if [ "${each.value.source}" = "agents" ]; then
             image_path="${local.artifact_repository_prefix}/${var.agents_image_prefix}-$$service"
-            service_arg="--build-arg SERVICE=$$service"
-          else
-            service_arg=""
           fi
           docker buildx build \
             --file Dockerfile \
@@ -314,8 +333,43 @@ resource "google_cloudbuild_trigger" "source_image" {
           echo "Branch verification completed; no Cloud Deploy release is created"
           exit 0
         fi
+
+        safe_tag="$$(printf '%s' "$TAG_NAME" | tr '.+' '--')"
+        platform_sha="$$(git -C /workspace/yourown-chat rev-parse HEAD)"
+
+        if [ "${each.value.source}" = "backend" ] && [ "${var.server_enabled}" = "true" ]; then
+          server_parameters=""
+          server_digest_set_input=""
+          for service in control-api identity-api identity-admin identity-migrate; do
+            image_path="${local.artifact_repository_prefix}/${var.backend_image_prefix}-$$service"
+            digest="$$(cat "/workspace/$$service-image-digest")"
+            parameter="yourown_chat_$$(printf '%s' "$$service" | tr '-' '_')_image"
+            [ -z "$$server_parameters" ] || server_parameters="$$server_parameters,"
+            server_parameters="$$server_parameters$$parameter=$$image_path@$$digest"
+            server_digest_set_input="$$server_digest_set_input$$digest\n"
+          done
+          server_digest_set="$$(printf '%b' "$$server_digest_set_input" | sha256sum | cut -d' ' -f1)"
+          set +e
+          server_output="$$(gcloud deploy releases create "yourown-chat-$$safe_tag" \
+            --project "${var.project_id}" \
+            --region "${var.region}" \
+            --delivery-pipeline "yourown-chat" \
+            --source "/workspace/yourown-chat/helm" \
+            --skaffold-file "skaffold-yourown-chat.yaml" \
+            --gcs-source-staging-dir "gs://${google_storage_bucket.source.name}/source" \
+            --deploy-parameters "$$server_parameters" \
+            --annotations "release-tag=$TAG_NAME,build-id=$BUILD_ID,image-set=$$server_digest_set,platform-sha=$$platform_sha" 2>&1)"
+          server_status=$$?
+          set -e
+          if [ $$server_status -ne 0 ] && ! printf '%s' "$$server_output" | grep -q 'ALREADY_EXISTS'; then
+            printf '%s\n' "$$server_output" >&2
+            exit $$server_status
+          fi
+          printf '%s\n' "$$server_output"
+        fi
+
         if [ "${var.agents_enabled}" != "true" ]; then
-          echo "Immutable images are ready, but the Terraform Temporal launch gate is closed; no workload release is created"
+          echo "Server images are ready; the Terraform Temporal launch gate is closed, so no agent release is created"
           exit 0
         fi
 
@@ -339,11 +393,9 @@ resource "google_cloudbuild_trigger" "source_image" {
           digest_set_input="$$digest_set_input$$digest\n"
         done
 
-        safe_tag="$$(printf '%s' "$TAG_NAME" | tr '.+' '--')"
         release_name="agents-$$safe_tag"
         pipeline="${var.agents_runtime_enabled ? "agents-start" : "agents-pause"}"
         mode="${var.agents_runtime_enabled ? "running" : "paused"}"
-        platform_sha="$$(git -C /workspace/yourown-chat rev-parse HEAD)"
         digest_set="$$(printf '%b' "$$digest_set_input" | sha256sum | cut -d' ' -f1)"
 
         set +e

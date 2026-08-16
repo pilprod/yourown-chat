@@ -158,6 +158,12 @@ variable "agents_enabled" {
   default     = false
 }
 
+variable "server_enabled" {
+  type        = bool
+  description = "Whether a backend tag may create the independent server-plane release."
+  default     = false
+}
+
 variable "agents_runtime_enabled" {
   type        = bool
   description = "Choose whether a semver release renders the static agent start or pause profile. Operational start/pause releases may still be cut explicitly."

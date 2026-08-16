@@ -165,15 +165,19 @@ docker/                         # one Artifact Registry repository
 ├── mcp-google-cloud
 ├── mcp-terraform-stacks
 ├── yourown-chat-control-api
+├── yourown-chat-identity-api
+├── yourown-chat-identity-migrate
 ├── yourown-chat-workflow-worker
 └── yourown-chat-activity-worker
 ```
 
-`yourown-chat-control-api` is built from `pilprod/yourown-chat-server`.
+The control, identity and identity-migration images are built from
+`pilprod/yourown-chat-server`.
 `yourown-chat-workflow-worker` and `yourown-chat-activity-worker` are built from
 `pilprod/yourown-chat-agents`. Separate Cloud Build identities and triggers
-enforce this source boundary. Matching immutable tags coordinate the three
-digests into one workload release.
+enforce this source boundary. A server tag releases the three server images;
+matching immutable server/agent tags coordinate the control and worker digests
+for the separate agent-compute release.
 
 Owned MCP images are built directly from the private Go source repository with
 one pinned multi-service Dockerfile. The retained base/runtime catalog is for

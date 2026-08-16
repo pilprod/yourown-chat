@@ -324,7 +324,7 @@ docker build -f ../yourown-chat/docker/mcp/Dockerfile \
 
 `docker/mcp/upstreams.env` is the reviewable upstream lock for the other
 runtime images. Cloudflared 2026.7.3 is checked out at commit
-`3a2b45c2a511fcdd81b68c190938e4ffadbea5dc` and rebuilt with Go 1.26.5
+`3a2b45c2a511fcdd81b68c190938e4ffadbea5dc` and rebuilt with Go 1.26.6
 rather than the vulnerable Go 1.26.4 used by the upstream container.
 Every in-cluster workload is rendered with an Artifact Registry `@sha256`
 reference.
@@ -374,6 +374,7 @@ and are then resolved from the committed name allowlist:
 - `cloudflare`;
 - `app-gcp`;
 - `platform-gcp`;
+- `keycloak`;
 - `agent-registry-gcp`.
 
 `agent-registry-gcp` may be absent until that HCP Stack is created or the

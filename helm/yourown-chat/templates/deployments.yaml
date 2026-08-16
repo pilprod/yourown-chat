@@ -1,0 +1,191 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: yourown-chat-identity-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: yourown-chat-identity-api
+    {{- include "yourown-chat.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.identity.replicaCount }}
+  selector:
+    matchLabels: { app: yourown-chat-identity-api }
+  template:
+    metadata:
+      labels:
+        app: yourown-chat-identity-api
+        {{- include "yourown-chat.labels" . | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      serviceAccountName: {{ .Values.serviceAccounts.identityApi }}
+      priorityClassName: {{ .Values.priorityClassName }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: identity-api
+          image: {{ required "yourown_chat_identity_api_image is required" .Values.yourown_chat_identity_api_image | quote }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: IDENTITY_API_PORT, value: {{ .Values.identity.port | quote }} }
+            - { name: IDENTITY_DATABASE_URL_FILE, value: /var/run/secrets/identity/database-url }
+            - { name: IDENTITY_SESSION_TTL, value: {{ .Values.identity.sessionTTL | quote }} }
+            - { name: IDENTITY_PASSWORD_MAX_CONCURRENCY, value: {{ .Values.identity.passwordMaxConcurrency | quote }} }
+            - { name: IDENTITY_LOGIN_MAX_FAILURES, value: {{ .Values.identity.loginMaxFailures | quote }} }
+            - { name: IDENTITY_LOGIN_FAILURE_WINDOW, value: {{ .Values.identity.loginFailureWindow | quote }} }
+            - { name: IDENTITY_REGISTRATION_ENABLED, value: {{ .Values.yourown_chat_registration_enabled | quote }} }
+            - { name: IDENTITY_ALLOW_INSECURE_MATTERMOST, value: {{ .Values.identity.allowInsecureMattermost | quote }} }
+            - { name: IDENTITY_OIDC_ISSUER, value: {{ required "keycloak_issuer is required" .Values.keycloak_issuer | quote }} }
+            - { name: IDENTITY_OIDC_USERINFO_URL, value: {{ required "keycloak_internal_userinfo_url is required" .Values.keycloak_internal_userinfo_url | quote }} }
+          ports:
+            - { name: http, containerPort: {{ .Values.identity.port }} }
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 3
+            failureThreshold: 40
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 20
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.identity.resources | nindent 12 }}
+          volumeMounts:
+            - { name: identity-secrets, mountPath: /var/run/secrets/identity, readOnly: true }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: identity-secrets
+          csi:
+            driver: secrets-store-gke.csi.k8s.io
+            readOnly: true
+            volumeAttributes: { secretProviderClass: yourown-chat-identity-api-gcp }
+        - { name: tmp, emptyDir: {} }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: yourown-chat-identity-admin
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: yourown-chat-identity-admin
+    {{- include "yourown-chat.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.identityAdmin.replicaCount }}
+  selector:
+    matchLabels: { app: yourown-chat-identity-admin }
+  template:
+    metadata:
+      labels:
+        app: yourown-chat-identity-admin
+        {{- include "yourown-chat.labels" . | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      serviceAccountName: {{ .Values.serviceAccounts.identityAdmin }}
+      priorityClassName: {{ .Values.priorityClassName }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: identity-admin
+          image: {{ required "yourown_chat_identity_admin_image is required" .Values.yourown_chat_identity_admin_image | quote }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: IDENTITY_ADMIN_PORT, value: {{ .Values.identityAdmin.port | quote }} }
+            - { name: IDENTITY_DATABASE_URL_FILE, value: /var/run/secrets/identity/database-url }
+            - { name: IDENTITY_ADMIN_TOKEN_FILE, value: /var/run/secrets/identity/admin-token }
+            - { name: IDENTITY_ALLOW_INSECURE_MATTERMOST, value: {{ .Values.identity.allowInsecureMattermost | quote }} }
+            - { name: IDENTITY_BOOTSTRAP_WORKSPACE_ID, value: {{ required "workspaceBootstrap.id is required" .Values.workspaceBootstrap.id | quote }} }
+            - { name: IDENTITY_BOOTSTRAP_WORKSPACE_SLUG, value: {{ required "workspaceBootstrap.slug is required" .Values.workspaceBootstrap.slug | quote }} }
+            - { name: IDENTITY_BOOTSTRAP_WORKSPACE_DISPLAY_NAME, value: {{ required "workspaceBootstrap.displayName is required" .Values.workspaceBootstrap.displayName | quote }} }
+            - { name: IDENTITY_BOOTSTRAP_WORKSPACE_PUBLIC_URL, value: {{ required "workspaceBootstrap.publicURL is required" .Values.workspaceBootstrap.publicURL | quote }} }
+            - { name: IDENTITY_BOOTSTRAP_WORKSPACE_MATTERMOST_URL, value: {{ required "workspaceBootstrap.mattermostURL is required" .Values.workspaceBootstrap.mattermostURL | quote }} }
+            - { name: IDENTITY_BOOTSTRAP_WORKSPACE_TEAM_ID, value: {{ .Values.workspaceBootstrap.teamID | quote }} }
+          ports:
+            - { name: http, containerPort: {{ .Values.identityAdmin.port }} }
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 3
+            failureThreshold: 40
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 20
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.identityAdmin.resources | nindent 12 }}
+          volumeMounts:
+            - { name: identity-secrets, mountPath: /var/run/secrets/identity, readOnly: true }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: identity-secrets
+          csi:
+            driver: secrets-store-gke.csi.k8s.io
+            readOnly: true
+            volumeAttributes: { secretProviderClass: yourown-chat-identity-admin-gcp }
+        - { name: tmp, emptyDir: {} }
+{{- if .Values.yourown_chat_control_api_enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: yourown-chat-control-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: yourown-chat-control-api
+    {{- include "yourown-chat.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.controlApi.replicaCount }}
+  selector:
+    matchLabels: { app: yourown-chat-control-api }
+  template:
+    metadata:
+      labels:
+        app: yourown-chat-control-api
+        {{- include "yourown-chat.labels" . | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      serviceAccountName: {{ .Values.serviceAccounts.controlApi }}
+      priorityClassName: {{ .Values.priorityClassName }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: control-api
+          image: {{ required "yourown_chat_control_api_image is required" .Values.yourown_chat_control_api_image | quote }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: TEMPORAL_ADDRESS, value: {{ .Values.temporal.address | quote }} }
+            - { name: TEMPORAL_NAMESPACE, value: {{ .Values.temporal.namespace | quote }} }
+            - { name: TEMPORAL_WORKFLOW_TASK_QUEUE, value: {{ .Values.temporal.workflowTaskQueue | quote }} }
+            - { name: MATTERMOST_URL, value: {{ .Values.mattermost.url | quote }} }
+            - { name: WORKFLOW_ID_KEY_FILE, value: /var/run/secrets/control/workflow-id-key }
+          ports:
+            - { name: http, containerPort: {{ .Values.controlApi.port }} }
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 3
+            failureThreshold: 40
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 20
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.controlApi.resources | nindent 12 }}
+          volumeMounts:
+            - { name: control-secrets, mountPath: /var/run/secrets/control, readOnly: true }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: control-secrets
+          csi:
+            driver: secrets-store-gke.csi.k8s.io
+            readOnly: true
+            volumeAttributes: { secretProviderClass: yourown-chat-control-api-gcp }
+        - { name: tmp, emptyDir: {} }
+{{- end }}

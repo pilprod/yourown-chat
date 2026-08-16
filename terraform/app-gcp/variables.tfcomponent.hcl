@@ -271,6 +271,42 @@ variable "agent_platform_enabled" {
   default     = false
 }
 
+variable "yourown_chat_server_enabled" {
+  type        = bool
+  description = "Create and deliver the independent client-facing YourOwn.Chat server plane."
+  default     = true
+}
+
+variable "keycloak_enabled" {
+  type        = bool
+  description = "Publish the edge route to the platform-owned Keycloak service. The runtime itself remains in platform-gcp."
+  default     = true
+}
+
+variable "keycloak_issuer" {
+  type        = string
+  description = "Canonical issuer published by platform-gcp."
+  default     = "https://yourown.chat/auth/realms/yourown-chat"
+}
+
+variable "yourown_chat_identity_connection_secret_id" {
+  type        = string
+  description = "Platform-owned Secret Manager ID containing the identity migration database URI."
+  default     = "yourown-chat-identity-database-url"
+}
+
+variable "yourown_chat_identity_runtime_connection_secret_id" {
+  type        = string
+  description = "Platform-owned Secret Manager ID containing the least-privilege identity runtime database URI."
+  default     = "yourown-chat-identity-runtime-database-url"
+}
+
+variable "yourown_chat_registration_enabled" {
+  type        = bool
+  description = "Pilot switch for public identity registration. Disable after the initial user cohort is created."
+  default     = false
+}
+
 variable "temporal_enabled" {
   type        = bool
   description = "Explicit launch gate for Terraform-owned Temporal infrastructure. Keep false until the prerequisite MCP production release has passed verification."

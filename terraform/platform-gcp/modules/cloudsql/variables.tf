@@ -194,11 +194,22 @@ variable "password_rotation" {
 
 variable "additional_database_users" {
   type = map(object({
-    database_names            = set(string)
-    password_secret_id        = string
-    password_secret_accessors = optional(set(string), [])
-    password_rotation         = optional(string, "1")
+    database_names              = set(string)
+    password_secret_id          = string
+    password_secret_accessors   = optional(set(string), [])
+    connection_secret_id        = optional(string)
+    connection_secret_accessors = optional(set(string), [])
+    password_rotation           = optional(string, "1")
+    manage_databases            = optional(bool, true)
   }))
   description = "Additional logical database groups and users hosted by this shared Cloud SQL instance. The map key is the PostgreSQL user name."
   default     = {}
+
+  validation {
+    condition = alltrue([
+      for settings in values(var.additional_database_users) :
+      settings.connection_secret_id == null || length(settings.database_names) == 1
+    ])
+    error_message = "An additional user with connection_secret_id must own exactly one database."
+  }
 }

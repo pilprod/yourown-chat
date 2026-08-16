@@ -116,6 +116,48 @@ resource "kubernetes_limit_range_v1" "agent_pilot" {
   }
 }
 
+resource "kubernetes_resource_quota_v1" "server_pilot" {
+  count = var.server_enabled ? 1 : 0
+
+  metadata {
+    name      = "compute-budget"
+    namespace = var.server_namespace
+  }
+
+  spec {
+    hard = {
+      "pods"            = "10"
+      "requests.cpu"    = "500m"
+      "requests.memory" = "1Gi"
+      "limits.cpu"      = "2"
+      "limits.memory"   = "2Gi"
+    }
+  }
+}
+
+resource "kubernetes_limit_range_v1" "server_pilot" {
+  count = var.server_enabled ? 1 : 0
+
+  metadata {
+    name      = "container-defaults"
+    namespace = var.server_namespace
+  }
+
+  spec {
+    limit {
+      type = "Container"
+      default = {
+        cpu    = "250m"
+        memory = "256Mi"
+      }
+      default_request = {
+        cpu    = "25m"
+        memory = "64Mi"
+      }
+    }
+  }
+}
+
 # Cleanup runs as a Cloud Deploy PREDEPLOY hook outside the cluster.
 # Long-lived RBAC remains platform policy and grants its dedicated Google
 # service accounts permission to scale only the named disposable Deployments.
@@ -220,7 +262,7 @@ resource "kubernetes_role_v1" "agent_verify" {
   rule {
     api_groups     = ["apps"]
     resources      = ["deployments"]
-    resource_names = ["yourown-chat-control-api"]
+    resource_names = ["agent-platform-workflow-worker", "agent-platform-activity-worker"]
     verbs          = ["get"]
   }
 }

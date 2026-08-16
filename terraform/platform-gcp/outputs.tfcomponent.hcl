@@ -92,6 +92,18 @@ output "cloudsql_connection_secret_id" {
   value       = one([for c in component.cloudsql : c.connection_secret_id])
 }
 
+output "yourown_chat_identity_connection_secret_id" {
+  type        = string
+  description = "Ready-to-use identity database URI secret ID, or null only when shared Cloud SQL is disabled."
+  value       = try(one([for c in component.cloudsql : c.additional_connection_secret_ids["yourown_chat_identity"]]), null)
+}
+
+output "yourown_chat_identity_runtime_connection_secret_id" {
+  type        = string
+  description = "Least-privilege runtime identity database URI secret ID."
+  value       = try(one([for c in component.cloudsql : c.additional_connection_secret_ids["yourown_chat_identity_runtime"]]), null)
+}
+
 # --- Cloud Billing -------------------------------------------------------------
 output "billing_export_dataset_id" {
   type        = string
@@ -125,6 +137,9 @@ output "workload_identity_emails" {
     mcp-tunnel           = component.workload_identity_mcp_tunnel.email
     agents               = component.workload_identity_agents.email
     backend-control-api   = component.workload_identity_backend_control_api.email
+    identity-api          = component.workload_identity_identity_api.email
+    identity-admin        = component.workload_identity_identity_admin.email
+    identity-migrate      = component.workload_identity_identity_migrate.email
     agents-workflow      = component.workload_identity_agent_workflow.email
     agents-activity      = component.workload_identity_agents.email
   }
@@ -143,6 +158,9 @@ output "workload_identity_members" {
     mcp-tunnel           = component.workload_identity_mcp_tunnel.iam_member
     agents               = component.workload_identity_agents.iam_member
     backend-control-api   = component.workload_identity_backend_control_api.iam_member
+    identity-api          = component.workload_identity_identity_api.iam_member
+    identity-admin        = component.workload_identity_identity_admin.iam_member
+    identity-migrate      = component.workload_identity_identity_migrate.iam_member
     agents-workflow      = component.workload_identity_agent_workflow.iam_member
     agents-activity      = component.workload_identity_agents.iam_member
   }
@@ -179,6 +197,30 @@ output "temporal_enabled" {
   type        = bool
   description = "Whether platform-gcp has enabled the official Temporal service."
   value       = var.temporal_enabled
+}
+
+output "yourown_chat_server_enabled" {
+  type        = bool
+  description = "Whether the independent YourOwn.Chat server plane foundation is enabled."
+  value       = var.yourown_chat_server_enabled
+}
+
+output "keycloak_enabled" {
+  type        = bool
+  description = "Whether platform-gcp owns an active Keycloak identity runtime."
+  value       = var.keycloak_enabled
+}
+
+output "keycloak_issuer" {
+  type        = string
+  description = "Canonical OpenID Connect issuer for the YourOwn.Chat realm."
+  value       = component.keycloak.issuer
+}
+
+output "keycloak_internal_url" {
+  type        = string
+  description = "Cluster-only Keycloak base URL for trusted backend calls."
+  value       = component.keycloak.internal_url
 }
 
 output "temporal_results_bucket_name" {

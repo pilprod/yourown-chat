@@ -101,7 +101,7 @@ servers:
       TFE_ORGANIZATION: "papou-work"
       # Approval remains name-based and intentionally narrower than Stack
       # creation/update management policy.
-      TFE_STACK_ALLOWLIST: "cloudflare,app-gcp,platform-gcp,agent-registry-gcp"
+      TFE_STACK_ALLOWLIST: "cloudflare,app-gcp,platform-gcp,keycloak,agent-registry-gcp"
       TFE_STACK_PROJECT_ALLOWLIST: "prj-QuYKhn6EzLX9jB53"
       TFE_STACK_REPOSITORY_ALLOWLIST: "pilprod/yourown-chat"
       TFE_STACK_DIRECTORY_PREFIX_ALLOWLIST: "terraform/"
@@ -144,7 +144,7 @@ servers:
       GOOGLE_CLOUD_DEPLOY_ENABLED: "true"
       GOOGLE_CLOUD_DEPLOY_PROJECT: "yourown-chat"
       GOOGLE_CLOUD_DEPLOY_LOCATION: "europe-west3"
-      GOOGLE_CLOUD_DEPLOY_PIPELINE_TARGETS: "mattermost=mattermost-dev|mattermost-prod,mattermost-preview=mattermost-preview-dev,mcp=mcp-dev|mcp-prod,agents-start=agents-start-pilot,agents-pause=agents-pause-pilot"
+      GOOGLE_CLOUD_DEPLOY_PIPELINE_TARGETS: "mattermost=mattermost-dev|mattermost-prod,mattermost-preview=mattermost-preview-dev,mcp=mcp-dev|mcp-prod,yourown-chat=yourown-chat-pilot,agents-start=agents-start-pilot,agents-pause=agents-pause-pilot"
       GOOGLE_CLOUD_DEPLOY_CLEANUP_ENABLED: "true"
       GOOGLE_CLOUD_DEPLOY_DEV_WORKLOADS: "mattermost=dev/dev-mattermost,mattermost-preview=dev/dev-mattermost,mcp=dev/dev-mcp-terraform-stacks|dev/dev-mcp-google-cloud"
       GOOGLE_CLOUD_BUILD_PROJECT: "yourown-chat"

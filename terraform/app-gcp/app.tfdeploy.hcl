@@ -45,6 +45,12 @@ deployment "eu" {
     artifact_registry_repository_id = upstream_input.platform.artifact_registry_repository_id
     cmek_key_id                     = upstream_input.platform.cmek_key_id
     workload_identity_members       = upstream_input.platform.workload_identity_members
+    yourown_chat_server_enabled     = upstream_input.platform.yourown_chat_server_enabled
+    keycloak_enabled                = upstream_input.platform.keycloak_enabled
+    keycloak_issuer                 = upstream_input.platform.keycloak_issuer
+    yourown_chat_identity_connection_secret_id = upstream_input.platform.yourown_chat_identity_connection_secret_id
+    yourown_chat_identity_runtime_connection_secret_id = upstream_input.platform.yourown_chat_identity_runtime_connection_secret_id
+    yourown_chat_registration_enabled = false
     ingress_ip_address              = upstream_input.platform.ingress_ip_address
     calls_ip_address                = upstream_input.platform.calls_ip_address
 

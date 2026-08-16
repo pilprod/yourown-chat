@@ -1,0 +1,6 @@
+apiVersion: v2
+name: yourown-chat
+description: Независимый пользовательский сервер платформы YourOwn.Chat
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

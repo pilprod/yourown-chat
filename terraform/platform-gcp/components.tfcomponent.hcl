@@ -16,7 +16,10 @@ locals {
     mcp                  = { namespace = "mcp-google-cloud", ksa = "mcp-servers" }
     mcp-terraform-stacks = { namespace = "mcp-terraform-stacks", ksa = "mcp-terraform-stacks" }
     mcp-tunnel           = { namespace = "mcp-tunnel", ksa = "mcp-tunnel" }
-    backend-control-api   = { namespace = "yourown-agents", ksa = "backend-control-api" }
+    backend-control-api   = { namespace = "yourown-chat-server", ksa = "yourown-chat-control-api" }
+    identity-api          = { namespace = "yourown-chat-server", ksa = "yourown-chat-identity-api" }
+    identity-admin        = { namespace = "yourown-chat-server", ksa = "yourown-chat-identity-admin" }
+    identity-migrate      = { namespace = "yourown-chat-server", ksa = "yourown-chat-identity-migrate" }
     agents-workflow      = { namespace = "yourown-agents", ksa = "agent-workflow-worker" }
     agents-activity      = { namespace = "yourown-agents", ksa = "agent-activity-worker" }
   }
@@ -331,6 +334,51 @@ component "workload_identity_backend_control_api" {
   depends_on = [component.gke]
 }
 
+component "workload_identity_identity_api" {
+  source = "./modules/workload-identity"
+
+  inputs = {
+    project_id   = component.project_services.project_id
+    account_id   = "yourown-chat-identity"
+    display_name = "YourOwn.Chat identity API workload identity"
+    namespace    = local.ns["identity-api"].namespace
+    ksa_name     = local.ns["identity-api"].ksa
+  }
+
+  providers  = { google = provider.google.this }
+  depends_on = [component.gke]
+}
+
+component "workload_identity_identity_admin" {
+  source = "./modules/workload-identity"
+
+  inputs = {
+    project_id   = component.project_services.project_id
+    account_id   = "yourown-chat-identity-admin"
+    display_name = "YourOwn.Chat internal identity administration workload"
+    namespace    = local.ns["identity-admin"].namespace
+    ksa_name     = local.ns["identity-admin"].ksa
+  }
+
+  providers  = { google = provider.google.this }
+  depends_on = [component.gke]
+}
+
+component "workload_identity_identity_migrate" {
+  source = "./modules/workload-identity"
+
+  inputs = {
+    project_id   = component.project_services.project_id
+    account_id   = "yourown-chat-migrate"
+    display_name = "YourOwn.Chat identity database migration workload identity"
+    namespace    = local.ns["identity-migrate"].namespace
+    ksa_name     = local.ns["identity-migrate"].ksa
+  }
+
+  providers  = { google = provider.google.this }
+  depends_on = [component.gke]
+}
+
 component "workload_identity_agent_workflow" {
   source = "./modules/workload-identity"
 
@@ -499,14 +547,48 @@ component "cloudsql" {
 
     password_rotation = var.cloudsql_password_rotation
 
-    additional_database_users = var.temporal_enabled ? {
-      temporal = {
-        database_names            = ["temporal", "temporal_visibility"]
-        password_secret_id        = "temporal-db-password"
-        password_secret_accessors = []
-        password_rotation         = var.temporal_password_rotation
-      }
-    } : {}
+    additional_database_users = merge(
+      {
+        yourown_chat_identity = {
+          database_names              = ["yourown_chat_identity"]
+          password_secret_id          = "yourown-chat-identity-db-password"
+          password_secret_accessors   = []
+          connection_secret_id        = "yourown-chat-identity-database-url"
+          connection_secret_accessors = [
+            component.workload_identity_identity_migrate.iam_member,
+          ]
+          password_rotation = var.yourown_chat_identity_password_rotation
+        }
+        yourown_chat_identity_runtime = {
+          database_names            = ["yourown_chat_identity"]
+          manage_databases          = false
+          password_secret_id        = "yourown-chat-identity-runtime-db-password"
+          password_secret_accessors = []
+          connection_secret_id      = "yourown-chat-identity-runtime-database-url"
+          connection_secret_accessors = [
+            component.workload_identity_identity_api.iam_member,
+            component.workload_identity_identity_admin.iam_member,
+          ]
+          password_rotation = var.yourown_chat_identity_password_rotation
+        }
+      },
+      var.temporal_enabled ? {
+        temporal = {
+          database_names            = ["temporal", "temporal_visibility"]
+          password_secret_id        = "temporal-db-password"
+          password_secret_accessors = []
+          password_rotation         = var.temporal_password_rotation
+        }
+      } : {},
+      var.keycloak_enabled ? {
+        keycloak = {
+          database_names            = ["keycloak"]
+          password_secret_id        = "keycloak-db-password"
+          password_secret_accessors = []
+          password_rotation         = var.keycloak_password_rotation
+        }
+      } : {},
+    )
 
     user_labels = local.common_labels
   }
@@ -537,6 +619,35 @@ component "temporal" {
   }
 
   depends_on = [component.cloudsql, component.storage]
+}
+
+# Keycloak is the platform identity authority shared by mobile, desktop, web
+# and backend services. The application stack never owns this release or its
+# database; it only publishes the existing edge route to this ClusterIP.
+component "keycloak" {
+  source = "./modules/keycloak"
+
+  inputs = {
+    enabled                  = var.keycloak_enabled
+    project_id               = component.project_services.project_id
+    region                   = var.region
+    encryption_key_name      = one([for k in component.kms : k.crypto_key_id])
+    cloudsql_private_ip      = one([for database in component.cloudsql : database.private_ip_address])
+    database_password        = try(one([for database in component.cloudsql : database.additional_passwords["keycloak"]]), "")
+    bootstrap_admin_client_secret = var.keycloak_bootstrap_admin_client_secret
+    bootstrap_secret_version = var.keycloak_password_rotation
+    image_version            = var.keycloak_version
+    public_url               = var.keycloak_public_url
+    labels                   = local.common_labels
+  }
+
+  providers = {
+    google     = provider.google.this
+    random     = provider.random.this
+    kubernetes = provider.kubernetes.this
+  }
+
+  depends_on = [component.cloudsql]
 }
 
 component "artifact_registry" {

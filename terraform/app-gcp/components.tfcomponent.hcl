@@ -147,6 +147,48 @@ component "clouddeploy_mcp" {
   }
 }
 
+component "clouddeploy_server" {
+  source = "./modules/clouddeploy"
+
+  inputs = {
+    project_id              = var.project_id
+    region                  = var.region
+    gke_cluster_id          = var.gke_cluster_id
+    pipeline_name           = "yourown-chat"
+    release_manager_members = [var.workload_identity_members.mcp]
+
+    stages = [{
+      name             = "pilot"
+      profiles         = ["server-pilot"]
+      require_approval = true
+      verify           = true
+    }]
+
+    deploy_parameters = {
+      backend_control_api_gsa                = lookup(var.workload_identity_emails, "backend-control-api", "")
+      identity_api_gsa                       = lookup(var.workload_identity_emails, "identity-api", "")
+      identity_admin_gsa                     = lookup(var.workload_identity_emails, "identity-admin", "")
+      identity_migrate_gsa                   = lookup(var.workload_identity_emails, "identity-migrate", "")
+      server_secret_project                  = var.project_id
+      identity_runtime_database_connection_secret_id = var.yourown_chat_identity_runtime_connection_secret_id
+      identity_migrate_database_connection_secret_id = var.yourown_chat_identity_connection_secret_id
+      cloudsql_private_ip                    = var.cloudsql_private_ip
+      yourown_chat_control_api_enabled       = tostring(var.temporal_enabled)
+      yourown_chat_ingress_enabled           = tostring(var.manage_ingress_origin_tls)
+      yourown_chat_registration_enabled      = tostring(var.yourown_chat_registration_enabled)
+      keycloak_enabled                       = tostring(var.keycloak_enabled)
+      keycloak_issuer                        = var.keycloak_issuer
+    }
+
+    labels = local.common_labels
+  }
+
+  providers = {
+    google      = provider.google.this
+    google-beta = provider.google-beta.this
+  }
+}
+
 component "clouddeploy_agents_start" {
   source = "./modules/clouddeploy"
 
@@ -165,7 +207,6 @@ component "clouddeploy_agents_start" {
     }]
 
     deploy_parameters = {
-      backend_control_api_gsa     = lookup(var.workload_identity_emails, "backend-control-api", "")
       agent_workflow_worker_gsa = lookup(var.workload_identity_emails, "agents-workflow", "")
       agent_activity_worker_gsa = lookup(var.workload_identity_emails, "agents-activity", "")
       agent_secret_project      = var.project_id
@@ -201,7 +242,6 @@ component "clouddeploy_agents_pause" {
     # Keep the exact same immutable infrastructure inputs as the running
     # release. Only the authored Skaffold profile changes workload replicas.
     deploy_parameters = {
-      backend_control_api_gsa     = lookup(var.workload_identity_emails, "backend-control-api", "")
       agent_workflow_worker_gsa = lookup(var.workload_identity_emails, "agents-workflow", "")
       agent_activity_worker_gsa = lookup(var.workload_identity_emails, "agents-activity", "")
       agent_secret_project      = var.project_id
@@ -295,6 +335,11 @@ component "secrets" {
         special   = false
         accessors = [var.workload_identity_members["backend-control-api"]]
       }
+      "yourown-chat-identity-admin-token" = {
+        generate  = true
+        special   = false
+        accessors = [var.workload_identity_members["identity-admin"]]
+      }
     }
   }
 
@@ -363,6 +408,19 @@ component "cluster_secrets" {
       var.agent_platform_enabled ? {
         yourown-agents = { labels = { tier = "pilot", "part-of" = "yourown-chat", component = "agents" } }
       } : {},
+      var.yourown_chat_server_enabled ? {
+        yourown-chat-server = {
+          labels = {
+            tier                                          = "pilot"
+            "part-of"                                     = "yourown-chat"
+            component                                     = "server"
+            "pod-security.kubernetes.io/enforce"          = "restricted"
+            "pod-security.kubernetes.io/enforce-version"  = "latest"
+            "pod-security.kubernetes.io/audit"            = "restricted"
+            "pod-security.kubernetes.io/warn"             = "restricted"
+          }
+        }
+      } : {},
     )
     adopt_existing_namespaces = var.adopt_existing_namespaces
 
@@ -427,6 +485,18 @@ component "cluster_secrets" {
           namespace = "mattermost"
           type      = "kubernetes.io/tls"
           labels    = { app = "mattermost" }
+          data = {
+            "tls.crt" = component.prod_secret_values.values["mattermost_origin_tls_cert"]
+            "tls.key" = component.prod_secret_values.values["mattermost_origin_tls_key"]
+          }
+        }
+      } : {},
+      var.manage_ingress_origin_tls && var.yourown_chat_server_enabled ? {
+        yourown-chat-server-origin-tls = {
+          name      = "yourown-chat-server-origin-tls"
+          namespace = "yourown-chat-server"
+          type      = "kubernetes.io/tls"
+          labels    = { app = "yourown-chat-server" }
           data = {
             "tls.crt" = component.prod_secret_values.values["mattermost_origin_tls_cert"]
             "tls.key" = component.prod_secret_values.values["mattermost_origin_tls_key"]
@@ -546,6 +616,9 @@ component "deploy_release" {
       mcp = {
         execution_service_account_email = component.clouddeploy_mcp.execution_service_account_email
       }
+      yourown-chat = {
+        execution_service_account_email = component.clouddeploy_server.execution_service_account_email
+      }
       agents-start = {
         execution_service_account_email = component.clouddeploy_agents_start.execution_service_account_email
       }
@@ -556,6 +629,7 @@ component "deploy_release" {
 
     release_tag_regex      = var.release_tag_regex
     mcp_enabled            = var.mcp_servers_enabled
+    server_enabled         = var.yourown_chat_server_enabled
     agents_enabled         = var.agent_platform_enabled && var.temporal_enabled
     agents_runtime_enabled = var.agent_platform_runtime_enabled
     mattermost_image_repository = {
@@ -598,7 +672,8 @@ component "workload_scheduling" {
   depends_on = [component.cluster_secrets]
 
   inputs = {
-    agent_enabled = var.agent_platform_enabled
+    agent_enabled  = var.agent_platform_enabled
+    server_enabled = var.yourown_chat_server_enabled
     cleanup_service_account_emails = {
       mattermost = component.clouddeploy.cleanup_service_account_email
       mcp        = component.clouddeploy_mcp.cleanup_service_account_email
