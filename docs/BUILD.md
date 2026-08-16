@@ -30,7 +30,7 @@ stack owns:
   source, used only to mint short-lived read tokens while initializing the
   pinned assembly submodule;
 - the `img-build` service account;
-- a `release-X.Y` branch trigger targeting the structurally dev-only
+- an `X.Y.Z` branch trigger targeting the structurally dev-only
   `mattermost-preview` pipeline;
 - an `X.Y.Z-suffix` prerelease trigger targeting the same dev-only pipeline;
 - the stable `^X.Y.Z$` tag trigger targeting the normal `mattermost` dev-to-prod
@@ -90,7 +90,7 @@ The deployment is started only after the push succeeds. There is no need to
 edit both Mattermost manifests or create a second platform tag for a normal
 image upgrade.
 
-For iterative testing, push to `release-11.10`. Each commit is tagged
+For iterative testing, push to branch `11.10.0`. Each commit is tagged
 in Artifact Registry as `git-<full SHA>` and deployed only through
 `mattermost-preview-dev`. The preview Cloud Deploy pipeline has no prod target.
 An immutable tag such as `11.10.0-rc.1` follows the same dev-only route. After

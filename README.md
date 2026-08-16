@@ -985,8 +985,8 @@ git tag 11.10.0  (on pilprod/yourown-chat-mattermost)
   → production approval → dev scaled to 0 → rolling prod rollout
 ```
 
-For product/compliance iterations, push commits to a branch such as
-`release-11.10`. Each commit builds an immutable
+For product/compliance iterations, push commits to a full-version branch such
+as `11.10.0`. Each commit builds an immutable
 `mattermost:git-<full SHA>` image and deploys it through the separate
 `mattermost-preview` pipeline. That pipeline contains only the dev target:
 there is no prod target to approve through the UI, API, or MCP. The moving

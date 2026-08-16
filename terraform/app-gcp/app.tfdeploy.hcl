@@ -96,7 +96,7 @@ deployment "eu" {
     github_web_remote_uri      = "https://github.com/pilprod/yourown-chat-web.git"
     image_name             = "mattermost"
     # Stable assembly tags use dev -> smoke -> approval -> prod. Prerelease
-    # tags and release branches are structurally limited to dev preview.
+    # tags and version branches are structurally limited to dev preview.
     builds = {
       mattermost = {
         tag_regex       = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
@@ -109,7 +109,7 @@ deployment "eu" {
         release_channel = "prerelease"
       }
       mattermost-preview = {
-        branch_regex    = "^release-[0-9]+\\.[0-9]+$"
+        branch_regex    = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
         delivery        = "preview"
         release_channel = "experimental"
       }

@@ -8,7 +8,7 @@ or unrelated component from being reapplied during every release.
 
 ```mermaid
 flowchart TD
-  PREVIEW["pilprod/yourown-chat-mattermost<br/>release-X.Y or X.Y.Z-suffix"] --> PBUILD["Build immutable preview image"]
+  PREVIEW["pilprod/yourown-chat-mattermost<br/>X.Y.Z branch or X.Y.Z-suffix tag"] --> PBUILD["Build immutable preview image"]
   PBUILD --> PDEV["mattermost-preview / dev<br/>migration + smoke; no prod stage"]
 
   MT["pilprod/yourown-chat-mattermost tag<br/>X.Y.Z"] --> BUILD["Build and push image"]
@@ -31,7 +31,7 @@ There are three Cloud Deploy pipelines:
 
 | Pipeline | Automatic stage | Review gate | After approval |
 |---|---|---|---|
-| `mattermost-preview` | `mattermost-preview-dev`; previews each `release-X.Y` commit or `X.Y.Z-suffix` tag | none | nothing: this pipeline has no production target |
+| `mattermost-preview` | `mattermost-preview-dev`; previews each `X.Y.Z` branch commit or `X.Y.Z-suffix` tag | none | nothing: this pipeline has no production target |
 | `mattermost` | `mattermost-dev`; exercises migrations against persistent `dev-postgres` | verified dev stays running for reviewer checks | predeploy scales dev to zero, then the operator performs a rolling rollout |
 | `mcp` | `mcp-dev`; creates readiness-gated `dev-mcp-*` deployments in the shared `dev` namespace | ready dev stays running for reviewer checks | predeploy scales dev to zero, then MCP prod deploys and executes read-only credential/API verification |
 
@@ -80,18 +80,18 @@ rollout name remains within 63 characters:
 `mattermost-11-9-0-a1b2c3d4-12345678`. If it does not fit, only the
 optional build suffix is dropped; the source commit is retained.
 
-### A dev-only release branch
+### A dev-only version branch
 
-Use `release-X.Y`, for example `release-11.10`, for licensing,
+Use the full product version, for example `11.10.0`, for licensing,
 rebranding, migration, or product experiments:
 
 ```bash
-git switch -c release-11.10
-git push -u origin release-11.10
+git switch -c 11.10.0
+git push -u origin 11.10.0
 ```
 
 Every pushed commit produces `mattermost:git-<full SHA>` plus a moving
-`release-11.10-latest` convenience tag. Cloud Deploy freezes the digest
+`11.10.0-latest` convenience tag. Cloud Deploy freezes the digest
 and deploys it to `mattermost-preview-dev`. The `mattermost-preview` pipeline
 has no prod stage, so these releases cannot reach production through Cloud
 Deploy UI, API, or MCP. This is stronger than relying on release metadata or a

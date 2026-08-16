@@ -115,7 +115,7 @@ variable "builds" {
     delivery        = string
     release_channel = string
   }))
-  description = "Mattermost assembly build entrypoints. Stable semver tags use the production flow; prerelease tags and release branches are preview-only."
+  description = "Mattermost assembly build entrypoints. Stable semver tags use the production flow; prerelease tags and version branches are preview-only."
   default = {
     mattermost = {
       tag_regex       = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
@@ -128,7 +128,7 @@ variable "builds" {
       release_channel = "prerelease"
     }
     mattermost-preview = {
-      branch_regex    = "^release-[0-9]+\\.[0-9]+$"
+      branch_regex    = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
       delivery        = "preview"
       release_channel = "experimental"
     }

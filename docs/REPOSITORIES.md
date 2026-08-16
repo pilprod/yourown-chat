@@ -9,9 +9,9 @@ operator identities.
 | Repository | Owns | Must not own | Canonical lifecycle |
 |---|---|---|---|
 | `pilprod/yourown-chat` | Public architecture, Terraform Stacks, Helm/Skaffold delivery, shared Dockerfiles and release runbooks | Mattermost, MCP, backend or agent application source | `main`; immutable `MAJOR.MINOR.PATCH` platform tags |
-| `pilprod/yourown-chat-mattermost` | Reproducible product image assembly and pinned Mattermost/web submodules | Server or web feature development | `main`; `release-X.Y` dev previews; `X.Y.Z-suffix` prereleases; stable `X.Y.Z` releases |
+| `pilprod/yourown-chat-mattermost` | Reproducible product image assembly and pinned Mattermost/web submodules | Server or web feature development | `main`; `X.Y.Z` dev-preview branches; `X.Y.Z-suffix` prereleases; stable `X.Y.Z` tags |
 | `pilprod/mattermost` | Patched public Mattermost Team Edition server fork | Web client, platform IaC or enterprise source | `public-patched` plus immutable `public-patched-X.Y.Z`; `vX.Y.Z-patched` source tags |
-| `pilprod/yourown-chat-web` | Standalone web client source and tests | Server code or image release orchestration | `release-X.Y`; `X.Y.Z-suffix` prereleases and stable `X.Y.Z` tags matching the assembly version |
+| `pilprod/yourown-chat-web` | Standalone web client source and tests | Server code or image release orchestration | `X.Y.Z` version branches; `X.Y.Z-suffix` prereleases and stable `X.Y.Z` tags matching the assembly version |
 | `pilprod/yourown-chat-mobile` | iOS/Android client source and client-specific CI | Backend or platform resources | `main`; client release tags follow the client store lifecycle |
 | `pilprod/yourown-chat-desktop` | Desktop client source and desktop packaging CI | Backend or platform resources | `master`; desktop release tags follow its upstream-compatible lifecycle |
 | `pilprod/yourown-chat-server` | Go control API: agent management, approvals, reports and the client-facing Temporal projection | Temporal activity implementation, MCP servers or IaC | `main` CI; immutable `MAJOR.MINOR.PATCH` image tags |
@@ -65,7 +65,7 @@ repository only after the commit is merged to its canonical branch.
 | Input | Development line | Release selection |
 |---|---|---|
 | `yourown-chat-mattermost/.sources/mattermost` | `release-X.Y-patched` | Exact reviewed SHA from that branch; assembly version `X.Y.Z[-suffix]` requires immutable source tag `vX.Y.Z[-suffix]-patched` on the same commit |
-| `yourown-chat-mattermost/.sources/web` | `release-X.Y` | Exact reviewed SHA from that branch; assembly version `X.Y.Z[-suffix]` requires the identical web tag `X.Y.Z[-suffix]` on the same commit |
+| `yourown-chat-mattermost/.sources/web` | `X.Y.Z` | Exact reviewed SHA from that branch; assembly version `X.Y.Z[-suffix]` requires the identical web tag `X.Y.Z[-suffix]` on the same commit |
 | `yourown-chat-web/upstream/mattermost` | Upstream supported release branch | Exact upstream SHA selected and reviewed by `yourown-chat-web`; never a moving branch at build time |
 | Desktop/mobile upstream submodules | Their documented upstream maintenance branch | Exact upstream SHA committed in the owning client repository before the client tag |
 
