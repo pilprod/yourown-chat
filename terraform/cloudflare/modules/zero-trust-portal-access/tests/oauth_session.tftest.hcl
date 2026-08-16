@@ -20,8 +20,8 @@ run "managed_oauth_session_covers_refresh_grant" {
   assert {
     condition = (
       cloudflare_zero_trust_access_application.this.oauth_configuration.grant.access_token_lifetime ==
-      "15m"
+      "24h"
     )
-    error_message = "Keep access tokens short-lived; the shared fix must preserve automatic refresh."
+    error_message = "Keep the temporary agent compatibility access-token lifetime pinned to 24 hours."
   }
 }

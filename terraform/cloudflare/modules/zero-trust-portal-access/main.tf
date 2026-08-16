@@ -1,5 +1,9 @@
 locals {
-  managed_oauth_access_token_lifetime = "15m"
+  # Temporary compatibility window for long-running agent sessions. Codex
+  # currently loses the rotated refresh token and fails with invalid_grant at
+  # the normal 15-minute boundary. Restore this to 15m after the client refresh
+  # lifecycle is fixed and verified end-to-end.
+  managed_oauth_access_token_lifetime = "24h"
   managed_oauth_session_duration      = "336h"
 
   managed_oauth_allowed_uris = [
