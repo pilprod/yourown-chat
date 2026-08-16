@@ -69,8 +69,8 @@ release annotations for readability, but is never used as the Kubernetes image
 identity.
 
 ```bash
-git tag 11.9.0
-git push origin 11.9.0
+git tag 11.10.0
+git push origin 11.10.0
 ```
 
 This path needs no second tag in `yourown-chat`.
@@ -82,16 +82,16 @@ optional build suffix is dropped; the source commit is retained.
 
 ### A dev-only release branch
 
-Use `release-X.Y`, for example `release-11.9`, for licensing,
+Use `release-X.Y`, for example `release-11.10`, for licensing,
 rebranding, migration, or product experiments:
 
 ```bash
-git switch -c release-11.9
-git push -u origin release-11.9
+git switch -c release-11.10
+git push -u origin release-11.10
 ```
 
 Every pushed commit produces `mattermost:git-<full SHA>` plus a moving
-`release-11.9-latest` convenience tag. Cloud Deploy freezes the digest
+`release-11.10-latest` convenience tag. Cloud Deploy freezes the digest
 and deploys it to `mattermost-preview-dev`. The `mattermost-preview` pipeline
 has no prod stage, so these releases cannot reach production through Cloud
 Deploy UI, API, or MCP. This is stronger than relying on release metadata or a
@@ -104,7 +104,7 @@ source/revision/version OCI labels, Team-only binary metadata, and embedded
 license and modification notices. A failed compliance check stops the pipeline
 before the dev rollout.
 
-For immutable candidates, use `X.Y.Z-suffix`, for example `11.9.0-rc.1`; these
+For immutable candidates, use `X.Y.Z-suffix`, for example `11.10.0-rc.1`; these
 tags are also structurally limited to the preview pipeline. After review, put
 stable `X.Y.Z` on the exact accepted commit. Only that tag starts the
 production-capable `mattermost` flow.

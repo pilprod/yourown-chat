@@ -166,7 +166,7 @@ resource "google_cloudbuild_trigger" "this" {
         "-ceu",
         <<-EOT
           # Initialize public source before any private credential exists.
-          sh scripts/init-sources.sh mattermost
+          SOURCE_VERSION="$TAG_NAME" sh scripts/init-sources.sh server
 
           access_token="$$(gcloud auth print-access-token)"
           token_url="https://cloudbuild.googleapis.com/v2/${google_cloudbuildv2_repository.web_source.id}:accessReadToken"
@@ -188,14 +188,14 @@ resource "google_cloudbuild_trigger" "this" {
           CLOUD_BUILD_REPO_TOKEN="$$read_token" \
             GIT_ASKPASS="$$askpass" \
             GIT_TERMINAL_PROMPT=0 \
-            sh scripts/init-sources.sh web
+            SOURCE_VERSION="$TAG_NAME" sh scripts/init-sources.sh web
           unset access_token read_token
           rm -f "$$askpass"
           trap - EXIT
 
           assembly_sha="$$(git rev-parse HEAD)"
-          server_sha="$$(git -C sources/mattermost rev-parse HEAD)"
-          web_sha="$$(git -C sources/web rev-parse HEAD)"
+          server_sha="$$(git -C .sources/mattermost rev-parse HEAD)"
+          web_sha="$$(git -C .sources/web rev-parse HEAD)"
           [ "$$assembly_sha" = "$COMMIT_SHA" ] || {
             echo "Cloud Build revision does not match the assembly checkout" >&2
             exit 1

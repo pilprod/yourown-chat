@@ -55,9 +55,15 @@ image, or Cloud Build substitutions.
 
 ## Build and deliver
 
+One product version is cut across the three inputs. First tag the reviewed
+server commit as `vX.Y.Z[-suffix]-patched` and the reviewed web commit as
+`X.Y.Z[-suffix]`. Update the assembly gitlinks to those two commits and create
+the identical `X.Y.Z[-suffix]` assembly tag last. Cloud Build rejects an
+assembly tag when either source tag resolves to another commit.
+
 ```bash
-git tag 11.9.0
-git push origin 11.9.0
+git tag 11.10.0
+git push origin 11.10.0
 ```
 
 The build:
@@ -84,10 +90,10 @@ The deployment is started only after the push succeeds. There is no need to
 edit both Mattermost manifests or create a second platform tag for a normal
 image upgrade.
 
-For iterative testing, push to `release-11.9`. Each commit is tagged
+For iterative testing, push to `release-11.10`. Each commit is tagged
 in Artifact Registry as `git-<full SHA>` and deployed only through
 `mattermost-preview-dev`. The preview Cloud Deploy pipeline has no prod target.
-An immutable tag such as `11.9.0-rc.1` follows the same dev-only route. After
+An immutable tag such as `11.10.0-rc.1` follows the same dev-only route. After
 review, put stable `X.Y.Z` on the exact accepted commit to enter the
 production-capable flow.
 

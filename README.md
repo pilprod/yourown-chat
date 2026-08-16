@@ -977,8 +977,8 @@ artifact is automatically tested against persistent dev PostgreSQL and offered
 for production approval:
 
 ```
-git tag 11.9.0  (on pilprod/yourown-chat-mattermost)
-  → Cloud Build builds & pushes docker/mattermost:11.9.0
+git tag 11.10.0  (on pilprod/yourown-chat-mattermost)
+  → Cloud Build builds & pushes docker/mattermost:11.10.0
   → Mattermost dev rollout + migration smoke
   → scan final immutable digest → agent risk assessment
   → reviewer accepts/rejects residual risk
@@ -986,14 +986,14 @@ git tag 11.9.0  (on pilprod/yourown-chat-mattermost)
 ```
 
 For product/compliance iterations, push commits to a branch such as
-`release-11.9`. Each commit builds an immutable
+`release-11.10`. Each commit builds an immutable
 `mattermost:git-<full SHA>` image and deploys it through the separate
 `mattermost-preview` pipeline. That pipeline contains only the dev target:
 there is no prod target to approve through the UI, API, or MCP. The moving
 `<branch>-latest` tag is only a convenience pointer; Cloud Deploy freezes the
 immutable digest.
 
-Immutable prereleases such as `11.9.0-rc.1` use that same dev-only pipeline.
+Immutable prereleases such as `11.10.0-rc.1` use that same dev-only pipeline.
 When the candidate is accepted, create stable `X.Y.Z` on the exact tested
 commit. The stable tag trigger rebuilds and verifies the source, then starts
 the normal `mattermost` dev → smoke → human approval → prod flow. The tag is
