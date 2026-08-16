@@ -141,6 +141,8 @@ grep -Fq 'http://mattermost.mattermost.svc.cluster.local:8065/plugins/com.matter
   "${repo_root}/helm/skaffold-mattermost.yaml"
 grep -Fq 'https://yourown.chat/plugins/com.mattermost.calls/version' \
   "${repo_root}/helm/skaffold-mattermost.yaml"
+[[ "$(grep -Fc -- '--retry 12 --retry-all-errors --retry-delay 5' \
+  "${repo_root}/helm/skaffold-mattermost.yaml")" -eq 2 ]]
 [[ "$(grep -Fc -- '--connect-timeout 3 --max-time 10' \
   "${repo_root}/helm/skaffold-mattermost.yaml")" == 2 ]]
 grep -Fq 'dev-mattermost dev-rtcd' "${repo_root}/helm/skaffold-mattermost.yaml"
