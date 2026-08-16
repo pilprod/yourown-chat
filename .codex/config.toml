@@ -1,0 +1,5 @@
+[mcp_servers.yourown-chat]
+url = "https://tools.yourown.chat/mcp"
+auth = "oauth"
+enabled = true
+required = true

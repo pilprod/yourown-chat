@@ -55,9 +55,16 @@ codex mcp logout yourown-chat
 codex mcp login yourown-chat
 ```
 
-After the browser flow succeeds, start a new task and confirm that the
-`yourown-chat` tools are present. Do not use a local MCP client, `kubectl`, or
-`gcloud` as an operational fallback.
+After an external CLI browser flow succeeds, restart the MCP server in the
+ChatGPT desktop settings or restart the app before continuing an already-open
+task. A running Codex task can retain its old in-memory OAuth credential and
+reject the first refresh even though the new credential was persisted; this is
+tracked upstream in
+[openai/codex#14144](https://github.com/openai/codex/issues/14144). Then start a
+new task and confirm that the `yourown-chat` tools are present. Do not lengthen
+the 15-minute access token as a workaround: it delays policy re-evaluation and
+does not repair credential-cache invalidation. Do not use a local MCP client,
+`kubectl`, or `gcloud` as an operational fallback.
 
 ### Upstream authentication and initial synchronization
 
