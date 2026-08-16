@@ -85,6 +85,20 @@ spec:
               value: /mattermost/data
             - name: MM_SERVICESETTINGS_SITEURL
               value: https://dev.yourown.chat
+            # Calls permits an external RTCD without a commercial license only
+            # when Mattermost explicitly runs as an isolated development/test
+            # installation. These flags are intentionally absent from prod.
+            - name: MM_SERVICESETTINGS_ENABLEDEVELOPER
+              value: "true"
+            - name: MM_SERVICESETTINGS_ENABLETESTING
+              value: "true"
+            # Keep plugin activation failures observable in Cloud Logging.
+            - name: MM_LOGSETTINGS_ENABLECONSOLE
+              value: "true"
+            - name: MM_LOGSETTINGS_CONSOLELEVEL
+              value: "INFO"
+            - name: MM_LOGSETTINGS_CONSOLEJSON
+              value: "true"
             - name: MM_GUESTACCOUNTSSETTINGS_ENABLE
               value: {{ .Values.mattermost_guest_access_enabled | quote }}
             - name: MM_TEAMSETTINGS_SITENAME

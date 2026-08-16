@@ -29,6 +29,11 @@ helm template mattermost-prod "${chart}" \
   --set mattermost_calls_ip=203.0.113.10 > "${render_dir}/prod.yaml"
 
 grep -Fq 'name: MM_CALLS_RTCD_SERVICE_URL' "${render_dir}/dev.yaml"
+grep -Fq 'name: MM_SERVICESETTINGS_ENABLEDEVELOPER' "${render_dir}/dev.yaml"
+grep -Fq 'name: MM_SERVICESETTINGS_ENABLETESTING' "${render_dir}/dev.yaml"
+[[ "$(grep -Fc 'name: MM_LOGSETTINGS_ENABLECONSOLE' "${render_dir}/dev.yaml")" == 1 ]]
+[[ "$(grep -Fc 'name: MM_LOGSETTINGS_CONSOLELEVEL' "${render_dir}/dev.yaml")" == 1 ]]
+[[ "$(grep -Fc 'name: MM_LOGSETTINGS_CONSOLEJSON' "${render_dir}/dev.yaml")" == 1 ]]
 grep -Fq 'name: MM_PLUGINSETTINGS_PLUGINSTATES' "${render_dir}/dev.yaml"
 grep -Fq 'com.mattermost.calls":{"Enable":true}' "${render_dir}/dev.yaml"
 if grep -Fq 'MM_PLUGINSETTINGS_PLUGINSTATES_COM_MATTERMOST_CALLS' "${render_dir}/dev.yaml"; then
