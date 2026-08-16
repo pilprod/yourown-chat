@@ -579,7 +579,10 @@ Claude and ChatGPT connect only to the MCP Portal. Terraform enables Managed
 OAuth and dynamic client registration on the Portal's `type = "mcp_portal"`
 Access application. It permits loopback callbacks plus the hosted Claude,
 ChatGPT, Cloudflare Playground, and shared Cloudflare callback URIs. Access
-tokens last 15 minutes and grants last two weeks.
+tokens currently use a temporary 24-hour Codex compatibility window; the
+security baseline remains 15 minutes. Grants last two weeks. The exception,
+risk, upstream issues, and mandatory rollback test are documented in
+[Cloudflare operations](CLOUDFLARE.md#temporary-24-hour-codex-compatibility-window).
 
 Do **not** distribute `CF-Access-Client-Id` /
 `CF-Access-Client-Secret` to ChatGPT, Claude, phones, or user laptops. Access

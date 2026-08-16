@@ -41,11 +41,55 @@ This repository makes the `yourown-chat` MCP server required in
 cannot initialize instead of silently continuing without its operational
 tools.
 
-Managed OAuth access tokens last 15 minutes. The Portal Access session and its
-refresh grant both last two weeks (`336h`); keep these values identical so an
-otherwise-valid refresh grant is not invalidated by an earlier Access-session
-expiry. Claude, Codex, and other clients should rotate their access tokens
-automatically throughout that period.
+The intended security baseline is a 15-minute Managed OAuth access token. The
+Portal Access session and its refresh grant both last two weeks (`336h`); keep
+these values identical so an otherwise-valid refresh grant is not invalidated
+by an earlier Access-session expiry. Claude, Codex, and other clients should
+rotate their access tokens automatically throughout that period.
+
+#### Temporary 24-hour Codex compatibility window
+
+As of 2026-08-16, Terraform temporarily sets the MCP Portal access-token
+lifetime to `24h`. Long-running Codex agent tasks have reproduced a routed MCP
+OAuth failure in which a refreshed credential is persisted but an already
+running client continues with a stale or rotated refresh token and receives
+`invalid_grant`. The relevant upstream tracking issues are:
+
+- [openai/codex#35006](https://github.com/openai/codex/issues/35006) — OAuth
+  lifecycle umbrella;
+- [openai/codex#14144](https://github.com/openai/codex/issues/14144) — an active
+  session keeps stale refresh-token state after reauthentication;
+- [openai/codex#17265](https://github.com/openai/codex/issues/17265) — routed MCP
+  token refresh;
+- [openai/codex#32229](https://github.com/openai/codex/pull/32229) — serialized
+  proactive refresh improvement already merged, but not sufficient for every
+  routed/Desktop lifecycle path.
+
+This is a compatibility exception, not a repair for the refresh lifecycle. It
+increases the useful lifetime of a stolen bearer token and delays policy or
+revocation enforcement from at most 15 minutes to at most 24 hours. Its scope
+is limited to human OAuth access to the MCP Portal at `tools.yourown.chat`; it
+does not change the two-week session/refresh grant, direct upstream Access
+applications, the AI Controls service token, Mattermost login, or Google login.
+Existing client credentials do not necessarily inherit a changed lifetime:
+after applying this policy, explicitly reauthorize and restart Codex.
+
+Remove the exception only after the upstream issue is resolved **and** the fix
+has passed the following local acceptance test:
+
+1. Upgrade Codex to a build containing the verified OAuth lifecycle fix.
+2. Restore `managed_oauth_access_token_lifetime` from `24h` to `15m` in
+   `terraform/cloudflare/modules/zero-trust-portal-access/main.tf` and update
+   the matching Terraform test expectation.
+3. Run the module's Terraform tests and apply the `cloudflare` HCP Terraform
+   Stack.
+4. Log out and reauthorize `yourown-chat`, then restart Codex so the test uses a
+   token minted under the restored 15-minute policy.
+5. Keep an agent task active for at least 45–60 minutes and make successful MCP
+   calls before and after at least two token boundaries. The task must neither
+   receive `invalid_grant` nor require a restart or another login.
+6. Confirm the Portal session and refresh grant remain `336h`, then record the
+   verification in the change that removes this exception.
 
 When the full two-week grant expires, its refresh token is revoked, or the user
 selects **Sign out** on the Portal homepage, reauthorize the client explicitly:
@@ -61,10 +105,9 @@ task. A running Codex task can retain its old in-memory OAuth credential and
 reject the first refresh even though the new credential was persisted; this is
 tracked upstream in
 [openai/codex#14144](https://github.com/openai/codex/issues/14144). Then start a
-new task and confirm that the `yourown-chat` tools are present. Do not lengthen
-the 15-minute access token as a workaround: it delays policy re-evaluation and
-does not repair credential-cache invalidation. Do not use a local MCP client,
-`kubectl`, or `gcloud` as an operational fallback.
+new task and confirm that the `yourown-chat` tools are present. Do not extend
+the temporary 24-hour exception or treat it as a permanent fix. Do not use a
+local MCP client, `kubectl`, or `gcloud` as an operational fallback.
 
 ### Upstream authentication and initial synchronization
 
