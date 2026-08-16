@@ -2,6 +2,7 @@ locals {
   # Shared out-of-band Cloud Build 2nd-gen connection (console OAuth, README.md).
   connection_id         = "projects/${var.project_id}/locations/${var.region}/connections/${var.connection_name}"
   image_repo_path       = "${var.artifact_registry_location}-docker.pkg.dev/${var.project_id}/${var.artifact_registry_repository_id}/${var.image_name}"
+  rtcd_image_repo_path  = "${var.artifact_registry_location}-docker.pkg.dev/${var.project_id}/${var.artifact_registry_repository_id}/mattermost-rtcd"
   release_source_bucket = one(toset([for delivery in values(var.mattermost_deliveries) : delivery.source_bucket_name]))
   scan_cli_image        = "gcr.io/google.com/cloudsdktool/google-cloud-cli:573.0.0@sha256:f0b4abeb30773243f9ae95abe201ec01de07d5ed582b56ca52879eb3dbe209c3"
 }
@@ -385,6 +386,15 @@ resource "google_cloudbuild_trigger" "this" {
             /workspace/yourown-chat/helm/mattermost-image-parameters.sh \
             "${local.image_repo_path}" \
             "$$digest")"
+          . /workspace/yourown-chat/helm/mattermost/rtcd/source.lock
+          rtcd_digest="$$(gcloud artifacts docker images describe \
+            "${local.rtcd_image_repo_path}:$$RTCD_SOURCE_COMMIT" \
+            --format='value(image_summary.digest)')"
+          [ -n "$$rtcd_digest" ] || {
+            echo "Pinned RTCD image digest was not found for $$RTCD_SOURCE_COMMIT" >&2
+            exit 1
+          }
+          deploy_parameters="$$deploy_parameters,mattermost_rtcd_image=${local.rtcd_image_repo_path}@$$rtcd_digest"
 
           # Include both the source commit and this build when the derived
           # production rollout stays within Cloud Deploy's 63-character limit.
@@ -412,7 +422,7 @@ resource "google_cloudbuild_trigger" "this" {
             --skaffold-file "skaffold-mattermost.yaml" \
             --gcs-source-staging-dir "gs://${var.mattermost_deliveries[each.value.delivery].source_bucket_name}/source" \
             --deploy-parameters "$$deploy_parameters" \
-            --annotations "source-repo=pilprod/yourown-chat-mattermost,source-ref=$$source_ref,source-branch=$BRANCH_NAME,git-tag=$TAG_NAME,assembly-sha=$$ASSEMBLY_SHA,server-sha=$$SERVER_SHA,web-sha=$$WEB_SHA,build-id=$BUILD_ID,image-digest=$$digest,release-channel=${each.value.release_channel}"
+            --annotations "source-repo=pilprod/yourown-chat-mattermost,source-ref=$$source_ref,source-branch=$BRANCH_NAME,git-tag=$TAG_NAME,assembly-sha=$$ASSEMBLY_SHA,server-sha=$$SERVER_SHA,web-sha=$$WEB_SHA,build-id=$BUILD_ID,image-digest=$$digest,rtcd-image-digest=$$rtcd_digest,rtcd-source=$$RTCD_SOURCE_COMMIT,rtcd-security-build=$$RTCD_BUILD_VERSION,release-channel=${each.value.release_channel}"
         EOT
       ]
     }
