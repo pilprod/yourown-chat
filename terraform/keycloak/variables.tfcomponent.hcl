@@ -1,6 +1,11 @@
 variable "keycloak_admin_url" {
   type        = string
   description = "HTTPS Keycloak endpoint used by the Terraform provider. The public Admin Console is not routed."
+
+  validation {
+    condition     = startswith(var.keycloak_admin_url, "https://") && endswith(var.keycloak_admin_url, "/auth")
+    error_message = "keycloak_admin_url must be an HTTPS origin ending in /auth."
+  }
 }
 
 variable "keycloak_version" {
@@ -24,6 +29,11 @@ variable "bootstrap_admin_client_secret" {
   ephemeral   = true
   sensitive   = true
   description = "Temporary bootstrap service secret from a private HCP variable set. Never stored in Git or Stack state."
+
+  validation {
+    condition     = length(var.bootstrap_admin_client_secret) >= 32
+    error_message = "bootstrap_admin_client_secret must contain at least 32 characters."
+  }
 }
 
 variable "terraform_client_id" {
@@ -37,6 +47,11 @@ variable "terraform_client_secret" {
   ephemeral   = true
   sensitive   = true
   description = "Write-only permanent provider client secret from a private HCP variable set."
+
+  validation {
+    condition     = length(var.terraform_client_secret) >= 32
+    error_message = "terraform_client_secret must contain at least 32 characters."
+  }
 }
 
 variable "terraform_client_secret_version" {
@@ -54,12 +69,22 @@ variable "public_host" {
   type        = string
   description = "Public RP host used for WebAuthn/passkeys."
   default     = "yourown.chat"
+
+  validation {
+    condition     = !strcontains(var.public_host, "://") && !strcontains(var.public_host, "/") && !strcontains(var.public_host, "*")
+    error_message = "public_host must be one exact hostname without a scheme, path, or wildcard."
+  }
 }
 
 variable "ios_redirect_uri" {
   type        = string
   description = "Exact native iOS OAuth callback. Wildcards are forbidden."
   default     = "com.yourown.chat:/oauth/callback"
+
+  validation {
+    condition     = var.ios_redirect_uri == "com.yourown.chat:/oauth/callback"
+    error_message = "The production iOS client accepts only com.yourown.chat:/oauth/callback."
+  }
 }
 
 variable "smtp_host" {
