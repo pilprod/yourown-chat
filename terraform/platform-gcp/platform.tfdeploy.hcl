@@ -25,6 +25,13 @@ identity_token "gcp" {
   audience = ["https://iam.googleapis.com/projects/1086706391144/locations/global/workloadIdentityPools/hcp-terraform/providers/hcp-terraform"]
 }
 
+# Shared only with platform-gcp and the provider-only keycloak Stack. Both
+# values are sensitive Terraform variables and never enter Git or Stack state.
+store "varset" "keycloak" {
+  id       = "varset-ypGwPoQ7APKjwVMR"
+  category = "terraform"
+}
+
 deployment "eu" {
   inputs = {
     identity_token        = identity_token.gcp.jwt
@@ -88,6 +95,7 @@ deployment "eu" {
     keycloak_enabled           = true
     keycloak_version           = "26.7.1"
     keycloak_password_rotation = "1"
+    keycloak_bootstrap_admin_client_secret = store.varset.keycloak.keycloak_bootstrap_admin_client_secret
     keycloak_public_url        = "https://yourown.chat/auth"
 
     # Temporal is a platform-gcp service. Keep the launch gate closed until the
