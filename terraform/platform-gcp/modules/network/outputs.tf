@@ -38,6 +38,11 @@ output "services_range_name" {
   value       = local.services_range_name
 }
 
+output "services_cidr" {
+  description = "Secondary IPv4 range for GKE Services; the cluster DNS service uses host 10."
+  value       = var.services_cidr
+}
+
 output "private_service_connection_id" {
   description = "PSA service networking connection ID; depend on this before creating private-IP managed services."
   value       = google_service_networking_connection.psa.id

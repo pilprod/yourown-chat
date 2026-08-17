@@ -608,6 +608,7 @@ component "temporal" {
   inputs = {
     enabled             = var.temporal_enabled
     cloudsql_private_ip = one([for database in component.cloudsql : database.private_ip_address])
+    cluster_dns_ip      = cidrhost(component.network.services_cidr, 10)
     database_password   = try(one([for database in component.cloudsql : database.additional_passwords["temporal"]]), "")
     chart_version       = var.temporal_chart_version
     labels              = local.common_labels
@@ -633,6 +634,7 @@ component "keycloak" {
     region                   = var.region
     encryption_key_name      = one([for k in component.kms : k.crypto_key_id])
     cloudsql_private_ip      = one([for database in component.cloudsql : database.private_ip_address])
+    cluster_dns_ip           = cidrhost(component.network.services_cidr, 10)
     database_password        = try(one([for database in component.cloudsql : database.additional_passwords["keycloak"]]), "")
     bootstrap_secret_version = var.keycloak_password_rotation
     image_version            = var.keycloak_version

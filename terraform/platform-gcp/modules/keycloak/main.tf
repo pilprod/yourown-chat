@@ -207,6 +207,14 @@ resource "kubernetes_network_policy_v1" "isolation" {
           match_labels = { "k8s-app" = "kube-dns" }
         }
       }
+      # GKE Dataplane V2 evaluates Service traffic against the pre-DNAT
+      # ClusterIP. Keep the pod selector above for direct endpoint traffic and
+      # explicitly allow only the kube-dns virtual IP here.
+      to {
+        ip_block {
+          cidr = "${var.cluster_dns_ip}/32"
+        }
+      }
       ports {
         port     = "53"
         protocol = "UDP"

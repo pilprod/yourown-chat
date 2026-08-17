@@ -173,6 +173,7 @@ component "clouddeploy_server" {
       identity_runtime_database_connection_secret_id = var.yourown_chat_identity_runtime_connection_secret_id
       identity_migrate_database_connection_secret_id = var.yourown_chat_identity_connection_secret_id
       cloudsql_private_ip                    = var.cloudsql_private_ip
+      cluster_dns_ip                         = var.cluster_dns_ip
       yourown_chat_control_api_enabled       = tostring(var.temporal_enabled)
       yourown_chat_ingress_enabled           = tostring(var.manage_ingress_origin_tls)
       yourown_chat_registration_enabled      = tostring(var.yourown_chat_registration_enabled)
@@ -211,6 +212,7 @@ component "clouddeploy_agents_start" {
       agent_activity_worker_gsa = lookup(var.workload_identity_emails, "agents-activity", "")
       agent_secret_project      = var.project_id
       agent_results_bucket      = var.agent_results_bucket
+      cluster_dns_ip            = var.cluster_dns_ip
     }
 
     labels = local.common_labels
@@ -246,6 +248,7 @@ component "clouddeploy_agents_pause" {
       agent_activity_worker_gsa = lookup(var.workload_identity_emails, "agents-activity", "")
       agent_secret_project      = var.project_id
       agent_results_bucket      = var.agent_results_bucket
+      cluster_dns_ip            = var.cluster_dns_ip
     }
 
     labels = local.common_labels

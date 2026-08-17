@@ -201,6 +201,11 @@ variable "cloudsql_private_ip" {
   description = "Exact private Cloud SQL address allowed by the production Mattermost NetworkPolicy."
 }
 
+variable "cluster_dns_ip" {
+  type        = string
+  description = "Exact kube-dns Service ClusterIP allowed by Dataplane V2 application policies."
+}
+
 variable "workload_identity_emails" {
   type        = map(string)
   description = "Tenant (mattermost/matterbridge/dev) => GSA email. Published by the platform-gcp stack; rendered into the KSA iam.gke.io/gcp-service-account annotations via Cloud Deploy deploy parameters."

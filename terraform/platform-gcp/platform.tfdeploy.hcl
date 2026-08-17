@@ -179,6 +179,11 @@ publish_output "cloudsql_private_ip" {
   value       = deployment.eu.cloudsql_private_ip
 }
 
+publish_output "cluster_dns_ip" {
+  description = "Exact kube-dns Service ClusterIP consumed by restricted application network policies."
+  value       = deployment.eu.cluster_dns_ip
+}
+
 publish_output "cloudsql_instance_name" {
   description = "Cloud SQL instance name consumed by database-owning application components."
   value       = deployment.eu.cloudsql_instance_name

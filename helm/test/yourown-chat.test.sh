@@ -19,6 +19,7 @@ helm template yourown-chat "${repo_root}/helm/yourown-chat" \
   --set identity_admin_gsa=identity-admin@example.invalid \
   --set identity_migrate_gsa=migrate@example.invalid \
   --set server_secret_project=test-project \
+  --set cluster_dns_ip=10.30.0.10 \
   --set cloudsql_private_ip=10.20.30.40 > "${rendered}"
 
 grep -Fq 'name: yourown-chat-identity-api' "${rendered}"
@@ -31,6 +32,7 @@ grep -Fq 'IDENTITY_REGISTRATION_ENABLED' "${rendered}"
 grep -Fq 'value: "true"' "${rendered}"
 grep -Fq 'secrets/yourown-chat-identity-database-url/versions/latest' "${rendered}"
 grep -Fq 'cidr: "10.20.30.40/32"' "${rendered}"
+grep -Fq 'cidr: "10.30.0.10/32"' "${rendered}"
 grep -Fq 'path: /identity(/|$)(v1/auth/oidc/sessions)/?$' "${rendered}"
 ! grep -Fq 'v1/auth/registrations' "${rendered}"
 grep -Fq 'nginx.ingress.kubernetes.io/limit-rps: "1"' "${rendered}"
@@ -56,6 +58,7 @@ helm template yourown-chat "${repo_root}/helm/yourown-chat" \
   --set identity_admin_gsa=identity-admin@example.invalid \
   --set identity_migrate_gsa=migrate@example.invalid \
   --set server_secret_project=test-project \
+  --set cluster_dns_ip=10.30.0.10 \
   --set cloudsql_private_ip=10.20.30.40 > "${identity_only}"
 grep -Fq 'name: yourown-chat-identity-api' "${identity_only}"
 grep -Fq 'name: yourown-chat-identity-admin' "${identity_only}"

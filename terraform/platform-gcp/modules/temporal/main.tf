@@ -157,6 +157,13 @@ resource "kubernetes_network_policy_v1" "this" {
           match_labels = { "k8s-app" = "kube-dns" }
         }
       }
+      # Dataplane V2 sees kube-dns Service traffic before DNAT, so the exact
+      # ClusterIP must be allowlisted in addition to the endpoint selector.
+      to {
+        ip_block {
+          cidr = "${var.cluster_dns_ip}/32"
+        }
+      }
       ports {
         port     = "53"
         protocol = "UDP"
