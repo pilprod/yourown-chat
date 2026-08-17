@@ -86,6 +86,12 @@ output "cloudsql_private_ip" {
   value       = one([for c in component.cloudsql : c.private_ip_address])
 }
 
+output "cluster_dns_ip" {
+  type        = string
+  description = "Exact kube-dns Service ClusterIP used by Dataplane V2 network policies."
+  value       = cidrhost(component.network.services_cidr, 10)
+}
+
 output "cloudsql_connection_secret_id" {
   type        = string
   description = "Secret Manager secret ID holding the Mattermost DB connection URI (null when Cloud SQL is disabled)."

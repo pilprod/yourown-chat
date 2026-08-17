@@ -5,6 +5,7 @@ yourown_chat_activity_worker_image: ""
 agent_workflow_worker_gsa: ""
 agent_activity_worker_gsa: ""
 agent_results_bucket: ""
+cluster_dns_ip: ""
 agent_runtime_enabled: false
 
 temporal:

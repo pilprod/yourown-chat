@@ -32,6 +32,7 @@ spec:
             matchLabels: { kubernetes.io/metadata.name: kube-system }
           podSelector:
             matchLabels: { k8s-app: kube-dns }
+        - ipBlock: { cidr: {{ printf "%s/32" (required "cluster_dns_ip is required" .Values.cluster_dns_ip) | quote }} }
       ports: [{ protocol: UDP, port: 53 }, { protocol: TCP, port: 53 }]
     - to:
         - ipBlock: { cidr: {{ printf "%s/32" (required "cloudsql_private_ip is required" .Values.cloudsql_private_ip) | quote }} }
@@ -74,6 +75,7 @@ spec:
             matchLabels: { kubernetes.io/metadata.name: kube-system }
           podSelector:
             matchLabels: { k8s-app: kube-dns }
+        - ipBlock: { cidr: {{ printf "%s/32" (required "cluster_dns_ip is required" .Values.cluster_dns_ip) | quote }} }
       ports: [{ protocol: UDP, port: 53 }, { protocol: TCP, port: 53 }]
     - to:
         - ipBlock: { cidr: {{ printf "%s/32" .Values.cloudsql_private_ip | quote }} }
@@ -94,6 +96,7 @@ spec:
             matchLabels: { kubernetes.io/metadata.name: kube-system }
           podSelector:
             matchLabels: { k8s-app: kube-dns }
+        - ipBlock: { cidr: {{ printf "%s/32" (required "cluster_dns_ip is required" .Values.cluster_dns_ip) | quote }} }
       ports: [{ protocol: UDP, port: 53 }, { protocol: TCP, port: 53 }]
     - to:
         - ipBlock: { cidr: {{ printf "%s/32" .Values.cloudsql_private_ip | quote }} }
@@ -118,6 +121,7 @@ spec:
             matchLabels: { kubernetes.io/metadata.name: kube-system }
           podSelector:
             matchLabels: { k8s-app: kube-dns }
+        - ipBlock: { cidr: {{ printf "%s/32" (required "cluster_dns_ip is required" .Values.cluster_dns_ip) | quote }} }
       ports: [{ protocol: UDP, port: 53 }, { protocol: TCP, port: 53 }]
 {{- if .Values.yourown_chat_control_api_enabled }}
 ---
@@ -151,6 +155,7 @@ spec:
             matchLabels: { kubernetes.io/metadata.name: kube-system }
           podSelector:
             matchLabels: { k8s-app: kube-dns }
+        - ipBlock: { cidr: {{ printf "%s/32" (required "cluster_dns_ip is required" .Values.cluster_dns_ip) | quote }} }
       ports: [{ protocol: UDP, port: 53 }, { protocol: TCP, port: 53 }]
 {{- end }}
 {{- end }}

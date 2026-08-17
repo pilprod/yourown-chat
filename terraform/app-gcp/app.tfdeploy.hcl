@@ -40,6 +40,7 @@ deployment "eu" {
     # Exact address published by platform-gcp; used only to render the
     # production Mattermost /32 egress policy.
     cloudsql_private_ip             = upstream_input.platform.cloudsql_private_ip
+    cluster_dns_ip                  = upstream_input.platform.cluster_dns_ip
     workload_identity_emails        = upstream_input.platform.workload_identity_emails
     artifact_registry_location      = upstream_input.platform.artifact_registry_location
     artifact_registry_repository_id = upstream_input.platform.artifact_registry_repository_id

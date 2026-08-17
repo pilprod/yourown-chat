@@ -17,6 +17,7 @@ server_secret_project: ""
 identity_runtime_database_connection_secret_id: "yourown-chat-identity-runtime-database-url"
 identity_migrate_database_connection_secret_id: "yourown-chat-identity-database-url"
 cloudsql_private_ip: ""
+cluster_dns_ip: ""
 
 identity:
   replicaCount: 1

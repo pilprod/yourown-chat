@@ -12,6 +12,7 @@ common=(
   --set yourown_chat_activity_worker_image=example.invalid/activity-worker@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
   --set agent_workflow_worker_gsa=workflow-worker@example.invalid
   --set agent_activity_worker_gsa=activity-worker@example.invalid
+  --set cluster_dns_ip=10.30.0.10
 )
 
 helm template agent-platform "${repo_root}/helm/agent-platform" \
@@ -29,6 +30,7 @@ grep -Fq 'value: agent-activities-go-v1' "${running}"
 grep -Fq 'serviceAccountName: agent-workflow-worker' "${running}"
 grep -Fq 'serviceAccountName: agent-activity-worker' "${running}"
 grep -Fq 'kubernetes.io/metadata.name: temporal' "${running}"
+grep -Fq 'cidr: "10.30.0.10/32"' "${running}"
 ! grep -Fq 'yourown-chat-control-api' "${running}"
 ! grep -Eq 'type: (LoadBalancer|NodePort)' "${running}"
 
