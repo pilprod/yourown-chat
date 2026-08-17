@@ -177,18 +177,28 @@ resource "kubernetes_network_policy_v1" "isolation" {
     labels    = local.labels
   }
   spec {
-    pod_selector { match_labels = { "app.kubernetes.io/name" = "keycloak" } }
+    pod_selector {
+      match_labels = { "app.kubernetes.io/name" = "keycloak" }
+    }
     policy_types = ["Ingress", "Egress"]
 
     ingress {
-      from { namespace_selector { match_labels = { "kubernetes.io/metadata.name" = "ingress-nginx" } } }
+      from {
+        namespace_selector {
+          match_labels = { "kubernetes.io/metadata.name" = "ingress-nginx" }
+        }
+      }
       ports {
         port     = "8080"
         protocol = "TCP"
       }
     }
     ingress {
-      from { namespace_selector { match_labels = { "kubernetes.io/metadata.name" = "yourown-chat-server" } } }
+      from {
+        namespace_selector {
+          match_labels = { "kubernetes.io/metadata.name" = "yourown-chat-server" }
+        }
+      }
       ports {
         port     = "8080"
         protocol = "TCP"
@@ -196,8 +206,12 @@ resource "kubernetes_network_policy_v1" "isolation" {
     }
     egress {
       to {
-        namespace_selector { match_labels = { "kubernetes.io/metadata.name" = "kube-system" } }
-        pod_selector { match_labels = { "k8s-app" = "kube-dns" } }
+        namespace_selector {
+          match_labels = { "kubernetes.io/metadata.name" = "kube-system" }
+        }
+        pod_selector {
+          match_labels = { "k8s-app" = "kube-dns" }
+        }
       }
       ports {
         port     = "53"
@@ -209,7 +223,11 @@ resource "kubernetes_network_policy_v1" "isolation" {
       }
     }
     egress {
-      to { ip_block { cidr = "${var.cloudsql_private_ip}/32" } }
+      to {
+        ip_block {
+          cidr = "${var.cloudsql_private_ip}/32"
+        }
+      }
       ports {
         port     = "5432"
         protocol = "TCP"
