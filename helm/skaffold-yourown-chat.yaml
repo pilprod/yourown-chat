@@ -1,0 +1,30 @@
+apiVersion: skaffold/v4beta11
+kind: Config
+metadata:
+  name: yourown-chat
+
+deploy:
+  kubectl: {}
+
+profiles:
+  - name: server-pilot
+    manifests:
+      helm:
+        releases:
+          - name: yourown-chat
+            chartPath: yourown-chat
+            namespace: yourown-chat-server
+            createNamespace: false
+            valuesFiles: [yourown-chat/values.yaml]
+    verify:
+      - name: yourown-chat-identity-smoke
+        container:
+          name: verify
+          image: curlimages/curl:8.10.1
+          command: ["/bin/sh", "-ceu"]
+          args:
+            - |
+              curl --fail --silent --show-error --retry 30 --retry-all-errors --retry-delay 5 http://yourown-chat-identity-api.yourown-chat-server.svc.cluster.local:8081/readyz
+        executionMode:
+          kubernetesCluster:
+            jobManifestPath: yourown-chat/verify/job.yaml

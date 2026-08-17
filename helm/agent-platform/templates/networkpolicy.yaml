@@ -15,45 +15,6 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: backend-control-api
-  namespace: {{ .Release.Namespace }}
-spec:
-  podSelector:
-    matchLabels: { app: yourown-chat-control-api }
-  policyTypes: [Ingress, Egress]
-  ingress:
-    - from:
-        {{- range .Values.networkPolicy.allowedCallerNamespaces }}
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: {{ . | quote }}
-        {{- end }}
-      ports:
-        - { protocol: TCP, port: 8080 }
-  egress:
-    - to:
-        - namespaceSelector:
-            matchLabels: { kubernetes.io/metadata.name: temporal }
-      ports:
-        - { protocol: TCP, port: 7233 }
-    - to:
-        - namespaceSelector:
-            matchLabels: { kubernetes.io/metadata.name: mattermost }
-      ports:
-        - { protocol: TCP, port: 8065 }
-    -
-      to:
-        - namespaceSelector:
-            matchLabels: { kubernetes.io/metadata.name: kube-system }
-          podSelector:
-            matchLabels: { k8s-app: kube-dns }
-      ports:
-        - { protocol: UDP, port: 53 }
-        - { protocol: TCP, port: 53 }
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
   name: agent-workflow-worker
   namespace: {{ .Release.Namespace }}
 spec:

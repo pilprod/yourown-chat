@@ -14,7 +14,7 @@ operator identities.
 | `pilprod/yourown-chat-web` | Standalone web client source and tests | Server code or image release orchestration | `X.Y.Z` version branches; `X.Y.Z-suffix` prereleases and stable `X.Y.Z` tags matching the assembly version |
 | `pilprod/yourown-chat-mobile` | iOS/Android client source and client-specific CI | Backend or platform resources | `main`; client release tags follow the client store lifecycle |
 | `pilprod/yourown-chat-desktop` | Desktop client source and desktop packaging CI | Backend or platform resources | `master`; desktop release tags follow its upstream-compatible lifecycle |
-| `pilprod/yourown-chat-server` | Go control API: agent management, approvals, reports and the client-facing Temporal projection | Temporal activity implementation, MCP servers or IaC | `main` CI; immutable `MAJOR.MINOR.PATCH` image tags |
+| `pilprod/yourown-chat-server` | Go microservices for independent user identity, Mattermost workspace links, agent management, approvals, reports and the client-facing Temporal projection | Temporal activity implementation, MCP servers or IaC | `main` CI; immutable `MAJOR.MINOR.PATCH` image tags |
 | `pilprod/yourown-chat-agents` | Go Temporal workflows, activities, tools and agent compute | User-facing control API, MCP servers or IaC | `main` CI; same immutable `MAJOR.MINOR.PATCH` as server for a coordinated release |
 | `pilprod/yourown-chat-mcp` | First-party Go MCP server source and protocol tests | Platform Terraform/Helm or agent workers | `main` CI; immutable `MAJOR.MINOR.PATCH` MCP releases |
 | `pilprod/yourown-chat-rtcd` | Patched RTCD fork and its independent image build | Mattermost server or platform manifests | patched upstream branch; immutable `vX.Y.Z-patched` image tags |
@@ -49,8 +49,9 @@ revisions:
 - A Mattermost assembly release is valid only when the web commit has the same
   `X.Y.Z[-suffix]` tag and the server commit has
   `vX.Y.Z[-suffix]-patched`.
-- Server and agents are independently built but only the matching tag set is
-  eligible for one coordinated workload release.
+- A server tag independently releases `identity-api`, `identity-migrate` and
+  `control-api`. Agent compute is released separately only when matching server
+  and agent tags provide the compatible control/worker image set.
 - Mattermost preview branches are structurally limited to the dev-only pipeline;
   only an accepted assembly tag can enter dev-to-production promotion.
 

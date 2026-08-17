@@ -203,6 +203,52 @@ variable "cloudsql_adopt_existing_instance" {
   default     = false
 }
 
+variable "yourown_chat_server_enabled" {
+  type        = bool
+  description = "Publish the independent YourOwn.Chat server plane as enabled to downstream delivery. Its low-cost logical database is retained when runtime delivery is disabled."
+  default     = true
+}
+
+variable "yourown_chat_identity_password_rotation" {
+  type        = string
+  description = "Explicit rotation trigger for the YourOwn.Chat identity database role."
+  default     = "1"
+}
+
+# --- Keycloak platform identity service ------------------------------------
+variable "keycloak_enabled" {
+  type        = bool
+  description = "Create the platform-owned Keycloak runtime and its isolated logical database."
+  default     = true
+}
+
+variable "keycloak_version" {
+  type        = string
+  description = "Pinned official quay.io/keycloak/keycloak image version."
+  default     = "26.7.1"
+}
+
+variable "keycloak_password_rotation" {
+  type        = string
+  description = "Explicit rotation trigger shared by the Keycloak database and temporary bootstrap service credential."
+  default     = "1"
+}
+
+variable "keycloak_bootstrap_admin_client_secret" {
+  type        = string
+  ephemeral   = true
+  sensitive   = true
+  nullable    = true
+  default     = null
+  description = "Temporary master-realm bootstrap service secret. Supplied from the private Keycloak HCP variable set and accepted only by write-only resource fields."
+}
+
+variable "keycloak_public_url" {
+  type        = string
+  description = "Canonical public Keycloak URL used as the immutable OIDC issuer base."
+  default     = "https://yourown.chat/auth"
+}
+
 # --- Storage ----------------------------------------------------------------
 variable "storage_force_destroy" {
   type        = bool

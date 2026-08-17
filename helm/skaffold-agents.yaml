@@ -25,13 +25,12 @@ profiles:
           args:
             - |
               token="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
-              deployment="$(curl --fail --silent --show-error \
-                --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
-                -H "Authorization: Bearer ${token}" \
-                https://kubernetes.default.svc/apis/apps/v1/namespaces/yourown-agents/deployments/yourown-chat-control-api)"
-              replicas="$(printf '%s' "${deployment}" | sed -n 's/.*"replicas":\([0-9][0-9]*\).*/\1/p' | head -n1)"
-              [ "${replicas}" = "0" ] || { echo "Expected a paused API, found ${replicas} replicas"; exit 1; }
-              echo 'Agent pilot is paused at zero replicas'
+              for name in agent-platform-workflow-worker agent-platform-activity-worker; do
+                deployment="$(curl --fail --silent --show-error --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt -H "Authorization: Bearer ${token}" "https://kubernetes.default.svc/apis/apps/v1/namespaces/yourown-agents/deployments/${name}")"
+                replicas="$(printf '%s' "${deployment}" | sed -n 's/.*"replicas":\([0-9][0-9]*\).*/\1/p' | head -n1)"
+                [ "${replicas}" = "0" ] || { echo "Expected ${name} to be paused, found ${replicas}"; exit 1; }
+              done
+              echo 'Agent workers are paused at zero replicas'
         executionMode:
           kubernetesCluster:
             jobManifestPath: agent-platform/verify/job.yaml
@@ -54,15 +53,16 @@ profiles:
           args:
             - |
               token="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
-              deployment="$(curl --fail --silent --show-error \
-                --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
-                -H "Authorization: Bearer ${token}" \
-                https://kubernetes.default.svc/apis/apps/v1/namespaces/yourown-agents/deployments/yourown-chat-control-api)"
-              replicas="$(printf '%s' "${deployment}" | sed -n 's/.*"replicas":\([0-9][0-9]*\).*/\1/p' | head -n1)"
-              [ "${replicas}" = "1" ] || { echo "Expected one API replica, found ${replicas}"; exit 1; }
-              curl --fail --silent --show-error \
-                --retry 30 --retry-all-errors --retry-delay 5 \
-                http://yourown-chat-control-api.yourown-agents.svc.cluster.local:8080/readyz
+              for name in agent-platform-workflow-worker agent-platform-activity-worker; do
+                ready=""
+                for attempt in $(seq 1 30); do
+                  deployment="$(curl --fail --silent --show-error --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt -H "Authorization: Bearer ${token}" "https://kubernetes.default.svc/apis/apps/v1/namespaces/yourown-agents/deployments/${name}")"
+                  ready="$(printf '%s' "${deployment}" | sed -n 's/.*"availableReplicas":\([0-9][0-9]*\).*/\1/p' | head -n1)"
+                  [ "${ready}" = "1" ] && break
+                  sleep 5
+                done
+                [ "${ready}" = "1" ] || { echo "${name} did not become available"; exit 1; }
+              done
         executionMode:
           kubernetesCluster:
             jobManifestPath: agent-platform/verify/job.yaml

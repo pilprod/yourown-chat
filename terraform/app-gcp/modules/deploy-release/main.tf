@@ -194,6 +194,8 @@ resource "google_cloudbuild_trigger" "release" {
             /workspace/changed-files mcp "$$previous_tag")"
           agents_changed="$$(bash route-components.sh \
             /workspace/changed-files agents "$$previous_tag")"
+          server_changed="$$(bash route-components.sh \
+            /workspace/changed-files yourown-chat "$$previous_tag")"
 
           create_release() {
             pipeline="$$1"
@@ -286,6 +288,35 @@ resource "google_cloudbuild_trigger" "release" {
             fi
           elif [ "$$mcp_changed" = "true" ]; then
             echo "MCP deployment changes detected, but mcp_servers_enabled=false; skipping MCP release"
+          fi
+
+          if [ "${var.server_enabled}" = "true" ]; then
+            if [ "$$server_changed" = "true" ]; then
+              server_parameters=""
+              server_digest_set_input=""
+              server_tag="$$(gcloud artifacts docker tags list "${local.workload_image_paths.control_api}" \
+                --filter="tag~'/tags/[0-9]+\\.[0-9]+\\.[0-9]+$$'" \
+                --format='value(tag)' | sort -V | tail -n1)"
+              [ -n "$$server_tag" ] || { echo "No released YourOwn.Chat server tag found" >&2; exit 1; }
+              server_tag="$${server_tag##*/}"
+              for service in control-api identity-api identity-admin identity-migrate; do
+                service_repo="${local.artifact_repository_prefix}/${var.backend_image_prefix}-$$service"
+                service_digest="$$(gcloud artifacts docker images describe \
+                  "$$service_repo:$$server_tag" --format='value(image_summary.digest)')"
+                parameter_name="yourown_chat_$$(printf '%s' "$$service" | tr '-' '_')_image"
+                [ -z "$$server_parameters" ] || server_parameters="$$server_parameters,"
+                server_parameters="$$server_parameters$$parameter_name=$$service_repo@$$service_digest"
+                server_digest_set_input="$$server_digest_set_input$$service_digest\n"
+              done
+              server_digest_set="$$(printf '%b' "$$server_digest_set_input" | sha256sum | cut -d' ' -f1)"
+              create_release \
+                yourown-chat \
+                "yourown-chat-$$safe_tag-$SHORT_SHA-$$short_build" \
+                "git-tag=$TAG_NAME,git-sha=$COMMIT_SHA,build-id=$BUILD_ID,previous-tag=$$previous_tag,image-set=$$server_digest_set" \
+                --deploy-parameters "$$server_parameters"
+            fi
+          elif [ "$$server_changed" = "true" ]; then
+            echo "YourOwn.Chat application changes detected, but yourown_chat_server_enabled=false; skipping release"
           fi
 
           if [ "${var.agents_enabled}" = "true" ]; then

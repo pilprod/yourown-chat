@@ -9,11 +9,12 @@ are defined in [AGENT_PLATFORM_BUILD_RELEASE.md](AGENT_PLATFORM_BUILD_RELEASE.md
 | Repository | Owns | Must not own |
 |---|---|---|
 | [`pilprod/yourown-chat`](https://github.com/pilprod/yourown-chat) | Public architecture, Terraform, Helm, Docker build definitions and delivery routing | Product backend, worker or MCP source code |
-| [`pilprod/yourown-chat-server`](https://github.com/pilprod/yourown-chat-server) | `control-api`, Mattermost authorization, commands, approvals, cancellation and Temporal state projection | Workflow/activity execution or MCP implementations |
+| [`pilprod/yourown-chat-server`](https://github.com/pilprod/yourown-chat-server) | `identity-api`, `identity-migrate`, `control-api`, independent users, Mattermost links, commands, approvals and Temporal state projection | Workflow/activity execution or MCP implementations |
 | [`pilprod/yourown-chat-agents`](https://github.com/pilprod/yourown-chat-agents) | Temporal workflow and activity workers, deterministic orchestration, agent execution and replay tests | Client-facing authorization or infrastructure ownership |
 | [`pilprod/yourown-chat-mcp`](https://github.com/pilprod/yourown-chat-mcp) | Go source for all owned MCP servers and their protocol/tool tests | Terraform, Helm or production credentials |
 
-The source split is complete: `yourown-chat-server` builds only `control-api`;
+The source split is complete: `yourown-chat-server` builds the three
+client-facing microservices `identity-api`, `identity-migrate` and `control-api`;
 `yourown-chat-agents` builds `workflow-worker` and `activity-worker`; and the
 owned MCP implementations live only in `yourown-chat-mcp`.
 
@@ -50,10 +51,14 @@ An incompatible change is expanded and contracted:
 
 ## Identity and network boundaries
 
-- `control-api`, `workflow-worker` and `activity-worker` use separate Workload
-  Identity service accounts and Kubernetes service accounts.
+- `identity-api`, `identity-migrate`, `control-api`, `workflow-worker` and
+  `activity-worker` use separate Workload Identity service accounts and
+  Kubernetes service accounts.
 - The workflow worker talks only to Temporal. The activity worker receives only
   the explicitly required MCP/model/storage access.
+- The identity service uses its own role and logical database in the existing
+  smallest Cloud SQL instance. Only its public `/v1` surface is routed through
+  `/identity`; administrative `/internal` routes stay cluster-private.
 - Temporal has no public ingress and uses two logical databases on the private
   Cloud SQL address.
 - MCP servers remain separate namespace tenants. A compromised MCP cannot reach
@@ -95,11 +100,12 @@ storage modules, then composing the official chart inside `platform-gcp`.
 Creating `components/temporal`, `temporal-storage` or a second Cloud SQL/GCS
 module outside the owning Stack violates this rule.
 
-The three custom Go workloads are delivered by Cloud Deploy using immutable
-digests. A normal pause scales agent workers to zero while retaining Temporal
-history and reports. The server and agent compute remain independently
-deployable units even though their first compatible release uses one shared
-version tag.
+The five custom Go workloads are delivered by Cloud Deploy using immutable
+digests. `helm/yourown-chat` owns the persistent client-facing application;
+`helm/agent-platform` owns only the two pausable workers. A normal pause scales
+agent workers to zero while retaining identity data, the server, Temporal
+history and reports. Server and agent compute have independent releases; the
+agent release still requires a matching server contract tag.
 
 ## First safe slice
 

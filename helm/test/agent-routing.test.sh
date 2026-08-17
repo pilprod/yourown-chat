@@ -10,6 +10,10 @@ printf '%s\n' 'helm/agent-platform/templates/deployments.yaml' > "${changed}"
 [[ "$(bash "${repo_root}/helm/route-components.sh" "${changed}" mcp)" == false ]]
 [[ "$(bash "${repo_root}/helm/route-components.sh" "${changed}" mattermost)" == false ]]
 
+printf '%s\n' 'helm/yourown-chat/templates/deployments.yaml' > "${changed}"
+[[ "$(bash "${repo_root}/helm/route-components.sh" "${changed}" yourown-chat)" == true ]]
+[[ "$(bash "${repo_root}/helm/route-components.sh" "${changed}" agents)" == false ]]
+
 printf '%s\n' 'terraform/components/temporal/main.tf' > "${changed}"
 [[ "$(bash "${repo_root}/helm/route-components.sh" "${changed}" agents)" == false ]]
 
@@ -34,11 +38,11 @@ grep -Fq 'agents-pause=agents-pause-pilot' "${repo_root}/helm/mcp/values.yaml"
 
 # Temporal is Terraform-owned composition over project-wide generic modules;
 # it must never re-enter the application Cloud Deploy release.
-test -f "${repo_root}/terraform/components/temporal/main.tf"
-test -f "${repo_root}/terraform/modules/postgresql-databases/main.tf"
-test -f "${repo_root}/terraform/modules/gcs-bucket/main.tf"
-grep -Fq 'source = "../../modules/postgresql-databases"' "${repo_root}/terraform/components/temporal/main.tf"
-grep -Fq 'source = "../../modules/gcs-bucket"' "${repo_root}/terraform/components/temporal/main.tf"
+test -f "${repo_root}/terraform/platform-gcp/modules/temporal/main.tf"
+test -f "${repo_root}/terraform/platform-gcp/modules/cloudsql/main.tf"
+test -f "${repo_root}/terraform/platform-gcp/modules/storage/main.tf"
+grep -Fq 'component "temporal"' "${repo_root}/terraform/platform-gcp/components.tfcomponent.hcl"
+grep -Fq 'component "cloudsql"' "${repo_root}/terraform/platform-gcp/components.tfcomponent.hcl"
 ! find "${repo_root}/terraform" -type d \( -name temporal-storage -o -name temporal-runtime \) -print -quit | grep -q .
 ! grep -Fq 'temporal' "${repo_root}/helm/skaffold-agents.yaml"
 

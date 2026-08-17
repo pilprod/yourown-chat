@@ -13,13 +13,13 @@ Self-hosted чат-платформа Mattermost в Google Cloud за Cloudflare
 
 ## Что внутри
 
-Всё живёт в одном GCP-проекте и описано **четырьмя Terraform Stacks** (три
-связаны данными, один — независимый governance-каталог) — у каждого свой стейт
+Всё живёт в одном GCP-проекте и описано **пятью Terraform Stacks** — у каждого свой стейт
 и свой blast radius:
 
 | Стек | Директория | Владеет | Меняется |
 |---|---|---|---|
-| **platform-gcp** | `terraform/platform-gcp` | Stateful-фундамент: API, сеть + статический ingress-IP, CMEK-ключ, GKE-кластер, Cloud SQL, хранилище, реестр образов, Workload Identity SA | Редко |
+| **platform-gcp** | `terraform/platform-gcp` | Stateful-фундамент: API, сеть + статический ingress-IP, CMEK-ключ, GKE-кластер, Cloud SQL, Keycloak, хранилище, реестр образов, Workload Identity SA | Редко |
+| **keycloak** | `terraform/keycloak` | Область, клиенты, passkey и политики Keycloak через единственный провайдер `keycloak/keycloak`; без пользователей в Terraform | Редко |
 | **cloudflare** | `terraform/cloudflare` | Публичный edge `yourown.chat`: DNS, TLS/security-настройки, DNSSEC, WAF, Origin CA cert + origin-TLS секреты | Иногда |
 | **app-gcp** | `terraform/app-gcp` | Секреты, отдельные пайплайны Mattermost, MCP и пилота агентов, постоянный dev PostgreSQL, CI образа, роутинг тегов и бутстрап кластера | Часто |
 | **agent-registry-gcp** | `terraform/agent-registry-gcp` | Каталог Google Cloud Agent Registry для внешних API и vendor-hosted MCP; GKE и Google MCP регистрируются автоматически | Редко |
@@ -51,6 +51,7 @@ graph LR
 | Возможность | Как |
 |---|---|
 | PostgreSQL | Cloud SQL, только private IP, Франкфурт (`europe-west3`), PITR + бэкапы 7 дней |
+| Авторизация | Платформенный Keycloak, отдельная логическая база, passkey и внешние поставщики; Mattermost не является источником личности YourOwn.Chat |
 | Объектное хранилище | GCS-бакет + S3-совместимые HMAC-ключи для Mattermost |
 | Kubernetes | Один зональный GKE Standard, приватные ноды, один autoscaling pool `general` (`e2-standard-2`, 1–3 ноды) |
 | Реестр образов | Один Artifact Registry (`docker`), опциональное сканирование уязвимостей |
@@ -114,7 +115,8 @@ terraform/
   cloudflare/            # стек 2: edge (DNS/TLS/WAF/Origin CA) + origin-TLS секреты
   app-gcp/               # стек 3: доставка (секреты, Cloud Deploy, CI, релизы,
                          #   бутстрап кластера: operator + ingress-nginx Helm-релизы)
-  agent-registry-gcp/    # стек 4: GCP-каталог внешних endpoint/MCP (Google provider 7.x)
+  keycloak/              # стек 4: область, клиенты, passkey и политики Keycloak
+  agent-registry-gcp/    # стек 5: GCP-каталог внешних endpoint/MCP (Google provider 7.x)
                          # в каждом: *.tfcomponent.hcl + *.tfdeploy.hcl + modules/ + свой lock
   components/
     temporal/            # официальный Temporal, schema lifecycle и private SQL wiring

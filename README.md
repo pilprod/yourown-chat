@@ -10,13 +10,14 @@ managed end-to-end with **HCP Terraform Stacks** — production practices on a
 
 ## What's inside
 
-Runtime infrastructure lives entirely in the `yourown-chat` GCP project. Four
-Terraform Stacks (three data-linked plus one independent governance catalog)
+Runtime infrastructure lives entirely in the `yourown-chat` GCP project. Five
+Terraform Stacks
 own the platform with separate state and blast radius:
 
 | Stack | Directory | What it owns | Changes |
 |---|---|---|---|
 | **platform-gcp** | `terraform/platform-gcp` | The stateful foundation: APIs, network + reserved ingress IP, CMEK key, GKE cluster, Cloud SQL, object storage, container registry, active billing dataset, Workload Identity SAs | Rarely |
+| **keycloak** | `terraform/keycloak` | Realm, clients, passkeys and Keycloak policy through the sole `keycloak/keycloak` provider; Terraform never manages users | Rarely |
 | **cloudflare** | `terraform/cloudflare` | The public edge for `yourown.chat`: DNS, TLS/security settings, DNSSEC, WAF, Origin CA cert + the origin-TLS secrets it fills | Sometimes |
 | **app-gcp** | `terraform/app-gcp` | App secrets; independent Mattermost, MCP and agent-pilot delivery pipelines; persistent dev PostgreSQL; image CI; tag routing; cluster bootstrap | Often |
 | **agent-registry-gcp** | `terraform/agent-registry-gcp` | Google Cloud Agent Registry catalog entries for external APIs and vendor-hosted MCP servers; GKE and Google MCPs register automatically | Rarely |
@@ -870,16 +871,16 @@ terraform/
   cloudflare/            # stack 2: edge (DNS/TLS/WAF/Origin CA) + origin-TLS secrets
   app-gcp/               # stack 3: delivery (secrets, Cloud Deploy, image CI, release cutting,
                          #   cluster bootstrap: operator + ingress-nginx Helm releases)
-  agent-registry-gcp/    # stack 4: GCP endpoint/MCP governance catalog (Google provider 7.x)
+  keycloak/              # stack 4: Keycloak realm, clients, passkeys and policy
+  agent-registry-gcp/    # stack 5: GCP endpoint/MCP governance catalog (Google provider 7.x)
                          # each stack: *.tfcomponent.hcl + *.tfdeploy.hcl + modules/ + its own lock file
-  components/
-    temporal/            # Terraform-owned official Temporal, schema and private SQL wiring
-  modules/               # project-wide PostgreSQL/GCS primitives shared by components
 helm/                    # Kubernetes workloads, delivered by Cloud Deploy
   skaffold-mattermost.yaml # Mattermost-only dev/prod render and cleanup
   skaffold-mcp.yaml        # MCP-only dev/prod render, smoke, and cleanup
   skaffold-agents.yaml     # approval-gated agent pilot start/pause
-  agent-platform/          # control API, workflow worker and activity worker
+  skaffold-yourown-chat.yaml # approval-gated client-facing application
+  yourown-chat/            # identity API, database migration and optional control API
+  agent-platform/          # workflow worker and activity worker only
   matterbridge/          # isolated bridge deployment
   mattermost/            # one chart, promoted with dev/prod values
   mcp/                   # MCP Helm chart, dev probes and prod credential/API smoke
@@ -896,7 +897,7 @@ docs/AGENT_PLATFORM_BUILD_RELEASE.md # tag releases and Temporal launch runbook
 
 Agent workflow and activity worker source lives in
 [`pilprod/yourown-chat-agents`](https://github.com/pilprod/yourown-chat-agents).
-The client-facing control API lives in
+The independent identity, workspace-link and control API services live in
 [`pilprod/yourown-chat-server`](https://github.com/pilprod/yourown-chat-server).
 Owned MCP Go source lives in
 [`pilprod/yourown-chat-mcp`](https://github.com/pilprod/yourown-chat-mcp).
@@ -907,6 +908,9 @@ The target Mattermost/Temporal/multi-agent boundaries and identity evolution
 are recorded in [`docs/AGENT_PLATFORM.md`](docs/AGENT_PLATFORM.md).
 The build, vulnerability review, coordinated tags and Temporal launch order are recorded in
 [`docs/AGENT_PLATFORM_BUILD_RELEASE.md`](docs/AGENT_PLATFORM_BUILD_RELEASE.md).
+The minimal database, namespace, identity and network footprint for the
+client-facing application is recorded in
+[`docs/YOUROWN_CHAT_INFRASTRUCTURE.md`](docs/YOUROWN_CHAT_INFRASTRUCTURE.md).
 
 A few structural notes worth knowing:
 

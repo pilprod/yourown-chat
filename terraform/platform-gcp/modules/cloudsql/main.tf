@@ -212,7 +212,7 @@ locals {
       for database_name in settings.database_names : "${user_name}/${database_name}" => {
         user_name     = user_name
         database_name = database_name
-      }
+      } if settings.manage_databases
     }
   ]...)
 
@@ -223,6 +223,22 @@ locals {
         member    = member
       }
     }
+  ]...)
+
+  additional_connections = {
+    for user_name, settings in var.additional_database_users : user_name => {
+      database_name = one(settings.database_names)
+      secret_id     = settings.connection_secret_id
+    } if settings.connection_secret_id != null
+  }
+
+  additional_connection_accessors = merge([
+    for user_name, settings in var.additional_database_users : {
+      for member in settings.connection_secret_accessors : "${user_name}/${member}" => {
+        user_name = user_name
+        member    = member
+      }
+    } if settings.connection_secret_id != null
   ]...)
 }
 
@@ -278,6 +294,44 @@ resource "google_secret_manager_secret_iam_member" "additional_password_accessor
   for_each  = local.additional_password_accessors
   project   = var.project_id
   secret_id = google_secret_manager_secret.additional_password[each.value.user_name].secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = each.value.member
+}
+
+# Client-facing services consume one ready-to-use URI from the CSI driver.
+# This keeps generated database passwords out of application Terraform state
+# and avoids reconstructing credentials inside Kubernetes.
+resource "google_secret_manager_secret" "additional_connection" {
+  for_each  = local.additional_connections
+  project   = var.project_id
+  secret_id = each.value.secret_id
+  labels    = var.user_labels
+
+  replication {
+    user_managed {
+      replicas {
+        location = var.region
+        dynamic "customer_managed_encryption" {
+          for_each = var.encryption_key_name == null ? [] : [var.encryption_key_name]
+          content { kms_key_name = customer_managed_encryption.value }
+        }
+      }
+    }
+  }
+}
+
+resource "google_secret_manager_secret_version" "additional_connection" {
+  for_each = local.additional_connections
+  secret   = google_secret_manager_secret.additional_connection[each.key].id
+  secret_data = sensitive(
+    "postgres://${each.key}:${random_password.additional[each.key].result}@${google_sql_database_instance.this.private_ip_address}:5432/${each.value.database_name}?sslmode=require&connect_timeout=10"
+  )
+}
+
+resource "google_secret_manager_secret_iam_member" "additional_connection_accessor" {
+  for_each  = local.additional_connection_accessors
+  project   = var.project_id
+  secret_id = google_secret_manager_secret.additional_connection[each.value.user_name].secret_id
   role      = "roles/secretmanager.secretAccessor"
   member    = each.value.member
 }

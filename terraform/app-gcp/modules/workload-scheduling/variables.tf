@@ -16,6 +16,18 @@ variable "agent_enabled" {
   default     = false
 }
 
+variable "server_namespace" {
+  type        = string
+  description = "Namespace containing the independent YourOwn.Chat server plane."
+  default     = "yourown-chat-server"
+}
+
+variable "server_enabled" {
+  type        = bool
+  description = "Create the small server-plane quota and default container limits."
+  default     = false
+}
+
 variable "mcp_dev_deployments" {
   type        = set(string)
   description = "Ephemeral MCP Deployments in the dev namespace that the Cloud Deploy cleanup identity may scale to zero."

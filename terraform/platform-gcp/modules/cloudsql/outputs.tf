@@ -51,6 +51,11 @@ output "additional_password_secret_ids" {
   value       = { for user_name, secret in google_secret_manager_secret.additional_password : user_name => secret.secret_id }
 }
 
+output "additional_connection_secret_ids" {
+  description = "Additional database user => ready-to-use connection URI Secret Manager secret ID."
+  value       = { for user_name, secret in google_secret_manager_secret.additional_connection : user_name => secret.secret_id }
+}
+
 output "additional_passwords" {
   description = "Additional database user => generated password, for same-Stack Kubernetes secret creation only."
   value       = { for user_name, password in random_password.additional : user_name => password.result }

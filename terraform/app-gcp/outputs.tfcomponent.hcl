@@ -8,6 +8,9 @@ output "clouddeploy_pipeline_names" {
     mattermost         = component.clouddeploy.delivery_pipeline_name
     mattermost-preview = component.clouddeploy_mattermost_preview.delivery_pipeline_name
     mcp                = component.clouddeploy_mcp.delivery_pipeline_name
+    yourown-chat       = component.clouddeploy_server.delivery_pipeline_name
+    agents-start       = component.clouddeploy_agents_start.delivery_pipeline_name
+    agents-pause       = component.clouddeploy_agents_pause.delivery_pipeline_name
   }
 }
 

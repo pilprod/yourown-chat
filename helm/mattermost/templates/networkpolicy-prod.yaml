@@ -35,7 +35,7 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-agent-platform-auth
+  name: allow-yourown-chat-server
   namespace: mattermost
 spec:
   podSelector: {}
@@ -44,14 +44,14 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: yourown-agents
+              kubernetes.io/metadata.name: yourown-chat-server
       ports:
         - { protocol: TCP, port: 8065 }
   egress:
     - to:
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: yourown-agents
+              kubernetes.io/metadata.name: yourown-chat-server
       ports:
         - { protocol: TCP, port: 8080 }
 ---
