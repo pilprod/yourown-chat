@@ -18,8 +18,6 @@ variable "bootstrap_admin_client_secret" {
   type        = string
   ephemeral   = true
   sensitive   = true
-  nullable    = true
-  default     = null
   description = "Temporary master-realm bootstrap service credential supplied from the private HCP variable set."
 }
 variable "bootstrap_secret_version" {

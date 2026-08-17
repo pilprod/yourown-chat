@@ -4,15 +4,7 @@ locals {
     "app.kubernetes.io/part-of"    = "yourown-chat-platform"
     "app.kubernetes.io/managed-by" = "terraform"
   })
-  bootstrap_admin_client_secret = var.bootstrap_admin_client_secret != null ? var.bootstrap_admin_client_secret : random_password.bootstrap[0].result
-}
-
-resource "random_password" "bootstrap" {
-  count            = var.enabled ? 1 : 0
-  length           = 40
-  special          = true
-  override_special = "-_.~"
-  keepers          = { rotation = var.bootstrap_secret_version }
+  bootstrap_admin_client_secret = var.bootstrap_admin_client_secret
 }
 
 # Preserve an operator-recoverable copy without exposing it as a Stack output.
@@ -393,7 +385,11 @@ resource "kubernetes_deployment_v1" "this" {
           }
           security_context {
             allow_privilege_escalation = false
-            read_only_root_filesystem  = true
+            # The upstream image performs its Quarkus augmentation on the
+            # first `start`. Keep the process non-root, capability-free and
+            # seccomp-confined, but allow that one container-local write. A
+            # platform-built optimized image can switch this back to true.
+            read_only_root_filesystem  = false
             run_as_non_root            = true
             capabilities { drop = ["ALL"] }
           }

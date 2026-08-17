@@ -95,7 +95,10 @@ deployment "eu" {
     keycloak_enabled           = true
     keycloak_version           = "26.7.1"
     keycloak_password_rotation = "1"
-    keycloak_bootstrap_admin_client_secret = store.varset.keycloak.keycloak_bootstrap_admin_client_secret
+    # The variable set masks this value. Strip only the sensitive propagation
+    # mark at the Stack/component boundary while preserving ephemerality; the
+    # child module marks it sensitive again before using write-only fields.
+    keycloak_bootstrap_admin_client_secret = nonsensitive(store.varset.keycloak.keycloak_bootstrap_admin_client_secret)
     keycloak_public_url        = "https://yourown.chat/auth"
 
     # Temporal is a platform-gcp service. Keep the launch gate closed until the

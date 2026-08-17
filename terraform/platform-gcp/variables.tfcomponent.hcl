@@ -237,9 +237,7 @@ variable "keycloak_password_rotation" {
 variable "keycloak_bootstrap_admin_client_secret" {
   type        = string
   ephemeral   = true
-  sensitive   = true
-  default     = null
-  description = "Temporary master-realm bootstrap service secret. Supplied from the private Keycloak HCP variable set and accepted only by write-only resource fields."
+  description = "Temporary master-realm bootstrap service secret. Its private variable-set source remains masked; this boundary intentionally carries only the ephemeral mark to avoid persisting the component input."
 }
 
 variable "keycloak_public_url" {
