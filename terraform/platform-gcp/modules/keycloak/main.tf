@@ -4,7 +4,6 @@ locals {
     "app.kubernetes.io/part-of"    = "yourown-chat-platform"
     "app.kubernetes.io/managed-by" = "terraform"
   })
-  bootstrap_admin_client_secret = var.bootstrap_admin_client_secret
 }
 
 # Preserve an operator-recoverable copy without exposing it as a Stack output.
@@ -29,11 +28,11 @@ resource "google_secret_manager_secret" "bootstrap_admin" {
   }
 }
 
-resource "google_secret_manager_secret_version" "bootstrap_admin" {
-  count                  = var.enabled ? 1 : 0
-  secret                 = google_secret_manager_secret.bootstrap_admin[0].id
-  secret_data_wo         = local.bootstrap_admin_client_secret
-  secret_data_wo_version = tonumber(var.bootstrap_secret_version)
+ephemeral "google_secret_manager_secret_version" "bootstrap_admin" {
+  count   = var.enabled ? 1 : 0
+  project = var.project_id
+  secret  = google_secret_manager_secret.bootstrap_admin[0].secret_id
+  version = "latest"
 }
 
 resource "kubernetes_namespace_v1" "this" {
@@ -102,7 +101,7 @@ resource "kubernetes_secret_v1" "runtime" {
   }
   data_wo = {
     "database-password"       = var.database_password
-    "bootstrap-client-secret" = local.bootstrap_admin_client_secret
+    "bootstrap-client-secret" = ephemeral.google_secret_manager_secret_version.bootstrap_admin[0].secret_data
   }
   data_wo_revision = tonumber(var.bootstrap_secret_version)
   type = "Opaque"

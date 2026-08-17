@@ -634,7 +634,6 @@ component "keycloak" {
     encryption_key_name      = one([for k in component.kms : k.crypto_key_id])
     cloudsql_private_ip      = one([for database in component.cloudsql : database.private_ip_address])
     database_password        = try(one([for database in component.cloudsql : database.additional_passwords["keycloak"]]), "")
-    bootstrap_admin_client_secret = var.keycloak_bootstrap_admin_client_secret
     bootstrap_secret_version = var.keycloak_password_rotation
     image_version            = var.keycloak_version
     public_url               = var.keycloak_public_url
