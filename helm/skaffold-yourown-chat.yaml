@@ -25,6 +25,7 @@ profiles:
           args:
             - |
               curl --fail --silent --show-error --retry 30 --retry-all-errors --retry-delay 5 http://yourown-chat-identity-api.yourown-chat-server.svc.cluster.local:8081/readyz
+              curl --fail --silent --show-error --retry 30 --retry-all-errors --retry-delay 5 http://yourown-chat-auth-api.yourown-chat-server.svc.cluster.local:8083/readyz
         executionMode:
           kubernetesCluster:
             jobManifestPath: yourown-chat/verify/job.yaml

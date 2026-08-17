@@ -56,31 +56,28 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: yourown-chat-identity-auth
+  name: yourown-chat-authorization-api
   namespace: {{ .Release.Namespace }}
   annotations:
     nginx.ingress.kubernetes.io/use-regex: "true"
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
     nginx.ingress.kubernetes.io/limit-connections: {{ .Values.ingress.authLimitConnections | quote }}
     nginx.ingress.kubernetes.io/limit-rps: {{ .Values.ingress.authLimitRPS | quote }}
     nginx.ingress.kubernetes.io/limit-burst-multiplier: {{ .Values.ingress.authLimitBurstMultiplier | quote }}
 spec:
   ingressClassName: {{ .Values.ingress.className }}
   tls:
-    - hosts: [{{ .Values.ingress.host | quote }}]
+    - hosts: [{{ required "ingress.authHost is required" .Values.ingress.authHost | quote }}]
       secretName: {{ .Values.ingress.tlsSecretName }}
   rules:
-    - host: {{ .Values.ingress.host | quote }}
+    - host: {{ required "ingress.authHost is required" .Values.ingress.authHost | quote }}
       http:
         paths:
-          # Keycloak is the only public sign-in authority. Local registration
-          # and password sessions remain unreachable from the public edge.
-          - path: /identity(/|$)(v1/auth/oidc/sessions)/?$
+          - path: ^/(\.well-known/oauth-authorization-server|authorize|callback|token)?/?$
             pathType: ImplementationSpecific
             backend:
               service:
-                name: yourown-chat-identity-api
-                port: { number: 8081 }
+                name: yourown-chat-auth-api
+                port: { number: 8083 }
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress

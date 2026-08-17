@@ -299,7 +299,7 @@ resource "google_cloudbuild_trigger" "release" {
                 --format='value(tag)' | sort -V | tail -n1)"
               [ -n "$$server_tag" ] || { echo "No released YourOwn.Chat server tag found" >&2; exit 1; }
               server_tag="$${server_tag##*/}"
-              for service in control-api identity-api identity-admin identity-migrate; do
+              for service in control-api auth-api identity-api identity-admin identity-migrate; do
                 service_repo="${local.artifact_repository_prefix}/${var.backend_image_prefix}-$$service"
                 service_digest="$$(gcloud artifacts docker images describe \
                   "$$service_repo:$$server_tag" --format='value(image_summary.digest)')"

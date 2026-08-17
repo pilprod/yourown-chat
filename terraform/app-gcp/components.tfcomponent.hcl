@@ -166,6 +166,7 @@ component "clouddeploy_server" {
 
     deploy_parameters = {
       backend_control_api_gsa                = lookup(var.workload_identity_emails, "backend-control-api", "")
+      auth_api_gsa                           = lookup(var.workload_identity_emails, "auth-api", "")
       identity_api_gsa                       = lookup(var.workload_identity_emails, "identity-api", "")
       identity_admin_gsa                     = lookup(var.workload_identity_emails, "identity-admin", "")
       identity_migrate_gsa                   = lookup(var.workload_identity_emails, "identity-migrate", "")

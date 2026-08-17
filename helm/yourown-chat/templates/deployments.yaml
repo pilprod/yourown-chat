@@ -1,6 +1,72 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  name: yourown-chat-auth-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: yourown-chat-auth-api
+    {{- include "yourown-chat.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.authorization.replicaCount }}
+  selector:
+    matchLabels: { app: yourown-chat-auth-api }
+  template:
+    metadata:
+      labels:
+        app: yourown-chat-auth-api
+        {{- include "yourown-chat.labels" . | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      serviceAccountName: {{ .Values.serviceAccounts.authApi }}
+      priorityClassName: {{ .Values.priorityClassName }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: auth-api
+          image: {{ required "yourown_chat_auth_api_image is required" .Values.yourown_chat_auth_api_image | quote }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: AUTH_API_PORT, value: {{ .Values.authorization.port | quote }} }
+            - { name: IDENTITY_DATABASE_URL_FILE, value: /var/run/secrets/identity/database-url }
+            - { name: IDENTITY_SESSION_TTL, value: {{ .Values.identity.sessionTTL | quote }} }
+            - { name: AUTH_ISSUER, value: {{ required "authorization.issuer is required" .Values.authorization.issuer | quote }} }
+            - { name: AUTH_CLIENT_ID, value: {{ required "authorization.clientID is required" .Values.authorization.clientID | quote }} }
+            - { name: AUTH_CLIENT_REDIRECT_URI, value: {{ required "authorization.clientRedirectURI is required" .Values.authorization.clientRedirectURI | quote }} }
+            - { name: AUTH_UPSTREAM_CLIENT_ID, value: {{ required "authorization.upstreamClientID is required" .Values.authorization.upstreamClientID | quote }} }
+            - { name: AUTH_UPSTREAM_AUTHORIZATION_URL, value: {{ required "authorization.upstreamAuthorizationURL is required" .Values.authorization.upstreamAuthorizationURL | quote }} }
+            - { name: AUTH_UPSTREAM_READY_URL, value: {{ required "authorization.upstreamReadyURL is required" .Values.authorization.upstreamReadyURL | quote }} }
+            - { name: AUTH_UPSTREAM_TOKEN_URL, value: {{ required "authorization.upstreamTokenURL is required" .Values.authorization.upstreamTokenURL | quote }} }
+            - { name: AUTH_UPSTREAM_USERINFO_URL, value: {{ required "authorization.upstreamUserInfoURL is required" .Values.authorization.upstreamUserInfoURL | quote }} }
+          ports:
+            - { name: http, containerPort: {{ .Values.authorization.port }} }
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 3
+            failureThreshold: 40
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 20
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.authorization.resources | nindent 12 }}
+          volumeMounts:
+            - { name: identity-secrets, mountPath: /var/run/secrets/identity, readOnly: true }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: identity-secrets
+          csi:
+            driver: secrets-store-gke.csi.k8s.io
+            readOnly: true
+            volumeAttributes: { secretProviderClass: yourown-chat-auth-api-gcp }
+        - { name: tmp, emptyDir: {} }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
   name: yourown-chat-identity-api
   namespace: {{ .Release.Namespace }}
   labels:

@@ -5,7 +5,7 @@ component "realm" {
   inputs = {
     realm_name                      = var.realm_name
     public_host                    = var.public_host
-    ios_redirect_uri               = var.ios_redirect_uri
+    broker_redirect_uri            = var.broker_redirect_uri
     terraform_client_id            = var.terraform_client_id
     terraform_client_secret        = var.terraform_client_secret
     terraform_client_secret_version = var.terraform_client_secret_version

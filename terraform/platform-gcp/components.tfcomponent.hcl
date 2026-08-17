@@ -17,6 +17,7 @@ locals {
     mcp-terraform-stacks = { namespace = "mcp-terraform-stacks", ksa = "mcp-terraform-stacks" }
     mcp-tunnel           = { namespace = "mcp-tunnel", ksa = "mcp-tunnel" }
     backend-control-api   = { namespace = "yourown-chat-server", ksa = "yourown-chat-control-api" }
+    auth-api              = { namespace = "yourown-chat-server", ksa = "yourown-chat-auth-api" }
     identity-api          = { namespace = "yourown-chat-server", ksa = "yourown-chat-identity-api" }
     identity-admin        = { namespace = "yourown-chat-server", ksa = "yourown-chat-identity-admin" }
     identity-migrate      = { namespace = "yourown-chat-server", ksa = "yourown-chat-identity-migrate" }
@@ -349,6 +350,21 @@ component "workload_identity_identity_api" {
   depends_on = [component.gke]
 }
 
+component "workload_identity_auth_api" {
+  source = "./modules/workload-identity"
+
+  inputs = {
+    project_id   = component.project_services.project_id
+    account_id   = "yourown-chat-auth"
+    display_name = "YourOwn.Chat public authorization API workload identity"
+    namespace    = local.ns["auth-api"].namespace
+    ksa_name     = local.ns["auth-api"].ksa
+  }
+
+  providers  = { google = provider.google.this }
+  depends_on = [component.gke]
+}
+
 component "workload_identity_identity_admin" {
   source = "./modules/workload-identity"
 
@@ -566,6 +582,7 @@ component "cloudsql" {
           password_secret_accessors = []
           connection_secret_id      = "yourown-chat-identity-runtime-database-url"
           connection_secret_accessors = [
+            component.workload_identity_auth_api.iam_member,
             component.workload_identity_identity_api.iam_member,
             component.workload_identity_identity_admin.iam_member,
           ]

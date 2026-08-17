@@ -175,7 +175,7 @@ The control, identity and identity-migration images are built from
 `pilprod/yourown-chat-server`.
 `yourown-chat-workflow-worker` and `yourown-chat-activity-worker` are built from
 `pilprod/yourown-chat-agents`. Separate Cloud Build identities and triggers
-enforce this source boundary. A server tag releases the three server images;
+enforce this source boundary. A server tag releases the five server images;
 matching immutable server/agent tags coordinate the control and worker digests
 for the separate agent-compute release.
 

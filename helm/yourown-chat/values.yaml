@@ -1,4 +1,5 @@
 yourown_chat_control_api_image: ""
+yourown_chat_auth_api_image: ""
 yourown_chat_identity_api_image: ""
 yourown_chat_identity_admin_image: ""
 yourown_chat_identity_migrate_image: ""
@@ -10,6 +11,7 @@ keycloak_issuer: "https://auth.yourown.chat/realms/yourown-chat"
 keycloak_internal_userinfo_url: "http://keycloak.keycloak.svc.cluster.local:8080/realms/yourown-chat/protocol/openid-connect/userinfo"
 
 backend_control_api_gsa: ""
+auth_api_gsa: ""
 identity_api_gsa: ""
 identity_admin_gsa: ""
 identity_migrate_gsa: ""
@@ -32,6 +34,21 @@ identity:
   resources:
     requests: { cpu: 25m, memory: 96Mi }
     limits: { cpu: 250m, memory: 256Mi }
+
+authorization:
+  replicaCount: 1
+  port: 8083
+  issuer: https://auth.yourown.chat
+  clientID: yourown-chat-ios
+  clientRedirectURI: com.yourown.chat:/oauth/callback
+  upstreamClientID: yourown-chat-auth-broker
+  upstreamAuthorizationURL: https://auth.yourown.chat/realms/yourown-chat/protocol/openid-connect/auth
+  upstreamReadyURL: http://keycloak.keycloak.svc.cluster.local:8080/realms/yourown-chat/.well-known/openid-configuration
+  upstreamTokenURL: http://keycloak.keycloak.svc.cluster.local:8080/realms/yourown-chat/protocol/openid-connect/token
+  upstreamUserInfoURL: http://keycloak.keycloak.svc.cluster.local:8080/realms/yourown-chat/protocol/openid-connect/userinfo
+  resources:
+    requests: { cpu: 15m, memory: 64Mi }
+    limits: { cpu: 150m, memory: 192Mi }
 
 identityAdmin:
   replicaCount: 1
@@ -78,6 +95,7 @@ ingress:
 
 priorityClassName: production
 serviceAccounts:
+  authApi: yourown-chat-auth-api
   identityApi: yourown-chat-identity-api
   identityAdmin: yourown-chat-identity-admin
   identityMigrate: yourown-chat-identity-migrate

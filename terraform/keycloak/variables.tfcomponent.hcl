@@ -82,14 +82,14 @@ variable "public_host" {
   }
 }
 
-variable "ios_redirect_uri" {
+variable "broker_redirect_uri" {
   type        = string
-  description = "Exact native iOS OAuth callback. Wildcards are forbidden."
-  default     = "com.yourown.chat:/oauth/callback"
+  description = "Exact server-side callback for the public authorization facade. Wildcards are forbidden."
+  default     = "https://auth.yourown.chat/callback"
 
   validation {
-    condition     = var.ios_redirect_uri == "com.yourown.chat:/oauth/callback"
-    error_message = "The production iOS client accepts only com.yourown.chat:/oauth/callback."
+    condition     = var.broker_redirect_uri == "https://auth.yourown.chat/callback"
+    error_message = "The production broker accepts only https://auth.yourown.chat/callback."
   }
 }
 
