@@ -82,9 +82,11 @@ units. In particular, an agents release is selected as follows:
 5. let the platform coordinate the three digest-pinned images by the matching
    tag; do not add either source repository as a platform submodule.
 
-The server/agents image triggers reject a release tag whose commit is not
-reachable from remote `main`. A squashed pull request therefore must be tagged
-at the resulting `main` commit, not at the obsolete feature-branch commit.
+Before creating server/agents image tags, the release operator verifies that
+each clean local `HEAD` equals `origin/main`. A squashed pull request therefore
+must be tagged at the resulting `main` commit, not at the obsolete feature-branch
+commit. Cloud Build receives private source through the Gen2 connector; no
+second GitHub credential is copied into build steps.
 
 ## Dependency direction
 
