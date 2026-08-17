@@ -43,9 +43,9 @@ authorization:
   clientRedirectURI: com.yourown.chat:/oauth/callback
   upstreamClientID: yourown-chat-auth-broker
   upstreamAuthorizationURL: https://auth.yourown.chat/realms/yourown-chat/protocol/openid-connect/auth
-  upstreamReadyURL: http://keycloak.keycloak.svc.cluster.local:8080/realms/yourown-chat/.well-known/openid-configuration
-  upstreamTokenURL: http://keycloak.keycloak.svc.cluster.local:8080/realms/yourown-chat/protocol/openid-connect/token
-  upstreamUserInfoURL: http://keycloak.keycloak.svc.cluster.local:8080/realms/yourown-chat/protocol/openid-connect/userinfo
+  upstreamReadyURL: https://keycloak.keycloak.svc.cluster.local:8443/realms/yourown-chat/.well-known/openid-configuration
+  upstreamTokenURL: https://keycloak.keycloak.svc.cluster.local:8443/realms/yourown-chat/protocol/openid-connect/token
+  upstreamUserInfoURL: https://keycloak.keycloak.svc.cluster.local:8443/realms/yourown-chat/protocol/openid-connect/userinfo
   resources:
     requests: { cpu: 15m, memory: 64Mi }
     limits: { cpu: 150m, memory: 192Mi }

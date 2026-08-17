@@ -60,6 +60,9 @@ metadata:
   namespace: {{ .Release.Namespace }}
   annotations:
     nginx.ingress.kubernetes.io/use-regex: "true"
+    # Authorization codes arrive through form_post and this ingress emits no
+    # request log, preventing future parameter changes from leaking secrets.
+    nginx.ingress.kubernetes.io/enable-access-log: "false"
     nginx.ingress.kubernetes.io/limit-connections: {{ .Values.ingress.authLimitConnections | quote }}
     nginx.ingress.kubernetes.io/limit-rps: {{ .Values.ingress.authLimitRPS | quote }}
     nginx.ingress.kubernetes.io/limit-burst-multiplier: {{ .Values.ingress.authLimitBurstMultiplier | quote }}

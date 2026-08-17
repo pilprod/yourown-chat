@@ -28,6 +28,7 @@ spec:
           env:
             - { name: AUTH_API_PORT, value: {{ .Values.authorization.port | quote }} }
             - { name: IDENTITY_DATABASE_URL_FILE, value: /var/run/secrets/identity/database-url }
+            - { name: AUTH_STATE_ENCRYPTION_KEY_FILE, value: /var/run/secrets/identity/state-encryption-key }
             - { name: IDENTITY_SESSION_TTL, value: {{ .Values.identity.sessionTTL | quote }} }
             - { name: AUTH_ISSUER, value: {{ required "authorization.issuer is required" .Values.authorization.issuer | quote }} }
             - { name: AUTH_CLIENT_ID, value: {{ required "authorization.clientID is required" .Values.authorization.clientID | quote }} }
@@ -37,6 +38,8 @@ spec:
             - { name: AUTH_UPSTREAM_READY_URL, value: {{ required "authorization.upstreamReadyURL is required" .Values.authorization.upstreamReadyURL | quote }} }
             - { name: AUTH_UPSTREAM_TOKEN_URL, value: {{ required "authorization.upstreamTokenURL is required" .Values.authorization.upstreamTokenURL | quote }} }
             - { name: AUTH_UPSTREAM_USERINFO_URL, value: {{ required "authorization.upstreamUserInfoURL is required" .Values.authorization.upstreamUserInfoURL | quote }} }
+            - { name: AUTH_UPSTREAM_TLS_SERVER_NAME, value: auth.yourown.chat }
+            - { name: AUTH_UPSTREAM_TLS_CA_FILE, value: /var/run/secrets/keycloak-tls/tls.crt }
           ports:
             - { name: http, containerPort: {{ .Values.authorization.port }} }
           startupProbe:
@@ -55,6 +58,7 @@ spec:
             {{- toYaml .Values.authorization.resources | nindent 12 }}
           volumeMounts:
             - { name: identity-secrets, mountPath: /var/run/secrets/identity, readOnly: true }
+            - { name: keycloak-tls, mountPath: /var/run/secrets/keycloak-tls, readOnly: true }
             - { name: tmp, mountPath: /tmp }
       volumes:
         - name: identity-secrets
@@ -62,6 +66,9 @@ spec:
             driver: secrets-store-gke.csi.k8s.io
             readOnly: true
             volumeAttributes: { secretProviderClass: yourown-chat-auth-api-gcp }
+        - name: keycloak-tls
+          secret:
+            secretName: keycloak-internal-ca
         - { name: tmp, emptyDir: {} }
 ---
 apiVersion: apps/v1

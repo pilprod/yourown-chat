@@ -344,6 +344,12 @@ component "secrets" {
         special   = false
         accessors = [var.workload_identity_members["identity-admin"]]
       }
+      "yourown-chat-auth-state-key" = {
+        generate  = true
+        length    = 64
+        special   = false
+        accessors = [var.workload_identity_members["auth-api"]]
+      }
     }
   }
 
@@ -501,6 +507,30 @@ component "cluster_secrets" {
           namespace = "yourown-chat-server"
           type      = "kubernetes.io/tls"
           labels    = { app = "yourown-chat-server" }
+          data = {
+            "tls.crt" = component.prod_secret_values.values["mattermost_origin_tls_cert"]
+            "tls.key" = component.prod_secret_values.values["mattermost_origin_tls_key"]
+          }
+        }
+        keycloak-internal-ca = {
+          name      = "keycloak-internal-ca"
+          namespace = "yourown-chat-server"
+          type      = "Opaque"
+          labels    = { app = "yourown-chat-auth-api" }
+          data = {
+            "tls.crt" = component.prod_secret_values.values["mattermost_origin_tls_cert"]
+          }
+        }
+      } : {},
+      # Keycloak owns a platform namespace rather than an app namespace. The
+      # namespace exists after platform-gcp; app-gcp supplies only its existing
+      # edge certificate so the private 8443 listener can start.
+      var.manage_ingress_origin_tls && var.keycloak_enabled ? {
+        keycloak-internal-tls = {
+          name      = "keycloak-internal-tls"
+          namespace = "keycloak"
+          type      = "kubernetes.io/tls"
+          labels    = { app = "keycloak" }
           data = {
             "tls.crt" = component.prod_secret_values.values["mattermost_origin_tls_cert"]
             "tls.key" = component.prod_secret_values.values["mattermost_origin_tls_key"]

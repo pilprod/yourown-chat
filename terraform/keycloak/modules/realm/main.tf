@@ -97,6 +97,10 @@ resource "keycloak_openid_client" "auth_broker" {
   pkce_code_challenge_method   = "S256"
   use_refresh_tokens           = false
   full_scope_allowed           = false
+  # The broker callback accepts only the minimum form_post payload. Removing
+  # compatibility fields avoids both URL leakage and parser ambiguity.
+  exclude_session_state_from_auth_response = true
+  exclude_issuer_from_auth_response        = true
 
   valid_redirect_uris             = [var.broker_redirect_uri]
   valid_post_logout_redirect_uris = []
