@@ -203,13 +203,11 @@ resource "kubernetes_network_policy_v1" "isolation" {
         namespace_selector {
           match_labels = { "kubernetes.io/metadata.name" = "kube-system" }
         }
-        pod_selector {
-          match_labels = { "k8s-app" = "kube-dns" }
-        }
       }
       # GKE Dataplane V2 evaluates Service traffic against the pre-DNAT
-      # ClusterIP. Keep the pod selector above for direct endpoint traffic and
-      # explicitly allow only the kube-dns virtual IP here.
+      # ClusterIP. NodeLocal DNSCache is host-networked and cannot be selected
+      # reliably as a normal kube-dns Pod, so keep the namespace rule constrained
+      # to DNS ports and explicitly allow the kube-dns virtual IP as well.
       to {
         ip_block {
           cidr = "${var.cluster_dns_ip}/32"
