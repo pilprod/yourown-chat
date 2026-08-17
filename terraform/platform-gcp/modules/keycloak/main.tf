@@ -336,6 +336,12 @@ resource "kubernetes_deployment_v1" "this" {
             name  = "KC_HTTP_RELATIVE_PATH"
             value = "/auth"
           }
+          # Keep health and metrics on the private management listener without
+          # inheriting the public /auth prefix used by the application server.
+          env {
+            name  = "KC_HTTP_MANAGEMENT_RELATIVE_PATH"
+            value = "/"
+          }
           env {
             name  = "KC_PROXY_HEADERS"
             value = "xforwarded"
