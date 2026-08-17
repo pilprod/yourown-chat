@@ -1,6 +1,68 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  name: yourown-chat-transport-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: yourown-chat-transport-api
+    {{- include "yourown-chat.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.transport.replicaCount }}
+  selector:
+    matchLabels: { app: yourown-chat-transport-api }
+  template:
+    metadata:
+      labels:
+        app: yourown-chat-transport-api
+        {{- include "yourown-chat.labels" . | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      serviceAccountName: {{ .Values.serviceAccounts.transportApi }}
+      priorityClassName: {{ .Values.priorityClassName }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: transport-api
+          image: {{ required "yourown_chat_transport_api_image is required" .Values.yourown_chat_transport_api_image | quote }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: TRANSPORT_API_PORT, value: {{ .Values.transport.port | quote }} }
+            - { name: TRANSPORT_KEY_ID, value: {{ required "transport.keyID is required" .Values.transport.keyID | quote }} }
+            - { name: TRANSPORT_PRIVATE_KEY_FILE, value: /var/run/secrets/transport/private-key }
+            - { name: IDENTITY_DATABASE_URL_FILE, value: /var/run/secrets/transport/database-url }
+            - { name: TRANSPORT_AUTH_UPSTREAM, value: http://yourown-chat-auth-api.yourown-chat-server.svc.cluster.local:8083 }
+            - { name: TRANSPORT_IDENTITY_UPSTREAM, value: http://yourown-chat-identity-api.yourown-chat-server.svc.cluster.local:8081 }
+            - { name: TRANSPORT_CONTROL_UPSTREAM, value: http://yourown-chat-control-api.yourown-chat-server.svc.cluster.local:8080 }
+          ports:
+            - { name: http, containerPort: {{ .Values.transport.port }} }
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 3
+            failureThreshold: 40
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 20
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.transport.resources | nindent 12 }}
+          volumeMounts:
+            - { name: transport-secrets, mountPath: /var/run/secrets/transport, readOnly: true }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: transport-secrets
+          csi:
+            driver: secrets-store-gke.csi.k8s.io
+            readOnly: true
+            volumeAttributes: { secretProviderClass: yourown-chat-transport-api-gcp }
+        - { name: tmp, emptyDir: {} }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
   name: yourown-chat-auth-api
   namespace: {{ .Release.Namespace }}
   labels:

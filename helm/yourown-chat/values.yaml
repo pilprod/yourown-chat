@@ -1,5 +1,6 @@
 yourown_chat_control_api_image: ""
 yourown_chat_auth_api_image: ""
+yourown_chat_transport_api_image: ""
 yourown_chat_identity_api_image: ""
 yourown_chat_identity_admin_image: ""
 yourown_chat_identity_migrate_image: ""
@@ -12,12 +13,14 @@ keycloak_internal_userinfo_url: "http://keycloak.keycloak.svc.cluster.local:8080
 
 backend_control_api_gsa: ""
 auth_api_gsa: ""
+transport_api_gsa: ""
 identity_api_gsa: ""
 identity_admin_gsa: ""
 identity_migrate_gsa: ""
 server_secret_project: ""
 identity_runtime_database_connection_secret_id: "yourown-chat-identity-runtime-database-url"
 identity_migrate_database_connection_secret_id: "yourown-chat-identity-database-url"
+transport_private_key_secret_id: "yourown-chat-transport-private-key"
 cloudsql_private_ip: ""
 cluster_dns_ip: ""
 
@@ -49,6 +52,14 @@ authorization:
   resources:
     requests: { cpu: 15m, memory: 64Mi }
     limits: { cpu: 150m, memory: 192Mi }
+
+transport:
+  replicaCount: 1
+  port: 8084
+  keyID: pilot-key-000001
+  resources:
+    requests: { cpu: 25m, memory: 96Mi }
+    limits: { cpu: 300m, memory: 256Mi }
 
 identityAdmin:
   replicaCount: 1
@@ -90,11 +101,15 @@ ingress:
   authLimitConnections: 2
   authLimitRPS: 1
   authLimitBurstMultiplier: 2
+  transportLimitConnections: 8
+  transportLimitRPS: 10
+  transportLimitBurstMultiplier: 2
   keycloakAdminLimitRPS: 2
   keycloakServiceName: yourown-chat-keycloak
 
 priorityClassName: production
 serviceAccounts:
+  transportApi: yourown-chat-transport-api
   authApi: yourown-chat-auth-api
   identityApi: yourown-chat-identity-api
   identityAdmin: yourown-chat-identity-admin

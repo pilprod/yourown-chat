@@ -1,6 +1,16 @@
 apiVersion: v1
 kind: Service
 metadata:
+  name: yourown-chat-transport-api
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector: { app: yourown-chat-transport-api }
+  ports:
+    - { name: http, port: 8084, targetPort: http }
+---
+apiVersion: v1
+kind: Service
+metadata:
   name: yourown-chat-auth-api
   namespace: {{ .Release.Namespace }}
 spec:

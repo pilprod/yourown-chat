@@ -18,6 +18,7 @@ locals {
     mcp-tunnel           = { namespace = "mcp-tunnel", ksa = "mcp-tunnel" }
     backend-control-api   = { namespace = "yourown-chat-server", ksa = "yourown-chat-control-api" }
     auth-api              = { namespace = "yourown-chat-server", ksa = "yourown-chat-auth-api" }
+    transport-api         = { namespace = "yourown-chat-server", ksa = "yourown-chat-transport-api" }
     identity-api          = { namespace = "yourown-chat-server", ksa = "yourown-chat-identity-api" }
     identity-admin        = { namespace = "yourown-chat-server", ksa = "yourown-chat-identity-admin" }
     identity-migrate      = { namespace = "yourown-chat-server", ksa = "yourown-chat-identity-migrate" }
@@ -359,6 +360,21 @@ component "workload_identity_auth_api" {
     display_name = "YourOwn.Chat public authorization API workload identity"
     namespace    = local.ns["auth-api"].namespace
     ksa_name     = local.ns["auth-api"].ksa
+  }
+
+  providers  = { google = provider.google.this }
+  depends_on = [component.gke]
+}
+
+component "workload_identity_transport_api" {
+  source = "./modules/workload-identity"
+
+  inputs = {
+    project_id   = component.project_services.project_id
+    account_id   = "yourown-chat-transport"
+    display_name = "YourOwn.Chat encrypted transport workload identity"
+    namespace    = local.ns["transport-api"].namespace
+    ksa_name     = local.ns["transport-api"].ksa
   }
 
   providers  = { google = provider.google.this }

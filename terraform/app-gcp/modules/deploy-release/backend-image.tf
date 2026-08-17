@@ -2,6 +2,7 @@ locals {
   workload_image_paths = {
     control_api      = "${local.artifact_repository_prefix}/${var.backend_image_prefix}-control-api"
     auth_api         = "${local.artifact_repository_prefix}/${var.backend_image_prefix}-auth-api"
+    transport_api    = "${local.artifact_repository_prefix}/${var.backend_image_prefix}-transport-api"
     identity_api     = "${local.artifact_repository_prefix}/${var.backend_image_prefix}-identity-api"
     identity_admin   = "${local.artifact_repository_prefix}/${var.backend_image_prefix}-identity-admin"
     identity_migrate = "${local.artifact_repository_prefix}/${var.backend_image_prefix}-identity-migrate"
@@ -47,7 +48,7 @@ locals {
       branch        = var.backend_branch_regex
       tag           = null
       release       = false
-      services      = "control-api auth-api identity-api identity-admin identity-migrate"
+      services      = "control-api auth-api transport-api identity-api identity-admin identity-migrate"
       workflowcheck = false
     }
     "yourown-chat-server-image" = {
@@ -55,7 +56,7 @@ locals {
       branch        = null
       tag           = var.backend_release_tag_regex
       release       = true
-      services      = "control-api auth-api identity-api identity-admin identity-migrate"
+      services      = "control-api auth-api transport-api identity-api identity-admin identity-migrate"
       workflowcheck = false
     }
     "yourown-chat-agents-ci" = {
@@ -323,7 +324,7 @@ resource "google_cloudbuild_trigger" "source_image" {
         if [ "${each.value.source}" = "backend" ] && [ "${var.server_enabled}" = "true" ]; then
           server_parameters=""
           server_digest_set_input=""
-          for service in control-api auth-api identity-api identity-admin identity-migrate; do
+          for service in control-api auth-api transport-api identity-api identity-admin identity-migrate; do
             image_path="${local.artifact_repository_prefix}/${var.backend_image_prefix}-$$service"
             digest="$$(cat "/workspace/$$service-image-digest")"
             parameter="yourown_chat_$$(printf '%s' "$$service" | tr '-' '_')_image"

@@ -144,6 +144,7 @@ output "workload_identity_emails" {
     agents               = component.workload_identity_agents.email
     backend-control-api   = component.workload_identity_backend_control_api.email
     auth-api              = component.workload_identity_auth_api.email
+    transport-api         = component.workload_identity_transport_api.email
     identity-api          = component.workload_identity_identity_api.email
     identity-admin        = component.workload_identity_identity_admin.email
     identity-migrate      = component.workload_identity_identity_migrate.email
@@ -166,6 +167,7 @@ output "workload_identity_members" {
     agents               = component.workload_identity_agents.iam_member
     backend-control-api   = component.workload_identity_backend_control_api.iam_member
     auth-api              = component.workload_identity_auth_api.iam_member
+    transport-api         = component.workload_identity_transport_api.iam_member
     identity-api          = component.workload_identity_identity_api.iam_member
     identity-admin        = component.workload_identity_identity_admin.iam_member
     identity-migrate      = component.workload_identity_identity_migrate.iam_member
