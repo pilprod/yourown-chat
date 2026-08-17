@@ -10,6 +10,8 @@ required_providers {
 # bootstrap_mode is turned off and all later plans use client credentials with
 # rights limited to the yourown-chat realm.
 provider "keycloak" "this" {
+  for_each = var.enabled ? toset(["production"]) : toset([])
+
   config {
     url              = var.keycloak_admin_url
     keycloak_version = var.keycloak_version

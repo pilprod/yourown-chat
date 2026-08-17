@@ -14,6 +14,6 @@ component "realm" {
   }
 
   providers = {
-    keycloak = provider.keycloak.this
+    keycloak = provider.keycloak.this[each.key]
   }
 }
