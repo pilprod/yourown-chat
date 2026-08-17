@@ -43,9 +43,11 @@ control and worker images do not exist yet; whichever build first observes the
 compatible set creates the agent Cloud Deploy release. Deterministic release
 names make simultaneous attempts harmless.
 
-The tag in each repository must point to a commit reachable from remote `main`.
-The Cloud Build release gate fetches that branch and rejects tags created only
-on a feature branch, including the pre-squash SHA of a merged pull request.
+The tag in each repository must point to the current reviewed remote `main`.
+Before pushing it, the release operator compares local `HEAD` and `origin/main`
+and verifies the repository is clean. The private Gen2 connector does not expose
+its GitHub credential to build containers, so the build must not add a second
+network fetch or store a separate GitHub token merely to repeat this check.
 Agents are intentionally not a Git submodule of `yourown-chat`: matching
 immutable source tags coordinate independently built image digests without
 copying application code into the platform repository.
