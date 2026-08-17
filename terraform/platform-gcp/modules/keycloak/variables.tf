@@ -14,12 +14,6 @@ variable "database_password" {
   type      = string
   sensitive = true
 }
-variable "bootstrap_admin_client_secret" {
-  type        = string
-  ephemeral   = true
-  sensitive   = true
-  description = "Temporary master-realm bootstrap service credential supplied from the private HCP variable set."
-}
 variable "bootstrap_secret_version" {
   type        = string
   description = "Explicit numeric rotation marker for write-only bootstrap secret fields."

@@ -234,12 +234,6 @@ variable "keycloak_password_rotation" {
   default     = "1"
 }
 
-variable "keycloak_bootstrap_admin_client_secret" {
-  type        = string
-  ephemeral   = true
-  description = "Temporary master-realm bootstrap service secret. Its private variable-set source remains masked; this boundary intentionally carries only the ephemeral mark to avoid persisting the component input."
-}
-
 variable "keycloak_public_url" {
   type        = string
   description = "Canonical public Keycloak URL used as the immutable OIDC issuer base."
