@@ -8,11 +8,6 @@ import {
 }
 
 import {
-  to = google_secret_manager_secret_version.bootstrap_admin[0]
-  id = "projects/${var.project_id}/secrets/keycloak-bootstrap-admin-client-secret/versions/${var.bootstrap_secret_version}"
-}
-
-import {
   to = kubernetes_namespace_v1.this[0]
   id = var.namespace
 }
