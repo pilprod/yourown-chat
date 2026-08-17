@@ -9,10 +9,10 @@ store "varset" "keycloak" {
 
 deployment "production" {
   inputs = {
-    # Keep the provider component absent until platform-gcp and the public
-    # machine-only Admin REST route are deployed. Enable in the follow-up
-    # bootstrap configuration after https://yourown.chat/auth is reachable.
-    enabled = false
+    # The runtime and the public machine-only Admin REST route are deployed.
+    # This first enabled configuration bootstraps the product realm; no users
+    # are Terraform resources.
+    enabled = true
 
     keycloak_admin_url = "https://yourown.chat/auth"
     keycloak_version   = "26.7.1"
