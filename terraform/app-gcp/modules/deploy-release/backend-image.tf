@@ -276,7 +276,16 @@ resource "google_cloudbuild_trigger" "source_image" {
           gcloud artifacts docker images list-vulnerabilities "$$scan" --format=json > "/workspace/$$service-vulnerabilities.json"
           gcloud artifacts docker images list-vulnerabilities "$$scan" \
             --format='value(vulnerability.effectiveSeverity)' > "/workspace/$$service-severities.txt"
+          gcloud storage cp \
+            "/workspace/$$service-image-digest" \
+            "/workspace/$$service-image-uri" \
+            "/workspace/$$service-scan-id" \
+            "/workspace/$$service-severities.txt" \
+            "/workspace/$$service-vulnerabilities.json" \
+            "gs://${google_storage_bucket.source.name}/evidence/yourown-chat-${each.value.source}/$BUILD_ID/"
           if grep -Exq 'CRITICAL|HIGH' "/workspace/$$service-severities.txt"; then
+            gcloud artifacts docker images list-vulnerabilities "$$scan" \
+              --format='table(name.basename():label=OCCURRENCE,vulnerability.effectiveSeverity:label=SEVERITY,vulnerability.cvssScore:label=CVSS,vulnerability.shortDescription:label=VULNERABILITY)'
             echo "High or Critical vulnerability blocks $$service" >&2
             exit 1
           fi
