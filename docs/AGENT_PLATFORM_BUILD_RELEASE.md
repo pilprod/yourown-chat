@@ -32,10 +32,10 @@ gate and is the only source event allowed to create a release:
 | Source | Trigger outputs |
 |---|---|
 | `yourown-chat-mcp` | `mcp-google-cloud` and `mcp-terraform-stacks`, then MCP dev -> verify -> approval -> prod |
-| `yourown-chat-server` | `yourown-chat-identity-api`, `yourown-chat-identity-migrate` and `yourown-chat-control-api`, followed by the independent approval-gated `yourown-chat` release |
+| `yourown-chat-server` | `yourown-chat-auth-api`, `yourown-chat-identity-api`, `yourown-chat-identity-admin`, `yourown-chat-identity-migrate` and `yourown-chat-control-api`, followed by the independent approval-gated `yourown-chat` release |
 | `yourown-chat-agents` | `yourown-chat-workflow-worker` and `yourown-chat-activity-worker` |
 
-The server application is released as soon as its three images pass the gate;
+The server application is released as soon as its five images pass the gate;
 it does not wait for agent compute or Temporal. Server and agents also use the
 same compatibility tag for the agent release. Each repository builds only its
 own images. The first completed source build waits successfully if the matching

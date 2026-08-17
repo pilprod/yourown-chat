@@ -49,8 +49,8 @@ revisions:
 - A Mattermost assembly release is valid only when the web commit has the same
   `X.Y.Z[-suffix]` tag and the server commit has
   `vX.Y.Z[-suffix]-patched`.
-- A server tag independently releases `identity-api`, `identity-migrate` and
-  `control-api`. Agent compute is released separately only when matching server
+- A server tag independently releases `auth-api`, `identity-api`,
+  `identity-admin`, `identity-migrate` and `control-api`. Agent compute is released separately only when matching server
   and agent tags provide the compatible control/worker image set.
 - Mattermost preview branches are structurally limited to the dev-only pipeline;
   only an accepted assembly tag can enter dev-to-production promotion.

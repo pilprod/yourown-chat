@@ -9,12 +9,12 @@ store "varset" "keycloak" {
 
 deployment "production" {
   inputs = {
-    # Keep the provider component absent until platform-gcp and the public
-    # machine-only Admin REST route are deployed. Enable in the follow-up
-    # bootstrap configuration after https://yourown.chat/auth is reachable.
+    # Phase 1 keeps provider evaluation inert while platform-gcp creates the
+    # runtime, DNS and machine-only Admin REST route. A reviewed follow-up
+    # flips only this gate to true after those dependencies are applied.
     enabled = false
 
-    keycloak_admin_url = "https://yourown.chat/auth"
+    keycloak_admin_url = "https://auth.yourown.chat"
     keycloak_version   = "26.7.1"
 
     # One-time first apply. After terraform_client_ready=true, switch this to
@@ -28,21 +28,21 @@ deployment "production" {
     terraform_client_secret_version  = "1"
 
     realm_name        = "yourown-chat"
-    public_host       = "yourown.chat"
-    ios_redirect_uri  = "com.yourown.chat:/oauth/callback"
+    public_host       = "auth.yourown.chat"
+    broker_redirect_uri = "https://auth.yourown.chat/callback"
     smtp_host         = "smtp-relay.gmail.com"
     smtp_from         = "noreply@papou.email"
   }
 }
 
-publish_output "issuer" {
-  description = "OIDC issuer used by YourOwn.Chat clients and identity-api."
-  value       = deployment.production.issuer
+publish_output "upstream_issuer" {
+  description = "Keycloak issuer used only by the YourOwn.Chat authorization broker."
+  value       = deployment.production.upstream_issuer
 }
 
-publish_output "ios_client_id" {
-  description = "Public native iOS OIDC client identifier."
-  value       = deployment.production.ios_client_id
+publish_output "auth_broker_client_id" {
+  description = "Public Keycloak client identifier used only by the authorization broker."
+  value       = deployment.production.auth_broker_client_id
 }
 
 publish_output "terraform_client_ready" {

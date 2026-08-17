@@ -159,6 +159,12 @@ resource "kubernetes_service_v1" "this" {
       target_port = "http"
       protocol    = "TCP"
     }
+    port {
+      name        = "https"
+      port        = 8443
+      target_port = "https"
+      protocol    = "TCP"
+    }
     type = "ClusterIP"
   }
 }
@@ -194,7 +200,7 @@ resource "kubernetes_network_policy_v1" "isolation" {
         }
       }
       ports {
-        port     = "8080"
+        port     = "8443"
         protocol = "TCP"
       }
     }
@@ -251,6 +257,7 @@ resource "kubernetes_network_policy_v1" "isolation" {
 
 resource "kubernetes_deployment_v1" "this" {
   count = var.enabled ? 1 : 0
+  wait_for_rollout = false
   metadata {
     name      = "keycloak"
     namespace = kubernetes_namespace_v1.this[0].metadata[0].name
@@ -326,18 +333,25 @@ resource "kubernetes_deployment_v1" "this" {
           }
           env {
             name  = "KC_HOSTNAME_STRICT"
-            value = "false"
+            value = "true"
           }
           env {
             name  = "KC_HTTP_ENABLED"
             value = "true"
           }
           env {
-            name  = "KC_HTTP_RELATIVE_PATH"
-            value = "/auth"
+            name  = "KC_HTTPS_CERTIFICATE_FILE"
+            value = "/var/run/secrets/keycloak-tls/tls.crt"
           }
-          # Keep health and metrics on the private management listener without
-          # inheriting the public /auth prefix used by the application server.
+          env {
+            name  = "KC_HTTPS_CERTIFICATE_KEY_FILE"
+            value = "/var/run/secrets/keycloak-tls/tls.key"
+          }
+          env {
+            name  = "KC_HTTP_RELATIVE_PATH"
+            value = "/"
+          }
+          # Keep health and metrics on the private management listener.
           env {
             name  = "KC_HTTP_MANAGEMENT_RELATIVE_PATH"
             value = "/"
@@ -367,6 +381,11 @@ resource "kubernetes_deployment_v1" "this" {
           port {
             name           = "management"
             container_port = 9000
+            protocol       = "TCP"
+          }
+          port {
+            name           = "https"
+            container_port = 8443
             protocol       = "TCP"
           }
 
@@ -419,6 +438,11 @@ resource "kubernetes_deployment_v1" "this" {
             name       = "tmp"
             mount_path = "/tmp"
           }
+          volume_mount {
+            name       = "keycloak-tls"
+            mount_path = "/var/run/secrets/keycloak-tls"
+            read_only  = true
+          }
         }
         volume {
           name = "keycloak-data"
@@ -427,6 +451,12 @@ resource "kubernetes_deployment_v1" "this" {
         volume {
           name = "tmp"
           empty_dir {}
+        }
+        volume {
+          name = "keycloak-tls"
+          secret {
+            secret_name = "keycloak-internal-tls"
+          }
         }
       }
     }

@@ -237,7 +237,7 @@ variable "keycloak_password_rotation" {
 variable "keycloak_public_url" {
   type        = string
   description = "Canonical public Keycloak URL used as the immutable OIDC issuer base."
-  default     = "https://yourown.chat/auth"
+  default     = "https://auth.yourown.chat"
 }
 
 # --- Storage ----------------------------------------------------------------

@@ -50,7 +50,16 @@ deployment "yourown-chat" {
     # Mattermost + Temporal agent control plane.
     zero_trust_mcp_portal_subdomain = "tools"
 
-    cloudflare_proxied            = true
+    cloudflare_proxied = true
+    cloudflare_extra_records = upstream_input.platform.ingress_ip_address != null ? {
+      auth = {
+        name    = "auth"
+        type    = "A"
+        content = upstream_input.platform.ingress_ip_address
+        proxied = true
+        comment = "Managed by Terraform. Dedicated public identity endpoint."
+      }
+    } : {}
     cloudflare_ssl_mode           = "strict"
     cloudflare_always_use_https   = "on"
     cloudflare_min_tls_version    = "1.3"

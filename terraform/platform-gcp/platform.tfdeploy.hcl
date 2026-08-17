@@ -95,7 +95,7 @@ deployment "eu" {
     keycloak_enabled           = true
     keycloak_version           = "26.7.1"
     keycloak_password_rotation = "1"
-    keycloak_public_url        = "https://yourown.chat/auth"
+    keycloak_public_url        = "https://auth.yourown.chat"
 
     # Temporal is a platform-gcp service. Keep the launch gate closed until the
     # prerequisite MCP image has passed production verification.

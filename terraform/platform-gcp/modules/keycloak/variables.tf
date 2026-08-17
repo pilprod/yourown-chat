@@ -32,10 +32,10 @@ variable "image_version" {
 }
 variable "public_url" {
   type    = string
-  default = "https://yourown.chat/auth"
+  default = "https://auth.yourown.chat"
   validation {
-    condition     = can(regex("^https://[^/]+/auth$", var.public_url))
-    error_message = "public_url must be an HTTPS origin ending in /auth."
+    condition     = var.public_url == "https://auth.yourown.chat"
+    error_message = "public_url must be the canonical https://auth.yourown.chat origin."
   }
 }
 variable "namespace" {

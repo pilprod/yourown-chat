@@ -11,14 +11,14 @@ metadata:
 spec:
   ingressClassName: {{ .Values.ingress.className }}
   tls:
-    - hosts: [{{ .Values.ingress.host | quote }}]
+    - hosts: [{{ required "ingress.authHost is required" .Values.ingress.authHost | quote }}]
       secretName: {{ .Values.ingress.tlsSecretName }}
   rules:
-    - host: {{ .Values.ingress.host | quote }}
+    - host: {{ required "ingress.authHost is required" .Values.ingress.authHost | quote }}
       http:
         paths:
-          # /auth/admin is deliberately absent from the public edge.
-          - path: /auth/(realms|resources)(/.*)?
+          # The public hostname exposes only protocol and theme resources.
+          - path: /(realms|resources)(/.*)?
             pathType: ImplementationSpecific
             backend:
               service:
@@ -37,15 +37,15 @@ metadata:
 spec:
   ingressClassName: {{ .Values.ingress.className }}
   tls:
-    - hosts: [{{ .Values.ingress.host | quote }}]
+    - hosts: [{{ required "ingress.authHost is required" .Values.ingress.authHost | quote }}]
       secretName: {{ .Values.ingress.tlsSecretName }}
   rules:
-    - host: {{ .Values.ingress.host | quote }}
+    - host: {{ required "ingress.authHost is required" .Values.ingress.authHost | quote }}
       http:
         paths:
           # Machine-only Admin REST surface required by keycloak/keycloak.
-          # The browser console path (/auth/admin/*/console) never matches.
-          - path: /auth/admin/(realms|serverinfo)(/.*)?
+          # The browser console path (/admin/*/console) never matches.
+          - path: /admin/(realms|serverinfo)(/.*)?
             pathType: ImplementationSpecific
             backend:
               service:
@@ -56,40 +56,48 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: yourown-chat-identity-auth
+  name: yourown-chat-authorization-api
   namespace: {{ .Release.Namespace }}
   annotations:
     nginx.ingress.kubernetes.io/use-regex: "true"
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    # Authorization codes arrive through form_post and this ingress emits no
+    # request log, preventing future parameter changes from leaking secrets.
+    nginx.ingress.kubernetes.io/enable-access-log: "false"
     nginx.ingress.kubernetes.io/limit-connections: {{ .Values.ingress.authLimitConnections | quote }}
     nginx.ingress.kubernetes.io/limit-rps: {{ .Values.ingress.authLimitRPS | quote }}
     nginx.ingress.kubernetes.io/limit-burst-multiplier: {{ .Values.ingress.authLimitBurstMultiplier | quote }}
 spec:
   ingressClassName: {{ .Values.ingress.className }}
   tls:
-    - hosts: [{{ .Values.ingress.host | quote }}]
+    - hosts: [{{ required "ingress.authHost is required" .Values.ingress.authHost | quote }}]
       secretName: {{ .Values.ingress.tlsSecretName }}
   rules:
-    - host: {{ .Values.ingress.host | quote }}
+    - host: {{ required "ingress.authHost is required" .Values.ingress.authHost | quote }}
       http:
         paths:
-          # Keycloak is the only public sign-in authority. Local registration
-          # and password sessions remain unreachable from the public edge.
-          - path: /identity(/|$)(v1/auth/oidc/sessions)/?$
+          - path: ^/(\.well-known/oauth-authorization-server|authorize|callback)?/?$
             pathType: ImplementationSpecific
             backend:
               service:
-                name: yourown-chat-identity-api
-                port: { number: 8081 }
+                name: yourown-chat-auth-api
+                port: { number: 8083 }
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: yourown-chat-identity-api
+  name: yourown-chat-transport-api
   namespace: {{ .Release.Namespace }}
   annotations:
-    nginx.ingress.kubernetes.io/use-regex: "true"
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/enable-access-log: "false"
+    nginx.ingress.kubernetes.io/proxy-body-size: "18m"
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "on"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    # Bound expensive unauthenticated X-Wing decapsulation at the edge. Product
+    # authorization is still enforced after decryption by the target service.
+    nginx.ingress.kubernetes.io/limit-connections: {{ .Values.ingress.transportLimitConnections | quote }}
+    nginx.ingress.kubernetes.io/limit-rps: {{ .Values.ingress.transportLimitRPS | quote }}
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: {{ .Values.ingress.transportLimitBurstMultiplier | quote }}
 spec:
   ingressClassName: {{ .Values.ingress.className }}
   tls:
@@ -99,18 +107,18 @@ spec:
     - host: {{ .Values.ingress.host | quote }}
       http:
         paths:
-          # Enumerate the authenticated public API. The admin binary and its
-          # /internal route have no ingress at all.
-          - path: /identity(/|$)(v1/(users|workspaces)(/.*)?)
-            pathType: ImplementationSpecific
+          # Fixed opaque application endpoint. Inner service, route, status,
+          # headers and body exist only inside the authenticated ciphertext.
+          - path: /transport/v1
+            pathType: Exact
             backend:
               service:
-                name: yourown-chat-identity-api
-                port: { number: 8081 }
-          - path: /identity(/|$)(v1/auth/sessions/current)/?$
-            pathType: ImplementationSpecific
+                name: yourown-chat-transport-api
+                port: { number: 8084 }
+          - path: /transport/v1/socket
+            pathType: Exact
             backend:
               service:
-                name: yourown-chat-identity-api
-                port: { number: 8081 }
+                name: yourown-chat-transport-api
+                port: { number: 8084 }
 {{- end }}

@@ -1,13 +1,13 @@
-output "issuer" {
+output "upstream_issuer" {
   type        = string
-  description = "Stable issuer consumed by YourOwn.Chat clients and identity-api."
-  value       = var.enabled ? "https://${var.public_host}/auth/realms/${component.realm["production"].realm_name}" : null
+  description = "Internal upstream issuer consumed only by the YourOwn.Chat authorization broker."
+  value       = var.enabled ? "https://${var.public_host}/realms/${component.realm["production"].realm_name}" : null
 }
 
-output "ios_client_id" {
+output "auth_broker_client_id" {
   type        = string
-  description = "Public iOS OIDC client identifier."
-  value       = var.enabled ? component.realm["production"].ios_client_id : null
+  description = "Public Keycloak client identifier used only by the authorization broker."
+  value       = var.enabled ? component.realm["production"].auth_broker_client_id : null
 }
 
 output "terraform_client_ready" {

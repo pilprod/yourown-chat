@@ -166,12 +166,15 @@ component "clouddeploy_server" {
 
     deploy_parameters = {
       backend_control_api_gsa                = lookup(var.workload_identity_emails, "backend-control-api", "")
+      auth_api_gsa                           = lookup(var.workload_identity_emails, "auth-api", "")
+      transport_api_gsa                      = lookup(var.workload_identity_emails, "transport-api", "")
       identity_api_gsa                       = lookup(var.workload_identity_emails, "identity-api", "")
       identity_admin_gsa                     = lookup(var.workload_identity_emails, "identity-admin", "")
       identity_migrate_gsa                   = lookup(var.workload_identity_emails, "identity-migrate", "")
       server_secret_project                  = var.project_id
       identity_runtime_database_connection_secret_id = var.yourown_chat_identity_runtime_connection_secret_id
       identity_migrate_database_connection_secret_id = var.yourown_chat_identity_connection_secret_id
+      transport_private_key_secret_id        = "yourown-chat-transport-private-key"
       cloudsql_private_ip                    = var.cloudsql_private_ip
       cluster_dns_ip                         = var.cluster_dns_ip
       yourown_chat_control_api_enabled       = tostring(var.temporal_enabled)
@@ -343,6 +346,18 @@ component "secrets" {
         special   = false
         accessors = [var.workload_identity_members["identity-admin"]]
       }
+      "yourown-chat-auth-state-key" = {
+        generate  = true
+        length    = 64
+        special   = false
+        accessors = [var.workload_identity_members["auth-api"]]
+      }
+      # The hybrid X-Wing private key is generated out-of-band after review.
+      # Terraform owns only the empty container and least-privilege IAM so the
+      # private value never enters HCL, plan output or Terraform state.
+      "yourown-chat-transport-private-key" = {
+        accessors = [var.workload_identity_members["transport-api"]]
+      }
     }
   }
 
@@ -500,6 +515,30 @@ component "cluster_secrets" {
           namespace = "yourown-chat-server"
           type      = "kubernetes.io/tls"
           labels    = { app = "yourown-chat-server" }
+          data = {
+            "tls.crt" = component.prod_secret_values.values["mattermost_origin_tls_cert"]
+            "tls.key" = component.prod_secret_values.values["mattermost_origin_tls_key"]
+          }
+        }
+        keycloak-internal-ca = {
+          name      = "keycloak-internal-ca"
+          namespace = "yourown-chat-server"
+          type      = "Opaque"
+          labels    = { app = "yourown-chat-auth-api" }
+          data = {
+            "tls.crt" = component.prod_secret_values.values["mattermost_origin_tls_cert"]
+          }
+        }
+      } : {},
+      # Keycloak owns a platform namespace rather than an app namespace. The
+      # namespace exists after platform-gcp; app-gcp supplies only its existing
+      # edge certificate so the private 8443 listener can start.
+      var.manage_ingress_origin_tls && var.keycloak_enabled ? {
+        keycloak-internal-tls = {
+          name      = "keycloak-internal-tls"
+          namespace = "keycloak"
+          type      = "kubernetes.io/tls"
+          labels    = { app = "keycloak" }
           data = {
             "tls.crt" = component.prod_secret_values.values["mattermost_origin_tls_cert"]
             "tls.key" = component.prod_secret_values.values["mattermost_origin_tls_key"]
