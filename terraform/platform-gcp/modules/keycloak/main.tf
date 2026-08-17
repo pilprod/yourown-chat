@@ -80,7 +80,7 @@ resource "kubernetes_limit_range_v1" "this" {
     limit {
       type = "Container"
       default         = { cpu = "1", memory = "1536Mi" }
-      default_request = { cpu = "250m", memory = "768Mi" }
+      default_request = { cpu = "100m", memory = "640Mi" }
     }
   }
 }
@@ -417,7 +417,10 @@ resource "kubernetes_deployment_v1" "this" {
             failure_threshold = 3
           }
           resources {
-            requests = { cpu = "250m", memory = "768Mi" }
+            # Pilot baseline: observed steady-state usage is well below the CPU
+            # reservation and around 500Mi of memory. Keep startup headroom in
+            # the limits while avoiding unnecessary node reservation.
+            requests = { cpu = "100m", memory = "640Mi" }
             limits   = { cpu = "1", memory = "1536Mi" }
           }
           security_context {
