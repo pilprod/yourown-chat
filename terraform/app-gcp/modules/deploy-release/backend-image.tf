@@ -198,29 +198,40 @@ resource "google_cloudbuild_trigger" "source_image" {
   }
 
   build {
+    # Gen2 private-repository checkouts install credential-gcloud.sh as their
+    # Git credential helper. Run the ancestry fetch in the official Git builder,
+    # where that helper is present, before entering the minimal Go image.
+    step {
+      id         = "verify-release-ref"
+      name       = "gcr.io/cloud-builders/git"
+      entrypoint = "sh"
+      args = ["-ceu", <<-EOT
+        if [ -z "$TAG_NAME" ]; then exit 0; fi
+
+        release_main_ref="refs/remotes/release-check/main"
+        if [ "$$(git rev-parse --is-shallow-repository)" = "true" ]; then
+          git fetch --no-tags --force --unshallow \
+            "${local.source_repositories[each.value.source].remote_uri}" \
+            "refs/heads/main:$$release_main_ref"
+        else
+          git fetch --no-tags --force \
+            "${local.source_repositories[each.value.source].remote_uri}" \
+            "refs/heads/main:$$release_main_ref"
+        fi
+        if ! git merge-base --is-ancestor "$COMMIT_SHA" "$$release_main_ref"; then
+          echo "Release tag $TAG_NAME points to $COMMIT_SHA, which is not on reviewed ${each.value.source} main" >&2
+          echo "Merge the release change to main and create a new immutable tag on the resulting commit" >&2
+          exit 1
+        fi
+      EOT
+      ]
+    }
+
     step {
       id         = "verify-go"
       name       = "golang:1.26.6-bookworm@sha256:116d58cbd88c1297624acc6e967a060012422bacf9930927e23fb719189c6f36"
       entrypoint = "bash"
       args = ["-ceu", <<-EOT
-        if [ -n "$TAG_NAME" ]; then
-          release_main_ref="refs/remotes/release-check/main"
-          if [ "$$(git rev-parse --is-shallow-repository)" = "true" ]; then
-            git fetch --no-tags --force --unshallow \
-              "${local.source_repositories[each.value.source].remote_uri}" \
-              "refs/heads/main:$$release_main_ref"
-          else
-            git fetch --no-tags --force \
-              "${local.source_repositories[each.value.source].remote_uri}" \
-              "refs/heads/main:$$release_main_ref"
-          fi
-          if ! git merge-base --is-ancestor "$COMMIT_SHA" "$$release_main_ref"; then
-            echo "Release tag $TAG_NAME points to $COMMIT_SHA, which is not on reviewed ${each.value.source} main" >&2
-            echo "Merge the release change to main and create a new immutable tag on the resulting commit" >&2
-            exit 1
-          fi
-        fi
-
         go mod tidy
         go mod verify
         gofmt -w .
