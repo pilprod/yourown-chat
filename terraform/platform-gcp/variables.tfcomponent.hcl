@@ -238,7 +238,6 @@ variable "keycloak_bootstrap_admin_client_secret" {
   type        = string
   ephemeral   = true
   sensitive   = true
-  nullable    = true
   default     = null
   description = "Temporary master-realm bootstrap service secret. Supplied from the private Keycloak HCP variable set and accepted only by write-only resource fields."
 }
