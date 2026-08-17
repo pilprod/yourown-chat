@@ -236,6 +236,7 @@ spec:
             - { name: IDENTITY_BOOTSTRAP_WORKSPACE_PUBLIC_URL, value: {{ required "workspaceBootstrap.publicURL is required" .Values.workspaceBootstrap.publicURL | quote }} }
             - { name: IDENTITY_BOOTSTRAP_WORKSPACE_MATTERMOST_URL, value: {{ required "workspaceBootstrap.mattermostURL is required" .Values.workspaceBootstrap.mattermostURL | quote }} }
             - { name: IDENTITY_BOOTSTRAP_WORKSPACE_TEAM_ID, value: {{ .Values.workspaceBootstrap.teamID | quote }} }
+            - { name: IDENTITY_BOOTSTRAP_WORKSPACE_MATTERMOST_TRANSPORT_AVAILABLE, value: {{ .Values.workspaceBootstrap.mattermostTransportAvailable | quote }} }
           ports:
             - { name: http, containerPort: {{ .Values.identityAdmin.port }} }
           startupProbe:

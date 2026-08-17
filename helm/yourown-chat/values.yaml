@@ -59,7 +59,7 @@ transport:
   keyID: pilot-key-000001
   resources:
     requests: { cpu: 25m, memory: 96Mi }
-    limits: { cpu: 300m, memory: 256Mi }
+    limits: { cpu: 500m, memory: 512Mi }
 
 identityAdmin:
   replicaCount: 1
@@ -92,6 +92,8 @@ workspaceBootstrap:
   publicURL: https://yourown.chat
   mattermostURL: http://mattermost.mattermost.svc.cluster.local:8065
   teamID: ""
+  # Advertises that the optional per-workspace client switch can use the gateway.
+  mattermostTransportAvailable: true
 
 ingress:
   className: nginx

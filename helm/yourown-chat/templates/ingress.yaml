@@ -89,8 +89,10 @@ metadata:
   namespace: {{ .Release.Namespace }}
   annotations:
     nginx.ingress.kubernetes.io/enable-access-log: "false"
-    nginx.ingress.kubernetes.io/proxy-body-size: "1152k"
+    nginx.ingress.kubernetes.io/proxy-body-size: "18m"
     nginx.ingress.kubernetes.io/proxy-request-buffering: "on"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
     # Bound expensive unauthenticated X-Wing decapsulation at the edge. Product
     # authorization is still enforced after decryption by the target service.
     nginx.ingress.kubernetes.io/limit-connections: {{ .Values.ingress.transportLimitConnections | quote }}
@@ -108,6 +110,12 @@ spec:
           # Fixed opaque application endpoint. Inner service, route, status,
           # headers and body exist only inside the authenticated ciphertext.
           - path: /transport/v1
+            pathType: Exact
+            backend:
+              service:
+                name: yourown-chat-transport-api
+                port: { number: 8084 }
+          - path: /transport/v1/socket
             pathType: Exact
             backend:
               service:
