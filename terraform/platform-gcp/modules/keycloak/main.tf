@@ -32,7 +32,10 @@ ephemeral "google_secret_manager_secret_version" "bootstrap_admin" {
   count   = var.enabled ? 1 : 0
   project = var.project_id
   secret  = google_secret_manager_secret.bootstrap_admin[0].secret_id
-  version = "latest"
+  # Secret Manager may keep a destroyed version as numerically "latest".
+  # Select the explicit rotation marker so a removed newer version cannot
+  # break all subsequent platform plans.
+  version = var.bootstrap_secret_version
 }
 
 resource "kubernetes_namespace_v1" "this" {
