@@ -1,17 +1,17 @@
 output "issuer" {
   type        = string
   description = "Stable issuer consumed by YourOwn.Chat clients and identity-api."
-  value       = "https://${var.public_host}/auth/realms/${component.realm.realm_name}"
+  value       = var.enabled ? "https://${var.public_host}/auth/realms/${component.realm["production"].realm_name}" : null
 }
 
 output "ios_client_id" {
   type        = string
   description = "Public iOS OIDC client identifier."
-  value       = component.realm.ios_client_id
+  value       = var.enabled ? component.realm["production"].ios_client_id : null
 }
 
 output "terraform_client_ready" {
   type        = bool
   description = "True after the permanent realm-scoped provider client and role assignment exist."
-  value       = component.realm.terraform_client_ready
+  value       = var.enabled ? component.realm["production"].terraform_client_ready : false
 }

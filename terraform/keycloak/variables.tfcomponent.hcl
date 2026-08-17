@@ -8,6 +8,12 @@ variable "keycloak_admin_url" {
   }
 }
 
+variable "enabled" {
+  type        = bool
+  description = "Bootstrap gate. Enable only after the Keycloak runtime and provider ingress are reachable."
+  default     = false
+}
+
 variable "keycloak_version" {
   type        = string
   description = "Exact Keycloak runtime version. The provider uses this because the realm-scoped client cannot read global server information."

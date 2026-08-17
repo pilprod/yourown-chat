@@ -1,4 +1,5 @@
 component "realm" {
+  for_each = var.enabled ? toset(["production"]) : toset([])
   source = "./modules/realm"
 
   inputs = {
