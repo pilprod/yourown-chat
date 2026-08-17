@@ -14,7 +14,7 @@ deployment "production" {
     # are Terraform resources.
     enabled = true
 
-    keycloak_admin_url = "https://yourown.chat/auth"
+    keycloak_admin_url = "https://auth.yourown.chat"
     keycloak_version   = "26.7.1"
 
     # One-time first apply. After terraform_client_ready=true, switch this to
@@ -28,7 +28,7 @@ deployment "production" {
     terraform_client_secret_version  = "1"
 
     realm_name        = "yourown-chat"
-    public_host       = "yourown.chat"
+    public_host       = "auth.yourown.chat"
     ios_redirect_uri  = "com.yourown.chat:/oauth/callback"
     smtp_host         = "smtp-relay.gmail.com"
     smtp_from         = "noreply@papou.email"

@@ -6,8 +6,8 @@ yourown_chat_control_api_enabled: false
 yourown_chat_ingress_enabled: true
 yourown_chat_registration_enabled: false
 keycloak_enabled: true
-keycloak_issuer: "https://yourown.chat/auth/realms/yourown-chat"
-keycloak_internal_userinfo_url: "http://keycloak.keycloak.svc.cluster.local:8080/auth/realms/yourown-chat/protocol/openid-connect/userinfo"
+keycloak_issuer: "https://auth.yourown.chat/realms/yourown-chat"
+keycloak_internal_userinfo_url: "http://keycloak.keycloak.svc.cluster.local:8080/realms/yourown-chat/protocol/openid-connect/userinfo"
 
 backend_control_api_gsa: ""
 identity_api_gsa: ""
@@ -68,6 +68,7 @@ workspaceBootstrap:
 ingress:
   className: nginx
   host: yourown.chat
+  authHost: auth.yourown.chat
   tlsSecretName: yourown-chat-server-origin-tls
   authLimitConnections: 2
   authLimitRPS: 1

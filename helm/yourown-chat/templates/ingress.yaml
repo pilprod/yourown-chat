@@ -11,14 +11,14 @@ metadata:
 spec:
   ingressClassName: {{ .Values.ingress.className }}
   tls:
-    - hosts: [{{ .Values.ingress.host | quote }}]
+    - hosts: [{{ required "ingress.authHost is required" .Values.ingress.authHost | quote }}]
       secretName: {{ .Values.ingress.tlsSecretName }}
   rules:
-    - host: {{ .Values.ingress.host | quote }}
+    - host: {{ required "ingress.authHost is required" .Values.ingress.authHost | quote }}
       http:
         paths:
-          # /auth/admin is deliberately absent from the public edge.
-          - path: /auth/(realms|resources)(/.*)?
+          # The public hostname exposes only protocol and theme resources.
+          - path: /(realms|resources)(/.*)?
             pathType: ImplementationSpecific
             backend:
               service:
@@ -37,15 +37,15 @@ metadata:
 spec:
   ingressClassName: {{ .Values.ingress.className }}
   tls:
-    - hosts: [{{ .Values.ingress.host | quote }}]
+    - hosts: [{{ required "ingress.authHost is required" .Values.ingress.authHost | quote }}]
       secretName: {{ .Values.ingress.tlsSecretName }}
   rules:
-    - host: {{ .Values.ingress.host | quote }}
+    - host: {{ required "ingress.authHost is required" .Values.ingress.authHost | quote }}
       http:
         paths:
           # Machine-only Admin REST surface required by keycloak/keycloak.
-          # The browser console path (/auth/admin/*/console) never matches.
-          - path: /auth/admin/(realms|serverinfo)(/.*)?
+          # The browser console path (/admin/*/console) never matches.
+          - path: /admin/(realms|serverinfo)(/.*)?
             pathType: ImplementationSpecific
             backend:
               service:

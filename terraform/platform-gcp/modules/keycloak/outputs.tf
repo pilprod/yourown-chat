@@ -3,7 +3,7 @@ output "issuer" {
 }
 
 output "internal_url" {
-  value = var.enabled ? "http://keycloak.${var.namespace}.svc.cluster.local:8080/auth" : null
+  value = var.enabled ? "http://keycloak.${var.namespace}.svc.cluster.local:8080" : null
 }
 
 output "namespace" {

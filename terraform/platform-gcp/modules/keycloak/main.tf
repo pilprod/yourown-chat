@@ -326,7 +326,7 @@ resource "kubernetes_deployment_v1" "this" {
           }
           env {
             name  = "KC_HOSTNAME_STRICT"
-            value = "false"
+            value = "true"
           }
           env {
             name  = "KC_HTTP_ENABLED"
@@ -334,10 +334,9 @@ resource "kubernetes_deployment_v1" "this" {
           }
           env {
             name  = "KC_HTTP_RELATIVE_PATH"
-            value = "/auth"
+            value = "/"
           }
-          # Keep health and metrics on the private management listener without
-          # inheriting the public /auth prefix used by the application server.
+          # Keep health and metrics on the private management listener.
           env {
             name  = "KC_HTTP_MANAGEMENT_RELATIVE_PATH"
             value = "/"

@@ -291,7 +291,7 @@ variable "keycloak_enabled" {
 variable "keycloak_issuer" {
   type        = string
   description = "Canonical issuer published by platform-gcp."
-  default     = "https://yourown.chat/auth/realms/yourown-chat"
+  default     = "https://auth.yourown.chat/realms/yourown-chat"
 }
 
 variable "yourown_chat_identity_connection_secret_id" {

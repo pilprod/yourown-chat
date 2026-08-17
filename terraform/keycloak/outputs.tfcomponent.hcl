@@ -1,7 +1,7 @@
 output "issuer" {
   type        = string
   description = "Stable issuer consumed by YourOwn.Chat clients and identity-api."
-  value       = var.enabled ? "https://${var.public_host}/auth/realms/${component.realm["production"].realm_name}" : null
+  value       = var.enabled ? "https://${var.public_host}/realms/${component.realm["production"].realm_name}" : null
 }
 
 output "ios_client_id" {

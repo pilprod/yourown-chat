@@ -3,8 +3,8 @@ variable "keycloak_admin_url" {
   description = "HTTPS Keycloak endpoint used by the Terraform provider. The public Admin Console is not routed."
 
   validation {
-    condition     = startswith(var.keycloak_admin_url, "https://") && endswith(var.keycloak_admin_url, "/auth")
-    error_message = "keycloak_admin_url must be an HTTPS origin ending in /auth."
+    condition     = var.keycloak_admin_url == "https://auth.yourown.chat"
+    error_message = "keycloak_admin_url must be the canonical https://auth.yourown.chat origin."
   }
 }
 
@@ -74,11 +74,11 @@ variable "realm_name" {
 variable "public_host" {
   type        = string
   description = "Public RP host used for WebAuthn/passkeys."
-  default     = "yourown.chat"
+  default     = "auth.yourown.chat"
 
   validation {
-    condition     = !strcontains(var.public_host, "://") && !strcontains(var.public_host, "/") && !strcontains(var.public_host, "*")
-    error_message = "public_host must be one exact hostname without a scheme, path, or wildcard."
+    condition     = var.public_host == "auth.yourown.chat"
+    error_message = "public_host must be the canonical auth.yourown.chat passkey RP host."
   }
 }
 
