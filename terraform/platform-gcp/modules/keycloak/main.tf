@@ -267,6 +267,10 @@ resource "kubernetes_deployment_v1" "this" {
           name              = "keycloak"
           image             = "quay.io/keycloak/keycloak:${var.image_version}"
           image_pull_policy = "IfNotPresent"
+          # Preserve the tail of stdout in Pod status when startup fails. This
+          # keeps pilot diagnostics available even while cost-saving cluster
+          # configuration collects only Kubernetes system logs.
+          termination_message_policy = "FallbackToLogsOnError"
           args              = ["start"]
 
           env {
