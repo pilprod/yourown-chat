@@ -25,13 +25,6 @@ identity_token "gcp" {
   audience = ["https://iam.googleapis.com/projects/1086706391144/locations/global/workloadIdentityPools/hcp-terraform/providers/hcp-terraform"]
 }
 
-# Shared only with platform-gcp and the provider-only keycloak Stack. Both
-# values are sensitive Terraform variables and never enter Git or Stack state.
-store "varset" "keycloak" {
-  id       = "varset-ypGwPoQ7APKjwVMR"
-  category = "terraform"
-}
-
 deployment "eu" {
   inputs = {
     identity_token        = identity_token.gcp.jwt
@@ -88,14 +81,6 @@ deployment "eu" {
     cloudsql_password_rotation = "2026-07-12"
     yourown_chat_server_enabled              = true
     yourown_chat_identity_password_rotation = "1"
-
-    # Keycloak is mandatory shared identity infrastructure. Its runtime and
-    # database belong to platform-gcp. Realm/client/passkey configuration is
-    # owned by the independent provider-only `keycloak` Stack.
-    keycloak_enabled           = true
-    keycloak_version           = "26.7.1"
-    keycloak_password_rotation = "1"
-    keycloak_public_url        = "https://auth.yourown.chat"
 
     # Temporal is a platform-gcp service. Keep the launch gate closed until the
     # prerequisite MCP image has passed production verification.
@@ -164,9 +149,9 @@ publish_output "cmek_key_id" {
   value       = deployment.eu.cmek_key_id
 }
 
-publish_output "keycloak_bootstrap_user_password_secret_id" {
-  description = "Secret Manager ID used once by the provider-only Keycloak Stack to create the first user."
-  value       = deployment.eu.keycloak_bootstrap_user_password_secret_id
+publish_output "identity_bootstrap_user_password_secret_id" {
+  description = "Secret Manager ID used once to create the first native platform user."
+  value       = deployment.eu.identity_bootstrap_user_password_secret_id
 }
 
 publish_output "workload_identity_members" {
@@ -217,16 +202,6 @@ publish_output "temporal_enabled" {
 publish_output "yourown_chat_server_enabled" {
   description = "Platform-owned launch state for the independent YourOwn.Chat server plane."
   value       = deployment.eu.yourown_chat_server_enabled
-}
-
-publish_output "keycloak_enabled" {
-  description = "Whether the platform-owned Keycloak identity service is enabled."
-  value       = deployment.eu.keycloak_enabled
-}
-
-publish_output "keycloak_issuer" {
-  description = "Canonical OpenID Connect issuer used by every YourOwn.Chat client and backend."
-  value       = deployment.eu.keycloak_issuer
 }
 
 publish_output "temporal_results_bucket_name" {

@@ -7,9 +7,6 @@ yourown_chat_identity_migrate_image: ""
 yourown_chat_control_api_enabled: false
 yourown_chat_ingress_enabled: true
 yourown_chat_registration_enabled: false
-keycloak_enabled: true
-keycloak_issuer: "https://auth.yourown.chat/realms/yourown-chat"
-keycloak_internal_userinfo_url: "http://keycloak.keycloak.svc.cluster.local:8080/realms/yourown-chat/protocol/openid-connect/userinfo"
 
 backend_control_api_gsa: ""
 auth_api_gsa: ""
@@ -20,6 +17,7 @@ identity_migrate_gsa: ""
 server_secret_project: ""
 identity_runtime_database_connection_secret_id: "yourown-chat-identity-runtime-database-url"
 identity_migrate_database_connection_secret_id: "yourown-chat-identity-database-url"
+identity_bootstrap_password_secret_id: "yourown-chat-pilprod-initial-password"
 transport_private_key_secret_id: "yourown-chat-transport-private-key"
 cloudsql_private_ip: ""
 cluster_dns_ip: ""
@@ -46,14 +44,8 @@ identity:
 authorization:
   replicaCount: 1
   port: 8083
-  issuer: https://auth.yourown.chat
-  clientID: yourown-chat-ios
-  clientRedirectURI: com.yourown.chat:/oauth/callback
-  upstreamClientID: yourown-chat-auth-broker
-  upstreamAuthorizationURL: https://auth.yourown.chat/realms/yourown-chat/protocol/openid-connect/auth
-  upstreamReadyURL: https://keycloak.keycloak.svc.cluster.local:8443/realms/yourown-chat/.well-known/openid-configuration
-  upstreamTokenURL: https://keycloak.keycloak.svc.cluster.local:8443/realms/yourown-chat/protocol/openid-connect/token
-  upstreamUserInfoURL: https://keycloak.keycloak.svc.cluster.local:8443/realms/yourown-chat/protocol/openid-connect/userinfo
+  publicOrigin: https://auth.yourown.chat
+  appleAppID: 6HSPUCB5ZA.com.yourown.chat
   resources:
     requests: { cpu: 5m, memory: 16Mi }
     limits: { cpu: 150m, memory: 192Mi }
@@ -89,7 +81,7 @@ mattermost:
   url: http://mattermost.mattermost.svc.cluster.local:8065
 
 # Idempotently reconciled by identity-admin at startup. This is product
-# topology, not user data: no Mattermost or Keycloak account is committed.
+# topology, not user data: no Mattermost account is committed.
 workspaceBootstrap:
   id: d43e8c20-9b99-4a1c-9a6b-84c9de45f786
   slug: yourown-chat
@@ -111,12 +103,6 @@ ingress:
   transportLimitConnections: 8
   transportLimitRPS: 10
   transportLimitBurstMultiplier: 2
-  # The provider performs short concurrent bursts while reconciling a realm.
-  # Authentication still requires the machine client secret and the browser
-  # administration console is not routed by this ingress.
-  keycloakAdminLimitRPS: 10
-  keycloakAdminLimitBurstMultiplier: 2
-  keycloakServiceName: keycloak
 
 priorityClassName: production
 serviceAccounts:

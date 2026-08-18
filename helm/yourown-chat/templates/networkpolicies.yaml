@@ -85,12 +85,6 @@ spec:
     - to:
         - ipBlock: { cidr: {{ printf "%s/32" (required "cloudsql_private_ip is required" .Values.cloudsql_private_ip) | quote }} }
       ports: [{ protocol: TCP, port: 5432 }]
-    - to:
-        - namespaceSelector:
-            matchLabels: { kubernetes.io/metadata.name: keycloak }
-          podSelector:
-            matchLabels: { app.kubernetes.io/name: keycloak }
-      ports: [{ protocol: TCP, port: 8443 }]
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -124,14 +118,6 @@ spec:
         - namespaceSelector:
             matchLabels: { kubernetes.io/metadata.name: mattermost }
       ports: [{ protocol: TCP, port: 8065 }]
-    {{- if .Values.keycloak_enabled }}
-    - to:
-        - namespaceSelector:
-            matchLabels: { kubernetes.io/metadata.name: keycloak }
-          podSelector:
-            matchLabels: { app.kubernetes.io/name: keycloak }
-      ports: [{ protocol: TCP, port: 8080 }]
-    {{- end }}
     {{- if .Values.networkPolicy.allowExternalMattermost }}
     - to:
         - ipBlock: { cidr: 0.0.0.0/0 }

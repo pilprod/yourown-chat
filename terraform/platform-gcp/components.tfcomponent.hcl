@@ -505,21 +505,39 @@ component "kms" {
 }
 
 # One-time first-user credential. The password is generated ephemerally and
-# written only to CMEK-protected Secret Manager. The provider-only Keycloak
-# Stack reads it when creating the user and marks it temporary.
-component "keycloak_bootstrap_user_secret" {
+# written only to CMEK-protected Secret Manager. Only the migration workload
+# can read it, and its idempotent bootstrap never replaces existing credentials.
+component "identity_bootstrap_user_secret" {
   source = "./modules/bootstrap-user-secret"
 
   inputs = {
     project_id       = component.project_services.project_id
     location         = var.region
-    secret_id        = "keycloak-pilprod-initial-password"
+    secret_id        = "yourown-chat-pilprod-initial-password"
     kms_key_name     = one([for k in component.kms : k.crypto_key_id])
     labels           = local.common_labels
-    accessor_members = ["serviceAccount:${var.service_account_email}"]
+    accessor_members = [component.workload_identity_identity_migrate.iam_member]
     password_version = 1
   }
 
+  providers = {
+    google = provider.google.this
+    random = provider.random.this
+  }
+}
+
+removed {
+  from   = component.keycloak_bootstrap_user_secret
+  source = "./modules/bootstrap-user-secret"
+  providers = {
+    google = provider.google.this
+    random = provider.random.this
+  }
+}
+
+removed {
+  from   = component.keycloak_native_auth_client_secret
+  source = "./modules/bootstrap-user-secret"
   providers = {
     google = provider.google.this
     random = provider.random.this
@@ -671,14 +689,6 @@ component "cloudsql" {
           password_rotation         = var.temporal_password_rotation
         }
       } : {},
-      var.keycloak_enabled ? {
-        keycloak = {
-          database_names            = ["keycloak"]
-          password_secret_id        = "keycloak-db-password"
-          password_secret_accessors = []
-          password_rotation         = var.keycloak_password_rotation
-        }
-      } : {},
     )
 
     user_labels = local.common_labels
@@ -713,32 +723,14 @@ component "temporal" {
   depends_on = [component.cloudsql, component.storage]
 }
 
-# Keycloak is the platform identity authority shared by mobile, desktop, web
-# and backend services. The application stack never owns this release or its
-# database; it only publishes the existing edge route to this ClusterIP.
-component "keycloak" {
+removed {
+  from   = component.keycloak
   source = "./modules/keycloak"
-
-  inputs = {
-    enabled                  = var.keycloak_enabled
-    project_id               = component.project_services.project_id
-    region                   = var.region
-    encryption_key_name      = one([for k in component.kms : k.crypto_key_id])
-    cloudsql_private_ip      = one([for database in component.cloudsql : database.private_ip_address])
-    cluster_dns_ip           = cidrhost(component.network.services_cidr, 10)
-    database_password        = try(one([for database in component.cloudsql : database.additional_passwords["keycloak"]]), "")
-    image_version            = var.keycloak_version
-    public_url               = var.keycloak_public_url
-    labels                   = local.common_labels
-  }
-
   providers = {
     google     = provider.google.this
     random     = provider.random.this
     kubernetes = provider.kubernetes.this
   }
-
-  depends_on = [component.cloudsql]
 }
 
 component "artifact_registry" {

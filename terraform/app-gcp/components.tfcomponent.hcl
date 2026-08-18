@@ -177,14 +177,13 @@ component "clouddeploy_server" {
       server_secret_project                  = var.project_id
       identity_runtime_database_connection_secret_id = var.yourown_chat_identity_runtime_connection_secret_id
       identity_migrate_database_connection_secret_id = var.yourown_chat_identity_connection_secret_id
+      identity_bootstrap_password_secret_id          = var.identity_bootstrap_user_password_secret_id
       transport_private_key_secret_id        = "yourown-chat-transport-private-key"
       cloudsql_private_ip                    = var.cloudsql_private_ip
       cluster_dns_ip                         = var.cluster_dns_ip
       yourown_chat_control_api_enabled       = tostring(var.temporal_enabled)
       yourown_chat_ingress_enabled           = tostring(var.manage_ingress_origin_tls)
       yourown_chat_registration_enabled      = tostring(var.yourown_chat_registration_enabled)
-      keycloak_enabled                       = tostring(var.keycloak_enabled)
-      keycloak_issuer                        = var.keycloak_issuer
     }
 
     labels = local.common_labels
@@ -540,30 +539,6 @@ component "cluster_secrets" {
           namespace = "server-edge"
           type      = "kubernetes.io/tls"
           labels    = { app = "server" }
-          data = {
-            "tls.crt" = component.prod_secret_values.values["mattermost_origin_tls_cert"]
-            "tls.key" = component.prod_secret_values.values["mattermost_origin_tls_key"]
-          }
-        }
-        server-edge-keycloak-internal-ca = {
-          name      = "keycloak-internal-ca"
-          namespace = "server-edge"
-          type      = "Opaque"
-          labels    = { app = "auth" }
-          data = {
-            "tls.crt" = component.prod_secret_values.values["mattermost_origin_tls_cert"]
-          }
-        }
-      } : {},
-      # Keycloak owns a platform namespace rather than an app namespace. The
-      # namespace exists after platform-gcp; app-gcp supplies only its existing
-      # edge certificate so the private 8443 listener can start.
-      var.manage_ingress_origin_tls && var.keycloak_enabled ? {
-        keycloak-internal-tls = {
-          name      = "keycloak-internal-tls"
-          namespace = "keycloak"
-          type      = "kubernetes.io/tls"
-          labels    = { app = "keycloak" }
           data = {
             "tls.crt" = component.prod_secret_values.values["mattermost_origin_tls_cert"]
             "tls.key" = component.prod_secret_values.values["mattermost_origin_tls_key"]
