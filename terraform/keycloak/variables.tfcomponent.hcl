@@ -74,14 +74,19 @@ variable "public_host" {
   }
 }
 
-variable "broker_redirect_uri" {
-  type        = string
-  description = "Exact server-side callback for the public authorization facade. Wildcards are forbidden."
-  default     = "https://auth.yourown.chat/callback"
+variable "broker_redirect_uris" {
+  type        = set(string)
+  description = "Exact current and temporary compatibility callbacks for the public authorization facade. Wildcards are forbidden."
+  default = [
+    "https://auth.yourown.chat/complete",
+    "https://auth.yourown.chat/callback",
+  ]
 
   validation {
-    condition     = var.broker_redirect_uri == "https://auth.yourown.chat/callback"
-    error_message = "The production broker accepts only https://auth.yourown.chat/callback."
+    condition = length(var.broker_redirect_uris) == 2 &&
+      contains(var.broker_redirect_uris, "https://auth.yourown.chat/complete") &&
+      contains(var.broker_redirect_uris, "https://auth.yourown.chat/callback")
+    error_message = "The production broker accepts only /complete and the temporary /callback compatibility path."
   }
 }
 
