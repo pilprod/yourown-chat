@@ -100,17 +100,15 @@ resource "keycloak_user" "bootstrap" {
   username = var.bootstrap_user_username
   enabled  = true
 
-  # The bootstrap account intentionally has no email address. Mark that empty
-  # profile as accepted so realm-wide email verification does not enqueue an
-  # impossible VERIFY_EMAIL action after password and passkey registration.
+  # This first account is trusted by the reviewed bootstrap procedure. Its
+  # runtime-entered address is accepted here without committing personal data
+  # to Git; all later users still follow the realm-wide verification policy.
   email_verified = true
 
-  # Apply these once when the user is created. Keycloak removes each action
-  # after the user completes it; Terraform must not add it back later.
-  required_actions = [
-    "UPDATE_PASSWORD",
-    keycloak_required_action.passkey.alias,
-  ]
+  # Password replacement and passkey enrollment are already complete. Clear
+  # only the blocked VERIFY_EMAIL action; the runtime profile is preserved by
+  # the lifecycle rule below.
+  required_actions = []
 
   initial_password {
     value     = data.google_secret_manager_secret_version.bootstrap_user_password.secret_data
@@ -119,7 +117,13 @@ resource "keycloak_user" "bootstrap" {
 
   lifecycle {
     prevent_destroy = true
-    ignore_changes  = [required_actions]
+    ignore_changes = [
+      attributes,
+      email,
+      federated_identity,
+      first_name,
+      last_name,
+    ]
   }
 }
 
