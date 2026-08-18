@@ -79,6 +79,8 @@ deployment "eu" {
     # Rotation trigger: change the value (a date), apply, then restart the
     # consumers so they pick up the new connection secret.
     cloudsql_password_rotation = "2026-07-12"
+    # Native identity is part of the server platform; no external identity
+    # runtime is provisioned for the pilot.
     yourown_chat_server_enabled              = true
     yourown_chat_identity_password_rotation = "1"
 
