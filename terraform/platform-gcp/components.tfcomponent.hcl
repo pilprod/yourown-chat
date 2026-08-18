@@ -526,24 +526,6 @@ component "identity_bootstrap_user_secret" {
   }
 }
 
-removed {
-  from   = component.keycloak_bootstrap_user_secret
-  source = "./modules/bootstrap-user-secret"
-  providers = {
-    google = provider.google.this
-    random = provider.random.this
-  }
-}
-
-removed {
-  from   = component.keycloak_native_auth_client_secret
-  source = "./modules/bootstrap-user-secret"
-  providers = {
-    google = provider.google.this
-    random = provider.random.this
-  }
-}
-
 component "storage" {
   source = "./modules/storage"
 
@@ -721,16 +703,6 @@ component "temporal" {
   }
 
   depends_on = [component.cloudsql, component.storage]
-}
-
-removed {
-  from   = component.keycloak
-  source = "./modules/keycloak"
-  providers = {
-    google     = provider.google.this
-    random     = provider.random.this
-    kubernetes = provider.kubernetes.this
-  }
 }
 
 component "artifact_registry" {
