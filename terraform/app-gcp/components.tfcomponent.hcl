@@ -155,7 +155,10 @@ component "clouddeploy_server" {
     region                  = var.region
     gke_cluster_id          = var.gke_cluster_id
     pipeline_name           = "yourown-chat"
-    release_manager_members = [var.workload_identity_members.mcp]
+    release_manager_members = [
+      var.workload_identity_members.mcp,
+      "serviceAccount:backend-build@${var.project_id}.iam.gserviceaccount.com",
+    ]
 
     stages = [{
       name             = "pilot"
