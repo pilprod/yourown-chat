@@ -260,7 +260,7 @@ resource "google_sql_database" "additional" {
   # roles before databases and, by Terraform's reverse destroy order, drop
   # databases before roles. Without this edge, parallel removal can try to
   # delete a role while objects it owns still exist.
-  depends_on = [google_sql_user.additional, google_sql_user.retired]
+  depends_on = [google_sql_user.additional]
 }
 
 resource "google_sql_user" "additional" {
@@ -269,26 +269,6 @@ resource "google_sql_user" "additional" {
   instance = google_sql_database_instance.this.name
   name     = each.key
   password = random_password.additional[each.key].result
-}
-
-# Some PostgreSQL roles own objects inside their logical database. Cloud SQL's
-# user API refuses to drop such a role until that database has been deleted.
-# Move a retiring role here for one apply so Terraform deletes only its
-# database; remove it from retired_database_users in the following apply.
-resource "google_sql_user" "retired" {
-  for_each = var.retired_database_users
-  project  = var.project_id
-  instance = google_sql_database_instance.this.name
-  name     = each.value
-
-  lifecycle {
-    ignore_changes = [password]
-  }
-}
-
-moved {
-  from = google_sql_user.additional["keycloak"]
-  to   = google_sql_user.retired["keycloak"]
 }
 
 resource "google_secret_manager_secret" "additional_password" {
