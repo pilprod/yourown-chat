@@ -118,42 +118,14 @@ resource "keycloak_openid_client_default_scopes" "auth_broker" {
   ]
 }
 
-# Import the existing permanent client after the state-only recovery phase.
-# Its secret remains write-only in Keycloak and is neither read nor supplied
-# through this component.
-resource "keycloak_openid_client" "terraform_provider" {
-  realm_id  = keycloak_realm.this.id
-  client_id = var.terraform_client_id
-  name      = "Terraform realm configuration"
-  enabled   = true
-
-  access_type                  = "CONFIDENTIAL"
-  standard_flow_enabled        = false
-  implicit_flow_enabled        = false
-  direct_access_grants_enabled = false
-  service_accounts_enabled     = true
-  full_scope_allowed           = false
-}
-
-import {
-  to = keycloak_openid_client.terraform_provider
-  id = "yourown-chat/5ffd1da1-be6a-4108-965d-1d1d2d9fd78c"
-}
-
-data "keycloak_openid_client" "realm_management" {
-  realm_id  = keycloak_realm.this.id
-  client_id = "realm-management"
-}
-
-data "keycloak_role" "realm_admin" {
-  realm_id  = keycloak_realm.this.id
-  client_id = data.keycloak_openid_client.realm_management.id
-  name      = "realm-admin"
-}
-
+# The permanent client was created only through this provider's write-only
+# secret field during bootstrap. Import is deliberately forbidden: the
+# provider's read path returns the client secret and would persist it in Stack
+# state. The non-secret Keycloak object IDs are pinned for the recovery phase;
+# a rebuilt realm must repeat the reviewed provider-only bootstrap.
 resource "keycloak_openid_client_service_account_role" "terraform_realm_admin" {
   realm_id                = keycloak_realm.this.id
-  service_account_user_id = keycloak_openid_client.terraform_provider.service_account_user_id
-  client_id               = data.keycloak_openid_client.realm_management.id
-  role                    = data.keycloak_role.realm_admin.name
+  service_account_user_id = var.terraform_service_account_user_id
+  client_id               = var.realm_management_client_id
+  role                    = "realm-admin"
 }
