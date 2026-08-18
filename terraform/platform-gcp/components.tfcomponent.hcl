@@ -571,6 +571,11 @@ component "gke" {
     node_pools                 = var.gke_node_pools
     node_boot_disk_kms_key     = one([for k in component.kms : k.crypto_key_id])
     enable_secret_manager_csi  = true
+    # Pilot diagnostics: retain container stderr/stdout so authentication
+    # failures are observable without granting interactive cluster access.
+    # Cloud Logging exclusions can narrow this after the verification flow is
+    # stable; the current pilot has only a small bounded workload set.
+    logging_components         = ["SYSTEM_COMPONENTS", "WORKLOADS"]
     deletion_protection        = var.gke_deletion_protection
     resource_labels            = local.common_labels
 
