@@ -7,6 +7,7 @@ component "realm" {
     public_host                    = var.public_host
     broker_redirect_uri            = var.broker_redirect_uri
     terraform_service_account_user_id = var.terraform_service_account_user_id
+    terraform_client_internal_id    = var.terraform_client_internal_id
     realm_management_client_id     = var.realm_management_client_id
     smtp_host                      = var.smtp_host
     smtp_from                      = var.smtp_from

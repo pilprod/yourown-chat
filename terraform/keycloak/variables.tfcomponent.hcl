@@ -53,6 +53,11 @@ variable "terraform_service_account_user_id" {
   description = "Non-secret Keycloak service-account user UUID of the preserved Terraform provider client."
 }
 
+variable "terraform_client_internal_id" {
+  type        = string
+  description = "Non-secret internal UUID of the preserved Terraform provider client."
+}
+
 variable "realm_management_client_id" {
   type        = string
   description = "Non-secret internal UUID of the realm-management client in the target realm."
