@@ -221,6 +221,13 @@ resource "kubernetes_network_policy_v1" "isolation" {
         port     = "443"
         protocol = "TCP"
       }
+      # Google Workspace SMTP Relay submission. The destination addresses are
+      # provider-managed and can change, while Cloud NAT keeps our source IP
+      # stable for the relay allowlist.
+      ports {
+        port     = "587"
+        protocol = "TCP"
+      }
     }
   }
 }
