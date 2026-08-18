@@ -2,7 +2,7 @@ resource "keycloak_realm" "this" {
   realm                         = var.realm_name
   display_name                  = "YourOwn.Chat"
   enabled                       = true
-  terraform_deletion_protection = true
+  terraform_deletion_protection = false
 
   ssl_required                  = "external"
   registration_allowed         = true
@@ -68,9 +68,6 @@ resource "keycloak_realm" "this" {
     passwordless_passkeys_enabled   = true
   }
 
-  lifecycle {
-    prevent_destroy = true
-  }
 }
 
 resource "keycloak_required_action" "passkey" {
