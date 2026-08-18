@@ -504,6 +504,28 @@ component "kms" {
   }
 }
 
+# One-time first-user credential. The password is generated ephemerally and
+# written only to CMEK-protected Secret Manager. The provider-only Keycloak
+# Stack reads it when creating the user and marks it temporary.
+component "keycloak_bootstrap_user_secret" {
+  source = "./modules/bootstrap-user-secret"
+
+  inputs = {
+    project_id       = component.project_services.project_id
+    location         = var.region
+    secret_id        = "keycloak-pilprod-initial-password"
+    kms_key_name     = one([for k in component.kms : k.crypto_key_id])
+    labels           = local.common_labels
+    accessor_members = ["serviceAccount:${var.service_account_email}"]
+    password_version = 1
+  }
+
+  providers = {
+    google = provider.google.this
+    random = provider.random.this
+  }
+}
+
 component "storage" {
   source = "./modules/storage"
 

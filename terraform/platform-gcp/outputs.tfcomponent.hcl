@@ -183,6 +183,12 @@ output "cmek_key_id" {
   value       = one([for k in component.kms : k.crypto_key_id])
 }
 
+output "keycloak_bootstrap_user_password_secret_id" {
+  type        = string
+  description = "Non-secret Secret Manager ID containing the temporary first-user password."
+  value       = component.keycloak_bootstrap_user_secret.secret_id
+}
+
 # --- Container registry ----------------------------------------------------------
 output "registry_repository_path" {
   type        = string
