@@ -12,7 +12,7 @@ deployment "production" {
     # Phase 1 keeps provider evaluation inert while platform-gcp creates the
     # runtime, DNS and machine-only Admin REST route. A reviewed follow-up
     # flips only this gate to true after those dependencies are applied.
-    enabled = false
+    enabled = true
 
     keycloak_admin_url = "https://auth.yourown.chat"
     keycloak_version   = "26.7.1"
