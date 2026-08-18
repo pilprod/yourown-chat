@@ -23,6 +23,7 @@ helm template yourown-chat "${repo_root}/helm/yourown-chat" \
   --set identity_admin_gsa=identity-admin@example.invalid \
   --set identity_migrate_gsa=migrate@example.invalid \
   --set server_secret_project=test-project \
+  --set apple_association_app_id=TEAMID.com.example.app \
   --set cluster_dns_ip=10.30.0.10 \
   --set cloudsql_private_ip=10.20.30.40 > "${rendered}"
 
@@ -46,7 +47,6 @@ grep -Fq 'value: "true"' "${rendered}"
 grep -Fq 'secrets/yourown-chat-identity-database-url/versions/latest' "${rendered}"
 grep -Fq 'cidr: "10.20.30.40/32"' "${rendered}"
 grep -Fq 'cidr: "10.30.0.10/32"' "${rendered}"
-grep -Fq 'path: ^/(\.well-known/oauth-authorization-server|authorize|callback)?/?$' "${rendered}"
 ! grep -Fq 'authorize|callback|token' "${rendered}"
 grep -Fq 'path: /transport/v1' "${rendered}"
 grep -Fq 'path: /transport/v1/socket' "${rendered}"
@@ -54,7 +54,12 @@ grep -Fq 'pathType: Exact' "${rendered}"
 ! grep -Fq 'name: api' < <(awk 'BEGIN { RS="---" } /kind: Ingress/ { print }' "${rendered}")
 ! grep -Fq 'v1/auth/oidc/sessions' "${rendered}"
 ! grep -Fq 'host: auth.yourown.chat' "${rendered}"
-! grep -Fq 'path: /.well-known/apple-app-site-association' "${rendered}"
+grep -Fq 'path: /.well-known/apple-app-site-association' "${rendered}"
+grep -Fq 'AUTH_PASSKEY_RP_ID' "${rendered}"
+grep -Fq 'AUTH_PASSKEY_RECORD_KEY_FILE' "${rendered}"
+grep -Fq 'AUTH_APPLE_ASSOCIATION_APP_ID' "${rendered}"
+grep -Fq 'TEAMID.com.example.app' "${rendered}"
+grep -Fq 'secrets/yourown-chat-passkey-record-key/versions/latest' "${rendered}"
 ! grep -Fq '/realms/' "${rendered}"
 ! grep -Fq '/admin/' "${rendered}"
 ! grep -Fq 'path: /auth/' "${rendered}"
@@ -95,6 +100,7 @@ helm template yourown-chat "${repo_root}/helm/yourown-chat" \
   --set identity_admin_gsa=identity-admin@example.invalid \
   --set identity_migrate_gsa=migrate@example.invalid \
   --set server_secret_project=test-project \
+  --set apple_association_app_id=TEAMID.com.example.app \
   --set cluster_dns_ip=10.30.0.10 \
   --set cloudsql_private_ip=10.20.30.40 > "${identity_only}"
 grep -Fq 'name: api' "${identity_only}"

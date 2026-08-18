@@ -179,6 +179,8 @@ component "clouddeploy_server" {
       identity_migrate_database_connection_secret_id = var.yourown_chat_identity_connection_secret_id
       identity_bootstrap_password_secret_id          = var.identity_bootstrap_user_password_secret_id
       transport_private_key_secret_id        = "yourown-chat-transport-private-key"
+      passkey_record_key_secret_id           = "yourown-chat-passkey-record-key"
+      apple_association_app_id               = var.apple_association_app_id
       cloudsql_private_ip                    = var.cloudsql_private_ip
       cluster_dns_ip                         = var.cluster_dns_ip
       yourown_chat_control_api_enabled       = tostring(var.temporal_enabled)
@@ -348,7 +350,7 @@ component "secrets" {
         special   = false
         accessors = [var.workload_identity_members["identity-admin"]]
       }
-      "yourown-chat-auth-state-key" = {
+      "yourown-chat-passkey-record-key" = {
         generate  = true
         length    = 64
         special   = false

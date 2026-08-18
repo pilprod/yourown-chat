@@ -19,6 +19,8 @@ identity_runtime_database_connection_secret_id: "yourown-chat-identity-runtime-d
 identity_migrate_database_connection_secret_id: "yourown-chat-identity-database-url"
 identity_bootstrap_password_secret_id: "yourown-chat-pilprod-initial-password"
 transport_private_key_secret_id: "yourown-chat-transport-private-key"
+passkey_record_key_secret_id: "yourown-chat-passkey-record-key"
+apple_association_app_id: ""
 cloudsql_private_ip: ""
 cluster_dns_ip: ""
 
@@ -44,6 +46,10 @@ identity:
 authorization:
   replicaCount: 1
   port: 8083
+  passkeyRPID: yourown.chat
+  passkeyOrigin: https://yourown.chat
+  passkeyRPDisplayName: YourOwn.Chat
+  passkeyCeremonyTTL: 5m
   resources:
     requests: { cpu: 5m, memory: 16Mi }
     limits: { cpu: 150m, memory: 192Mi }
