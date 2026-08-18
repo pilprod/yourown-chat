@@ -129,3 +129,12 @@ resource "keycloak_openid_client_service_account_role" "terraform_realm_admin" {
   client_id               = var.realm_management_client_id
   role                    = "realm-admin"
 }
+
+# Service-account role mappings are not included when full scope is disabled
+# unless the built-in roles client scope is explicitly attached. Keep only
+# that scope: the provider client does not need profile, email or web origins.
+resource "keycloak_openid_client_default_scopes" "terraform_provider" {
+  realm_id      = keycloak_realm.this.id
+  client_id     = var.terraform_client_internal_id
+  default_scopes = ["roles"]
+}

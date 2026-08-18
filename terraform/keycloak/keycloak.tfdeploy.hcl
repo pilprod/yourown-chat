@@ -26,6 +26,7 @@ deployment "production" {
     bootstrap_admin_client_secret = store.varset.keycloak.keycloak_bootstrap_admin_client_secret
 
     terraform_client_id             = "terraform-provider"
+    terraform_client_internal_id    = "5ffd1da1-be6a-4108-965d-1d1d2d9fd78c"
     terraform_service_account_user_id = "5b84a940-a964-4c1e-a549-74767f78341d"
     realm_management_client_id      = "5b66df6c-f179-4d0b-8b63-c0ee329ea164"
     terraform_client_secret          = store.varset.keycloak.keycloak_terraform_client_secret
