@@ -6,7 +6,9 @@ resource "keycloak_realm" "this" {
 
   ssl_required                  = "external"
   registration_allowed         = true
-  registration_email_as_username = true
+  # Keep the stable platform username independent from an email address. Email
+  # login remains enabled below, so users with an address can use either form.
+  registration_email_as_username = false
   login_with_email_allowed     = true
   duplicate_emails_allowed     = false
   edit_username_allowed        = false
