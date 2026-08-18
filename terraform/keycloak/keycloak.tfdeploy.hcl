@@ -20,8 +20,9 @@ deployment "production" {
     # hashicorp/terraform#37822 prevents repeating the write-only secret across
     # the component boundary. Importing the permanent client is also forbidden
     # because the provider read path returns its secret into state. Only the
-    # non-secret object IDs are used to assign the target-realm role.
-    bootstrap_mode                = true
+    # non-secret object IDs are used to assign the target-realm role. The
+    # provider now authenticates only as that realm-scoped client.
+    bootstrap_mode                = false
     bootstrap_admin_client_id     = "bootstrap-admin"
     bootstrap_admin_client_secret = store.varset.keycloak.keycloak_bootstrap_admin_client_secret
 
