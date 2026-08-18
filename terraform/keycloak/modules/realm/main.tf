@@ -100,6 +100,11 @@ resource "keycloak_user" "bootstrap" {
   username = var.bootstrap_user_username
   enabled  = true
 
+  # The bootstrap account intentionally has no email address. Mark that empty
+  # profile as accepted so realm-wide email verification does not enqueue an
+  # impossible VERIFY_EMAIL action after password and passkey registration.
+  email_verified = true
+
   # Apply these once when the user is created. Keycloak removes each action
   # after the user completes it; Terraform must not add it back later.
   required_actions = [
