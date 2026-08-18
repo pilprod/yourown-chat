@@ -255,6 +255,12 @@ resource "google_sql_database" "additional" {
   project  = var.project_id
   instance = google_sql_database_instance.this.name
   name     = each.value.database_name
+
+  # PostgreSQL roles can own objects inside their logical databases. Create
+  # roles before databases and, by Terraform's reverse destroy order, drop
+  # databases before roles. Without this edge, parallel removal can try to
+  # delete a role while objects it owns still exist.
+  depends_on = [google_sql_user.additional]
 }
 
 resource "google_sql_user" "additional" {
