@@ -87,6 +87,11 @@ variable "realm_management_client_id" {
   description = "Non-secret internal UUID of the realm-management client in the target realm."
 }
 
+variable "realm_admin_role_id" {
+  type        = string
+  description = "Non-secret stable UUID of the existing realm-management realm-admin role."
+}
+
 variable "terraform_client_secret" {
   type        = string
   ephemeral   = true

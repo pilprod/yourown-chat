@@ -168,15 +168,12 @@ resource "keycloak_openid_client_default_scopes" "terraform_provider" {
 
 # With full_scope_allowed=false, attaching the built-in roles scope is not
 # enough: Keycloak also requires an explicit role scope mapping before it will
-# place realm-management roles in the service-account access token.
-data "keycloak_role" "realm_admin" {
-  realm_id  = keycloak_realm.this.id
-  client_id = var.realm_management_client_id
-  name      = "realm-admin"
-}
-
+# place realm-management roles in the service-account access token. Keep the
+# already-created role UUID stable just like the adjacent client UUIDs; reading
+# it through a data source during a realm update makes Terraform unnecessarily
+# replace this mapper because the refreshed ID is unknown during planning.
 resource "keycloak_generic_role_mapper" "terraform_realm_admin_scope" {
   realm_id  = keycloak_realm.this.id
   client_id = var.terraform_client_internal_id
-  role_id   = data.keycloak_role.realm_admin.id
+  role_id   = var.realm_admin_role_id
 }
