@@ -599,6 +599,7 @@ component "cloudsql" {
           connection_secret_id      = "yourown-chat-identity-runtime-database-url"
           connection_secret_accessors = [
             component.workload_identity_auth_api.iam_member,
+            component.workload_identity_transport_api.iam_member,
             component.workload_identity_identity_api.iam_member,
             component.workload_identity_identity_admin.iam_member,
           ]
