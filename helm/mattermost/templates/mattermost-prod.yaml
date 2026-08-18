@@ -188,7 +188,7 @@ spec:
       requests:
         # Kubernetes CPU quantities have 1m precision, so half of 25m is
         # rounded up rather than below the requested 50% target.
-        cpu: 13m
+        cpu: 5m
         memory: 256Mi
       limits:
         cpu: "1"

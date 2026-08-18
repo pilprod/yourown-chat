@@ -73,8 +73,8 @@ resource "kubernetes_stateful_set_v1" "this" {
 
           resources {
             requests = {
-              cpu    = "10m"
-              memory = "64Mi"
+              cpu    = "5m"
+              memory = "48Mi"
             }
             limits = {
               cpu    = "500m"
