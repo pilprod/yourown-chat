@@ -22,10 +22,6 @@ variable "database_password" {
   type      = string
   sensitive = true
 }
-variable "bootstrap_secret_version" {
-  type        = string
-  description = "Explicit numeric rotation marker for write-only bootstrap secret fields."
-}
 variable "image_version" {
   type    = string
   default = "26.7.1"

@@ -19,29 +19,6 @@ variable "keycloak_version" {
   description = "Exact Keycloak runtime version. The provider uses this because the realm-scoped client cannot read global server information."
 }
 
-variable "bootstrap_mode" {
-  type        = bool
-  description = "One-time bootstrap switch. Turn off after the realm-scoped Terraform client has been created."
-}
-
-variable "bootstrap_admin_client_id" {
-  type        = string
-  description = "Temporary master-realm service account created only during the first Keycloak startup."
-  default     = "bootstrap-admin"
-}
-
-variable "bootstrap_admin_client_secret" {
-  type        = string
-  ephemeral   = true
-  sensitive   = true
-  description = "Temporary bootstrap service secret from a private HCP variable set. Never stored in Git or Stack state."
-
-  validation {
-    condition     = length(var.bootstrap_admin_client_secret) >= 32
-    error_message = "bootstrap_admin_client_secret must contain at least 32 characters."
-  }
-}
-
 variable "terraform_client_id" {
   type        = string
   description = "Permanent realm-scoped machine client used by this provider after bootstrap."
