@@ -84,6 +84,14 @@ deployment "eu" {
     yourown_chat_server_enabled              = true
     yourown_chat_identity_password_rotation = "1"
 
+    # One-release cutover guard: preserve the existing runtime and database
+    # until the native server release and bootstrap migration are verified.
+    # No application ingress or client contract points at this runtime.
+    keycloak_enabled           = true
+    keycloak_version           = "26.7.1"
+    keycloak_password_rotation = "1"
+    keycloak_public_url        = "https://auth.yourown.chat"
+
     # Temporal is a platform-gcp service. Keep the launch gate closed until the
     # prerequisite MCP image has passed production verification.
     temporal_enabled             = false
@@ -204,6 +212,16 @@ publish_output "temporal_enabled" {
 publish_output "yourown_chat_server_enabled" {
   description = "Platform-owned launch state for the independent YourOwn.Chat server plane."
   value       = deployment.eu.yourown_chat_server_enabled
+}
+
+publish_output "keycloak_enabled" {
+  description = "Temporary cutover guard state; no application consumer uses it."
+  value       = deployment.eu.keycloak_enabled
+}
+
+publish_output "keycloak_issuer" {
+  description = "Legacy issuer retained during the one-release cutover only."
+  value       = deployment.eu.keycloak_issuer
 }
 
 publish_output "temporal_results_bucket_name" {

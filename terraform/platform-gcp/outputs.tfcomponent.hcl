@@ -221,6 +221,24 @@ output "yourown_chat_server_enabled" {
   value       = var.yourown_chat_server_enabled
 }
 
+output "keycloak_enabled" {
+  type        = bool
+  description = "Whether the temporary cutover runtime is retained."
+  value       = var.keycloak_enabled
+}
+
+output "keycloak_issuer" {
+  type        = string
+  description = "Legacy issuer retained for cutover compatibility only."
+  value       = component.keycloak.issuer
+}
+
+output "keycloak_internal_url" {
+  type        = string
+  description = "Legacy internal URL retained for cutover compatibility only."
+  value       = component.keycloak.internal_url
+}
+
 output "temporal_results_bucket_name" {
   type        = string
   description = "Private agent result bucket created by platform-gcp when Temporal is enabled."
