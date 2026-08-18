@@ -12,6 +12,6 @@ output "auth_broker_client_id" {
 
 output "terraform_client_ready" {
   type        = bool
-  description = "False during the state-only recovery phase for the preserved permanent client."
-  value       = false
+  description = "True after the preserved permanent provider client receives its realm-only role without import."
+  value       = var.enabled ? component.realm["production"].terraform_client_ready : false
 }

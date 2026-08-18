@@ -48,6 +48,16 @@ variable "terraform_client_id" {
   default     = "terraform-provider"
 }
 
+variable "terraform_service_account_user_id" {
+  type        = string
+  description = "Non-secret Keycloak service-account user UUID of the preserved Terraform provider client."
+}
+
+variable "realm_management_client_id" {
+  type        = string
+  description = "Non-secret internal UUID of the realm-management client in the target realm."
+}
+
 variable "terraform_client_secret" {
   type        = string
   ephemeral   = true

@@ -118,14 +118,14 @@ resource "keycloak_openid_client_default_scopes" "auth_broker" {
   ]
 }
 
-# The write-only secret reached Keycloak before the first Stack apply failed,
-# leaving this otherwise valid client tainted in Terraform state. Forget only
-# the state record in phase one; a reviewed follow-up imports the same remote
-# client at a clean address and completes its realm-only role assignment.
-removed {
-  from = keycloak_openid_client.terraform_provider
-
-  lifecycle {
-    destroy = false
-  }
+# The permanent client was created only through this provider's write-only
+# secret field during bootstrap. Import is deliberately forbidden: the
+# provider's read path returns the client secret and would persist it in Stack
+# state. The non-secret Keycloak object IDs are pinned for the recovery phase;
+# a rebuilt realm must repeat the reviewed provider-only bootstrap.
+resource "keycloak_openid_client_service_account_role" "terraform_realm_admin" {
+  realm_id                = keycloak_realm.this.id
+  service_account_user_id = var.terraform_service_account_user_id
+  client_id               = var.realm_management_client_id
+  role                    = "realm-admin"
 }
