@@ -689,16 +689,6 @@ component "cloudsql" {
           password_rotation         = var.temporal_password_rotation
         }
       } : {},
-      # Retained for one cutover stage. The runtime is no longer exposed to
-      # clients and is removed only after native authentication is verified.
-      var.keycloak_enabled ? {
-        keycloak = {
-          database_names            = ["keycloak"]
-          password_secret_id        = "keycloak-db-password"
-          password_secret_accessors = []
-          password_rotation         = var.keycloak_password_rotation
-        }
-      } : {},
     )
 
     user_labels = local.common_labels
@@ -733,32 +723,14 @@ component "temporal" {
   depends_on = [component.cloudsql, component.storage]
 }
 
-# Temporary cutover compatibility runtime. No application ingress or client
-# contract points at this component. A follow-up removal is applied only after
-# the native server release and bootstrap migration have been verified.
-component "keycloak" {
+removed {
+  from   = component.keycloak
   source = "./modules/keycloak"
-
-  inputs = {
-    enabled                  = var.keycloak_enabled
-    project_id               = component.project_services.project_id
-    region                   = var.region
-    encryption_key_name      = one([for k in component.kms : k.crypto_key_id])
-    cloudsql_private_ip      = one([for database in component.cloudsql : database.private_ip_address])
-    cluster_dns_ip           = cidrhost(component.network.services_cidr, 10)
-    database_password        = try(one([for database in component.cloudsql : database.additional_passwords["keycloak"]]), "")
-    image_version            = var.keycloak_version
-    public_url               = var.keycloak_public_url
-    labels                   = local.common_labels
-  }
-
   providers = {
     google     = provider.google.this
     random     = provider.random.this
     kubernetes = provider.kubernetes.this
   }
-
-  depends_on = [component.cloudsql]
 }
 
 component "artifact_registry" {

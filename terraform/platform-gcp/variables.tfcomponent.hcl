@@ -215,33 +215,6 @@ variable "yourown_chat_identity_password_rotation" {
   default     = "1"
 }
 
-# --- Temporary Keycloak cutover runtime ------------------------------------
-# These inputs are retained for the first native-auth deployment only. The
-# application no longer publishes or consumes this runtime.
-variable "keycloak_enabled" {
-  type        = bool
-  description = "Retain the existing Keycloak runtime during the native-auth cutover."
-  default     = true
-}
-
-variable "keycloak_version" {
-  type        = string
-  description = "Pinned image version of the temporary cutover runtime."
-  default     = "26.7.1"
-}
-
-variable "keycloak_password_rotation" {
-  type        = string
-  description = "Existing database-password rotation trigger retained for the cutover."
-  default     = "1"
-}
-
-variable "keycloak_public_url" {
-  type        = string
-  description = "Existing runtime hostname retained only to avoid mutating it during cutover."
-  default     = "https://auth.yourown.chat"
-}
-
 # --- Storage ----------------------------------------------------------------
 variable "storage_force_destroy" {
   type        = bool
