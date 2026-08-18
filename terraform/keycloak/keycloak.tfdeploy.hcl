@@ -31,7 +31,10 @@ deployment "production" {
 
     realm_name        = "yourown-chat"
     public_host       = "auth.yourown.chat"
-    broker_redirect_uri = "https://auth.yourown.chat/callback"
+    broker_redirect_uris = [
+      "https://auth.yourown.chat/complete",
+      "https://auth.yourown.chat/callback",
+    ]
     smtp_host         = "smtp-relay.gmail.com"
     smtp_from         = "noreply@papou.email"
   }
