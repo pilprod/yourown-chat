@@ -47,8 +47,8 @@ deployment "eu" {
     cmek_key_id                     = upstream_input.platform.cmek_key_id
     workload_identity_members       = upstream_input.platform.workload_identity_members
     yourown_chat_server_enabled     = upstream_input.platform.yourown_chat_server_enabled
-    keycloak_enabled                = upstream_input.platform.keycloak_enabled
-    keycloak_issuer                 = upstream_input.platform.keycloak_issuer
+    # The migration job consumes this once to create the first native user.
+    identity_bootstrap_user_password_secret_id = upstream_input.platform.identity_bootstrap_user_password_secret_id
     yourown_chat_identity_connection_secret_id = upstream_input.platform.yourown_chat_identity_connection_secret_id
     yourown_chat_identity_runtime_connection_secret_id = upstream_input.platform.yourown_chat_identity_runtime_connection_secret_id
     yourown_chat_registration_enabled = false

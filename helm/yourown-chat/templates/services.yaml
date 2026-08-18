@@ -38,21 +38,6 @@ spec:
   selector: { app: admin }
   ports:
     - { name: http, port: 8082, targetPort: http }
-{{- if .Values.keycloak_enabled }}
----
-# Edge-only alias. The Keycloak Deployment, database, namespace and service are
-# all owned by platform-gcp; this release only shares the existing origin TLS.
-apiVersion: v1
-kind: Service
-metadata:
-  name: {{ .Values.ingress.keycloakServiceName }}
-  namespace: {{ .Values.namespaces.edge }}
-spec:
-  type: ExternalName
-  externalName: keycloak.keycloak.svc.cluster.local
-  ports:
-    - { name: http, port: 8080, targetPort: 8080 }
-{{- end }}
 {{- if .Values.yourown_chat_control_api_enabled }}
 ---
 apiVersion: v1

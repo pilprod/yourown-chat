@@ -1,88 +1,4 @@
 {{- if .Values.yourown_chat_ingress_enabled }}
-{{- if .Values.keycloak_enabled }}
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: keycloak
-  namespace: {{ .Values.namespaces.edge }}
-  annotations:
-    nginx.ingress.kubernetes.io/use-regex: "true"
-    nginx.ingress.kubernetes.io/proxy-buffer-size: "16k"
-spec:
-  ingressClassName: {{ .Values.ingress.className }}
-  tls:
-    - hosts: [{{ required "ingress.authHost is required" .Values.ingress.authHost | quote }}]
-      secretName: {{ .Values.ingress.tlsSecretName }}
-  rules:
-    - host: {{ required "ingress.authHost is required" .Values.ingress.authHost | quote }}
-      http:
-        paths:
-          # The public hostname exposes only protocol and theme resources.
-          - path: /(realms|resources)(/.*)?
-            pathType: ImplementationSpecific
-            backend:
-              service:
-                name: {{ .Values.ingress.keycloakServiceName }}
-                port: { number: 8080 }
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: keycloak-provider
-  namespace: {{ .Values.namespaces.edge }}
-  annotations:
-    nginx.ingress.kubernetes.io/use-regex: "true"
-    nginx.ingress.kubernetes.io/proxy-buffer-size: "16k"
-    nginx.ingress.kubernetes.io/limit-rps: {{ .Values.ingress.keycloakAdminLimitRPS | quote }}
-    nginx.ingress.kubernetes.io/limit-burst-multiplier: {{ .Values.ingress.keycloakAdminLimitBurstMultiplier | quote }}
-spec:
-  ingressClassName: {{ .Values.ingress.className }}
-  tls:
-    - hosts: [{{ required "ingress.authHost is required" .Values.ingress.authHost | quote }}]
-      secretName: {{ .Values.ingress.tlsSecretName }}
-  rules:
-    - host: {{ required "ingress.authHost is required" .Values.ingress.authHost | quote }}
-      http:
-        paths:
-          # Machine-only Admin REST surface required by keycloak/keycloak.
-          # The browser console path (/admin/*/console) never matches.
-          - path: /admin/(realms|serverinfo)(/.*)?
-            pathType: ImplementationSpecific
-            backend:
-              service:
-                name: {{ .Values.ingress.keycloakServiceName }}
-                port: { number: 8080 }
----
-{{- end }}
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: authorization
-  namespace: {{ .Values.namespaces.edge }}
-  annotations:
-    nginx.ingress.kubernetes.io/use-regex: "true"
-    # Authorization codes arrive through form_post and this ingress emits no
-    # request log, preventing future parameter changes from leaking secrets.
-    nginx.ingress.kubernetes.io/enable-access-log: "false"
-    nginx.ingress.kubernetes.io/limit-connections: {{ .Values.ingress.authLimitConnections | quote }}
-    nginx.ingress.kubernetes.io/limit-rps: {{ .Values.ingress.authLimitRPS | quote }}
-    nginx.ingress.kubernetes.io/limit-burst-multiplier: {{ .Values.ingress.authLimitBurstMultiplier | quote }}
-spec:
-  ingressClassName: {{ .Values.ingress.className }}
-  tls:
-    - hosts: [{{ required "ingress.authHost is required" .Values.ingress.authHost | quote }}]
-      secretName: {{ .Values.ingress.tlsSecretName }}
-  rules:
-    - host: {{ required "ingress.authHost is required" .Values.ingress.authHost | quote }}
-      http:
-        paths:
-          - path: /(\.well-known/oauth-authorization-server|sign-in|complete|authorize|callback)?/?$
-            pathType: ImplementationSpecific
-            backend:
-              service:
-                name: auth
-                port: { number: 8083 }
----
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -94,8 +10,6 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-request-buffering: "on"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
-    # Bound expensive unauthenticated X-Wing decapsulation at the edge. Product
-    # authorization is still enforced after decryption by the target service.
     nginx.ingress.kubernetes.io/limit-connections: {{ .Values.ingress.transportLimitConnections | quote }}
     nginx.ingress.kubernetes.io/limit-rps: {{ .Values.ingress.transportLimitRPS | quote }}
     nginx.ingress.kubernetes.io/limit-burst-multiplier: {{ .Values.ingress.transportLimitBurstMultiplier | quote }}
@@ -108,8 +22,6 @@ spec:
     - host: {{ .Values.ingress.host | quote }}
       http:
         paths:
-          # Fixed opaque application endpoint. Inner service, route, status,
-          # headers and body exist only inside the authenticated ciphertext.
           - path: /transport/v1
             pathType: Exact
             backend:

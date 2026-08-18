@@ -215,28 +215,30 @@ variable "yourown_chat_identity_password_rotation" {
   default     = "1"
 }
 
-# --- Keycloak platform identity service ------------------------------------
+# --- Temporary Keycloak cutover runtime ------------------------------------
+# These inputs are retained for the first native-auth deployment only. The
+# application no longer publishes or consumes this runtime.
 variable "keycloak_enabled" {
   type        = bool
-  description = "Create the platform-owned Keycloak runtime and its isolated logical database."
+  description = "Retain the existing Keycloak runtime during the native-auth cutover."
   default     = true
 }
 
 variable "keycloak_version" {
   type        = string
-  description = "Pinned official quay.io/keycloak/keycloak image version."
+  description = "Pinned image version of the temporary cutover runtime."
   default     = "26.7.1"
 }
 
 variable "keycloak_password_rotation" {
   type        = string
-  description = "Explicit rotation trigger shared by the Keycloak database and temporary bootstrap service credential."
+  description = "Existing database-password rotation trigger retained for the cutover."
   default     = "1"
 }
 
 variable "keycloak_public_url" {
   type        = string
-  description = "Canonical public Keycloak URL used as the immutable OIDC issuer base."
+  description = "Existing runtime hostname retained only to avoid mutating it during cutover."
   default     = "https://auth.yourown.chat"
 }
 

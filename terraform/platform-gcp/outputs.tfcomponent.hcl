@@ -183,10 +183,10 @@ output "cmek_key_id" {
   value       = one([for k in component.kms : k.crypto_key_id])
 }
 
-output "keycloak_bootstrap_user_password_secret_id" {
+output "identity_bootstrap_user_password_secret_id" {
   type        = string
   description = "Non-secret Secret Manager ID containing the temporary first-user password."
-  value       = component.keycloak_bootstrap_user_secret.secret_id
+  value       = component.identity_bootstrap_user_secret.secret_id
 }
 
 # --- Container registry ----------------------------------------------------------
@@ -223,19 +223,19 @@ output "yourown_chat_server_enabled" {
 
 output "keycloak_enabled" {
   type        = bool
-  description = "Whether platform-gcp owns an active Keycloak identity runtime."
+  description = "Whether the temporary cutover runtime is retained."
   value       = var.keycloak_enabled
 }
 
 output "keycloak_issuer" {
   type        = string
-  description = "Canonical OpenID Connect issuer for the YourOwn.Chat realm."
+  description = "Legacy issuer retained for cutover compatibility only."
   value       = component.keycloak.issuer
 }
 
 output "keycloak_internal_url" {
   type        = string
-  description = "Cluster-only Keycloak base URL for trusted backend calls."
+  description = "Legacy internal URL retained for cutover compatibility only."
   value       = component.keycloak.internal_url
 }
 

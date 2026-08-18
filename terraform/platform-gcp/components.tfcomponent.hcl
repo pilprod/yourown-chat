@@ -505,21 +505,39 @@ component "kms" {
 }
 
 # One-time first-user credential. The password is generated ephemerally and
-# written only to CMEK-protected Secret Manager. The provider-only Keycloak
-# Stack reads it when creating the user and marks it temporary.
-component "keycloak_bootstrap_user_secret" {
+# written only to CMEK-protected Secret Manager. Only the migration workload
+# can read it, and its idempotent bootstrap never replaces existing credentials.
+component "identity_bootstrap_user_secret" {
   source = "./modules/bootstrap-user-secret"
 
   inputs = {
     project_id       = component.project_services.project_id
     location         = var.region
-    secret_id        = "keycloak-pilprod-initial-password"
+    secret_id        = "yourown-chat-pilprod-initial-password"
     kms_key_name     = one([for k in component.kms : k.crypto_key_id])
     labels           = local.common_labels
-    accessor_members = ["serviceAccount:${var.service_account_email}"]
+    accessor_members = [component.workload_identity_identity_migrate.iam_member]
     password_version = 1
   }
 
+  providers = {
+    google = provider.google.this
+    random = provider.random.this
+  }
+}
+
+removed {
+  from   = component.keycloak_bootstrap_user_secret
+  source = "./modules/bootstrap-user-secret"
+  providers = {
+    google = provider.google.this
+    random = provider.random.this
+  }
+}
+
+removed {
+  from   = component.keycloak_native_auth_client_secret
+  source = "./modules/bootstrap-user-secret"
   providers = {
     google = provider.google.this
     random = provider.random.this
@@ -671,6 +689,8 @@ component "cloudsql" {
           password_rotation         = var.temporal_password_rotation
         }
       } : {},
+      # Retained for one cutover stage. The runtime is no longer exposed to
+      # clients and is removed only after native authentication is verified.
       var.keycloak_enabled ? {
         keycloak = {
           database_names            = ["keycloak"]
@@ -713,9 +733,9 @@ component "temporal" {
   depends_on = [component.cloudsql, component.storage]
 }
 
-# Keycloak is the platform identity authority shared by mobile, desktop, web
-# and backend services. The application stack never owns this release or its
-# database; it only publishes the existing edge route to this ClusterIP.
+# Temporary cutover compatibility runtime. No application ingress or client
+# contract points at this component. A follow-up removal is applied only after
+# the native server release and bootstrap migration have been verified.
 component "keycloak" {
   source = "./modules/keycloak"
 

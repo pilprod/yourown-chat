@@ -282,16 +282,10 @@ variable "yourown_chat_server_enabled" {
   default     = true
 }
 
-variable "keycloak_enabled" {
-  type        = bool
-  description = "Publish the edge route to the platform-owned Keycloak service. The runtime itself remains in platform-gcp."
-  default     = true
-}
-
-variable "keycloak_issuer" {
+variable "identity_bootstrap_user_password_secret_id" {
   type        = string
-  description = "Canonical issuer published by platform-gcp."
-  default     = "https://auth.yourown.chat/realms/yourown-chat"
+  description = "Platform-owned Secret Manager ID containing the temporary initial native-user password."
+  default     = "yourown-chat-pilprod-initial-password"
 }
 
 variable "yourown_chat_identity_connection_secret_id" {

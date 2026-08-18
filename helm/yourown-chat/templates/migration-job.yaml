@@ -27,6 +27,10 @@ spec:
           imagePullPolicy: IfNotPresent
           env:
             - { name: IDENTITY_DATABASE_URL_FILE, value: /var/run/secrets/identity/database-url }
+            - { name: IDENTITY_BOOTSTRAP_PASSWORD_FILE, value: /var/run/secrets/identity/bootstrap-password }
+            - { name: IDENTITY_BOOTSTRAP_USERNAME, value: pilprod }
+            - { name: IDENTITY_BOOTSTRAP_EMAIL, value: ilya@papou.email }
+            - { name: IDENTITY_BOOTSTRAP_DISPLAY_NAME, value: pilprod }
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           resources:

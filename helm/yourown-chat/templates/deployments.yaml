@@ -90,18 +90,7 @@ spec:
           env:
             - { name: AUTH_API_PORT, value: {{ .Values.authorization.port | quote }} }
             - { name: IDENTITY_DATABASE_URL_FILE, value: /var/run/secrets/identity/database-url }
-            - { name: AUTH_STATE_ENCRYPTION_KEY_FILE, value: /var/run/secrets/identity/state-encryption-key }
             - { name: IDENTITY_SESSION_TTL, value: {{ .Values.identity.sessionTTL | quote }} }
-            - { name: AUTH_ISSUER, value: {{ required "authorization.issuer is required" .Values.authorization.issuer | quote }} }
-            - { name: AUTH_CLIENT_ID, value: {{ required "authorization.clientID is required" .Values.authorization.clientID | quote }} }
-            - { name: AUTH_CLIENT_REDIRECT_URI, value: {{ required "authorization.clientRedirectURI is required" .Values.authorization.clientRedirectURI | quote }} }
-            - { name: AUTH_UPSTREAM_CLIENT_ID, value: {{ required "authorization.upstreamClientID is required" .Values.authorization.upstreamClientID | quote }} }
-            - { name: AUTH_UPSTREAM_AUTHORIZATION_URL, value: {{ required "authorization.upstreamAuthorizationURL is required" .Values.authorization.upstreamAuthorizationURL | quote }} }
-            - { name: AUTH_UPSTREAM_READY_URL, value: {{ required "authorization.upstreamReadyURL is required" .Values.authorization.upstreamReadyURL | quote }} }
-            - { name: AUTH_UPSTREAM_TOKEN_URL, value: {{ required "authorization.upstreamTokenURL is required" .Values.authorization.upstreamTokenURL | quote }} }
-            - { name: AUTH_UPSTREAM_USERINFO_URL, value: {{ required "authorization.upstreamUserInfoURL is required" .Values.authorization.upstreamUserInfoURL | quote }} }
-            - { name: AUTH_UPSTREAM_TLS_SERVER_NAME, value: auth.yourown.chat }
-            - { name: AUTH_UPSTREAM_TLS_CA_FILE, value: /var/run/secrets/keycloak-tls/tls.crt }
           ports:
             - { name: http, containerPort: {{ .Values.authorization.port }} }
           startupProbe:
@@ -120,7 +109,6 @@ spec:
             {{- toYaml .Values.authorization.resources | nindent 12 }}
           volumeMounts:
             - { name: identity-secrets, mountPath: /var/run/secrets/identity, readOnly: true }
-            - { name: keycloak-tls, mountPath: /var/run/secrets/keycloak-tls, readOnly: true }
             - { name: tmp, mountPath: /tmp }
       volumes:
         - name: identity-secrets
@@ -128,9 +116,6 @@ spec:
             driver: secrets-store-gke.csi.k8s.io
             readOnly: true
             volumeAttributes: { secretProviderClass: auth-gcp }
-        - name: keycloak-tls
-          secret:
-            secretName: keycloak-internal-ca
         - { name: tmp, emptyDir: {} }
 ---
 apiVersion: apps/v1
@@ -169,8 +154,6 @@ spec:
             - { name: IDENTITY_LOGIN_FAILURE_WINDOW, value: {{ .Values.identity.loginFailureWindow | quote }} }
             - { name: IDENTITY_REGISTRATION_ENABLED, value: {{ .Values.yourown_chat_registration_enabled | quote }} }
             - { name: IDENTITY_ALLOW_INSECURE_MATTERMOST, value: {{ .Values.identity.allowInsecureMattermost | quote }} }
-            - { name: IDENTITY_OIDC_ISSUER, value: {{ required "keycloak_issuer is required" .Values.keycloak_issuer | quote }} }
-            - { name: IDENTITY_OIDC_USERINFO_URL, value: {{ required "keycloak_internal_userinfo_url is required" .Values.keycloak_internal_userinfo_url | quote }} }
           ports:
             - { name: http, containerPort: {{ .Values.identity.port }} }
           startupProbe:
