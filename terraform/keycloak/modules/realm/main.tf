@@ -118,40 +118,14 @@ resource "keycloak_openid_client_default_scopes" "auth_broker" {
   ]
 }
 
-# The bootstrap administrator is used only once. This permanent client is
-# restricted to this realm and becomes the provider identity on every later
-# configuration after bootstrap_mode is switched off.
-resource "keycloak_openid_client" "terraform_provider" {
-  realm_id  = keycloak_realm.this.id
-  client_id = var.terraform_client_id
-  name      = "Terraform realm configuration"
-  enabled   = true
+# The write-only secret reached Keycloak before the first Stack apply failed,
+# leaving this otherwise valid client tainted in Terraform state. Forget only
+# the state record in phase one; a reviewed follow-up imports the same remote
+# client at a clean address and completes its realm-only role assignment.
+removed {
+  from = keycloak_openid_client.terraform_provider
 
-  access_type                  = "CONFIDENTIAL"
-  standard_flow_enabled        = false
-  implicit_flow_enabled        = false
-  direct_access_grants_enabled = false
-  service_accounts_enabled     = true
-  full_scope_allowed           = false
-
-  client_secret_wo         = var.terraform_client_secret
-  client_secret_wo_version = var.terraform_client_secret_version
-}
-
-data "keycloak_openid_client" "realm_management" {
-  realm_id  = keycloak_realm.this.id
-  client_id = "realm-management"
-}
-
-data "keycloak_role" "realm_admin" {
-  realm_id  = keycloak_realm.this.id
-  client_id = data.keycloak_openid_client.realm_management.id
-  name      = "realm-admin"
-}
-
-resource "keycloak_openid_client_service_account_role" "terraform_realm_admin" {
-  realm_id                = keycloak_realm.this.id
-  service_account_user_id = keycloak_openid_client.terraform_provider.service_account_user_id
-  client_id               = data.keycloak_openid_client.realm_management.id
-  role                    = data.keycloak_role.realm_admin.name
+  lifecycle {
+    destroy = false
+  }
 }

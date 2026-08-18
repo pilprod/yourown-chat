@@ -5,10 +5,10 @@ required_providers {
   }
 }
 
-# The first configuration uses the short-lived bootstrap service account created
-# by the platform runtime. After the realm-scoped Terraform client exists,
-# bootstrap_mode is turned off and all later plans use client credentials with
-# rights limited to the yourown-chat realm.
+# The first configuration uses the bootstrap service account created by the
+# platform runtime. The permanent realm-scoped client remains configured here,
+# but bootstrap_mode stays enabled until Terraform Stacks can safely pass its
+# ephemeral write-only secret into a component without serializing it.
 provider "keycloak" "this" {
   for_each = var.enabled ? toset(["production"]) : toset([])
 

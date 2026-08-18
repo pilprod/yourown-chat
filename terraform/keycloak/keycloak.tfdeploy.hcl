@@ -17,8 +17,10 @@ deployment "production" {
     keycloak_admin_url = "https://auth.yourown.chat"
     keycloak_version   = "26.7.1"
 
-    # One-time first apply. After terraform_client_ready=true, switch this to
-    # false and remove the temporary bootstrap service account from master.
+    # hashicorp/terraform#37822 prevents repeating the write-only secret across
+    # the component boundary. The permanent client created during the first
+    # apply is preserved while its tainted state record is forgotten; switch
+    # this off only after the reviewed re-import phase reports readiness.
     bootstrap_mode                = true
     bootstrap_admin_client_id     = "bootstrap-admin"
     bootstrap_admin_client_secret = store.varset.keycloak.keycloak_bootstrap_admin_client_secret
@@ -46,6 +48,6 @@ publish_output "auth_broker_client_id" {
 }
 
 publish_output "terraform_client_ready" {
-  description = "Permanent realm-scoped provider client is ready."
+  description = "Permanent realm-scoped provider client readiness; false during state-only recovery."
   value       = deployment.production.terraform_client_ready
 }
