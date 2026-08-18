@@ -18,9 +18,9 @@ deployment "production" {
     keycloak_version   = "26.7.1"
 
     # hashicorp/terraform#37822 prevents repeating the write-only secret across
-    # the component boundary. The permanent client created during the first
-    # apply is preserved while its tainted state record is forgotten; switch
-    # this off only after the reviewed re-import phase reports readiness.
+    # the component boundary. The permanent client is imported without its
+    # secret and receives only the target realm role. Switch this off after
+    # terraform_client_ready reports true.
     bootstrap_mode                = true
     bootstrap_admin_client_id     = "bootstrap-admin"
     bootstrap_admin_client_secret = store.varset.keycloak.keycloak_bootstrap_admin_client_secret
@@ -48,6 +48,6 @@ publish_output "auth_broker_client_id" {
 }
 
 publish_output "terraform_client_ready" {
-  description = "Permanent realm-scoped provider client readiness; false during state-only recovery."
+  description = "Permanent realm-scoped provider client readiness."
   value       = deployment.production.terraform_client_ready
 }
