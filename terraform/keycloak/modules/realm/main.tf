@@ -113,7 +113,6 @@ resource "keycloak_user" "bootstrap" {
   }
 
   lifecycle {
-    prevent_destroy = true
     ignore_changes = [
       attributes,
       email,
