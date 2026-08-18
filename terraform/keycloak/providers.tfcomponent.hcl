@@ -9,8 +9,6 @@ required_providers {
   }
 }
 
-# Read the one-time bootstrap credential through short-lived HCP Terraform
-# credentials. No service-account key is stored in HCL or in a variable set.
 provider "google" "this" {
   config {
     project = var.project_id
@@ -24,17 +22,13 @@ provider "google" "this" {
   }
 }
 
-# The bootstrap identity has been retired. Every plan now authenticates only
-# as the permanent client scoped to the product realm.
-provider "keycloak" "this" {
-  for_each = var.enabled ? toset(["production"]) : toset([])
-
+# State decoding still needs the original provider schema, but this retired
+# provider must never authenticate or call the Keycloak Admin API again.
+provider "keycloak" "retired" {
   config {
     url              = var.keycloak_admin_url
     keycloak_version = var.keycloak_version
-    realm            = var.realm_name
-    client_id        = var.terraform_client_id
-    client_secret    = var.terraform_client_secret
+    initial_login    = false
     client_timeout   = 30
   }
 }
