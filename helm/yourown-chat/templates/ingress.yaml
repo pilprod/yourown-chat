@@ -76,7 +76,7 @@ spec:
     - host: {{ required "ingress.authHost is required" .Values.ingress.authHost | quote }}
       http:
         paths:
-          - path: ^/(\.well-known/oauth-authorization-server|authorize|callback)?/?$
+          - path: /(\.well-known/oauth-authorization-server|authorize|callback)?/?$
             pathType: ImplementationSpecific
             backend:
               service:
