@@ -22,6 +22,12 @@ spec:
     - host: {{ .Values.ingress.host | quote }}
       http:
         paths:
+          - path: /.well-known/apple-app-site-association
+            pathType: Exact
+            backend:
+              service:
+                name: auth
+                port: { number: 8083 }
           - path: /transport/v1
             pathType: Exact
             backend:

@@ -27,6 +27,16 @@ variable "region" {
   default     = "europe-west3"
 }
 
+variable "apple_association_app_id" {
+  type        = string
+  description = "Public Apple application identifier allowed to use passkeys for yourown.chat."
+
+  validation {
+    condition     = length(var.apple_association_app_id) >= 3 && length(var.apple_association_app_id) <= 255 && !strcontains(var.apple_association_app_id, " ")
+    error_message = "apple_association_app_id must be a valid public Apple application identifier."
+  }
+}
+
 # --- Keyless auth: HCP Dynamic Provider Credentials -> GCP WIF ---------------
 variable "identity_token" {
   type        = string

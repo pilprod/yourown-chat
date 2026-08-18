@@ -8,6 +8,7 @@ locals {
 
   gcp_project = "yourown-chat"
   gcp_region  = "europe-west3"
+  apple_team_id = join("", ["6HSP", "UCB5ZA"])
 }
 
 identity_token "gcp" {
@@ -33,6 +34,7 @@ deployment "eu" {
     project_id  = local.gcp_project
     environment = "prod"
     region      = local.gcp_region
+    apple_association_app_id = "${local.apple_team_id}.com.yourown.chat"
 
     # --- platform-gcp published values (linked stack, last-applied) -----------
     gke_cluster_id  = upstream_input.platform.gke_cluster_id

@@ -91,6 +91,12 @@ spec:
             - { name: AUTH_API_PORT, value: {{ .Values.authorization.port | quote }} }
             - { name: IDENTITY_DATABASE_URL_FILE, value: /var/run/secrets/identity/database-url }
             - { name: IDENTITY_SESSION_TTL, value: {{ .Values.identity.sessionTTL | quote }} }
+            - { name: AUTH_PASSKEY_RP_ID, value: {{ .Values.authorization.passkeyRPID | quote }} }
+            - { name: AUTH_PASSKEY_ORIGIN, value: {{ .Values.authorization.passkeyOrigin | quote }} }
+            - { name: AUTH_PASSKEY_RP_DISPLAY_NAME, value: {{ .Values.authorization.passkeyRPDisplayName | quote }} }
+            - { name: AUTH_PASSKEY_CEREMONY_TTL, value: {{ .Values.authorization.passkeyCeremonyTTL | quote }} }
+            - { name: AUTH_PASSKEY_RECORD_KEY_FILE, value: /var/run/secrets/auth/passkey-record-key }
+            - { name: AUTH_APPLE_ASSOCIATION_APP_ID, value: {{ required "apple_association_app_id is required" .Values.apple_association_app_id | quote }} }
           ports:
             - { name: http, containerPort: {{ .Values.authorization.port }} }
           startupProbe:
@@ -109,6 +115,7 @@ spec:
             {{- toYaml .Values.authorization.resources | nindent 12 }}
           volumeMounts:
             - { name: identity-secrets, mountPath: /var/run/secrets/identity, readOnly: true }
+            - { name: auth-secrets, mountPath: /var/run/secrets/auth, readOnly: true }
             - { name: tmp, mountPath: /tmp }
       volumes:
         - name: identity-secrets
@@ -116,6 +123,11 @@ spec:
             driver: secrets-store-gke.csi.k8s.io
             readOnly: true
             volumeAttributes: { secretProviderClass: auth-gcp }
+        - name: auth-secrets
+          csi:
+            driver: secrets-store-gke.csi.k8s.io
+            readOnly: true
+            volumeAttributes: { secretProviderClass: passkey-gcp }
         - { name: tmp, emptyDir: {} }
 ---
 apiVersion: apps/v1
