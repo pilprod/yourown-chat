@@ -2,34 +2,6 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: apple-webcredentials
-  namespace: {{ .Values.namespaces.edge }}
-  annotations:
-    nginx.ingress.kubernetes.io/enable-access-log: "false"
-    nginx.ingress.kubernetes.io/limit-connections: {{ .Values.ingress.authLimitConnections | quote }}
-    nginx.ingress.kubernetes.io/limit-rps: {{ .Values.ingress.authLimitRPS | quote }}
-    nginx.ingress.kubernetes.io/limit-burst-multiplier: {{ .Values.ingress.authLimitBurstMultiplier | quote }}
-spec:
-  ingressClassName: {{ .Values.ingress.className }}
-  tls:
-    - hosts: [{{ required "ingress.authHost is required" .Values.ingress.authHost | quote }}]
-      secretName: {{ .Values.ingress.tlsSecretName }}
-  rules:
-    - host: {{ required "ingress.authHost is required" .Values.ingress.authHost | quote }}
-      http:
-        paths:
-          # Public metadata only. Authentication routes are intentionally absent
-          # and are reachable solely through the encrypted transport service.
-          - path: /.well-known/apple-app-site-association
-            pathType: Exact
-            backend:
-              service:
-                name: auth
-                port: { number: 8083 }
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
   name: transport
   namespace: {{ .Values.namespaces.edge }}
   annotations:

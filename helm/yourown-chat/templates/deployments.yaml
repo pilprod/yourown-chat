@@ -91,8 +91,6 @@ spec:
             - { name: AUTH_API_PORT, value: {{ .Values.authorization.port | quote }} }
             - { name: IDENTITY_DATABASE_URL_FILE, value: /var/run/secrets/identity/database-url }
             - { name: IDENTITY_SESSION_TTL, value: {{ .Values.identity.sessionTTL | quote }} }
-            - { name: AUTH_PUBLIC_ORIGIN, value: {{ required "authorization.publicOrigin is required" .Values.authorization.publicOrigin | quote }} }
-            - { name: AUTH_APPLE_APP_ID, value: {{ required "authorization.appleAppID is required" .Values.authorization.appleAppID | quote }} }
           ports:
             - { name: http, containerPort: {{ .Values.authorization.port }} }
           startupProbe:

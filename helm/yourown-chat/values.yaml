@@ -44,8 +44,6 @@ identity:
 authorization:
   replicaCount: 1
   port: 8083
-  publicOrigin: https://auth.yourown.chat
-  appleAppID: 6HSPUCB5ZA.com.yourown.chat
   resources:
     requests: { cpu: 5m, memory: 16Mi }
     limits: { cpu: 150m, memory: 192Mi }
@@ -95,11 +93,7 @@ workspaceBootstrap:
 ingress:
   className: nginx
   host: yourown.chat
-  authHost: auth.yourown.chat
   tlsSecretName: yourown-chat-server-origin-tls
-  authLimitConnections: 2
-  authLimitRPS: 1
-  authLimitBurstMultiplier: 2
   transportLimitConnections: 8
   transportLimitRPS: 10
   transportLimitBurstMultiplier: 2
