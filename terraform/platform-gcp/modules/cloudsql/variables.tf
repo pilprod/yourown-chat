@@ -213,3 +213,9 @@ variable "additional_database_users" {
     error_message = "An additional user with connection_secret_id must own exactly one database."
   }
 }
+
+variable "retired_database_users" {
+  type        = set(string)
+  description = "Database roles retained temporarily while their logical databases are removed. Remove an entry in a later apply to drop the role after its databases are gone."
+  default     = []
+}
