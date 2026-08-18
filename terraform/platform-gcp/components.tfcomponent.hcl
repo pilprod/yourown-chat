@@ -691,11 +691,6 @@ component "cloudsql" {
       } : {},
     )
 
-    # Final Keycloak retirement is intentionally two-stage: keep the role for
-    # this apply while Cloud SQL deletes its owned database, then remove the
-    # role from this set in the following configuration.
-    retired_database_users = ["keycloak"]
-
     user_labels = local.common_labels
   }
 
