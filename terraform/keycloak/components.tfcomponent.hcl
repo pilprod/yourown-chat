@@ -5,6 +5,11 @@ removed {
   from   = component.realm["production"]
   source = "./modules/realm"
 
+  providers = {
+    google   = provider.google.this
+    keycloak = provider.keycloak.retired
+  }
+
   lifecycle {
     destroy = false
   }
