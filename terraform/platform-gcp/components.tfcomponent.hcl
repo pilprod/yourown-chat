@@ -16,12 +16,12 @@ locals {
     mcp                  = { namespace = "mcp-google-cloud", ksa = "mcp-servers" }
     mcp-terraform-stacks = { namespace = "mcp-terraform-stacks", ksa = "mcp-terraform-stacks" }
     mcp-tunnel           = { namespace = "mcp-tunnel", ksa = "mcp-tunnel" }
-    backend-control-api   = { namespace = "control", ksa = "control" }
-    auth-api              = { namespace = "edge", ksa = "auth" }
-    transport-api         = { namespace = "edge", ksa = "transport" }
-    identity-api          = { namespace = "identity", ksa = "api" }
-    identity-admin        = { namespace = "identity", ksa = "admin" }
-    identity-migrate      = { namespace = "identity", ksa = "migrate" }
+    backend-control-api  = { namespace = "control", ksa = "control" }
+    auth-api             = { namespace = "edge", ksa = "auth" }
+    transport-api        = { namespace = "edge", ksa = "transport" }
+    identity-api         = { namespace = "identity", ksa = "api" }
+    identity-admin       = { namespace = "identity", ksa = "admin" }
+    identity-migrate     = { namespace = "identity", ksa = "migrate" }
     agents-workflow      = { namespace = "yourown-agents", ksa = "agent-workflow-worker" }
     agents-activity      = { namespace = "yourown-agents", ksa = "agent-activity-worker" }
   }
@@ -308,7 +308,7 @@ component "workload_identity_agents" {
   source = "./modules/workload-identity"
 
   inputs = {
-    project_id   = component.project_services.project_id
+    project_id = component.project_services.project_id
     # Preserve the existing GSA resource name while narrowing its only KSA
     # binding to the side-effecting activity worker.
     account_id   = "agent-platform"
@@ -325,16 +325,18 @@ component "workload_identity_backend_control_api" {
   source = "./modules/workload-identity"
 
   inputs = {
-    project_id   = component.project_services.project_id
-    account_id   = "backend-control-api"
-    display_name = "YourOwn.Chat backend control API identity"
-    namespace    = local.ns["backend-control-api"].namespace
-    ksa_name     = local.ns["backend-control-api"].ksa
+    project_id                  = component.project_services.project_id
+    account_id                  = "backend-control-api"
+    display_name                = "YourOwn.Chat backend control API identity"
+    namespace                   = local.ns["backend-control-api"].namespace
+    ksa_name                    = local.ns["backend-control-api"].ksa
     primary_ksa_binding_enabled = false
-    additional_ksa_bindings = [{
-      namespace = "control"
-      ksa_name  = "control"
-    }]
+    # Keep the legacy binding until workloads are verified in the short
+    # namespace. Removing it is the second phase of the namespace migration.
+    additional_ksa_bindings = [
+      { namespace = "server-control", ksa_name = "control" },
+      { namespace = "control", ksa_name = "control" },
+    ]
   }
 
   providers  = { google = provider.google.this }
@@ -345,16 +347,16 @@ component "workload_identity_identity_api" {
   source = "./modules/workload-identity"
 
   inputs = {
-    project_id   = component.project_services.project_id
-    account_id   = "yourown-chat-identity"
-    display_name = "YourOwn.Chat identity API workload identity"
-    namespace    = local.ns["identity-api"].namespace
-    ksa_name     = local.ns["identity-api"].ksa
+    project_id                  = component.project_services.project_id
+    account_id                  = "yourown-chat-identity"
+    display_name                = "YourOwn.Chat identity API workload identity"
+    namespace                   = local.ns["identity-api"].namespace
+    ksa_name                    = local.ns["identity-api"].ksa
     primary_ksa_binding_enabled = false
-    additional_ksa_bindings = [{
-      namespace = "identity"
-      ksa_name  = "api"
-    }]
+    additional_ksa_bindings = [
+      { namespace = "server-identity", ksa_name = "api" },
+      { namespace = "identity", ksa_name = "api" },
+    ]
   }
 
   providers  = { google = provider.google.this }
@@ -365,16 +367,16 @@ component "workload_identity_auth_api" {
   source = "./modules/workload-identity"
 
   inputs = {
-    project_id   = component.project_services.project_id
-    account_id   = "yourown-chat-auth"
-    display_name = "YourOwn.Chat public authorization API workload identity"
-    namespace    = local.ns["auth-api"].namespace
-    ksa_name     = local.ns["auth-api"].ksa
+    project_id                  = component.project_services.project_id
+    account_id                  = "yourown-chat-auth"
+    display_name                = "YourOwn.Chat public authorization API workload identity"
+    namespace                   = local.ns["auth-api"].namespace
+    ksa_name                    = local.ns["auth-api"].ksa
     primary_ksa_binding_enabled = false
-    additional_ksa_bindings = [{
-      namespace = "edge"
-      ksa_name  = "auth"
-    }]
+    additional_ksa_bindings = [
+      { namespace = "server-edge", ksa_name = "auth" },
+      { namespace = "edge", ksa_name = "auth" },
+    ]
   }
 
   providers  = { google = provider.google.this }
@@ -385,16 +387,16 @@ component "workload_identity_transport_api" {
   source = "./modules/workload-identity"
 
   inputs = {
-    project_id   = component.project_services.project_id
-    account_id   = "yourown-chat-transport"
-    display_name = "YourOwn.Chat encrypted transport workload identity"
-    namespace    = local.ns["transport-api"].namespace
-    ksa_name     = local.ns["transport-api"].ksa
+    project_id                  = component.project_services.project_id
+    account_id                  = "yourown-chat-transport"
+    display_name                = "YourOwn.Chat encrypted transport workload identity"
+    namespace                   = local.ns["transport-api"].namespace
+    ksa_name                    = local.ns["transport-api"].ksa
     primary_ksa_binding_enabled = false
-    additional_ksa_bindings = [{
-      namespace = "edge"
-      ksa_name  = "transport"
-    }]
+    additional_ksa_bindings = [
+      { namespace = "server-edge", ksa_name = "transport" },
+      { namespace = "edge", ksa_name = "transport" },
+    ]
   }
 
   providers  = { google = provider.google.this }
@@ -405,16 +407,16 @@ component "workload_identity_identity_admin" {
   source = "./modules/workload-identity"
 
   inputs = {
-    project_id   = component.project_services.project_id
-    account_id   = "yourown-chat-identity-admin"
-    display_name = "YourOwn.Chat internal identity administration workload"
-    namespace    = local.ns["identity-admin"].namespace
-    ksa_name     = local.ns["identity-admin"].ksa
+    project_id                  = component.project_services.project_id
+    account_id                  = "yourown-chat-identity-admin"
+    display_name                = "YourOwn.Chat internal identity administration workload"
+    namespace                   = local.ns["identity-admin"].namespace
+    ksa_name                    = local.ns["identity-admin"].ksa
     primary_ksa_binding_enabled = false
-    additional_ksa_bindings = [{
-      namespace = "identity"
-      ksa_name  = "admin"
-    }]
+    additional_ksa_bindings = [
+      { namespace = "server-identity", ksa_name = "admin" },
+      { namespace = "identity", ksa_name = "admin" },
+    ]
   }
 
   providers  = { google = provider.google.this }
@@ -425,16 +427,16 @@ component "workload_identity_identity_migrate" {
   source = "./modules/workload-identity"
 
   inputs = {
-    project_id   = component.project_services.project_id
-    account_id   = "yourown-chat-migrate"
-    display_name = "YourOwn.Chat identity database migration workload identity"
-    namespace    = local.ns["identity-migrate"].namespace
-    ksa_name     = local.ns["identity-migrate"].ksa
+    project_id                  = component.project_services.project_id
+    account_id                  = "yourown-chat-migrate"
+    display_name                = "YourOwn.Chat identity database migration workload identity"
+    namespace                   = local.ns["identity-migrate"].namespace
+    ksa_name                    = local.ns["identity-migrate"].ksa
     primary_ksa_binding_enabled = false
-    additional_ksa_bindings = [{
-      namespace = "identity"
-      ksa_name  = "migrate"
-    }]
+    additional_ksa_bindings = [
+      { namespace = "server-identity", ksa_name = "migrate" },
+      { namespace = "identity", ksa_name = "migrate" },
+    ]
   }
 
   providers  = { google = provider.google.this }
@@ -575,9 +577,9 @@ component "gke" {
     # failures are observable without granting interactive cluster access.
     # Cloud Logging exclusions can narrow this after the verification flow is
     # stable; the current pilot has only a small bounded workload set.
-    logging_components         = ["SYSTEM_COMPONENTS", "WORKLOADS"]
-    deletion_protection        = var.gke_deletion_protection
-    resource_labels            = local.common_labels
+    logging_components  = ["SYSTEM_COMPONENTS", "WORKLOADS"]
+    deletion_protection = var.gke_deletion_protection
+    resource_labels     = local.common_labels
 
     # The same shared key protects etcd Secrets and opted-in node boot disks.
     # Referencing kms orders both the key and service-agent grants first.
@@ -639,10 +641,10 @@ component "cloudsql" {
     additional_database_users = merge(
       {
         yourown_chat_identity = {
-          database_names              = ["yourown_chat_identity"]
-          password_secret_id          = "yourown-chat-identity-db-password"
-          password_secret_accessors   = []
-          connection_secret_id        = "yourown-chat-identity-database-url"
+          database_names            = ["yourown_chat_identity"]
+          password_secret_id        = "yourown-chat-identity-db-password"
+          password_secret_accessors = []
+          connection_secret_id      = "yourown-chat-identity-database-url"
           connection_secret_accessors = [
             component.workload_identity_identity_migrate.iam_member,
           ]
