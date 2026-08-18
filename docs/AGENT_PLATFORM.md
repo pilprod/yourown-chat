@@ -51,9 +51,9 @@ An incompatible change is expanded and contracted:
 
 ## Identity and network boundaries
 
-The application plane is split by trust zone: `server-edge` contains the
-short-named `transport` and `auth` workloads; `server-identity` contains `api`,
-`admin` and `migrate`; `server-control` contains `control`. Every namespace is
+The application plane is split by trust zone: `edge` contains the short-named
+`transport` and `auth` workloads; `identity` contains `api`, `admin` and
+`migrate`; `control` contains `control`. Every namespace is
 default-deny, and every cross-namespace edge
 selects both the exact namespace and workload label.
 

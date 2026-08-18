@@ -431,33 +431,33 @@ component "cluster_secrets" {
         yourown-agents = { labels = { tier = "pilot", "part-of" = "yourown-chat", component = "agents" } }
       } : {},
       var.yourown_chat_server_enabled ? {
-        server-edge = {
+        edge = {
           labels = {
             tier                                          = "pilot"
             "part-of"                                     = "yourown-chat"
-            component                                     = "server-edge"
+            component                                     = "edge"
             "pod-security.kubernetes.io/enforce"          = "restricted"
             "pod-security.kubernetes.io/enforce-version"  = "latest"
             "pod-security.kubernetes.io/audit"            = "restricted"
             "pod-security.kubernetes.io/warn"             = "restricted"
           }
         }
-        server-identity = {
+        identity = {
           labels = {
             tier                                          = "pilot"
             "part-of"                                     = "yourown-chat"
-            component                                     = "server-identity"
+            component                                     = "identity"
             "pod-security.kubernetes.io/enforce"          = "restricted"
             "pod-security.kubernetes.io/enforce-version"  = "latest"
             "pod-security.kubernetes.io/audit"            = "restricted"
             "pod-security.kubernetes.io/warn"             = "restricted"
           }
         }
-        server-control = {
+        control = {
           labels = {
             tier                                          = "pilot"
             "part-of"                                     = "yourown-chat"
-            component                                     = "server-control"
+            component                                     = "control"
             "pod-security.kubernetes.io/enforce"          = "restricted"
             "pod-security.kubernetes.io/enforce-version"  = "latest"
             "pod-security.kubernetes.io/audit"            = "restricted"
@@ -538,7 +538,7 @@ component "cluster_secrets" {
       var.manage_ingress_origin_tls && var.yourown_chat_server_enabled ? {
         server-edge-origin-tls = {
           name      = "yourown-chat-server-origin-tls"
-          namespace = "server-edge"
+          namespace = "edge"
           type      = "kubernetes.io/tls"
           labels    = { app = "server" }
           data = {
