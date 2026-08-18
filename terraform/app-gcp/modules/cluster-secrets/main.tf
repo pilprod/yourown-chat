@@ -47,6 +47,19 @@ locals {
   secret_keys = try(nonsensitive(toset(keys(var.secrets))), toset(keys(var.secrets)))
 }
 
+# The namespace cutover keeps the two legacy objects alive until the new edge
+# workloads verify. Only their logical map keys changed, so preserve their
+# state addresses instead of deleting and recreating live TLS material.
+moved {
+  from = kubernetes_secret.this["yourown-chat-server-origin-tls"]
+  to   = kubernetes_secret.this["legacy-yourown-chat-server-origin-tls"]
+}
+
+moved {
+  from = kubernetes_secret.this["keycloak-internal-ca"]
+  to   = kubernetes_secret.this["legacy-keycloak-internal-ca"]
+}
+
 resource "kubernetes_secret" "this" {
   for_each = local.secret_keys
 
