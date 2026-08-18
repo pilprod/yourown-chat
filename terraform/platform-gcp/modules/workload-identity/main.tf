@@ -10,6 +10,8 @@ resource "google_service_account" "this" {
 
 # Let the specific KSA impersonate this GSA (Workload Identity).
 resource "google_service_account_iam_member" "wi_user" {
+  count = var.primary_ksa_binding_enabled ? 1 : 0
+
   service_account_id = google_service_account.this.name
   role               = "roles/iam.workloadIdentityUser"
   member             = local.wi_member

@@ -34,6 +34,12 @@ variable "ksa_name" {
   description = "Kubernetes service account name to bind via Workload Identity."
 }
 
+variable "primary_ksa_binding_enabled" {
+  type        = bool
+  description = "Create the primary namespace/ksa_name Workload Identity binding. Disable only during a migration after an additional binding is already live."
+  default     = true
+}
+
 variable "additional_ksa_bindings" {
   type = set(object({
     namespace = string

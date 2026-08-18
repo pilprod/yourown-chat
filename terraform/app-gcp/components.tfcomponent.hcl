@@ -164,7 +164,6 @@ component "clouddeploy_server" {
       name             = "pilot"
       profiles         = ["server-pilot"]
       require_approval = true
-      predeploy_actions = ["cleanup-legacy-server"]
       verify           = true
     }]
 
@@ -406,7 +405,7 @@ component "prod_secret_values" {
   }
 }
 
-# Namespaces + legacy application Secrets. MCP namespaces remain owned here,
+# Namespaces + application Secrets. MCP namespaces remain owned here,
 # but MCP credentials are mounted directly from Secret Manager by their pods.
 component "cluster_secrets" {
   source = "./modules/cluster-secrets"
@@ -431,17 +430,6 @@ component "cluster_secrets" {
         yourown-agents = { labels = { tier = "pilot", "part-of" = "yourown-chat", component = "agents" } }
       } : {},
       var.yourown_chat_server_enabled ? {
-        yourown-chat-server = {
-          labels = {
-            tier                                          = "migration"
-            "part-of"                                     = "yourown-chat"
-            component                                     = "server-legacy"
-            "pod-security.kubernetes.io/enforce"          = "restricted"
-            "pod-security.kubernetes.io/enforce-version"  = "latest"
-            "pod-security.kubernetes.io/audit"            = "restricted"
-            "pod-security.kubernetes.io/warn"             = "restricted"
-          }
-        }
         server-edge = {
           labels = {
             tier                                          = "pilot"
@@ -547,25 +535,6 @@ component "cluster_secrets" {
         }
       } : {},
       var.manage_ingress_origin_tls && var.yourown_chat_server_enabled ? {
-        legacy-yourown-chat-server-origin-tls = {
-          name      = "yourown-chat-server-origin-tls"
-          namespace = "yourown-chat-server"
-          type      = "kubernetes.io/tls"
-          labels    = { app = "yourown-chat-server" }
-          data = {
-            "tls.crt" = component.prod_secret_values.values["mattermost_origin_tls_cert"]
-            "tls.key" = component.prod_secret_values.values["mattermost_origin_tls_key"]
-          }
-        }
-        legacy-keycloak-internal-ca = {
-          name      = "keycloak-internal-ca"
-          namespace = "yourown-chat-server"
-          type      = "Opaque"
-          labels    = { app = "yourown-chat-auth-api" }
-          data = {
-            "tls.crt" = component.prod_secret_values.values["mattermost_origin_tls_cert"]
-          }
-        }
         server-edge-origin-tls = {
           name      = "yourown-chat-server-origin-tls"
           namespace = "server-edge"
@@ -775,7 +744,6 @@ component "workload_scheduling" {
     cleanup_service_account_emails = {
       mattermost = component.clouddeploy.cleanup_service_account_email
       mcp        = component.clouddeploy_mcp.cleanup_service_account_email
-      server     = component.clouddeploy_server.cleanup_service_account_email
     }
   }
 
