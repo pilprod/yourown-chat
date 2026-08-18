@@ -83,9 +83,11 @@ variable "broker_redirect_uris" {
   ]
 
   validation {
-    condition = length(var.broker_redirect_uris) == 2 &&
+    condition = (
+      length(var.broker_redirect_uris) == 2 &&
       contains(var.broker_redirect_uris, "https://auth.yourown.chat/complete") &&
       contains(var.broker_redirect_uris, "https://auth.yourown.chat/callback")
+    )
     error_message = "The production broker accepts only /complete and the temporary /callback compatibility path."
   }
 }
