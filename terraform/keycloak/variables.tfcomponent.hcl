@@ -1,3 +1,50 @@
+variable "identity_token" {
+  type        = string
+  ephemeral   = true
+  description = "Short-lived HCP Terraform OIDC token used for keyless Google Cloud access."
+}
+
+variable "audience" {
+  type        = string
+  description = "Full Google Cloud Workload Identity Federation provider resource name."
+}
+
+variable "service_account_email" {
+  type        = string
+  description = "Least-privilege Google Cloud apply service account impersonated through WIF."
+}
+
+variable "project_id" {
+  type        = string
+  description = "Google Cloud project containing the bootstrap password secret."
+}
+
+variable "region" {
+  type        = string
+  description = "Primary Google Cloud region."
+}
+
+variable "bootstrap_user_username" {
+  type        = string
+  description = "The only human user created by Terraform, for the first platform sign-in."
+  default     = "pilprod"
+
+  validation {
+    condition     = var.bootstrap_user_username == "pilprod"
+    error_message = "Only the reviewed first user pilprod may be bootstrapped through Terraform."
+  }
+}
+
+variable "bootstrap_user_password_secret_id" {
+  type        = string
+  description = "Secret Manager secret ID containing the one-time bootstrap password."
+
+  validation {
+    condition     = var.bootstrap_user_password_secret_id == "keycloak-pilprod-initial-password"
+    error_message = "The bootstrap password must come from the dedicated pilprod secret."
+  }
+}
+
 variable "keycloak_admin_url" {
   type        = string
   description = "HTTPS Keycloak endpoint used by the Terraform provider. The public Admin Console is not routed."

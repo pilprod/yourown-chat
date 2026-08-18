@@ -1,3 +1,6 @@
+variable "project_id" { type = string }
+variable "bootstrap_user_username" { type = string }
+variable "bootstrap_user_password_secret_id" { type = string }
 variable "realm_name" { type = string }
 variable "public_host" { type = string }
 variable "broker_redirect_uris" { type = set(string) }

@@ -17,7 +17,7 @@ own the platform with separate state and blast radius:
 | Stack | Directory | What it owns | Changes |
 |---|---|---|---|
 | **platform-gcp** | `terraform/platform-gcp` | The stateful foundation: APIs, network + reserved ingress IP, CMEK key, GKE cluster, Cloud SQL, object storage, container registry, active billing dataset, Workload Identity SAs | Rarely |
-| **keycloak** | `terraform/keycloak` | Realm, clients, passkeys and Keycloak policy through the sole `keycloak/keycloak` provider; Terraform never manages users | Rarely |
+| **keycloak** | `terraform/keycloak` | Realm, clients, passkeys and Keycloak policy; the sole first user `pilprod` is a reviewed bootstrap exception, while all later users are runtime-managed | Rarely |
 | **cloudflare** | `terraform/cloudflare` | The public edge for `yourown.chat`: DNS, TLS/security settings, DNSSEC, WAF, Origin CA cert + the origin-TLS secrets it fills | Sometimes |
 | **app-gcp** | `terraform/app-gcp` | App secrets; independent Mattermost, MCP and agent-pilot delivery pipelines; persistent dev PostgreSQL; image CI; tag routing; cluster bootstrap | Often |
 | **agent-registry-gcp** | `terraform/agent-registry-gcp` | Google Cloud Agent Registry catalog entries for external APIs and vendor-hosted MCP servers; GKE and Google MCPs register automatically | Rarely |
@@ -871,7 +871,7 @@ terraform/
   cloudflare/            # stack 2: edge (DNS/TLS/WAF/Origin CA) + origin-TLS secrets
   app-gcp/               # stack 3: delivery (secrets, Cloud Deploy, image CI, release cutting,
                          #   cluster bootstrap: operator + ingress-nginx Helm releases)
-  keycloak/              # stack 4: Keycloak realm, clients, passkeys and policy
+  keycloak/              # stack 4: Keycloak realm, clients, passkeys, policy and first-user bootstrap
   agent-registry-gcp/    # stack 5: GCP endpoint/MCP governance catalog (Google provider 7.x)
                          # each stack: *.tfcomponent.hcl + *.tfdeploy.hcl + modules/ + its own lock file
 helm/                    # Kubernetes workloads, delivered by Cloud Deploy
