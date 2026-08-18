@@ -16,12 +16,12 @@ locals {
     mcp                  = { namespace = "mcp-google-cloud", ksa = "mcp-servers" }
     mcp-terraform-stacks = { namespace = "mcp-terraform-stacks", ksa = "mcp-terraform-stacks" }
     mcp-tunnel           = { namespace = "mcp-tunnel", ksa = "mcp-tunnel" }
-    backend-control-api   = { namespace = "yourown-chat-server", ksa = "yourown-chat-control-api" }
-    auth-api              = { namespace = "yourown-chat-server", ksa = "yourown-chat-auth-api" }
-    transport-api         = { namespace = "yourown-chat-server", ksa = "yourown-chat-transport-api" }
-    identity-api          = { namespace = "yourown-chat-server", ksa = "yourown-chat-identity-api" }
-    identity-admin        = { namespace = "yourown-chat-server", ksa = "yourown-chat-identity-admin" }
-    identity-migrate      = { namespace = "yourown-chat-server", ksa = "yourown-chat-identity-migrate" }
+    backend-control-api   = { namespace = "server-control", ksa = "control" }
+    auth-api              = { namespace = "server-edge", ksa = "auth" }
+    transport-api         = { namespace = "server-edge", ksa = "transport" }
+    identity-api          = { namespace = "server-identity", ksa = "api" }
+    identity-admin        = { namespace = "server-identity", ksa = "admin" }
+    identity-migrate      = { namespace = "server-identity", ksa = "migrate" }
     agents-workflow      = { namespace = "yourown-agents", ksa = "agent-workflow-worker" }
     agents-activity      = { namespace = "yourown-agents", ksa = "agent-activity-worker" }
   }
@@ -330,6 +330,7 @@ component "workload_identity_backend_control_api" {
     display_name = "YourOwn.Chat backend control API identity"
     namespace    = local.ns["backend-control-api"].namespace
     ksa_name     = local.ns["backend-control-api"].ksa
+    primary_ksa_binding_enabled = false
     additional_ksa_bindings = [{
       namespace = "server-control"
       ksa_name  = "control"
@@ -349,6 +350,7 @@ component "workload_identity_identity_api" {
     display_name = "YourOwn.Chat identity API workload identity"
     namespace    = local.ns["identity-api"].namespace
     ksa_name     = local.ns["identity-api"].ksa
+    primary_ksa_binding_enabled = false
     additional_ksa_bindings = [{
       namespace = "server-identity"
       ksa_name  = "api"
@@ -368,6 +370,7 @@ component "workload_identity_auth_api" {
     display_name = "YourOwn.Chat public authorization API workload identity"
     namespace    = local.ns["auth-api"].namespace
     ksa_name     = local.ns["auth-api"].ksa
+    primary_ksa_binding_enabled = false
     additional_ksa_bindings = [{
       namespace = "server-edge"
       ksa_name  = "auth"
@@ -387,6 +390,7 @@ component "workload_identity_transport_api" {
     display_name = "YourOwn.Chat encrypted transport workload identity"
     namespace    = local.ns["transport-api"].namespace
     ksa_name     = local.ns["transport-api"].ksa
+    primary_ksa_binding_enabled = false
     additional_ksa_bindings = [{
       namespace = "server-edge"
       ksa_name  = "transport"
@@ -406,6 +410,7 @@ component "workload_identity_identity_admin" {
     display_name = "YourOwn.Chat internal identity administration workload"
     namespace    = local.ns["identity-admin"].namespace
     ksa_name     = local.ns["identity-admin"].ksa
+    primary_ksa_binding_enabled = false
     additional_ksa_bindings = [{
       namespace = "server-identity"
       ksa_name  = "admin"
@@ -425,6 +430,7 @@ component "workload_identity_identity_migrate" {
     display_name = "YourOwn.Chat identity database migration workload identity"
     namespace    = local.ns["identity-migrate"].namespace
     ksa_name     = local.ns["identity-migrate"].ksa
+    primary_ksa_binding_enabled = false
     additional_ksa_bindings = [{
       namespace = "server-identity"
       ksa_name  = "migrate"
