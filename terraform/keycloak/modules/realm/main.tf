@@ -83,6 +83,31 @@ resource "keycloak_required_action" "passkey" {
   }
 }
 
+# This is the sole human-user bootstrap exception. Secret Manager is the
+# source of the random credential, Keycloak accepts it only for creation, and
+# temporary=true forces replacement on the first successful sign-in. The
+# default passkey required action above then enrolls the user's passkey.
+data "google_secret_manager_secret_version" "bootstrap_user_password" {
+  project = var.project_id
+  secret  = var.bootstrap_user_password_secret_id
+  version = "latest"
+}
+
+resource "keycloak_user" "bootstrap" {
+  realm_id = keycloak_realm.this.id
+  username = var.bootstrap_user_username
+  enabled  = true
+
+  initial_password {
+    value     = data.google_secret_manager_secret_version.bootstrap_user_password.secret_data
+    temporary = true
+  }
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
 resource "keycloak_openid_client" "auth_broker" {
   realm_id  = keycloak_realm.this.id
   client_id = "yourown-chat-auth-broker"

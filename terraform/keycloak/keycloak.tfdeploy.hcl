@@ -1,6 +1,23 @@
-# KEYCLOAK deployment `production`: realm, clients and passkey policy only.
+# KEYCLOAK deployment `production`: realm, clients, passkey policy and the
+# single first-user bootstrap exception.
 # The runtime, database, namespace and network policy are owned by platform-gcp.
-# Users are created at runtime and are never Terraform resources.
+# All users after pilprod are created through the application runtime.
+
+locals {
+  gcp_wif_audience = "//iam.googleapis.com/projects/1086706391144/locations/global/workloadIdentityPools/hcp-terraform/providers/hcp-terraform"
+  gcp_apply_sa     = "terraform-apply@yourown-chat.iam.gserviceaccount.com"
+  gcp_project      = "yourown-chat"
+  gcp_region       = "europe-west3"
+}
+
+identity_token "gcp" {
+  audience = ["https://iam.googleapis.com/projects/1086706391144/locations/global/workloadIdentityPools/hcp-terraform/providers/hcp-terraform"]
+}
+
+upstream_input "platform" {
+  type   = "stack"
+  source = "app.terraform.io/papou-work/yourown-chat/platform-gcp"
+}
 
 store "varset" "keycloak" {
   id       = "varset-ypGwPoQ7APKjwVMR"
@@ -9,6 +26,12 @@ store "varset" "keycloak" {
 
 deployment "production" {
   inputs = {
+    identity_token        = identity_token.gcp.jwt
+    audience              = local.gcp_wif_audience
+    service_account_email = local.gcp_apply_sa
+    project_id            = local.gcp_project
+    region                = local.gcp_region
+
     # Phase 1 keeps provider evaluation inert while platform-gcp creates the
     # runtime, DNS and machine-only Admin REST route. A reviewed follow-up
     # flips only this gate to true after those dependencies are applied.
@@ -37,6 +60,9 @@ deployment "production" {
     ]
     smtp_host         = "smtp-relay.gmail.com"
     smtp_from         = "noreply@papou.email"
+
+    bootstrap_user_username           = "pilprod"
+    bootstrap_user_password_secret_id = upstream_input.platform.keycloak_bootstrap_user_password_secret_id
   }
 }
 

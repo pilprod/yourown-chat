@@ -19,7 +19,7 @@ Self-hosted чат-платформа Mattermost в Google Cloud за Cloudflare
 | Стек | Директория | Владеет | Меняется |
 |---|---|---|---|
 | **platform-gcp** | `terraform/platform-gcp` | Stateful-фундамент: API, сеть + статический ingress-IP, CMEK-ключ, GKE-кластер, Cloud SQL, Keycloak, хранилище, реестр образов, Workload Identity SA | Редко |
-| **keycloak** | `terraform/keycloak` | Область, клиенты, passkey и политики Keycloak через единственный провайдер `keycloak/keycloak`; без пользователей в Terraform | Редко |
+| **keycloak** | `terraform/keycloak` | Область, клиенты, ключи доступа и политики Keycloak; только первый пользователь `pilprod` создаётся как проверенное исключение, остальные — во время работы | Редко |
 | **cloudflare** | `terraform/cloudflare` | Публичный edge `yourown.chat`: DNS, TLS/security-настройки, DNSSEC, WAF, Origin CA cert + origin-TLS секреты | Иногда |
 | **app-gcp** | `terraform/app-gcp` | Секреты, отдельные пайплайны Mattermost, MCP и пилота агентов, постоянный dev PostgreSQL, CI образа, роутинг тегов и бутстрап кластера | Часто |
 | **agent-registry-gcp** | `terraform/agent-registry-gcp` | Каталог Google Cloud Agent Registry для внешних API и vendor-hosted MCP; GKE и Google MCP регистрируются автоматически | Редко |

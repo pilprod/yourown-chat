@@ -3,6 +3,9 @@ component "realm" {
   source = "./modules/realm"
 
   inputs = {
+    project_id                        = var.project_id
+    bootstrap_user_username           = var.bootstrap_user_username
+    bootstrap_user_password_secret_id = var.bootstrap_user_password_secret_id
     realm_name                      = var.realm_name
     public_host                    = var.public_host
     broker_redirect_uris           = var.broker_redirect_uris
@@ -14,6 +17,7 @@ component "realm" {
   }
 
   providers = {
+    google   = provider.google.this
     keycloak = provider.keycloak.this[each.key]
   }
 }
