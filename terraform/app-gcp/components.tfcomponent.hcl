@@ -151,10 +151,10 @@ component "clouddeploy_server" {
   source = "./modules/clouddeploy"
 
   inputs = {
-    project_id              = var.project_id
-    region                  = var.region
-    gke_cluster_id          = var.gke_cluster_id
-    pipeline_name           = "yourown-chat"
+    project_id     = var.project_id
+    region         = var.region
+    gke_cluster_id = var.gke_cluster_id
+    pipeline_name  = "yourown-chat"
     release_manager_members = [
       var.workload_identity_members.mcp,
       "serviceAccount:backend-build@${var.project_id}.iam.gserviceaccount.com",
@@ -168,24 +168,24 @@ component "clouddeploy_server" {
     }]
 
     deploy_parameters = {
-      backend_control_api_gsa                = lookup(var.workload_identity_emails, "backend-control-api", "")
-      auth_api_gsa                           = lookup(var.workload_identity_emails, "auth-api", "")
-      transport_api_gsa                      = lookup(var.workload_identity_emails, "transport-api", "")
-      identity_api_gsa                       = lookup(var.workload_identity_emails, "identity-api", "")
-      identity_admin_gsa                     = lookup(var.workload_identity_emails, "identity-admin", "")
-      identity_migrate_gsa                   = lookup(var.workload_identity_emails, "identity-migrate", "")
-      server_secret_project                  = var.project_id
+      backend_control_api_gsa                        = lookup(var.workload_identity_emails, "backend-control-api", "")
+      auth_api_gsa                                   = lookup(var.workload_identity_emails, "auth-api", "")
+      transport_api_gsa                              = lookup(var.workload_identity_emails, "transport-api", "")
+      identity_api_gsa                               = lookup(var.workload_identity_emails, "identity-api", "")
+      identity_admin_gsa                             = lookup(var.workload_identity_emails, "identity-admin", "")
+      identity_migrate_gsa                           = lookup(var.workload_identity_emails, "identity-migrate", "")
+      server_secret_project                          = var.project_id
       identity_runtime_database_connection_secret_id = var.yourown_chat_identity_runtime_connection_secret_id
       identity_migrate_database_connection_secret_id = var.yourown_chat_identity_connection_secret_id
       identity_bootstrap_password_secret_id          = var.identity_bootstrap_user_password_secret_id
-      transport_private_key_secret_id        = "yourown-chat-transport-private-key"
-      passkey_record_key_secret_id           = "yourown-chat-passkey-record-key"
-      apple_association_app_id               = var.apple_association_app_id
-      cloudsql_private_ip                    = var.cloudsql_private_ip
-      cluster_dns_ip                         = var.cluster_dns_ip
-      yourown_chat_control_api_enabled       = tostring(var.temporal_enabled)
-      yourown_chat_ingress_enabled           = tostring(var.manage_ingress_origin_tls)
-      yourown_chat_registration_enabled      = tostring(var.yourown_chat_registration_enabled)
+      transport_private_key_secret_id                = "yourown-chat-transport-private-key"
+      passkey_record_key_secret_id                   = "yourown-chat-passkey-record-key"
+      apple_association_app_id                       = var.apple_association_app_id
+      cloudsql_private_ip                            = var.cloudsql_private_ip
+      cluster_dns_ip                                 = var.cluster_dns_ip
+      yourown_chat_control_api_enabled               = tostring(var.temporal_enabled)
+      yourown_chat_ingress_enabled                   = tostring(var.manage_ingress_origin_tls)
+      yourown_chat_registration_enabled              = tostring(var.yourown_chat_registration_enabled)
     }
 
     labels = local.common_labels
@@ -431,37 +431,73 @@ component "cluster_secrets" {
         yourown-agents = { labels = { tier = "pilot", "part-of" = "yourown-chat", component = "agents" } }
       } : {},
       var.yourown_chat_server_enabled ? {
+        # Phase one keeps the legacy namespaces alive while the release moves
+        # workloads into the short trust-zone names. Remove these three only
+        # after the new workloads and ingress have passed verification.
+        server-edge = {
+          labels = {
+            tier                                         = "pilot"
+            "part-of"                                    = "yourown-chat"
+            component                                    = "server-edge"
+            "pod-security.kubernetes.io/enforce"         = "restricted"
+            "pod-security.kubernetes.io/enforce-version" = "latest"
+            "pod-security.kubernetes.io/audit"           = "restricted"
+            "pod-security.kubernetes.io/warn"            = "restricted"
+          }
+        }
+        server-identity = {
+          labels = {
+            tier                                         = "pilot"
+            "part-of"                                    = "yourown-chat"
+            component                                    = "server-identity"
+            "pod-security.kubernetes.io/enforce"         = "restricted"
+            "pod-security.kubernetes.io/enforce-version" = "latest"
+            "pod-security.kubernetes.io/audit"           = "restricted"
+            "pod-security.kubernetes.io/warn"            = "restricted"
+          }
+        }
+        server-control = {
+          labels = {
+            tier                                         = "pilot"
+            "part-of"                                    = "yourown-chat"
+            component                                    = "server-control"
+            "pod-security.kubernetes.io/enforce"         = "restricted"
+            "pod-security.kubernetes.io/enforce-version" = "latest"
+            "pod-security.kubernetes.io/audit"           = "restricted"
+            "pod-security.kubernetes.io/warn"            = "restricted"
+          }
+        }
         edge = {
           labels = {
-            tier                                          = "pilot"
-            "part-of"                                     = "yourown-chat"
-            component                                     = "edge"
-            "pod-security.kubernetes.io/enforce"          = "restricted"
-            "pod-security.kubernetes.io/enforce-version"  = "latest"
-            "pod-security.kubernetes.io/audit"            = "restricted"
-            "pod-security.kubernetes.io/warn"             = "restricted"
+            tier                                         = "pilot"
+            "part-of"                                    = "yourown-chat"
+            component                                    = "edge"
+            "pod-security.kubernetes.io/enforce"         = "restricted"
+            "pod-security.kubernetes.io/enforce-version" = "latest"
+            "pod-security.kubernetes.io/audit"           = "restricted"
+            "pod-security.kubernetes.io/warn"            = "restricted"
           }
         }
         identity = {
           labels = {
-            tier                                          = "pilot"
-            "part-of"                                     = "yourown-chat"
-            component                                     = "identity"
-            "pod-security.kubernetes.io/enforce"          = "restricted"
-            "pod-security.kubernetes.io/enforce-version"  = "latest"
-            "pod-security.kubernetes.io/audit"            = "restricted"
-            "pod-security.kubernetes.io/warn"             = "restricted"
+            tier                                         = "pilot"
+            "part-of"                                    = "yourown-chat"
+            component                                    = "identity"
+            "pod-security.kubernetes.io/enforce"         = "restricted"
+            "pod-security.kubernetes.io/enforce-version" = "latest"
+            "pod-security.kubernetes.io/audit"           = "restricted"
+            "pod-security.kubernetes.io/warn"            = "restricted"
           }
         }
         control = {
           labels = {
-            tier                                          = "pilot"
-            "part-of"                                     = "yourown-chat"
-            component                                     = "control"
-            "pod-security.kubernetes.io/enforce"          = "restricted"
-            "pod-security.kubernetes.io/enforce-version"  = "latest"
-            "pod-security.kubernetes.io/audit"            = "restricted"
-            "pod-security.kubernetes.io/warn"             = "restricted"
+            tier                                         = "pilot"
+            "part-of"                                    = "yourown-chat"
+            component                                    = "control"
+            "pod-security.kubernetes.io/enforce"         = "restricted"
+            "pod-security.kubernetes.io/enforce-version" = "latest"
+            "pod-security.kubernetes.io/audit"           = "restricted"
+            "pod-security.kubernetes.io/warn"            = "restricted"
           }
         }
       } : {},
@@ -537,6 +573,16 @@ component "cluster_secrets" {
       } : {},
       var.manage_ingress_origin_tls && var.yourown_chat_server_enabled ? {
         server-edge-origin-tls = {
+          name      = "yourown-chat-server-origin-tls"
+          namespace = "server-edge"
+          type      = "kubernetes.io/tls"
+          labels    = { app = "server" }
+          data = {
+            "tls.crt" = component.prod_secret_values.values["mattermost_origin_tls_cert"]
+            "tls.key" = component.prod_secret_values.values["mattermost_origin_tls_key"]
+          }
+        }
+        edge-origin-tls = {
           name      = "yourown-chat-server-origin-tls"
           namespace = "edge"
           type      = "kubernetes.io/tls"
