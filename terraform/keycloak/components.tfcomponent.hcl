@@ -2,13 +2,8 @@
 # destroy attempt. Forget the component state without contacting Keycloak;
 # platform-gcp destroys the backing database and namespace separately.
 removed {
-  from   = component.realm
+  from   = component.realm["production"]
   source = "./modules/realm"
-
-  providers = {
-    google   = provider.google.this
-    keycloak = provider.keycloak.this["production"]
-  }
 
   lifecycle {
     destroy = false
