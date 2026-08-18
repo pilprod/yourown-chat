@@ -5,10 +5,9 @@ required_providers {
   }
 }
 
-# The first configuration uses the bootstrap service account created by the
-# platform runtime. The permanent realm-scoped client remains configured here,
-# but bootstrap_mode stays enabled until Terraform Stacks can safely pass its
-# ephemeral write-only secret into a component without serializing it.
+# Bootstrap authentication is a one-time recovery path. Normal plans use the
+# permanent client scoped to the product realm; both secrets remain ephemeral
+# provider inputs and never cross the component boundary.
 provider "keycloak" "this" {
   for_each = var.enabled ? toset(["production"]) : toset([])
 
