@@ -16,12 +16,12 @@ locals {
     mcp                  = { namespace = "mcp-google-cloud", ksa = "mcp-servers" }
     mcp-terraform-stacks = { namespace = "mcp-terraform-stacks", ksa = "mcp-terraform-stacks" }
     mcp-tunnel           = { namespace = "mcp-tunnel", ksa = "mcp-tunnel" }
-    backend-control-api   = { namespace = "server-control", ksa = "control" }
-    auth-api              = { namespace = "server-edge", ksa = "auth" }
-    transport-api         = { namespace = "server-edge", ksa = "transport" }
-    identity-api          = { namespace = "server-identity", ksa = "api" }
-    identity-admin        = { namespace = "server-identity", ksa = "admin" }
-    identity-migrate      = { namespace = "server-identity", ksa = "migrate" }
+    backend-control-api   = { namespace = "control", ksa = "control" }
+    auth-api              = { namespace = "edge", ksa = "auth" }
+    transport-api         = { namespace = "edge", ksa = "transport" }
+    identity-api          = { namespace = "identity", ksa = "api" }
+    identity-admin        = { namespace = "identity", ksa = "admin" }
+    identity-migrate      = { namespace = "identity", ksa = "migrate" }
     agents-workflow      = { namespace = "yourown-agents", ksa = "agent-workflow-worker" }
     agents-activity      = { namespace = "yourown-agents", ksa = "agent-activity-worker" }
   }
@@ -332,7 +332,7 @@ component "workload_identity_backend_control_api" {
     ksa_name     = local.ns["backend-control-api"].ksa
     primary_ksa_binding_enabled = false
     additional_ksa_bindings = [{
-      namespace = "server-control"
+      namespace = "control"
       ksa_name  = "control"
     }]
   }
@@ -352,7 +352,7 @@ component "workload_identity_identity_api" {
     ksa_name     = local.ns["identity-api"].ksa
     primary_ksa_binding_enabled = false
     additional_ksa_bindings = [{
-      namespace = "server-identity"
+      namespace = "identity"
       ksa_name  = "api"
     }]
   }
@@ -372,7 +372,7 @@ component "workload_identity_auth_api" {
     ksa_name     = local.ns["auth-api"].ksa
     primary_ksa_binding_enabled = false
     additional_ksa_bindings = [{
-      namespace = "server-edge"
+      namespace = "edge"
       ksa_name  = "auth"
     }]
   }
@@ -392,7 +392,7 @@ component "workload_identity_transport_api" {
     ksa_name     = local.ns["transport-api"].ksa
     primary_ksa_binding_enabled = false
     additional_ksa_bindings = [{
-      namespace = "server-edge"
+      namespace = "edge"
       ksa_name  = "transport"
     }]
   }
@@ -412,7 +412,7 @@ component "workload_identity_identity_admin" {
     ksa_name     = local.ns["identity-admin"].ksa
     primary_ksa_binding_enabled = false
     additional_ksa_bindings = [{
-      namespace = "server-identity"
+      namespace = "identity"
       ksa_name  = "admin"
     }]
   }
@@ -432,7 +432,7 @@ component "workload_identity_identity_migrate" {
     ksa_name     = local.ns["identity-migrate"].ksa
     primary_ksa_binding_enabled = false
     additional_ksa_bindings = [{
-      namespace = "server-identity"
+      namespace = "identity"
       ksa_name  = "migrate"
     }]
   }

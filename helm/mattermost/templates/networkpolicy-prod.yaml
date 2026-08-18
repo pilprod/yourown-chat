@@ -44,17 +44,17 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: server-edge
+              kubernetes.io/metadata.name: edge
           podSelector:
             matchLabels: { app: transport }
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: server-identity
+              kubernetes.io/metadata.name: identity
           podSelector:
             matchLabels: { app: api }
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: server-control
+              kubernetes.io/metadata.name: control
           podSelector:
             matchLabels: { app: control }
       ports:
@@ -63,7 +63,7 @@ spec:
     - to:
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: server-control
+              kubernetes.io/metadata.name: control
           podSelector:
             matchLabels: { app: control }
       ports:

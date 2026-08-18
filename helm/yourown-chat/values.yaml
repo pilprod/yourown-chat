@@ -25,9 +25,9 @@ cloudsql_private_ip: ""
 cluster_dns_ip: ""
 
 namespaces:
-  edge: server-edge
-  identity: server-identity
-  control: server-control
+  edge: edge
+  identity: identity
+  control: control
 
 identity:
   replicaCount: 1

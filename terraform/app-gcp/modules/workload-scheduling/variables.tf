@@ -19,7 +19,7 @@ variable "agent_enabled" {
 variable "server_namespaces" {
   type        = set(string)
   description = "Trust-zone namespaces containing the independent YourOwn.Chat server plane."
-  default     = ["server-edge", "server-identity", "server-control"]
+  default     = ["edge", "identity", "control"]
 }
 
 variable "server_enabled" {

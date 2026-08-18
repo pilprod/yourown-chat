@@ -13,7 +13,7 @@ profiles:
         releases:
           - name: yourown-chat
             chartPath: yourown-chat
-            namespace: server-edge
+            namespace: edge
             createNamespace: false
             valuesFiles: [yourown-chat/values.yaml]
     verify:
@@ -24,9 +24,9 @@ profiles:
           command: ["/bin/sh", "-ceu"]
           args:
             - |
-              curl --fail --silent --show-error --retry 30 --retry-all-errors --retry-delay 5 http://api.server-identity.svc.cluster.local:8081/readyz
-              curl --fail --silent --show-error --retry 30 --retry-all-errors --retry-delay 5 http://auth.server-edge.svc.cluster.local:8083/readyz
-              curl --fail --silent --show-error --retry 30 --retry-all-errors --retry-delay 5 http://transport.server-edge.svc.cluster.local:8084/readyz
+              curl --fail --silent --show-error --retry 30 --retry-all-errors --retry-delay 5 http://api.identity.svc.cluster.local:8081/readyz
+              curl --fail --silent --show-error --retry 30 --retry-all-errors --retry-delay 5 http://auth.edge.svc.cluster.local:8083/readyz
+              curl --fail --silent --show-error --retry 30 --retry-all-errors --retry-delay 5 http://transport.edge.svc.cluster.local:8084/readyz
         executionMode:
           kubernetesCluster:
             jobManifestPath: yourown-chat/verify/job.yaml

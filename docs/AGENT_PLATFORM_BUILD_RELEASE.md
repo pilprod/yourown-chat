@@ -84,7 +84,7 @@ rollout.
    `yourown-chat-server` and `yourown-chat-agents`.
 2. Apply `platform-gcp` with `temporal_enabled=false`, then apply the linked
    `app-gcp` plan. This creates the retained identity logical database, the
-   `server-edge`, `server-identity` and `server-control` trust-zone namespaces
+   `edge`, `identity` and `control` trust-zone namespaces
    and the independent `yourown-chat` delivery
    pipeline. Verify repository links and the `*-ci` / `*-image` triggers exist.
 3. Tag `yourown-chat-server`, approve `yourown-chat-pilot`, and verify identity
