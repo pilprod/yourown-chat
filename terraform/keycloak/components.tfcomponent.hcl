@@ -9,6 +9,7 @@ component "realm" {
     terraform_service_account_user_id = var.terraform_service_account_user_id
     terraform_client_internal_id    = var.terraform_client_internal_id
     realm_management_client_id     = var.realm_management_client_id
+    bootstrap_admin_client_secret  = var.bootstrap_admin_client_secret
     smtp_host                      = var.smtp_host
     smtp_from                      = var.smtp_from
   }

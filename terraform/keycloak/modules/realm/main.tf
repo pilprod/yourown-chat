@@ -153,3 +153,17 @@ resource "keycloak_generic_role_mapper" "terraform_realm_admin_scope" {
   client_id = var.terraform_client_internal_id
   role_id   = data.keycloak_role.realm_admin.id
 }
+
+# One-time retirement of the bootstrap client. The secret is accepted only as
+# an ephemeral provisioner environment value and is never stored in state.
+# This resource and its input are removed immediately after the successful run.
+resource "terraform_data" "retire_bootstrap_client" {
+  input = "retire-keycloak-bootstrap-client-v1"
+
+  provisioner "local-exec" {
+    command = "sh ${path.module}/scripts/retire-bootstrap-client.sh"
+    environment = {
+      KEYCLOAK_BOOTSTRAP_CLIENT_SECRET = var.bootstrap_admin_client_secret
+    }
+  }
+}

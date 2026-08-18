@@ -17,6 +17,8 @@ deployment "production" {
     keycloak_admin_url = "https://auth.yourown.chat"
     keycloak_version   = "26.7.1"
 
+    bootstrap_admin_client_secret = store.varset.keycloak.keycloak_bootstrap_admin_client_secret
+
     # hashicorp/terraform#37822 prevents repeating the write-only secret across
     # the component boundary. Importing the permanent client is also forbidden
     # because the provider read path returns its secret into state. Only the

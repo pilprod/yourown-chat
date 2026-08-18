@@ -25,6 +25,13 @@ variable "terraform_client_id" {
   default     = "terraform-provider"
 }
 
+variable "bootstrap_admin_client_secret" {
+  type        = string
+  ephemeral   = true
+  sensitive   = true
+  description = "One-time private input used only to delete the retired master-realm bootstrap client."
+}
+
 variable "terraform_service_account_user_id" {
   type        = string
   description = "Non-secret Keycloak service-account user UUID of the preserved Terraform provider client."
