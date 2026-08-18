@@ -34,6 +34,7 @@ metadata:
     nginx.ingress.kubernetes.io/use-regex: "true"
     nginx.ingress.kubernetes.io/proxy-buffer-size: "16k"
     nginx.ingress.kubernetes.io/limit-rps: {{ .Values.ingress.keycloakAdminLimitRPS | quote }}
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: {{ .Values.ingress.keycloakAdminLimitBurstMultiplier | quote }}
 spec:
   ingressClassName: {{ .Values.ingress.className }}
   tls:
