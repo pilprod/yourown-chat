@@ -7,7 +7,7 @@ identity_only="$(mktemp)"
 trap 'rm -f "${rendered}" "${identity_only}"' EXIT
 
 helm template yourown-chat "${repo_root}/helm/yourown-chat" \
-  --namespace yourown-chat-server \
+  --namespace server-edge \
   --set yourown_chat_control_api_enabled=true \
   --set yourown_chat_registration_enabled=true \
   --set yourown_chat_control_api_image=example.invalid/control-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
@@ -26,12 +26,19 @@ helm template yourown-chat "${repo_root}/helm/yourown-chat" \
   --set cluster_dns_ip=10.30.0.10 \
   --set cloudsql_private_ip=10.20.30.40 > "${rendered}"
 
-grep -Fq 'name: yourown-chat-identity-api' "${rendered}"
-grep -Fq 'name: yourown-chat-auth-api' "${rendered}"
-grep -Fq 'name: yourown-chat-transport-api' "${rendered}"
-grep -Fq 'name: yourown-chat-identity-admin' "${rendered}"
-grep -Fq 'name: yourown-chat-control-api' "${rendered}"
-grep -Fq 'name: yourown-chat-identity-migrate-' "${rendered}"
+grep -Fq 'name: api' "${rendered}"
+grep -Fq 'name: auth' "${rendered}"
+grep -Fq 'name: transport' "${rendered}"
+grep -Fq 'name: admin' "${rendered}"
+grep -Fq 'name: control' "${rendered}"
+grep -Fq 'name: migrate-' "${rendered}"
+grep -Fq 'namespace: server-edge' "${rendered}"
+grep -Fq 'namespace: server-identity' "${rendered}"
+grep -Fq 'namespace: server-control' "${rendered}"
+grep -Fq 'http://auth.server-edge.svc.cluster.local:8083' "${rendered}"
+grep -Fq 'http://api.server-identity.svc.cluster.local:8081' "${rendered}"
+grep -Fq 'http://control.server-control.svc.cluster.local:8080' "${rendered}"
+! grep -Eq 'name: yourown-chat-(transport|auth|identity|control)' "${rendered}"
 grep -Fq 'IDENTITY_DATABASE_URL_FILE' "${rendered}"
 grep -Fq 'IDENTITY_ADMIN_TOKEN_FILE' "${rendered}"
 grep -Fq 'IDENTITY_REGISTRATION_ENABLED' "${rendered}"
@@ -44,7 +51,7 @@ grep -Fq 'path: ^/(\.well-known/oauth-authorization-server|authorize|callback)?/
 grep -Fq 'path: /transport/v1' "${rendered}"
 grep -Fq 'path: /transport/v1/socket' "${rendered}"
 grep -Fq 'pathType: Exact' "${rendered}"
-! grep -Fq 'name: yourown-chat-identity-api' < <(awk 'BEGIN { RS="---" } /kind: Ingress/ { print }' "${rendered}")
+! grep -Fq 'name: api' < <(awk 'BEGIN { RS="---" } /kind: Ingress/ { print }' "${rendered}")
 ! grep -Fq 'v1/auth/oidc/sessions' "${rendered}"
 grep -Fq 'host: auth.yourown.chat' "${rendered}"
 grep -Fq 'path: /(realms|resources)(/.*)?' "${rendered}"
@@ -69,15 +76,15 @@ grep -Fq 'protocol: TCP, port: 8443' "${rendered}"
 ! grep -Fq '169.254.169.254' "${rendered}"
 [[ "$(grep -Fc 'automountServiceAccountToken: false' "${rendered}")" -ge 8 ]]
 
-identity_api_document="$(awk 'BEGIN { RS="---" } /kind: Deployment/ && /name: yourown-chat-identity-api/ { print }' "${rendered}")"
+identity_api_document="$(awk 'BEGIN { RS="---" } /kind: Deployment/ && /name: api/ { print }' "${rendered}")"
 ! grep -Fq 'IDENTITY_ADMIN_TOKEN_FILE' <<<"${identity_api_document}"
 ! grep -Fq 'IDENTITY_BOOTSTRAP_WORKSPACE_ID' <<<"${identity_api_document}"
-admin_document="$(awk 'BEGIN { RS="---" } /kind: Deployment/ && /name: yourown-chat-identity-admin/ { print }' "${rendered}")"
+admin_document="$(awk 'BEGIN { RS="---" } /kind: Deployment/ && /name: admin/ { print }' "${rendered}")"
 grep -Fq 'IDENTITY_ADMIN_TOKEN_FILE' <<<"${admin_document}"
 grep -Fq 'IDENTITY_BOOTSTRAP_WORKSPACE_ID' <<<"${admin_document}"
 
 helm template yourown-chat "${repo_root}/helm/yourown-chat" \
-  --namespace yourown-chat-server \
+  --namespace server-edge \
   --set yourown_chat_auth_api_image=example.invalid/auth-api@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee \
   --set yourown_chat_transport_api_image=example.invalid/transport-api@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff \
   --set yourown_chat_identity_api_image=example.invalid/identity-api@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
@@ -92,14 +99,14 @@ helm template yourown-chat "${repo_root}/helm/yourown-chat" \
   --set server_secret_project=test-project \
   --set cluster_dns_ip=10.30.0.10 \
   --set cloudsql_private_ip=10.20.30.40 > "${identity_only}"
-grep -Fq 'name: yourown-chat-identity-api' "${identity_only}"
-grep -Fq 'name: yourown-chat-auth-api' "${identity_only}"
-grep -Fq 'name: yourown-chat-transport-api' "${identity_only}"
-grep -Fq 'name: yourown-chat-identity-admin' "${identity_only}"
-! grep -Fq 'name: yourown-chat-control-api' "${identity_only}"
+grep -Fq 'name: api' "${identity_only}"
+grep -Fq 'name: auth' "${identity_only}"
+grep -Fq 'name: transport' "${identity_only}"
+grep -Fq 'name: admin' "${identity_only}"
+! grep -Fq 'name: control' "${identity_only}"
 
 grep -Fq 'chartPath: yourown-chat' "${repo_root}/helm/skaffold-yourown-chat.yaml"
-grep -Fq 'namespace: yourown-chat-server' "${repo_root}/helm/skaffold-yourown-chat.yaml"
+grep -Fq 'namespace: server-edge' "${repo_root}/helm/skaffold-yourown-chat.yaml"
 grep -Fq 'services      = "control-api auth-api transport-api identity-api identity-admin identity-migrate"' "${repo_root}/terraform/app-gcp/modules/deploy-release/backend-image.tf"
 grep -Fq -- '--build-arg SERVICE=$$service' "${repo_root}/terraform/app-gcp/modules/deploy-release/backend-image.tf"
 

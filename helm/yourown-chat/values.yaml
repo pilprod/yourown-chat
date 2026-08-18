@@ -24,6 +24,11 @@ transport_private_key_secret_id: "yourown-chat-transport-private-key"
 cloudsql_private_ip: ""
 cluster_dns_ip: ""
 
+namespaces:
+  edge: server-edge
+  identity: server-identity
+  control: server-control
+
 identity:
   replicaCount: 1
   port: 8081
@@ -111,16 +116,16 @@ ingress:
   # administration console is not routed by this ingress.
   keycloakAdminLimitRPS: 10
   keycloakAdminLimitBurstMultiplier: 2
-  keycloakServiceName: yourown-chat-keycloak
+  keycloakServiceName: keycloak
 
 priorityClassName: production
 serviceAccounts:
-  transportApi: yourown-chat-transport-api
-  authApi: yourown-chat-auth-api
-  identityApi: yourown-chat-identity-api
-  identityAdmin: yourown-chat-identity-admin
-  identityMigrate: yourown-chat-identity-migrate
-  controlApi: yourown-chat-control-api
+  transportApi: transport
+  authApi: auth
+  identityApi: api
+  identityAdmin: admin
+  identityMigrate: migrate
+  controlApi: control
 
 podSecurityContext:
   runAsNonRoot: true

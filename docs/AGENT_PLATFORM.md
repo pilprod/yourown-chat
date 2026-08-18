@@ -51,6 +51,12 @@ An incompatible change is expanded and contracted:
 
 ## Identity and network boundaries
 
+The application plane is split by trust zone: `server-edge` contains the
+short-named `transport` and `auth` workloads; `server-identity` contains `api`,
+`admin` and `migrate`; `server-control` contains `control`; Keycloak remains in
+`keycloak`. Every namespace is default-deny, and every cross-namespace edge
+selects both the exact namespace and workload label.
+
 - `transport-api`, `auth-api`, `identity-api`, `identity-migrate`, `control-api`, `workflow-worker` and
   `activity-worker` use separate Workload Identity service accounts and
   Kubernetes service accounts.

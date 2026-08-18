@@ -16,10 +16,10 @@ variable "agent_enabled" {
   default     = false
 }
 
-variable "server_namespace" {
-  type        = string
-  description = "Namespace containing the independent YourOwn.Chat server plane."
-  default     = "yourown-chat-server"
+variable "server_namespaces" {
+  type        = set(string)
+  description = "Trust-zone namespaces containing the independent YourOwn.Chat server plane plus the temporary legacy cutover namespace."
+  default     = ["yourown-chat-server", "server-edge", "server-identity", "server-control"]
 }
 
 variable "server_enabled" {
@@ -41,6 +41,7 @@ variable "cleanup_service_account_emails" {
   type = object({
     mattermost = string
     mcp        = string
+    server     = string
   })
   description = "Dedicated Cloud Deploy PREDEPLOY service-account emails granted narrowly scoped Kubernetes cleanup access."
 }

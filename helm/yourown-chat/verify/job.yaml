@@ -1,16 +1,16 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: yourown-chat-verify
-  namespace: yourown-chat-server
+  name: verify
+  namespace: server-edge
 spec:
   backoffLimit: 3
   ttlSecondsAfterFinished: 600
   template:
     metadata:
       labels:
-        app: yourown-chat-verify
-        app.kubernetes.io/part-of: yourown-chat-server
+        app: verify
+        app.kubernetes.io/part-of: server
     spec:
       automountServiceAccountToken: false
       restartPolicy: Never

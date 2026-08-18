@@ -163,7 +163,20 @@ resource "kubernetes_network_policy_v1" "isolation" {
     ingress {
       from {
         namespace_selector {
+          match_labels = { "kubernetes.io/metadata.name" = "server-edge" }
+        }
+        pod_selector {
+          match_labels = { app = "auth" }
+        }
+      }
+      # Retained only for the approval-gated one-time namespace cutover. The
+      # follow-up cleanup removes this legacy source after server-edge verifies.
+      from {
+        namespace_selector {
           match_labels = { "kubernetes.io/metadata.name" = "yourown-chat-server" }
+        }
+        pod_selector {
+          match_labels = { app = "yourown-chat-auth-api" }
         }
       }
       ports {

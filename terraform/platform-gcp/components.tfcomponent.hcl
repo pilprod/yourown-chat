@@ -330,6 +330,10 @@ component "workload_identity_backend_control_api" {
     display_name = "YourOwn.Chat backend control API identity"
     namespace    = local.ns["backend-control-api"].namespace
     ksa_name     = local.ns["backend-control-api"].ksa
+    additional_ksa_bindings = [{
+      namespace = "server-control"
+      ksa_name  = "control"
+    }]
   }
 
   providers  = { google = provider.google.this }
@@ -345,6 +349,10 @@ component "workload_identity_identity_api" {
     display_name = "YourOwn.Chat identity API workload identity"
     namespace    = local.ns["identity-api"].namespace
     ksa_name     = local.ns["identity-api"].ksa
+    additional_ksa_bindings = [{
+      namespace = "server-identity"
+      ksa_name  = "api"
+    }]
   }
 
   providers  = { google = provider.google.this }
@@ -360,6 +368,10 @@ component "workload_identity_auth_api" {
     display_name = "YourOwn.Chat public authorization API workload identity"
     namespace    = local.ns["auth-api"].namespace
     ksa_name     = local.ns["auth-api"].ksa
+    additional_ksa_bindings = [{
+      namespace = "server-edge"
+      ksa_name  = "auth"
+    }]
   }
 
   providers  = { google = provider.google.this }
@@ -375,6 +387,10 @@ component "workload_identity_transport_api" {
     display_name = "YourOwn.Chat encrypted transport workload identity"
     namespace    = local.ns["transport-api"].namespace
     ksa_name     = local.ns["transport-api"].ksa
+    additional_ksa_bindings = [{
+      namespace = "server-edge"
+      ksa_name  = "transport"
+    }]
   }
 
   providers  = { google = provider.google.this }
@@ -390,6 +406,10 @@ component "workload_identity_identity_admin" {
     display_name = "YourOwn.Chat internal identity administration workload"
     namespace    = local.ns["identity-admin"].namespace
     ksa_name     = local.ns["identity-admin"].ksa
+    additional_ksa_bindings = [{
+      namespace = "server-identity"
+      ksa_name  = "admin"
+    }]
   }
 
   providers  = { google = provider.google.this }
@@ -405,6 +425,10 @@ component "workload_identity_identity_migrate" {
     display_name = "YourOwn.Chat identity database migration workload identity"
     namespace    = local.ns["identity-migrate"].namespace
     ksa_name     = local.ns["identity-migrate"].ksa
+    additional_ksa_bindings = [{
+      namespace = "server-identity"
+      ksa_name  = "migrate"
+    }]
   }
 
   providers  = { google = provider.google.this }
