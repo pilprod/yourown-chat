@@ -356,6 +356,13 @@ resource "kubernetes_deployment_v1" "this" {
             name  = "KC_HTTP_MANAGEMENT_RELATIVE_PATH"
             value = "/"
           }
+          # Keep the private management listener on plain HTTP so Kubernetes
+          # probes do not inherit the public listener's TLS configuration.
+          # Port 9000 is not exposed by the Service or any ingress.
+          env {
+            name  = "KC_HTTP_MANAGEMENT_SCHEME"
+            value = "http"
+          }
           env {
             name  = "KC_PROXY_HEADERS"
             value = "xforwarded"
