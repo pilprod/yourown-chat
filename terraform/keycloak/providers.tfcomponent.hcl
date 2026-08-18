@@ -3,7 +3,12 @@ required_providers {
     source  = "keycloak/keycloak"
     version = "= 5.9.0"
   }
+  terraform = {
+    source = "terraform.io/builtin/terraform"
+  }
 }
+
+provider "terraform" "builtin" {}
 
 # The bootstrap identity has been retired. Every plan now authenticates only
 # as the permanent client scoped to the product realm.

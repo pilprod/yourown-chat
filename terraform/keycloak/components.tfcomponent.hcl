@@ -15,6 +15,7 @@ component "realm" {
   }
 
   providers = {
-    keycloak = provider.keycloak.this[each.key]
+    keycloak  = provider.keycloak.this[each.key]
+    terraform = provider.terraform.builtin
   }
 }
