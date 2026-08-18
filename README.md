@@ -10,14 +10,13 @@ managed end-to-end with **HCP Terraform Stacks** — production practices on a
 
 ## What's inside
 
-Runtime infrastructure lives entirely in the `yourown-chat` GCP project. Five
+Runtime infrastructure lives entirely in the `yourown-chat` GCP project. Four active
 Terraform Stacks
 own the platform with separate state and blast radius:
 
 | Stack | Directory | What it owns | Changes |
 |---|---|---|---|
-| **platform-gcp** | `terraform/platform-gcp` | The stateful foundation: APIs, network + reserved ingress IP, CMEK key, GKE cluster, Cloud SQL, object storage, container registry, active billing dataset, Workload Identity SAs | Rarely |
-| **keycloak** | `terraform/keycloak` | Realm, clients, passkeys and Keycloak policy; the sole first user `pilprod` is a reviewed bootstrap exception, while all later users are runtime-managed | Rarely |
+| **platform-gcp** | `terraform/platform-gcp` | The stateful foundation: APIs, network + reserved ingress IP, CMEK key, GKE cluster, Cloud SQL, native identity database, object storage, container registry, active billing dataset, Workload Identity SAs | Rarely |
 | **cloudflare** | `terraform/cloudflare` | The public edge for `yourown.chat`: DNS, TLS/security settings, DNSSEC, WAF, Origin CA cert + the origin-TLS secrets it fills | Sometimes |
 | **app-gcp** | `terraform/app-gcp` | App secrets; independent Mattermost, MCP and agent-pilot delivery pipelines; persistent dev PostgreSQL; image CI; tag routing; cluster bootstrap | Often |
 | **agent-registry-gcp** | `terraform/agent-registry-gcp` | Google Cloud Agent Registry catalog entries for external APIs and vendor-hosted MCP servers; GKE and Google MCPs register automatically | Rarely |
@@ -45,6 +44,7 @@ holds the VPC, the cluster and the database — and the Cloudflare API token
 | Capability | How |
 |---|---|
 | PostgreSQL | Cloud SQL, private IP only, Frankfurt (`europe-west3`), PITR + 7-day backups |
+| Authentication | First-party server authentication with a separate logical database and opaque application sessions; Mattermost identity is linked, not trusted as the platform authority |
 | Object storage | GCS bucket with S3-compatible HMAC creds for Mattermost ("filestore") |
 | Kubernetes | One zonal GKE Standard cluster, private nodes, one autoscaling `general` pool (`e2-standard-2`, 1–3 nodes) |
 | Container registry | One Artifact Registry repo (`docker`) with a shared hardened runtime base; paid Artifact Analysis scanning is off by default and opened through a guarded MCP action only for selected build windows |
@@ -871,8 +871,7 @@ terraform/
   cloudflare/            # stack 2: edge (DNS/TLS/WAF/Origin CA) + origin-TLS secrets
   app-gcp/               # stack 3: delivery (secrets, Cloud Deploy, image CI, release cutting,
                          #   cluster bootstrap: operator + ingress-nginx Helm releases)
-  keycloak/              # stack 4: Keycloak realm, clients, passkeys, policy and first-user bootstrap
-  agent-registry-gcp/    # stack 5: GCP endpoint/MCP governance catalog (Google provider 7.x)
+  agent-registry-gcp/    # stack 4: GCP endpoint/MCP governance catalog (Google provider 7.x)
                          # each stack: *.tfcomponent.hcl + *.tfdeploy.hcl + modules/ + its own lock file
 helm/                    # Kubernetes workloads, delivered by Cloud Deploy
   skaffold-mattermost.yaml # Mattermost-only dev/prod render and cleanup

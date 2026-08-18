@@ -374,7 +374,6 @@ and are then resolved from the committed name allowlist:
 - `cloudflare`;
 - `app-gcp`;
 - `platform-gcp`;
-- `keycloak`;
 - `agent-registry-gcp`.
 
 `agent-registry-gcp` may be absent until that HCP Stack is created or the
