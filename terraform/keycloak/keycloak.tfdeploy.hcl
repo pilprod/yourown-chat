@@ -22,10 +22,6 @@ deployment "production" {
     # because the provider read path returns its secret into state. Only the
     # non-secret object IDs are used to assign the target-realm role. The
     # provider now authenticates only as that realm-scoped client.
-    bootstrap_mode                = false
-    bootstrap_admin_client_id     = "bootstrap-admin"
-    bootstrap_admin_client_secret = store.varset.keycloak.keycloak_bootstrap_admin_client_secret
-
     terraform_client_id             = "terraform-provider"
     terraform_client_internal_id    = "5ffd1da1-be6a-4108-965d-1d1d2d9fd78c"
     terraform_service_account_user_id = "5b84a940-a964-4c1e-a549-74767f78341d"

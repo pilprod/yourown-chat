@@ -6,38 +6,6 @@ locals {
   })
 }
 
-# Preserve an operator-recoverable copy without exposing it as a Stack output.
-# The running pod receives the same value through a CMEK-encrypted Kubernetes
-# Secret; it does not need Secret Manager access or a Google service account.
-resource "google_secret_manager_secret" "bootstrap_admin" {
-  count     = var.enabled ? 1 : 0
-  project   = var.project_id
-  secret_id = "keycloak-bootstrap-admin-client-secret"
-  labels    = var.labels
-
-  replication {
-    user_managed {
-      replicas {
-        location = var.region
-        dynamic "customer_managed_encryption" {
-          for_each = var.encryption_key_name == null ? [] : [var.encryption_key_name]
-          content { kms_key_name = customer_managed_encryption.value }
-        }
-      }
-    }
-  }
-}
-
-ephemeral "google_secret_manager_secret_version" "bootstrap_admin" {
-  count   = var.enabled ? 1 : 0
-  project = var.project_id
-  secret  = google_secret_manager_secret.bootstrap_admin[0].secret_id
-  # Secret Manager may keep a destroyed version as numerically "latest".
-  # Select the explicit rotation marker so a removed newer version cannot
-  # break all subsequent platform plans.
-  version = var.bootstrap_secret_version
-}
-
 resource "kubernetes_namespace_v1" "this" {
   count = var.enabled ? 1 : 0
   metadata {
@@ -103,10 +71,9 @@ resource "kubernetes_secret_v1" "runtime" {
     labels    = local.labels
   }
   data_wo = {
-    "database-password"       = var.database_password
-    "bootstrap-client-secret" = ephemeral.google_secret_manager_secret_version.bootstrap_admin[0].secret_data
+    "database-password" = var.database_password
   }
-  data_wo_revision = tonumber(var.bootstrap_secret_version)
+  data_wo_revision = 2
   type = "Opaque"
 }
 
@@ -307,19 +274,6 @@ resource "kubernetes_deployment_v1" "this" {
               secret_key_ref {
                 name = kubernetes_secret_v1.runtime[0].metadata[0].name
                 key  = "database-password"
-              }
-            }
-          }
-          env {
-            name  = "KC_BOOTSTRAP_ADMIN_CLIENT_ID"
-            value = "bootstrap-admin"
-          }
-          env {
-            name = "KC_BOOTSTRAP_ADMIN_CLIENT_SECRET"
-            value_from {
-              secret_key_ref {
-                name = kubernetes_secret_v1.runtime[0].metadata[0].name
-                key  = "bootstrap-client-secret"
               }
             }
           }

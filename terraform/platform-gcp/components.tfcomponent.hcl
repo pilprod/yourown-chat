@@ -670,7 +670,6 @@ component "keycloak" {
     cloudsql_private_ip      = one([for database in component.cloudsql : database.private_ip_address])
     cluster_dns_ip           = cidrhost(component.network.services_cidr, 10)
     database_password        = try(one([for database in component.cloudsql : database.additional_passwords["keycloak"]]), "")
-    bootstrap_secret_version = var.keycloak_password_rotation
     image_version            = var.keycloak_version
     public_url               = var.keycloak_public_url
     labels                   = local.common_labels
