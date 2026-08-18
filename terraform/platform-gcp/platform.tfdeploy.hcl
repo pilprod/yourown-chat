@@ -164,6 +164,11 @@ publish_output "cmek_key_id" {
   value       = deployment.eu.cmek_key_id
 }
 
+publish_output "keycloak_bootstrap_user_password_secret_id" {
+  description = "Secret Manager ID used once by the provider-only Keycloak Stack to create the first user."
+  value       = deployment.eu.keycloak_bootstrap_user_password_secret_id
+}
+
 publish_output "workload_identity_members" {
   description = "Tenant => IAM member string for least-privilege secretAccessor grants in the app-gcp stack."
   value       = deployment.eu.workload_identity_members
