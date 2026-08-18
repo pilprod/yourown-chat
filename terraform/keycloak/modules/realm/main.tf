@@ -100,6 +100,13 @@ resource "keycloak_user" "bootstrap" {
   username = var.bootstrap_user_username
   enabled  = true
 
+  # Apply these once when the user is created. Keycloak removes each action
+  # after the user completes it; Terraform must not add it back later.
+  required_actions = [
+    "UPDATE_PASSWORD",
+    keycloak_required_action.passkey.alias,
+  ]
+
   initial_password {
     value     = data.google_secret_manager_secret_version.bootstrap_user_password.secret_data
     temporary = true
@@ -107,6 +114,7 @@ resource "keycloak_user" "bootstrap" {
 
   lifecycle {
     prevent_destroy = true
+    ignore_changes  = [required_actions]
   }
 }
 
