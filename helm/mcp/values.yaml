@@ -67,7 +67,7 @@ defaults:
       cpu: 100m
       memory: 128Mi
     requests:
-      cpu: 10m
+      cpu: 5m
       memory: 32Mi
 
   networkPolicy:
@@ -114,8 +114,8 @@ servers:
           path: tfe-token
     resources:
       requests:
-        cpu: 10m
-        memory: 64Mi
+        cpu: 5m
+        memory: 32Mi
       limits:
         cpu: 250m
         memory: 256Mi
@@ -160,8 +160,8 @@ servers:
       HOME: /tmp
     resources:
       requests:
-        cpu: 25m
-        memory: 256Mi
+        cpu: 5m
+        memory: 32Mi
       limits:
         cpu: 500m
         # Logging responses are materialized by the aggregator and the single

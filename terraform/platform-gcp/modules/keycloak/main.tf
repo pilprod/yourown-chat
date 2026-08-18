@@ -30,7 +30,7 @@ resource "kubernetes_resource_quota_v1" "this" {
   spec {
     hard = {
       pods              = "8"
-      "requests.cpu"    = "500m"
+      "requests.cpu"    = "250m"
       "requests.memory" = "1Gi"
       "limits.cpu"      = "2"
       "limits.memory"   = "2Gi"
@@ -48,7 +48,7 @@ resource "kubernetes_limit_range_v1" "this" {
     limit {
       type = "Container"
       default         = { cpu = "1", memory = "1536Mi" }
-      default_request = { cpu = "100m", memory = "640Mi" }
+      default_request = { cpu = "25m", memory = "640Mi" }
     }
   }
 }
@@ -391,7 +391,7 @@ resource "kubernetes_deployment_v1" "this" {
             # Pilot baseline: observed steady-state usage is well below the CPU
             # reservation and around 500Mi of memory. Keep startup headroom in
             # the limits while avoiding unnecessary node reservation.
-            requests = { cpu = "100m", memory = "640Mi" }
+            requests = { cpu = "25m", memory = "640Mi" }
             limits   = { cpu = "1", memory = "1536Mi" }
           }
           security_context {

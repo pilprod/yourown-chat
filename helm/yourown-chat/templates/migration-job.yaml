@@ -30,7 +30,7 @@ spec:
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           resources:
-            requests: { cpu: 10m, memory: 32Mi }
+            requests: { cpu: 5m, memory: 16Mi }
             limits: { cpu: 250m, memory: 128Mi }
           volumeMounts:
             - { name: identity-secrets, mountPath: /var/run/secrets/identity, readOnly: true }

@@ -127,8 +127,8 @@ resource "kubernetes_resource_quota_v1" "server_pilot" {
   spec {
     hard = {
       "pods"            = "10"
-      "requests.cpu"    = "500m"
-      "requests.memory" = "1Gi"
+      "requests.cpu"    = "100m"
+      "requests.memory" = "256Mi"
       "limits.cpu"      = "2"
       "limits.memory"   = "2Gi"
     }
@@ -151,8 +151,8 @@ resource "kubernetes_limit_range_v1" "server_pilot" {
         memory = "256Mi"
       }
       default_request = {
-        cpu    = "25m"
-        memory = "64Mi"
+        cpu    = "5m"
+        memory = "16Mi"
       }
     }
   }

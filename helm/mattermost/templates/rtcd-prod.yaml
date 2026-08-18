@@ -155,7 +155,7 @@ spec:
           # RTCD is ~13Mi at idle. Keep a small scheduling reservation while
           # retaining the existing burst headroom for active calls.
           resources:
-            requests: { cpu: 100m, memory: 64Mi }
+            requests: { cpu: 10m, memory: 32Mi }
             limits: { cpu: "2", memory: 2Gi }
           volumeMounts:
             - { name: state, mountPath: /var/lib/rtcd }
