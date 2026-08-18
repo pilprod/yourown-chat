@@ -1,10 +1,10 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: yourown-chat-identity-migrate-{{ .Values.yourown_chat_identity_migrate_image | sha256sum | trunc 12 }}
-  namespace: {{ .Release.Namespace }}
+  name: migrate-{{ .Values.yourown_chat_identity_migrate_image | sha256sum | trunc 12 }}
+  namespace: {{ .Values.namespaces.identity }}
   labels:
-    app: yourown-chat-identity-migrate
+    app: migrate
     {{- include "yourown-chat.labels" . | nindent 4 }}
 spec:
   backoffLimit: 8
@@ -12,7 +12,7 @@ spec:
   template:
     metadata:
       labels:
-        app: yourown-chat-identity-migrate
+        app: migrate
         {{- include "yourown-chat.labels" . | nindent 8 }}
     spec:
       restartPolicy: OnFailure
@@ -40,5 +40,5 @@ spec:
           csi:
             driver: secrets-store-gke.csi.k8s.io
             readOnly: true
-            volumeAttributes: { secretProviderClass: yourown-chat-identity-migrate-gcp }
+            volumeAttributes: { secretProviderClass: migrate-gcp }
         - { name: tmp, emptyDir: {} }

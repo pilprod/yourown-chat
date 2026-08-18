@@ -1,19 +1,19 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: yourown-chat-transport-api
-  namespace: {{ .Release.Namespace }}
+  name: transport
+  namespace: {{ .Values.namespaces.edge }}
   labels:
-    app: yourown-chat-transport-api
+    app: transport
     {{- include "yourown-chat.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.transport.replicaCount }}
   selector:
-    matchLabels: { app: yourown-chat-transport-api }
+    matchLabels: { app: transport }
   template:
     metadata:
       labels:
-        app: yourown-chat-transport-api
+        app: transport
         {{- include "yourown-chat.labels" . | nindent 8 }}
     spec:
       automountServiceAccountToken: false
@@ -30,9 +30,9 @@ spec:
             - { name: TRANSPORT_KEY_ID, value: {{ required "transport.keyID is required" .Values.transport.keyID | quote }} }
             - { name: TRANSPORT_PRIVATE_KEY_FILE, value: /var/run/secrets/transport/private-key }
             - { name: IDENTITY_DATABASE_URL_FILE, value: /var/run/secrets/transport/database-url }
-            - { name: TRANSPORT_AUTH_UPSTREAM, value: http://yourown-chat-auth-api.yourown-chat-server.svc.cluster.local:8083 }
-            - { name: TRANSPORT_IDENTITY_UPSTREAM, value: http://yourown-chat-identity-api.yourown-chat-server.svc.cluster.local:8081 }
-            - { name: TRANSPORT_CONTROL_UPSTREAM, value: http://yourown-chat-control-api.yourown-chat-server.svc.cluster.local:8080 }
+            - { name: TRANSPORT_AUTH_UPSTREAM, value: http://auth.{{ .Values.namespaces.edge }}.svc.cluster.local:8083 }
+            - { name: TRANSPORT_IDENTITY_UPSTREAM, value: http://api.{{ .Values.namespaces.identity }}.svc.cluster.local:8081 }
+            - { name: TRANSPORT_CONTROL_UPSTREAM, value: http://control.{{ .Values.namespaces.control }}.svc.cluster.local:8080 }
           ports:
             - { name: http, containerPort: {{ .Values.transport.port }} }
           startupProbe:
@@ -57,25 +57,25 @@ spec:
           csi:
             driver: secrets-store-gke.csi.k8s.io
             readOnly: true
-            volumeAttributes: { secretProviderClass: yourown-chat-transport-api-gcp }
+            volumeAttributes: { secretProviderClass: transport-gcp }
         - { name: tmp, emptyDir: {} }
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: yourown-chat-auth-api
-  namespace: {{ .Release.Namespace }}
+  name: auth
+  namespace: {{ .Values.namespaces.edge }}
   labels:
-    app: yourown-chat-auth-api
+    app: auth
     {{- include "yourown-chat.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.authorization.replicaCount }}
   selector:
-    matchLabels: { app: yourown-chat-auth-api }
+    matchLabels: { app: auth }
   template:
     metadata:
       labels:
-        app: yourown-chat-auth-api
+        app: auth
         {{- include "yourown-chat.labels" . | nindent 8 }}
     spec:
       automountServiceAccountToken: false
@@ -127,7 +127,7 @@ spec:
           csi:
             driver: secrets-store-gke.csi.k8s.io
             readOnly: true
-            volumeAttributes: { secretProviderClass: yourown-chat-auth-api-gcp }
+            volumeAttributes: { secretProviderClass: auth-gcp }
         - name: keycloak-tls
           secret:
             secretName: keycloak-internal-ca
@@ -136,19 +136,19 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: yourown-chat-identity-api
-  namespace: {{ .Release.Namespace }}
+  name: api
+  namespace: {{ .Values.namespaces.identity }}
   labels:
-    app: yourown-chat-identity-api
+    app: api
     {{- include "yourown-chat.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.identity.replicaCount }}
   selector:
-    matchLabels: { app: yourown-chat-identity-api }
+    matchLabels: { app: api }
   template:
     metadata:
       labels:
-        app: yourown-chat-identity-api
+        app: api
         {{- include "yourown-chat.labels" . | nindent 8 }}
     spec:
       automountServiceAccountToken: false
@@ -195,25 +195,25 @@ spec:
           csi:
             driver: secrets-store-gke.csi.k8s.io
             readOnly: true
-            volumeAttributes: { secretProviderClass: yourown-chat-identity-api-gcp }
+            volumeAttributes: { secretProviderClass: api-gcp }
         - { name: tmp, emptyDir: {} }
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: yourown-chat-identity-admin
-  namespace: {{ .Release.Namespace }}
+  name: admin
+  namespace: {{ .Values.namespaces.identity }}
   labels:
-    app: yourown-chat-identity-admin
+    app: admin
     {{- include "yourown-chat.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.identityAdmin.replicaCount }}
   selector:
-    matchLabels: { app: yourown-chat-identity-admin }
+    matchLabels: { app: admin }
   template:
     metadata:
       labels:
-        app: yourown-chat-identity-admin
+        app: admin
         {{- include "yourown-chat.labels" . | nindent 8 }}
     spec:
       automountServiceAccountToken: false
@@ -261,26 +261,26 @@ spec:
           csi:
             driver: secrets-store-gke.csi.k8s.io
             readOnly: true
-            volumeAttributes: { secretProviderClass: yourown-chat-identity-admin-gcp }
+            volumeAttributes: { secretProviderClass: admin-gcp }
         - { name: tmp, emptyDir: {} }
 {{- if .Values.yourown_chat_control_api_enabled }}
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: yourown-chat-control-api
-  namespace: {{ .Release.Namespace }}
+  name: control
+  namespace: {{ .Values.namespaces.control }}
   labels:
-    app: yourown-chat-control-api
+    app: control
     {{- include "yourown-chat.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.controlApi.replicaCount }}
   selector:
-    matchLabels: { app: yourown-chat-control-api }
+    matchLabels: { app: control }
   template:
     metadata:
       labels:
-        app: yourown-chat-control-api
+        app: control
         {{- include "yourown-chat.labels" . | nindent 8 }}
     spec:
       automountServiceAccountToken: false
@@ -322,6 +322,6 @@ spec:
           csi:
             driver: secrets-store-gke.csi.k8s.io
             readOnly: true
-            volumeAttributes: { secretProviderClass: yourown-chat-control-api-gcp }
+            volumeAttributes: { secretProviderClass: control-gcp }
         - { name: tmp, emptyDir: {} }
 {{- end }}

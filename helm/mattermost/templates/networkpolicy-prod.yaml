@@ -35,7 +35,7 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-yourown-chat-server
+  name: allow-server-plane
   namespace: mattermost
 spec:
   podSelector: {}
@@ -44,14 +44,28 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: yourown-chat-server
+              kubernetes.io/metadata.name: server-edge
+          podSelector:
+            matchLabels: { app: transport }
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: server-identity
+          podSelector:
+            matchLabels: { app: api }
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: server-control
+          podSelector:
+            matchLabels: { app: control }
       ports:
         - { protocol: TCP, port: 8065 }
   egress:
     - to:
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: yourown-chat-server
+              kubernetes.io/metadata.name: server-control
+          podSelector:
+            matchLabels: { app: control }
       ports:
         - { protocol: TCP, port: 8080 }
 ---

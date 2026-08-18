@@ -117,11 +117,11 @@ resource "kubernetes_limit_range_v1" "agent_pilot" {
 }
 
 resource "kubernetes_resource_quota_v1" "server_pilot" {
-  count = var.server_enabled ? 1 : 0
+  for_each = var.server_enabled ? var.server_namespaces : toset([])
 
   metadata {
     name      = "compute-budget"
-    namespace = var.server_namespace
+    namespace = each.value
   }
 
   spec {
@@ -136,11 +136,11 @@ resource "kubernetes_resource_quota_v1" "server_pilot" {
 }
 
 resource "kubernetes_limit_range_v1" "server_pilot" {
-  count = var.server_enabled ? 1 : 0
+  for_each = var.server_enabled ? var.server_namespaces : toset([])
 
   metadata {
     name      = "container-defaults"
-    namespace = var.server_namespace
+    namespace = each.value
   }
 
   spec {
@@ -155,6 +155,94 @@ resource "kubernetes_limit_range_v1" "server_pilot" {
         memory = "64Mi"
       }
     }
+  }
+}
+
+moved {
+  from = kubernetes_resource_quota_v1.server_pilot[0]
+  to   = kubernetes_resource_quota_v1.server_pilot["yourown-chat-server"]
+}
+
+moved {
+  from = kubernetes_limit_range_v1.server_pilot[0]
+  to   = kubernetes_limit_range_v1.server_pilot["yourown-chat-server"]
+}
+
+resource "kubernetes_role_v1" "server_legacy_cleanup" {
+  count = var.server_enabled ? 1 : 0
+
+  metadata {
+    name      = "server-legacy-cutover"
+    namespace = "yourown-chat-server"
+  }
+
+  rule {
+    api_groups = ["apps"]
+    resources  = ["deployments"]
+    resource_names = [
+      "yourown-chat-transport-api", "yourown-chat-auth-api",
+      "yourown-chat-identity-api", "yourown-chat-identity-admin",
+      "yourown-chat-control-api",
+    ]
+    verbs = ["get", "delete"]
+  }
+
+  rule {
+    api_groups = [""]
+    resources  = ["services", "serviceaccounts"]
+    resource_names = [
+      "yourown-chat-transport-api", "yourown-chat-auth-api",
+      "yourown-chat-identity-api", "yourown-chat-identity-admin",
+      "yourown-chat-identity-migrate", "yourown-chat-control-api",
+      "yourown-chat-keycloak",
+    ]
+    verbs = ["get", "delete"]
+  }
+
+  rule {
+    api_groups = ["networking.k8s.io"]
+    resources  = ["ingresses", "networkpolicies"]
+    resource_names = [
+      "yourown-chat-keycloak", "yourown-chat-keycloak-provider",
+      "yourown-chat-authorization-api", "yourown-chat-transport-api",
+      "yourown-chat-server-default-deny", "yourown-chat-auth-api",
+      "yourown-chat-identity-api", "yourown-chat-identity-admin",
+      "yourown-chat-identity-migrate", "yourown-chat-control-api",
+      "yourown-chat-verify",
+    ]
+    verbs = ["get", "delete"]
+  }
+
+  rule {
+    api_groups = ["secrets-store.csi.x-k8s.io"]
+    resources  = ["secretproviderclasses"]
+    resource_names = [
+      "yourown-chat-transport-api-gcp", "yourown-chat-auth-api-gcp",
+      "yourown-chat-identity-api-gcp", "yourown-chat-identity-admin-gcp",
+      "yourown-chat-identity-migrate-gcp", "yourown-chat-control-api-gcp",
+    ]
+    verbs = ["get", "delete"]
+  }
+}
+
+resource "kubernetes_role_binding_v1" "server_legacy_cleanup" {
+  count = var.server_enabled ? 1 : 0
+
+  metadata {
+    name      = "server-legacy-cutover"
+    namespace = "yourown-chat-server"
+  }
+
+  role_ref {
+    api_group = "rbac.authorization.k8s.io"
+    kind      = "Role"
+    name      = kubernetes_role_v1.server_legacy_cleanup[0].metadata[0].name
+  }
+
+  subject {
+    api_group = "rbac.authorization.k8s.io"
+    kind      = "User"
+    name      = var.cleanup_service_account_emails.server
   }
 }
 

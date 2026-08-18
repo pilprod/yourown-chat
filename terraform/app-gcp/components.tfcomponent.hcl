@@ -161,6 +161,7 @@ component "clouddeploy_server" {
       name             = "pilot"
       profiles         = ["server-pilot"]
       require_approval = true
+      predeploy_actions = ["cleanup-legacy-server"]
       verify           = true
     }]
 
@@ -429,9 +430,42 @@ component "cluster_secrets" {
       var.yourown_chat_server_enabled ? {
         yourown-chat-server = {
           labels = {
+            tier                                          = "migration"
+            "part-of"                                     = "yourown-chat"
+            component                                     = "server-legacy"
+            "pod-security.kubernetes.io/enforce"          = "restricted"
+            "pod-security.kubernetes.io/enforce-version"  = "latest"
+            "pod-security.kubernetes.io/audit"            = "restricted"
+            "pod-security.kubernetes.io/warn"             = "restricted"
+          }
+        }
+        server-edge = {
+          labels = {
             tier                                          = "pilot"
             "part-of"                                     = "yourown-chat"
-            component                                     = "server"
+            component                                     = "server-edge"
+            "pod-security.kubernetes.io/enforce"          = "restricted"
+            "pod-security.kubernetes.io/enforce-version"  = "latest"
+            "pod-security.kubernetes.io/audit"            = "restricted"
+            "pod-security.kubernetes.io/warn"             = "restricted"
+          }
+        }
+        server-identity = {
+          labels = {
+            tier                                          = "pilot"
+            "part-of"                                     = "yourown-chat"
+            component                                     = "server-identity"
+            "pod-security.kubernetes.io/enforce"          = "restricted"
+            "pod-security.kubernetes.io/enforce-version"  = "latest"
+            "pod-security.kubernetes.io/audit"            = "restricted"
+            "pod-security.kubernetes.io/warn"             = "restricted"
+          }
+        }
+        server-control = {
+          labels = {
+            tier                                          = "pilot"
+            "part-of"                                     = "yourown-chat"
+            component                                     = "server-control"
             "pod-security.kubernetes.io/enforce"          = "restricted"
             "pod-security.kubernetes.io/enforce-version"  = "latest"
             "pod-security.kubernetes.io/audit"            = "restricted"
@@ -510,7 +544,7 @@ component "cluster_secrets" {
         }
       } : {},
       var.manage_ingress_origin_tls && var.yourown_chat_server_enabled ? {
-        yourown-chat-server-origin-tls = {
+        legacy-yourown-chat-server-origin-tls = {
           name      = "yourown-chat-server-origin-tls"
           namespace = "yourown-chat-server"
           type      = "kubernetes.io/tls"
@@ -520,11 +554,30 @@ component "cluster_secrets" {
             "tls.key" = component.prod_secret_values.values["mattermost_origin_tls_key"]
           }
         }
-        keycloak-internal-ca = {
+        legacy-keycloak-internal-ca = {
           name      = "keycloak-internal-ca"
           namespace = "yourown-chat-server"
           type      = "Opaque"
           labels    = { app = "yourown-chat-auth-api" }
+          data = {
+            "tls.crt" = component.prod_secret_values.values["mattermost_origin_tls_cert"]
+          }
+        }
+        server-edge-origin-tls = {
+          name      = "yourown-chat-server-origin-tls"
+          namespace = "server-edge"
+          type      = "kubernetes.io/tls"
+          labels    = { app = "server" }
+          data = {
+            "tls.crt" = component.prod_secret_values.values["mattermost_origin_tls_cert"]
+            "tls.key" = component.prod_secret_values.values["mattermost_origin_tls_key"]
+          }
+        }
+        server-edge-keycloak-internal-ca = {
+          name      = "keycloak-internal-ca"
+          namespace = "server-edge"
+          type      = "Opaque"
+          labels    = { app = "auth" }
           data = {
             "tls.crt" = component.prod_secret_values.values["mattermost_origin_tls_cert"]
           }
@@ -719,6 +772,7 @@ component "workload_scheduling" {
     cleanup_service_account_emails = {
       mattermost = component.clouddeploy.cleanup_service_account_email
       mcp        = component.clouddeploy_mcp.cleanup_service_account_email
+      server     = component.clouddeploy_server.cleanup_service_account_email
     }
   }
 

@@ -1,30 +1,30 @@
 {{- if .Values.networkPolicy.enabled }}
+{{- range $namespace := list .Values.namespaces.edge .Values.namespaces.identity .Values.namespaces.control }}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: yourown-chat-server-default-deny
-  namespace: {{ .Release.Namespace }}
+  name: default-deny
+  namespace: {{ $namespace }}
 spec:
-  podSelector:
-    matchLabels:
-      app.kubernetes.io/part-of: yourown-chat-server
+  podSelector: {}
   policyTypes: [Ingress, Egress]
 ---
+{{- end }}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: yourown-chat-transport-api
-  namespace: {{ .Release.Namespace }}
+  name: transport
+  namespace: {{ .Values.namespaces.edge }}
 spec:
   podSelector:
-    matchLabels: { app: yourown-chat-transport-api }
+    matchLabels: { app: transport }
   policyTypes: [Ingress, Egress]
   ingress:
     - from:
         - namespaceSelector:
             matchLabels: { kubernetes.io/metadata.name: ingress-nginx }
         - podSelector:
-            matchLabels: { app: yourown-chat-verify }
+            matchLabels: { app: verify }
       ports: [{ protocol: TCP, port: 8084 }]
   egress:
     - to:
@@ -37,16 +37,20 @@ spec:
       ports: [{ protocol: TCP, port: 5432 }]
     - to:
         - podSelector:
-            matchLabels: { app: yourown-chat-auth-api }
+            matchLabels: { app: auth }
       ports: [{ protocol: TCP, port: 8083 }]
     - to:
-        - podSelector:
-            matchLabels: { app: yourown-chat-identity-api }
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: {{ .Values.namespaces.identity }} }
+          podSelector:
+            matchLabels: { app: api }
       ports: [{ protocol: TCP, port: 8081 }]
     {{- if .Values.yourown_chat_control_api_enabled }}
     - to:
-        - podSelector:
-            matchLabels: { app: yourown-chat-control-api }
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: {{ .Values.namespaces.control }} }
+          podSelector:
+            matchLabels: { app: control }
       ports: [{ protocol: TCP, port: 8080 }]
     {{- end }}
     - to:
@@ -57,20 +61,20 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: yourown-chat-auth-api
-  namespace: {{ .Release.Namespace }}
+  name: auth
+  namespace: {{ .Values.namespaces.edge }}
 spec:
   podSelector:
-    matchLabels: { app: yourown-chat-auth-api }
+    matchLabels: { app: auth }
   policyTypes: [Ingress, Egress]
   ingress:
     - from:
         - namespaceSelector:
             matchLabels: { kubernetes.io/metadata.name: ingress-nginx }
         - podSelector:
-            matchLabels: { app: yourown-chat-transport-api }
+            matchLabels: { app: transport }
         - podSelector:
-            matchLabels: { app: yourown-chat-verify }
+            matchLabels: { app: verify }
       ports: [{ protocol: TCP, port: 8083 }]
   egress:
     - to:
@@ -91,18 +95,21 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: yourown-chat-identity-api
-  namespace: {{ .Release.Namespace }}
+  name: api
+  namespace: {{ .Values.namespaces.identity }}
 spec:
   podSelector:
-    matchLabels: { app: yourown-chat-identity-api }
+    matchLabels: { app: api }
   policyTypes: [Ingress, Egress]
   ingress:
     - from:
-        - podSelector:
-            matchLabels: { app: yourown-chat-transport-api }
-        - podSelector:
-            matchLabels: { app: yourown-chat-verify }
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: {{ .Values.namespaces.edge }} }
+          podSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values: [transport, verify]
       ports: [{ protocol: TCP, port: 8081 }]
   egress:
     - to:
@@ -134,16 +141,16 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: yourown-chat-identity-admin
-  namespace: {{ .Release.Namespace }}
+  name: admin
+  namespace: {{ .Values.namespaces.identity }}
 spec:
   podSelector:
-    matchLabels: { app: yourown-chat-identity-admin }
+    matchLabels: { app: admin }
   policyTypes: [Ingress, Egress]
   ingress:
     - from:
         - podSelector:
-            matchLabels: { app: yourown-chat-admin-client }
+            matchLabels: { app: admin-client }
       ports: [{ protocol: TCP, port: 8082 }]
   egress:
     - to:
@@ -152,17 +159,17 @@ spec:
         - ipBlock: { cidr: {{ printf "%s/32" (required "cluster_dns_ip is required" .Values.cluster_dns_ip) | quote }} }
       ports: [{ protocol: UDP, port: 53 }, { protocol: TCP, port: 53 }]
     - to:
-        - ipBlock: { cidr: {{ printf "%s/32" .Values.cloudsql_private_ip | quote }} }
+        - ipBlock: { cidr: {{ printf "%s/32" (required "cloudsql_private_ip is required" .Values.cloudsql_private_ip) | quote }} }
       ports: [{ protocol: TCP, port: 5432 }]
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: yourown-chat-identity-migrate
-  namespace: {{ .Release.Namespace }}
+  name: migrate
+  namespace: {{ .Values.namespaces.identity }}
 spec:
   podSelector:
-    matchLabels: { app: yourown-chat-identity-migrate }
+    matchLabels: { app: migrate }
   policyTypes: [Ingress, Egress]
   egress:
     - to:
@@ -171,30 +178,31 @@ spec:
         - ipBlock: { cidr: {{ printf "%s/32" (required "cluster_dns_ip is required" .Values.cluster_dns_ip) | quote }} }
       ports: [{ protocol: UDP, port: 53 }, { protocol: TCP, port: 53 }]
     - to:
-        - ipBlock: { cidr: {{ printf "%s/32" .Values.cloudsql_private_ip | quote }} }
+        - ipBlock: { cidr: {{ printf "%s/32" (required "cloudsql_private_ip is required" .Values.cloudsql_private_ip) | quote }} }
       ports: [{ protocol: TCP, port: 5432 }]
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: yourown-chat-verify
-  namespace: {{ .Release.Namespace }}
+  name: verify
+  namespace: {{ .Values.namespaces.edge }}
 spec:
   podSelector:
-    matchLabels: { app: yourown-chat-verify }
+    matchLabels: { app: verify }
   policyTypes: [Ingress, Egress]
   egress:
     - to:
         - podSelector:
-            matchLabels: { app: yourown-chat-transport-api }
-      ports: [{ protocol: TCP, port: 8084 }]
+            matchExpressions:
+              - key: app
+                operator: In
+                values: [transport, auth]
+      ports: [{ protocol: TCP, port: 8084 }, { protocol: TCP, port: 8083 }]
     - to:
-        - podSelector:
-            matchLabels: { app: yourown-chat-auth-api }
-      ports: [{ protocol: TCP, port: 8083 }]
-    - to:
-        - podSelector:
-            matchLabels: { app: yourown-chat-identity-api }
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: {{ .Values.namespaces.identity }} }
+          podSelector:
+            matchLabels: { app: api }
       ports: [{ protocol: TCP, port: 8081 }]
     - to:
         - namespaceSelector:
@@ -206,18 +214,20 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: yourown-chat-control-api
-  namespace: {{ .Release.Namespace }}
+  name: control
+  namespace: {{ .Values.namespaces.control }}
 spec:
   podSelector:
-    matchLabels: { app: yourown-chat-control-api }
+    matchLabels: { app: control }
   policyTypes: [Ingress, Egress]
   ingress:
     - from:
         - namespaceSelector:
             matchLabels: { kubernetes.io/metadata.name: mattermost }
-        - podSelector:
-            matchLabels: { app: yourown-chat-transport-api }
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: {{ .Values.namespaces.edge }} }
+          podSelector:
+            matchLabels: { app: transport }
       ports: [{ protocol: TCP, port: 8080 }]
   egress:
     - to:
