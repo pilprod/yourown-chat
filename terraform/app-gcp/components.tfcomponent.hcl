@@ -431,42 +431,6 @@ component "cluster_secrets" {
         yourown-agents = { labels = { tier = "pilot", "part-of" = "yourown-chat", component = "agents" } }
       } : {},
       var.yourown_chat_server_enabled ? {
-        # Phase one keeps the legacy namespaces alive while the release moves
-        # workloads into the short trust-zone names. Remove these three only
-        # after the new workloads and ingress have passed verification.
-        server-edge = {
-          labels = {
-            tier                                         = "pilot"
-            "part-of"                                    = "yourown-chat"
-            component                                    = "server-edge"
-            "pod-security.kubernetes.io/enforce"         = "restricted"
-            "pod-security.kubernetes.io/enforce-version" = "latest"
-            "pod-security.kubernetes.io/audit"           = "restricted"
-            "pod-security.kubernetes.io/warn"            = "restricted"
-          }
-        }
-        server-identity = {
-          labels = {
-            tier                                         = "pilot"
-            "part-of"                                    = "yourown-chat"
-            component                                    = "server-identity"
-            "pod-security.kubernetes.io/enforce"         = "restricted"
-            "pod-security.kubernetes.io/enforce-version" = "latest"
-            "pod-security.kubernetes.io/audit"           = "restricted"
-            "pod-security.kubernetes.io/warn"            = "restricted"
-          }
-        }
-        server-control = {
-          labels = {
-            tier                                         = "pilot"
-            "part-of"                                    = "yourown-chat"
-            component                                    = "server-control"
-            "pod-security.kubernetes.io/enforce"         = "restricted"
-            "pod-security.kubernetes.io/enforce-version" = "latest"
-            "pod-security.kubernetes.io/audit"           = "restricted"
-            "pod-security.kubernetes.io/warn"            = "restricted"
-          }
-        }
         edge = {
           labels = {
             tier                                         = "pilot"
@@ -572,16 +536,6 @@ component "cluster_secrets" {
         }
       } : {},
       var.manage_ingress_origin_tls && var.yourown_chat_server_enabled ? {
-        server-edge-origin-tls = {
-          name      = "yourown-chat-server-origin-tls"
-          namespace = "server-edge"
-          type      = "kubernetes.io/tls"
-          labels    = { app = "server" }
-          data = {
-            "tls.crt" = component.prod_secret_values.values["mattermost_origin_tls_cert"]
-            "tls.key" = component.prod_secret_values.values["mattermost_origin_tls_key"]
-          }
-        }
         edge-origin-tls = {
           name      = "yourown-chat-server-origin-tls"
           namespace = "edge"
