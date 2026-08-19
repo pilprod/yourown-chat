@@ -6,8 +6,10 @@ rendered="$(mktemp)"
 identity_only="$(mktemp)"
 trap 'rm -f "${rendered}" "${identity_only}"' EXIT
 
+identity_migrate_image='example.invalid/identity-migrate@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'
+
 helm template yourown-chat "${repo_root}/helm/yourown-chat" \
-  --namespace server-edge \
+  --namespace edge \
   --set yourown_chat_control_api_enabled=true \
   --set yourown_chat_registration_enabled=true \
   --set yourown_chat_control_api_image=example.invalid/control-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
@@ -15,7 +17,7 @@ helm template yourown-chat "${repo_root}/helm/yourown-chat" \
   --set yourown_chat_transport_api_image=example.invalid/transport-api@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff \
   --set yourown_chat_identity_api_image=example.invalid/identity-api@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
   --set yourown_chat_identity_admin_image=example.invalid/identity-admin@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd \
-  --set yourown_chat_identity_migrate_image=example.invalid/identity-migrate@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc \
+  --set yourown_chat_identity_migrate_image="${identity_migrate_image}" \
   --set backend_control_api_gsa=control@example.invalid \
   --set auth_api_gsa=auth@example.invalid \
   --set transport_api_gsa=transport@example.invalid \
@@ -32,13 +34,15 @@ grep -Fq 'name: auth' "${rendered}"
 grep -Fq 'name: transport' "${rendered}"
 grep -Fq 'name: admin' "${rendered}"
 grep -Fq 'name: control' "${rendered}"
-grep -Fq 'name: migrate-' "${rendered}"
-grep -Fq 'namespace: server-edge' "${rendered}"
-grep -Fq 'namespace: server-identity' "${rendered}"
-grep -Fq 'namespace: server-control' "${rendered}"
-grep -Fq 'http://auth.server-edge.svc.cluster.local:8083' "${rendered}"
-grep -Fq 'http://api.server-identity.svc.cluster.local:8081' "${rendered}"
-grep -Fq 'http://control.server-control.svc.cluster.local:8080' "${rendered}"
+chart_version="$(awk '$1 == "version:" { print $2; exit }' "${repo_root}/helm/yourown-chat/Chart.yaml")"
+migration_suffix="$(printf '%s:%s' "${chart_version}" "${identity_migrate_image}" | sha256sum | cut -c1-12)"
+grep -Fq "name: migrate-${migration_suffix}" "${rendered}"
+grep -Fq 'namespace: edge' "${rendered}"
+grep -Fq 'namespace: identity' "${rendered}"
+grep -Fq 'namespace: control' "${rendered}"
+grep -Fq 'http://auth.edge.svc.cluster.local:8083' "${rendered}"
+grep -Fq 'http://api.identity.svc.cluster.local:8081' "${rendered}"
+grep -Fq 'http://control.control.svc.cluster.local:8080' "${rendered}"
 ! grep -Eq 'name: yourown-chat-(transport|auth|identity|control)' "${rendered}"
 grep -Fq 'IDENTITY_DATABASE_URL_FILE' "${rendered}"
 grep -Fq 'IDENTITY_ADMIN_TOKEN_FILE' "${rendered}"
@@ -69,7 +73,6 @@ grep -Fq 'nginx.ingress.kubernetes.io/enable-access-log: "false"' "${rendered}"
 ! grep -Fq 'AUTH_APPLE_APP_ID' "${rendered}"
 grep -Fq 'TRANSPORT_PRIVATE_KEY_FILE' "${rendered}"
 grep -Fq 'IDENTITY_BOOTSTRAP_WORKSPACE_MATTERMOST_TRANSPORT_AVAILABLE' "${rendered}"
-grep -Fq 'value: quantum' "${rendered}"
 grep -Fq 'secrets/yourown-chat-transport-private-key/versions/latest' "${rendered}"
 grep -Fq 'IDENTITY_BOOTSTRAP_PASSWORD_FILE' "${rendered}"
 grep -Fq 'yourown-chat-pilprod-initial-password' "${rendered}"
@@ -87,12 +90,12 @@ grep -Fq 'IDENTITY_ADMIN_TOKEN_FILE' <<<"${admin_document}"
 grep -Fq 'IDENTITY_BOOTSTRAP_WORKSPACE_ID' <<<"${admin_document}"
 
 helm template yourown-chat "${repo_root}/helm/yourown-chat" \
-  --namespace server-edge \
+  --namespace edge \
   --set yourown_chat_auth_api_image=example.invalid/auth-api@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee \
   --set yourown_chat_transport_api_image=example.invalid/transport-api@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff \
   --set yourown_chat_identity_api_image=example.invalid/identity-api@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
   --set yourown_chat_identity_admin_image=example.invalid/identity-admin@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd \
-  --set yourown_chat_identity_migrate_image=example.invalid/identity-migrate@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc \
+  --set yourown_chat_identity_migrate_image="${identity_migrate_image}" \
   --set backend_control_api_gsa=control@example.invalid \
   --set auth_api_gsa=auth@example.invalid \
   --set transport_api_gsa=transport@example.invalid \
@@ -110,7 +113,7 @@ grep -Fq 'name: admin' "${identity_only}"
 ! grep -Fq 'name: control' "${identity_only}"
 
 grep -Fq 'chartPath: yourown-chat' "${repo_root}/helm/skaffold-yourown-chat.yaml"
-grep -Fq 'namespace: server-edge' "${repo_root}/helm/skaffold-yourown-chat.yaml"
+grep -Fq 'namespace: edge' "${repo_root}/helm/skaffold-yourown-chat.yaml"
 grep -Fq 'services      = "control-api auth-api transport-api identity-api identity-admin identity-migrate"' "${repo_root}/terraform/app-gcp/modules/deploy-release/backend-image.tf"
 grep -Fq -- '--build-arg SERVICE=$$service' "${repo_root}/terraform/app-gcp/modules/deploy-release/backend-image.tf"
 

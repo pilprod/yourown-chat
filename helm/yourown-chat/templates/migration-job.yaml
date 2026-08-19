@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: migrate-{{ .Values.yourown_chat_identity_migrate_image | sha256sum | trunc 12 }}
+  name: migrate-{{ printf "%s:%s" .Chart.Version .Values.yourown_chat_identity_migrate_image | sha256sum | trunc 12 }}
   namespace: {{ .Values.namespaces.identity }}
   labels:
     app: migrate
