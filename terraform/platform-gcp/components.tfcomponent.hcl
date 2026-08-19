@@ -331,10 +331,7 @@ component "workload_identity_backend_control_api" {
     namespace                   = local.ns["backend-control-api"].namespace
     ksa_name                    = local.ns["backend-control-api"].ksa
     primary_ksa_binding_enabled = false
-    # Keep the legacy binding until workloads are verified in the short
-    # namespace. Removing it is the second phase of the namespace migration.
     additional_ksa_bindings = [
-      { namespace = "server-control", ksa_name = "control" },
       { namespace = "control", ksa_name = "control" },
     ]
   }
@@ -354,7 +351,6 @@ component "workload_identity_identity_api" {
     ksa_name                    = local.ns["identity-api"].ksa
     primary_ksa_binding_enabled = false
     additional_ksa_bindings = [
-      { namespace = "server-identity", ksa_name = "api" },
       { namespace = "identity", ksa_name = "api" },
     ]
   }
@@ -374,7 +370,6 @@ component "workload_identity_auth_api" {
     ksa_name                    = local.ns["auth-api"].ksa
     primary_ksa_binding_enabled = false
     additional_ksa_bindings = [
-      { namespace = "server-edge", ksa_name = "auth" },
       { namespace = "edge", ksa_name = "auth" },
     ]
   }
@@ -394,7 +389,6 @@ component "workload_identity_transport_api" {
     ksa_name                    = local.ns["transport-api"].ksa
     primary_ksa_binding_enabled = false
     additional_ksa_bindings = [
-      { namespace = "server-edge", ksa_name = "transport" },
       { namespace = "edge", ksa_name = "transport" },
     ]
   }
@@ -414,7 +408,6 @@ component "workload_identity_identity_admin" {
     ksa_name                    = local.ns["identity-admin"].ksa
     primary_ksa_binding_enabled = false
     additional_ksa_bindings = [
-      { namespace = "server-identity", ksa_name = "admin" },
       { namespace = "identity", ksa_name = "admin" },
     ]
   }
@@ -434,7 +427,6 @@ component "workload_identity_identity_migrate" {
     ksa_name                    = local.ns["identity-migrate"].ksa
     primary_ksa_binding_enabled = false
     additional_ksa_bindings = [
-      { namespace = "server-identity", ksa_name = "migrate" },
       { namespace = "identity", ksa_name = "migrate" },
     ]
   }
