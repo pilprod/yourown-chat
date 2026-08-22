@@ -53,7 +53,7 @@ deployment "eu" {
     identity_bootstrap_user_password_secret_id = upstream_input.platform.identity_bootstrap_user_password_secret_id
     yourown_chat_identity_connection_secret_id = upstream_input.platform.yourown_chat_identity_connection_secret_id
     yourown_chat_identity_runtime_connection_secret_id = upstream_input.platform.yourown_chat_identity_runtime_connection_secret_id
-    yourown_chat_registration_enabled = false
+    yourown_chat_registration_enabled = true
     ingress_ip_address              = upstream_input.platform.ingress_ip_address
     calls_ip_address                = upstream_input.platform.calls_ip_address
 

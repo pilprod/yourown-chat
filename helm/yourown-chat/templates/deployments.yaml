@@ -91,6 +91,8 @@ spec:
             - { name: AUTH_API_PORT, value: {{ .Values.authorization.port | quote }} }
             - { name: IDENTITY_DATABASE_URL_FILE, value: /var/run/secrets/identity/database-url }
             - { name: IDENTITY_SESSION_TTL, value: {{ .Values.identity.sessionTTL | quote }} }
+            - { name: AUTH_REGISTRATION_ENABLED, value: {{ .Values.yourown_chat_registration_enabled | quote }} }
+            - { name: AUTH_PASSWORD_MAX_CONCURRENCY, value: {{ .Values.authorization.passwordMaxConcurrency | quote }} }
             - { name: AUTH_PASSKEY_RP_ID, value: {{ .Values.authorization.passkeyRPID | quote }} }
             - { name: AUTH_PASSKEY_ORIGIN, value: {{ .Values.authorization.passkeyOrigin | quote }} }
             - { name: AUTH_PASSKEY_RP_DISPLAY_NAME, value: {{ .Values.authorization.passkeyRPDisplayName | quote }} }
@@ -164,7 +166,9 @@ spec:
             - { name: IDENTITY_PASSWORD_MAX_CONCURRENCY, value: {{ .Values.identity.passwordMaxConcurrency | quote }} }
             - { name: IDENTITY_LOGIN_MAX_FAILURES, value: {{ .Values.identity.loginMaxFailures | quote }} }
             - { name: IDENTITY_LOGIN_FAILURE_WINDOW, value: {{ .Values.identity.loginFailureWindow | quote }} }
-            - { name: IDENTITY_REGISTRATION_ENABLED, value: {{ .Values.yourown_chat_registration_enabled | quote }} }
+            # Native self-service registration is owned by auth-api. Keep the
+            # legacy identity-api registration route closed.
+            - { name: IDENTITY_REGISTRATION_ENABLED, value: "false" }
             - { name: IDENTITY_ALLOW_INSECURE_MATTERMOST, value: {{ .Values.identity.allowInsecureMattermost | quote }} }
           ports:
             - { name: http, containerPort: {{ .Values.identity.port }} }
