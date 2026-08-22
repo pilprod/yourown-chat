@@ -52,3 +52,38 @@ Remote rendering, deployment, verification, and promotion follow the approved
 MCP and delivery policies. The exact immutable application image and platform
 chart inputs are preserved through development and production.
 
+## Workload profiles
+
+Every deployable workload selects the smallest approved platform profile that
+matches its controller, network, state, and lifecycle requirements.
+
+The approved standard profiles are:
+
+- `platform-service` for a stateless networked service;
+- `platform-worker` for background processing without network exposure by
+  default;
+- `platform-job` for a bounded Job or CronJob;
+- `platform-stateful` for a workload that requires stable identity or retained
+  persistent volumes.
+
+A service wrapper does not change the workload kind through arbitrary values.
+A new workload profile requires an approved lifecycle, security, scaling, or
+failure-isolation reason. A feature name alone does not justify a new chart.
+
+`platform-stateful` is not used to create an application-owned database when
+the database belongs to the managed platform data layer.
+
+## Typed extension boundary
+
+Platform charts must not expose unrestricted `rawYaml`, `extraObjects`,
+`podSpec`, `extraContainers`, or arbitrary template injection. Required
+capabilities are represented by typed, validated platform values.
+
+An operator-managed or vendor-packaged workload may compose an explicitly
+approved pinned upstream chart or custom-resource adapter with the platform
+security and networking contract. It must not bypass platform policy by
+embedding arbitrary manifests in service values.
+
+An approved vendor or operator integration pins the exact dependency version,
+passes render and policy verification, and preserves platform identity,
+secret, network, observability, and delivery requirements.
