@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "language": "en",
+  "canonical_repository": "https://github.com/pilprod/yourown-chat",
+  "canonical_path": ".ai",
+  "documents": [
+    "README.md",
+    "engineering-constitution.md",
+    "multi-agent-workflow.md",
+    "templates/handoff.md"
+  ]
+}
+
