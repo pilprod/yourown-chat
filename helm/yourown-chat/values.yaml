@@ -99,7 +99,11 @@ workspaceBootstrap:
 
 ingress:
   className: nginx
-  host: yourown.chat
+  # All custom client/server traffic uses the dedicated API hostname. The
+  # apex route remains temporarily available for already-installed clients and
+  # continues to publish the passkey association document for RP yourown.chat.
+  apiHost: api.yourown.chat
+  legacyHost: yourown.chat
   tlsSecretName: yourown-chat-server-origin-tls
   transportLimitConnections: 8
   transportLimitRPS: 10
