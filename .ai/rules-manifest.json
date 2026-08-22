@@ -6,8 +6,8 @@
   "documents": [
     "README.md",
     "engineering-constitution.md",
+    "architecture-rules.md",
     "multi-agent-workflow.md",
     "templates/handoff.md"
   ]
 }
-
