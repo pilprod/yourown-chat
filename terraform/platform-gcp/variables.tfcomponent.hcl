@@ -203,6 +203,12 @@ variable "cloudsql_adopt_existing_instance" {
   default     = false
 }
 
+variable "cloudsql_studio_users" {
+  type        = set(string)
+  description = "Google user emails allowed to sign in through Cloud SQL Studio with database-level read-only access."
+  default     = []
+}
+
 variable "yourown_chat_server_enabled" {
   type        = bool
   description = "Publish the independent YourOwn.Chat server plane as enabled to downstream delivery. Its low-cost logical database is retained when runtime delivery is disabled."

@@ -144,6 +144,12 @@ variable "database_flags" {
   default     = {}
 }
 
+variable "studio_users" {
+  type        = set(string)
+  description = "Google user emails provisioned for Cloud SQL Studio and assigned the managed read-only database role."
+  default     = []
+}
+
 variable "deletion_protection" {
   type        = bool
   description = "Protect the instance from deletion (Terraform + Cloud SQL API)."

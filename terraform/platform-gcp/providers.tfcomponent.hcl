@@ -12,16 +12,17 @@
 required_providers {
   google = {
     source = "hashicorp/google"
-    # 7.22+ provides ephemeral Secret Manager reads, so bootstrap credentials
-    # can cross only write-only arguments and never enter Stack state.
-    version = ">= 7.22.0, < 8.0.0"
+    # 7.44+ lets the Cloud SQL Data API provision grants using a regional
+    # Secret Manager password without granting the Terraform runner database
+    # superuser access.
+    version = ">= 7.44.0, < 8.0.0"
   }
   # google_project_service_identity (the Cloud SQL service agent granted
   # encrypt/decrypt on the shared CMEK key) is a beta-only resource in this
   # provider line, so the kms component needs google-beta.
   google-beta = {
     source  = "hashicorp/google-beta"
-    version = ">= 7.22.0, < 8.0.0"
+    version = ">= 7.44.0, < 8.0.0"
   }
   random = {
     source  = "hashicorp/random"

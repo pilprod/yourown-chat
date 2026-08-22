@@ -58,6 +58,7 @@ resource "google_sql_database_instance" "this" {
     disk_autoresize             = var.disk_autoresize
     user_labels                 = var.user_labels
     deletion_protection_enabled = var.deletion_protection
+    data_api_access             = length(var.studio_users) > 0 ? "ALLOW_DATA_API" : null
 
     # Pin the primary zone for a ZONAL instance so the "-b" in its name is truthful
     # (GCP otherwise picks a zone). Omitted for REGIONAL, where GCP manages the
@@ -240,6 +241,31 @@ locals {
       }
     } if settings.connection_secret_id != null
   ]...)
+
+  studio_readonly_role = "yourown_chat_readonly"
+  readonly_database_owners = merge(
+    {
+      (var.database_name) = {
+        user_name = var.db_user_name
+        password  = random_password.user.result
+      }
+    },
+    {
+      for _, database in local.additional_databases : database.database_name => {
+        user_name = database.user_name
+        password  = random_password.additional[database.user_name].result
+      }
+    },
+  )
+
+  studio_iam_bindings = merge([
+    for email in var.studio_users : {
+      for role in ["roles/cloudsql.instanceUser", "roles/cloudsql.studioUser"] : "${email}/${role}" => {
+        email = email
+        role  = role
+      }
+    }
+  ]...)
 }
 
 resource "random_password" "additional" {
@@ -340,4 +366,84 @@ resource "google_secret_manager_secret_iam_member" "additional_connection_access
   secret_id = google_secret_manager_secret.additional_connection[each.value.user_name].secret_id
   role      = "roles/secretmanager.secretAccessor"
   member    = each.value.member
+}
+
+# Cloud SQL Studio is authenticated by Google IAM, while PostgreSQL grants
+# remain least-privilege. Data API provisioning runs as each database owner so
+# it can grant SELECT on both existing and future application-owned objects.
+resource "google_project_iam_member" "studio" {
+  for_each = local.studio_iam_bindings
+
+  project = var.project_id
+  role    = each.value.role
+  member  = "user:${each.value.email}"
+}
+
+resource "google_secret_manager_regional_secret" "data_api_owner_password" {
+  for_each = length(var.studio_users) > 0 ? local.readonly_database_owners : {}
+
+  project   = var.project_id
+  location  = var.region
+  secret_id = "cloudsql-data-api-${replace(each.key, "_", "-")}-owner"
+  labels    = var.user_labels
+
+  dynamic "customer_managed_encryption" {
+    for_each = var.encryption_key_name == null ? [] : [var.encryption_key_name]
+    content { kms_key_name = customer_managed_encryption.value }
+  }
+}
+
+resource "google_secret_manager_regional_secret_version" "data_api_owner_password" {
+  for_each = google_secret_manager_regional_secret.data_api_owner_password
+
+  secret      = each.value.id
+  secret_data = sensitive(local.readonly_database_owners[each.key].password)
+
+  lifecycle { create_before_destroy = true }
+}
+
+resource "google_sql_provision_script" "studio_readonly" {
+  for_each = length(var.studio_users) > 0 ? local.readonly_database_owners : {}
+
+  project                 = var.project_id
+  instance                = google_sql_database_instance.this.name
+  database                = each.key
+  user                    = each.value.user_name
+  password_secret_version = google_secret_manager_regional_secret_version.data_api_owner_password[each.key].name
+  description             = "Maintain the Cloud SQL Studio read-only role for ${each.key}."
+  script                  = <<-SQL
+    DO $do$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${local.studio_readonly_role}') THEN
+        CREATE ROLE ${local.studio_readonly_role} NOLOGIN;
+      END IF;
+    END
+    $do$;
+    GRANT CONNECT ON DATABASE "${each.key}" TO ${local.studio_readonly_role};
+    GRANT USAGE ON SCHEMA public TO ${local.studio_readonly_role};
+    GRANT SELECT ON ALL TABLES IN SCHEMA public TO ${local.studio_readonly_role};
+    GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO ${local.studio_readonly_role};
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO ${local.studio_readonly_role};
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON SEQUENCES TO ${local.studio_readonly_role};
+  SQL
+
+  depends_on = [
+    google_sql_database.app,
+    google_sql_database.additional,
+  ]
+}
+
+resource "google_sql_user" "studio" {
+  for_each = var.studio_users
+
+  project        = var.project_id
+  instance       = google_sql_database_instance.this.name
+  name           = each.value
+  type           = "CLOUD_IAM_USER"
+  database_roles = [local.studio_readonly_role]
+
+  depends_on = [
+    google_project_iam_member.studio,
+    google_sql_provision_script.studio_readonly,
+  ]
 }
