@@ -40,9 +40,11 @@ effects have been verified through the approved MCP.
 and platform services whose lifecycle survives application suspension,
 replacement, or rollback.
 
-`app-gcp` owns application delivery control planes, source integrations,
-release identities, application-specific configuration, and disposable
-development dependencies whose lifecycle follows application delivery.
+`app-gcp` owns generic application delivery control planes, source-integration
+resources, release identities, private service-catalog integration, and
+disposable development dependencies whose lifecycle follows application
+delivery. Service-specific Helm wrappers, values, and environment overlays
+remain in the owning service repository.
 
 Helm and Skaffold own the declarative runtime state of application workloads. A
 resource does not move between owners merely because it can be paused.
