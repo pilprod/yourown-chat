@@ -1,0 +1,31 @@
+# YourOwn.Chat engineering governance
+
+This directory is the canonical public source for universal engineering rules
+across YourOwn.Chat repositories.
+
+## Required reading
+
+Before making a change, read:
+
+1. [Engineering Constitution](engineering-constitution.md)
+2. [Multi-agent workflow](multi-agent-workflow.md)
+3. [Repository catalog](../docs/REPOSITORIES.md)
+4. The applicable repository-specific architecture and contributor documents
+
+Internal agents may also receive a private policy overlay. A private overlay
+may add or tighten controls, but it cannot weaken or contradict the public
+Constitution.
+
+## Sources of policy
+
+- Files in this directory are the public source of truth.
+- `AGENTS.md` and `CLAUDE.md` are discovery adapters, not independent policy
+  documents.
+- Generated copies and exported branches are delivery artifacts. They must not
+  be edited as independent sources.
+- Architecture Decision Records explain accepted decisions but do not override
+  the Constitution.
+
+All normative rule documents are written in English. Agents may communicate
+with users in the user's preferred language.
+
