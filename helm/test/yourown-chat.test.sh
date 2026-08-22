@@ -55,6 +55,8 @@ grep -Fq 'cidr: "10.30.0.10/32"' "${rendered}"
 grep -Fq 'path: /transport/v1' "${rendered}"
 grep -Fq 'path: /transport/v1/socket' "${rendered}"
 grep -Fq 'pathType: Exact' "${rendered}"
+grep -Fq 'host: "api.yourown.chat"' "${rendered}"
+grep -Fq 'host: "yourown.chat"' "${rendered}"
 ! grep -Fq 'name: api' < <(awk 'BEGIN { RS="---" } /kind: Ingress/ { print }' "${rendered}")
 ! grep -Fq 'v1/auth/oidc/sessions' "${rendered}"
 ! grep -Fq 'host: auth.yourown.chat' "${rendered}"

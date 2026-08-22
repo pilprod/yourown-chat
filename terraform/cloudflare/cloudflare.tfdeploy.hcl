@@ -52,12 +52,12 @@ deployment "yourown-chat" {
 
     cloudflare_proxied = true
     cloudflare_extra_records = upstream_input.platform.ingress_ip_address != null ? {
-      auth = {
-        name    = "auth"
+      api = {
+        name    = "api"
         type    = "A"
         content = upstream_input.platform.ingress_ip_address
         proxied = true
-        comment = "Managed by Terraform. Dedicated public identity endpoint."
+        comment = "Managed by Terraform. Canonical encrypted client API endpoint."
       }
     } : {}
     cloudflare_ssl_mode           = "strict"

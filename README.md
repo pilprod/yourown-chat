@@ -844,7 +844,8 @@ resource type.
 The flow in plain words:
 
 1. **platform-gcp** builds the foundation and reserves a static public IP.
-2. **cloudflare** points `yourown.chat` at that IP (proxied), hardens the edge,
+2. **cloudflare** points `yourown.chat` and the dedicated encrypted API host
+   `api.yourown.chat` at that IP (proxied), hardens the edge,
    issues an Origin CA certificate and writes it straight into Secret Manager.
    The private key never leaves this stack — linked stacks can't publish
    sensitive values, so the secrets are created where the cert is born.
