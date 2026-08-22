@@ -9,8 +9,9 @@ Before making a change, read:
 
 1. [Engineering Constitution](engineering-constitution.md)
 2. [Architecture and delivery rules](architecture-rules.md)
-3. [Multi-agent workflow](multi-agent-workflow.md)
-4. The applicable repository-specific architecture and contributor documents
+3. [Tool use policy](tool-use-policy.md)
+4. [Multi-agent workflow](multi-agent-workflow.md)
+5. The applicable repository-specific architecture and contributor documents
 
 Internal agents may also receive a private policy overlay. A private overlay
 may add or tighten controls, but it cannot weaken or contradict the public
