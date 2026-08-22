@@ -24,3 +24,28 @@ A private repository is not a secret store. The same restrictions apply to
 private rules, coordination Issues, handoffs, and repository-specific policy
 overlays.
 
+## Least privilege and isolation
+
+Every workload, environment, and trust zone uses a dedicated identity with
+only the permissions required for its documented responsibility. Identities,
+credentials, service accounts, and authorization tokens must not be shared
+across unrelated services, environments, users, or trust zones.
+
+Network and authorization policy is deny-by-default. An allow rule identifies
+the exact source, destination, action, and required scope.
+
+Read access does not imply mutation access. Mutating capabilities require a
+separately authorized path and an auditable approval when defined by the
+service policy.
+
+When a policy requires human approval, the requester, executor, and approver
+remain attributable. A workload identity requesting or executing a mutation
+cannot satisfy the required human approval itself.
+
+Compromise of one workload must not automatically grant access to another
+workload, another MCP server, production, infrastructure control planes,
+secrets, or sensitive logs.
+
+An existing shared identity or overly broad access path is recorded as a
+remediation item. It is not treated as evidence that the policy permits the
+current state.
