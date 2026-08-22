@@ -13,10 +13,11 @@ Before making a change, read:
 4. [Infrastructure-as-code policy](infrastructure-policy.md)
 5. [Security policy](security-policy.md)
 6. [Observability and audit policy](observability-policy.md)
-7. [Testing and verification policy](testing-policy.md)
-8. [Tool use policy](tool-use-policy.md)
-9. [Multi-agent workflow](multi-agent-workflow.md)
-10. The applicable repository-specific architecture and contributor documents
+7. [Release and recovery policy](release-policy.md)
+8. [Testing and verification policy](testing-policy.md)
+9. [Tool use policy](tool-use-policy.md)
+10. [Multi-agent workflow](multi-agent-workflow.md)
+11. The applicable repository-specific architecture and contributor documents
 
 Internal agents may also receive a private policy overlay. A private overlay
 may add or tighten controls, but it cannot weaken or contradict the public

@@ -11,6 +11,7 @@
     "infrastructure-policy.md",
     "security-policy.md",
     "observability-policy.md",
+    "release-policy.md",
     "testing-policy.md",
     "tool-use-policy.md",
     "multi-agent-workflow.md",
