@@ -11,6 +11,15 @@ lifecycle has exactly one documented authoritative owner. Generated or
 compatibility copies may exist, but they are never independent sources of
 truth.
 
+Authoritative source code, infrastructure definitions, and hand-maintained
+implementations remain in their owning repository. Consumers use versioned
+interfaces, pinned submodules, immutable artifacts, or reproducible generated
+output instead of maintaining independent copies.
+
+Generated or compatibility copies are permitted only when their canonical
+source and generation process are documented. They must not be edited as
+independent implementations.
+
 ## Application delivery lifecycle
 
 Every deployable server-side application service and web-delivered application
@@ -30,4 +39,3 @@ release-channel lifecycles.
 Terraform-managed platform services and durable infrastructure follow the
 separately approved infrastructure-as-code lifecycle. They are outside the
 application delivery lifecycle defined above.
-
