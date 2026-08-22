@@ -87,3 +87,56 @@ embedding arbitrary manifests in service values.
 An approved vendor or operator integration pins the exact dependency version,
 passes render and policy verification, and preserves platform identity,
 secret, network, observability, and delivery requirements.
+
+## Values contract
+
+Service values describe typed application capabilities rather than
+unrestricted Kubernetes implementation. Every platform profile publishes a
+strict `values.schema.json` that rejects unknown properties and validates
+required fields, types, bounds, and capability combinations.
+
+Within the approved schema, a service may declare its ports, health endpoints,
+bounded resource and scaling requirements, non-secret application
+configuration, logical secret references, and documented service
+dependencies. The platform owns the security context, workload identity,
+registry policy, immutable image injection, admission requirements, network
+policy, observability integration, and required platform labels.
+
+Remote environments run an immutable image digest supplied by the
+authoritative release pipeline. A service wrapper must not select an arbitrary
+registry, use a mutable image tag, or replace the release-supplied digest.
+
+The values contract must not expose `podSpec`, `rawYaml`, `extraObjects`,
+arbitrary annotations, `hostNetwork`, `hostPID`, privileged mode, arbitrary
+service-account selection, cluster-scoped RBAC, plaintext secret environment
+variables, or an equivalent policy-bypass surface. A special requirement such
+as a multi-protocol load balancer is represented by a narrow typed capability,
+not by accepting a raw Kubernetes object.
+
+## Secret delivery
+
+A service value may contain only a logical secret reference and the approved
+runtime purpose or mount path. It must never contain the secret value, an
+encoded copy of the value, or an unrestricted `SecretProviderClass` fragment.
+
+The default GKE runtime path is Google Secret Manager through the GKE Secret
+Manager CSI add-on. The platform renders an approved `SecretProviderClass`
+using `provider: gke`, and the workload mounts it read-only through the
+`secrets-store-gke.csi.k8s.io` driver. Access uses a dedicated least-privilege
+Workload Identity. The secret must remain protected by the platform's approved
+Secret Manager encryption and CMEK policy, and it must not be synchronized
+into a native Kubernetes Secret merely for application convenience.
+
+A native Kubernetes Secret is permitted only as an explicitly approved
+compatibility exception for an application, operator, or vendor interface that
+cannot consume a CSI-mounted file. The exception is created by its
+authoritative infrastructure owner, is not rendered from Helm values or passed
+through the application delivery pipeline, and remains protected by GKE
+application-layer Secret encryption for etcd using the approved CMEK. Its
+identity, namespace, consumers, and rotation procedure must be documented and
+least-privilege scoped.
+
+Secret version selection, refresh, rotation, and restart behavior are owned by
+the platform contract. A service wrapper must not bypass that lifecycle by
+copying a secret into a ConfigMap, environment overlay, generated manifest,
+release parameter, image layer, or application repository.
