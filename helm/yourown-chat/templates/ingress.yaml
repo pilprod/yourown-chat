@@ -18,7 +18,7 @@ spec:
   tls:
     - hosts:
         - {{ .Values.ingress.apiHost | quote }}
-        - {{ .Values.ingress.legacyHost | quote }}
+        - {{ .Values.ingress.passkeyHost | quote }}
       secretName: {{ .Values.ingress.tlsSecretName }}
   rules:
     - host: {{ .Values.ingress.apiHost | quote }}
@@ -36,10 +36,9 @@ spec:
               service:
                 name: transport
                 port: { number: 8084 }
-    # Compatibility route for installed clients. Remove only after the oldest
-    # supported build uses api.yourown.chat. The passkey association document
-    # stays on the RP ID host even after the transport compatibility ends.
-    - host: {{ .Values.ingress.legacyHost | quote }}
+    # The association document stays on the passkey RP ID host. No custom API
+    # route is published on the Mattermost hostname.
+    - host: {{ .Values.ingress.passkeyHost | quote }}
       http:
         paths:
           - path: /.well-known/apple-app-site-association
@@ -48,16 +47,4 @@ spec:
               service:
                 name: auth
                 port: { number: 8083 }
-          - path: /transport/v1
-            pathType: Exact
-            backend:
-              service:
-                name: transport
-                port: { number: 8084 }
-          - path: /transport/v1/socket
-            pathType: Exact
-            backend:
-              service:
-                name: transport
-                port: { number: 8084 }
 {{- end }}
