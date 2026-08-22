@@ -9,6 +9,7 @@
     "architecture-rules.md",
     "infrastructure-policy.md",
     "security-policy.md",
+    "testing-policy.md",
     "tool-use-policy.md",
     "multi-agent-workflow.md",
     "templates/handoff.md"
