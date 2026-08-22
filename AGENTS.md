@@ -6,9 +6,10 @@ Before modifying this repository, read and follow:
 2. `.ai/architecture-rules.md`
 3. `.ai/infrastructure-policy.md`
 4. `.ai/security-policy.md`
-5. `.ai/tool-use-policy.md`
-6. `.ai/multi-agent-workflow.md`
-7. The architecture or operations document relevant to the task
+5. `.ai/testing-policy.md`
+6. `.ai/tool-use-policy.md`
+7. `.ai/multi-agent-workflow.md`
+8. The architecture or operations document relevant to the task
 
 If an approved private policy overlay is available at
 `.engineering-private`, read its adapter and the repository-specific policy it
