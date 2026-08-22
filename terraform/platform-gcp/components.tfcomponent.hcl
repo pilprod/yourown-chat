@@ -624,6 +624,10 @@ component "cloudsql" {
     point_in_time_recovery_enabled = var.cloudsql_pitr_enabled
     backup_retained_count          = var.cloudsql_backup_retained_count
     transaction_log_retention_days = var.cloudsql_txlog_retention_days
+    database_flags = {
+      "cloudsql.iam_authentication" = "on"
+    }
+    studio_users = var.cloudsql_studio_users
 
     create_connection_secret    = true
     connection_secret_accessors = [component.workload_identity_mattermost.iam_member]

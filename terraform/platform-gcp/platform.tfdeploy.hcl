@@ -76,6 +76,7 @@ deployment "eu" {
     cloudsql_backup_retained_count = 7
     cloudsql_txlog_retention_days  = 7
     cloudsql_deletion_protection   = true
+    cloudsql_studio_users          = ["ilya@papou.email"]
     # Rotation trigger: change the value (a date), apply, then restart the
     # consumers so they pick up the new connection secret.
     cloudsql_password_rotation = "2026-07-12"
