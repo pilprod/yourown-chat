@@ -33,3 +33,45 @@ Only one apply may operate on the same Stack or state at a time. Dependent
 Stacks are applied and verified in their documented ownership order. A
 successful apply is not complete until its remote state and intended downstream
 effects have been verified through the approved MCP.
+
+## Platform and application ownership
+
+`platform-gcp` owns shared durable infrastructure, state, security foundations,
+and platform services whose lifecycle survives application suspension,
+replacement, or rollback.
+
+`app-gcp` owns application delivery control planes, source integrations,
+release identities, application-specific configuration, and disposable
+development dependencies whose lifecycle follows application delivery.
+
+Helm and Skaffold own the declarative runtime state of application workloads. A
+resource does not move between owners merely because it can be paused.
+
+Ownership is determined by state, blast radius, sharing, and lifecycle. A
+feature name or current deployment status is not an ownership boundary.
+
+## Operational classes
+
+Every managed component has one documented operational class:
+
+- `foundation`: not stopped by a normal cost-saving pause;
+- `durable-service`: compute may stop while durable state and declarative
+  resources remain;
+- `application-runtime`: workload compute may scale to zero and later resume
+  from the approved artifact and configuration;
+- `ephemeral`: created for a bounded verification and removed automatically.
+
+Pausing a component changes its declared operating state, not its ownership. A
+pause preserves the state, identities, secrets, network references, artifact
+digest, and audit history required for a verified resume.
+
+Cost-saving suspension uses the authoritative declarative control plane and
+approved MCP route. It must not be implemented by manually deleting resources
+or scaling workloads outside their owning lifecycle.
+
+Provisioning and suspension are separate states. An `enabled` control
+determines whether a component is provisioned; a `paused` control or declared
+replica count determines whether provisioned compute is running.
+
+Resume restores the previously approved immutable artifact and configuration,
+followed by readiness and functional verification.
