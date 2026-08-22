@@ -46,6 +46,7 @@ identity:
 authorization:
   replicaCount: 1
   port: 8083
+  passwordMaxConcurrency: 2
   passkeyRPID: yourown.chat
   passkeyOrigin: https://yourown.chat
   passkeyRPDisplayName: YourOwn.Chat
