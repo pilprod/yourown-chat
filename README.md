@@ -8,8 +8,8 @@ across YourOwn.Chat repositories.
 Before making a change, read:
 
 1. [Engineering Constitution](engineering-constitution.md)
-2. [Multi-agent workflow](multi-agent-workflow.md)
-3. [Repository catalog](../docs/REPOSITORIES.md)
+2. [Architecture and delivery rules](architecture-rules.md)
+3. [Multi-agent workflow](multi-agent-workflow.md)
 4. The applicable repository-specific architecture and contributor documents
 
 Internal agents may also receive a private policy overlay. A private overlay
@@ -28,4 +28,3 @@ Constitution.
 
 All normative rule documents are written in English. Agents may communicate
 with users in the user's preferred language.
-
