@@ -213,12 +213,7 @@ publish_output "source_repositories" {
 
 publish_output "catalog_revision" {
   description = "Versioned JSON catalog envelope. This stable output name carries new contract fields to existing downstream Stack links."
-  value = jsonencode({
-    revision                  = deployment.eu.catalog_revision
-    vendor_chart_bundles      = deployment.eu.vendor_chart_bundles
-    additional_database_users = deployment.eu.additional_database_users
-    private_http_routes       = deployment.eu.private_http_routes
-  })
+  value       = deployment.eu.catalog_revision
 }
 
 publish_output "vendor_chart_bundles" {
