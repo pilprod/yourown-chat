@@ -228,8 +228,37 @@ variable "yourown_chat_server_enabled" {
 
 variable "yourown_chat_identity_password_rotation" {
   type        = string
-  description = "Explicit rotation trigger for the YourOwn.Chat identity database role."
+  description = "Explicit rotation trigger for the YourOwn.Chat identity database roles."
   default     = "1"
+}
+
+variable "additional_database_users" {
+  type = map(object({
+    database_names              = set(string)
+    password_secret_id          = string
+    connection_secret_id        = optional(string)
+    password_rotation           = optional(string, "1")
+    manage_databases            = optional(bool, true)
+    connection_secret_accessors = optional(set(string), [])
+    kubernetes_connection_secret_accessors = optional(set(object({
+      namespace       = string
+      service_account = string
+    })), [])
+  }))
+  description = "Private-catalog requests for additional logical database roles on the shared protected Cloud SQL instance."
+  default     = {}
+
+  validation {
+    condition = alltrue([
+      for user_name, settings in var.additional_database_users :
+      can(regex("^[a-z_][a-z0-9_]*$", user_name)) &&
+      !contains(["mattermost", "temporal", "yourown_chat_identity", "yourown_chat_identity_runtime"], user_name) &&
+      length(settings.database_names) > 0 &&
+      alltrue([for database_name in settings.database_names : can(regex("^[a-z_][a-z0-9_]*$", database_name))]) &&
+      (settings.connection_secret_id == null || length(settings.database_names) == 1)
+    ])
+    error_message = "Additional Cloud SQL users require non-reserved PostgreSQL-safe names and connection URI secrets may target exactly one database."
+  }
 }
 
 # --- Storage ----------------------------------------------------------------

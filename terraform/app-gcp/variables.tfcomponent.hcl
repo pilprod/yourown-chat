@@ -112,6 +112,73 @@ variable "source_repositories" {
   description = "Private service catalog of source repositories keyed by role. Required roles: deploy (this platform repository, the Skaffold render root), mattermost (product assembly), web (private web source), server_source (patched server source, provenance only), backend, agents, mcp, rtcd. `name` is the Cloud Build 2nd-gen repository resource name; `remote_uri` is the HTTPS clone URL. Supplied by the private service catalog."
 }
 
+variable "vendor_chart_bundles" {
+  type = map(object({
+    provisioned              = bool
+    application_enabled      = bool
+    deployment_class         = string
+    production_eligible      = bool
+    candidate_tag            = string
+    product_commit           = string
+    source_commit            = string
+    supported_agent_runtimes = set(string)
+    image_digests            = map(string)
+    charts = object({
+      crds = object({
+        release_name  = string
+        ref           = string
+        version       = string
+        values_base64 = string
+        values_sha256 = string
+      })
+      application = object({
+        release_name  = string
+        ref           = string
+        version       = string
+        values_base64 = string
+        values_sha256 = string
+      })
+    })
+    namespaces = map(object({
+      name          = string
+      quota_profile = string
+    }))
+    endpoints = map(object({
+      namespace_key = string
+      pod_selector  = map(string)
+    }))
+    external_sources = map(object({
+      namespace    = string
+      pod_selector = map(string)
+    }))
+    flows = map(object({
+      source_kind     = string
+      source_key      = string
+      destination_key = string
+      ports = set(object({
+        port     = number
+        protocol = string
+      }))
+    }))
+    kubernetes_api_egress_from = set(string)
+    database_bindings = map(object({
+      source_endpoint_key   = string
+      secret_id_key         = string
+      secret_provider_class = string
+      secret_file           = string
+      port                  = number
+    }))
+  }))
+  description = "Private-catalog vendor OCI chart bundles consumed by the reusable public adapter."
+  default     = {}
+}
+
+variable "additional_cloudsql_connection_secret_ids" {
+  type        = map(string)
+  description = "Platform-created additional database role => ready-to-use connection URI Secret Manager ID."
+  default     = {}
+}
+
 variable "image_name" {
   type        = string
   description = "Image name (last path segment) pushed under the unified Artifact Registry repository."

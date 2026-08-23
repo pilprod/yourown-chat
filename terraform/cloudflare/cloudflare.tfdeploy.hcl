@@ -26,6 +26,13 @@ upstream_input "platform" {
   source = "app.terraform.io/papou-work/yourown-chat/platform-gcp"
 }
 
+# Private hostname labels and ClusterIP origins are catalog-owned. This keeps
+# service identity out of the reusable public edge implementation.
+upstream_input "catalog" {
+  type   = "stack"
+  source = "app.terraform.io/papou-work/yourown-chat/service-catalog"
+}
+
 deployment "yourown-chat" {
   inputs = {
     identity_token        = identity_token.gcp.jwt
@@ -78,11 +85,20 @@ deployment "yourown-chat" {
     zero_trust_enabled        = true
     zero_trust_team_name      = "yourown-chat"
     zero_trust_allowed_emails = ["ilya@papou.email"]
-    zero_trust_upstreams = {
-      dev                  = "http://dev-mattermost.dev.svc.cluster.local:8065"
-      mcp-terraform-stacks = "http://mcp-terraform-stacks.mcp-terraform-stacks.svc.cluster.local:3000"
-      mcp-google-cloud     = "http://mcp-google-cloud.mcp-google-cloud.svc.cluster.local:8080"
-    }
+    zero_trust_upstreams = merge(
+      {
+        for hostname, route in try(upstream_input.catalog.private_http_routes, {}) :
+        hostname => "http://${route.service}.${route.namespace}.svc.cluster.local:${route.port}"
+        if route.enabled
+      },
+      {
+        # Existing platform-owned routes win on collision; catalog entries are
+        # additive until those legacy literals are migrated deliberately.
+        dev                  = "http://dev-mattermost.dev.svc.cluster.local:8065"
+        mcp-terraform-stacks = "http://mcp-terraform-stacks.mcp-terraform-stacks.svc.cluster.local:3000"
+        mcp-google-cloud     = "http://mcp-google-cloud.mcp-google-cloud.svc.cluster.local:8080"
+      },
+    )
     zero_trust_public_upstreams = {}
   }
 }

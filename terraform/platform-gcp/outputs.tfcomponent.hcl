@@ -98,9 +98,15 @@ output "cloudsql_connection_secret_id" {
   value       = one([for c in component.cloudsql : c.connection_secret_id])
 }
 
+output "additional_cloudsql_connection_secret_ids" {
+  type        = map(string)
+  description = "Additional database role => ready-to-use connection URI Secret Manager secret ID."
+  value       = try(one([for c in component.cloudsql : c.additional_connection_secret_ids]), {})
+}
+
 output "yourown_chat_identity_connection_secret_id" {
   type        = string
-  description = "Ready-to-use identity database URI secret ID, or null only when shared Cloud SQL is disabled."
+  description = "Ready-to-use identity database migration URI secret ID, or null only when shared Cloud SQL is disabled."
   value       = try(one([for c in component.cloudsql : c.additional_connection_secret_ids["yourown_chat_identity"]]), null)
 }
 
@@ -142,12 +148,12 @@ output "workload_identity_emails" {
     mcp-terraform-stacks = component.workload_identity_mcp_terraform_stacks.email
     mcp-tunnel           = component.workload_identity_mcp_tunnel.email
     agents               = component.workload_identity_agents.email
-    backend-control-api   = component.workload_identity_backend_control_api.email
-    auth-api              = component.workload_identity_auth_api.email
-    transport-api         = component.workload_identity_transport_api.email
-    identity-api          = component.workload_identity_identity_api.email
-    identity-admin        = component.workload_identity_identity_admin.email
-    identity-migrate      = component.workload_identity_identity_migrate.email
+    backend-control-api  = component.workload_identity_backend_control_api.email
+    auth-api             = component.workload_identity_auth_api.email
+    transport-api        = component.workload_identity_transport_api.email
+    identity-api         = component.workload_identity_identity_api.email
+    identity-admin       = component.workload_identity_identity_admin.email
+    identity-migrate     = component.workload_identity_identity_migrate.email
     agents-workflow      = component.workload_identity_agent_workflow.email
     agents-activity      = component.workload_identity_agents.email
   }
@@ -165,12 +171,12 @@ output "workload_identity_members" {
     mcp-terraform-stacks = component.workload_identity_mcp_terraform_stacks.iam_member
     mcp-tunnel           = component.workload_identity_mcp_tunnel.iam_member
     agents               = component.workload_identity_agents.iam_member
-    backend-control-api   = component.workload_identity_backend_control_api.iam_member
-    auth-api              = component.workload_identity_auth_api.iam_member
-    transport-api         = component.workload_identity_transport_api.iam_member
-    identity-api          = component.workload_identity_identity_api.iam_member
-    identity-admin        = component.workload_identity_identity_admin.iam_member
-    identity-migrate      = component.workload_identity_identity_migrate.iam_member
+    backend-control-api  = component.workload_identity_backend_control_api.iam_member
+    auth-api             = component.workload_identity_auth_api.iam_member
+    transport-api        = component.workload_identity_transport_api.iam_member
+    identity-api         = component.workload_identity_identity_api.iam_member
+    identity-admin       = component.workload_identity_identity_admin.iam_member
+    identity-migrate     = component.workload_identity_identity_migrate.iam_member
     agents-workflow      = component.workload_identity_agent_workflow.iam_member
     agents-activity      = component.workload_identity_agents.iam_member
   }

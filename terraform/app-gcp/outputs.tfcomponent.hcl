@@ -95,6 +95,28 @@ output "temporal_enabled" {
   value       = var.temporal_enabled
 }
 
+output "vendor_chart_bundle_releases" {
+  type = map(object({
+    bundle_key               = string
+    provisioned              = bool
+    application_requested    = bool
+    database_bindings_ready  = bool
+    application_materialized = bool
+    candidate_tag            = string
+    product_commit           = string
+    source_commit            = string
+    namespace                = string
+    crd_release_name         = string
+    crd_status               = string
+    application_release_name = string
+    application_status       = string
+  }))
+  description = "Applied generic vendor bundle identities and readiness; no secret values are exposed."
+  value = {
+    for key, bundle in component.vendor_chart_bundle : key => bundle.release
+  }
+}
+
 # --- Cluster bootstrap --------------------------------------------------------
 output "mattermost_operator_chart_version" {
   type        = string
