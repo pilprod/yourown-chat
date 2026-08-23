@@ -44,12 +44,17 @@ local paths, but may not weaken these controls.
   have different titles.
 - When an agent discovers related work in a project-controlled channel, it
   promptly comments on the existing pull request or Issue and does so before
-  its next affected write. The comment links its own work claim and branch,
-  identifies the exact relationship, records current path or contract
-  ownership and sequencing, and states any decision or handoff needed. The
-  agent records a reciprocal link in its own claim or pull request. A generic
-  notification without the concrete relationship does not satisfy this
-  requirement.
+  its next affected write. In a private project-controlled channel, the
+  comment links its own work claim and branch, identifies the exact
+  relationship, records current path or contract ownership and sequencing,
+  and states any decision or handoff needed.
+- In a public project-controlled channel, the comment contains only the
+  non-sensitive public relationship, affected public surface, compatibility or
+  ordering information safe to disclose, and any public response needed. The
+  private coordination record holds the work-claim link, internal branch,
+  private ownership or sequencing detail, and a reciprocal link to the public
+  comment. A generic notification without the concrete relationship does not
+  satisfy this requirement.
 - An existing reciprocal coordination comment remains sufficient while it
   accurately describes the current relationship. Resuming unchanged work does
   not require a duplicate comment. When the relationship, ownership, or order
@@ -73,6 +78,35 @@ local paths, but may not weaken these controls.
 - During uninterrupted active work, the responsible agent performs that
   refresh at least once every 30 minutes. Cached conversation context and a
   previously fetched snapshot are not evidence that no new message exists.
+- Before a pull request or merge request can receive a final handoff, be
+  reported ready, be merged, or allow its work claim to become `Complete`,
+  every resolvable review conversation in that pull request or merge request
+  must be in the platform's resolved state. Related work items remain subject
+  to their own completion checks and to any blocker they place on this task. A
+  thread is resolved only after its feedback has been addressed or given an
+  accepted disposition and the required response or evidence is recorded. An
+  agent must not mark a conversation resolved merely to reduce the unresolved
+  count or bypass its author, reviewer, owner, applicable rule, or required
+  gate.
+- Acceptance or resolution of a human-authored thread is recorded by its
+  author, a required reviewer, the designated pull-request or integration
+  owner, or an explicitly authorized successor. The task agent cannot
+  self-dismiss such a thread solely because it posted a response or fix. A
+  designated pull-request or integration owner may record a terminal
+  disposition and resolve a non-blocking thread from a non-required or
+  untrusted participant when it is duplicate, abusive, abandoned, out of
+  scope, or objectively answered. A thread that is also a blocker remains
+  subject to the stricter source-bound clearing rule below.
+- A task agent may resolve a thread it authored or a purely automated
+  objective rule or gate thread after posting authoritative passing evidence,
+  when the applicable policy permits that resolution. The final record names
+  the accepting or resolving actor and the disposition; automated resolution
+  must not be used to dismiss human review or a subjective design decision.
+- Ordinary comments that the platform cannot mark resolved require an explicit
+  final reply or recorded disposition, with no actionable request left
+  unanswered. The final refresh verifies zero unresolved resolvable
+  conversations and records any non-resolvable comment disposition. A new or
+  reopened conversation revokes readiness until this check passes again.
 - A new actionable message is acknowledged and either addressed or given an
   explicit recorded disposition before conflicting work continues. A message
   is blocking when a designated integration owner or required reviewer marks
