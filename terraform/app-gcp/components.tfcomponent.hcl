@@ -592,11 +592,12 @@ component "mattermost_image" {
     apply_service_account_email = var.service_account_email
 
     connection_name   = var.github_connection_name
-    repository_name   = var.github_repository_name
-    github_remote_uri = var.github_remote_uri
+    repository_name   = var.source_repositories.mattermost.name
+    github_remote_uri = var.source_repositories.mattermost.remote_uri
 
-    web_repository_name   = var.github_web_repository_name
-    web_github_remote_uri = var.github_web_remote_uri
+    web_repository_name      = var.source_repositories.web.name
+    web_github_remote_uri    = var.source_repositories.web.remote_uri
+    server_source_remote_uri = var.source_repositories.server_source.remote_uri
 
     artifact_registry_location      = var.artifact_registry_location
     artifact_registry_repository_id = var.artifact_registry_repository_id
@@ -609,7 +610,7 @@ component "mattermost_image" {
         pipeline_name                   = component.clouddeploy.delivery_pipeline_name
         initial_target_name             = component.clouddeploy.target_names["dev"]
         execution_service_account_email = component.clouddeploy.execution_service_account_email
-        deploy_repository_uri           = var.github_deploy_remote_uri
+        deploy_repository_uri           = var.source_repositories.deploy.remote_uri
         deploy_repository_ref           = "main"
         source_bucket_name              = component.deploy_release.source_bucket_name
       }
@@ -617,7 +618,7 @@ component "mattermost_image" {
         pipeline_name                   = component.clouddeploy_mattermost_preview.delivery_pipeline_name
         initial_target_name             = component.clouddeploy_mattermost_preview.target_names["dev"]
         execution_service_account_email = component.clouddeploy_mattermost_preview.execution_service_account_email
-        deploy_repository_uri           = var.github_deploy_remote_uri
+        deploy_repository_uri           = var.source_repositories.deploy.remote_uri
         deploy_repository_ref           = "main"
         source_bucket_name              = component.deploy_release.source_bucket_name
       }
@@ -641,11 +642,17 @@ component "deploy_release" {
     apply_service_account_email = var.service_account_email
 
     connection_name   = var.github_connection_name
-    github_remote_uri = var.github_deploy_remote_uri
+    repository_name   = var.source_repositories.deploy.name
+    github_remote_uri = var.source_repositories.deploy.remote_uri
 
-    backend_github_remote_uri = var.github_backend_remote_uri
-    agents_github_remote_uri  = var.github_agents_remote_uri
-    mcp_github_remote_uri     = var.github_mcp_remote_uri
+    backend_repository_name   = var.source_repositories.backend.name
+    backend_github_remote_uri = var.source_repositories.backend.remote_uri
+    agents_repository_name    = var.source_repositories.agents.name
+    agents_github_remote_uri  = var.source_repositories.agents.remote_uri
+    mcp_repository_name       = var.source_repositories.mcp.name
+    mcp_github_remote_uri     = var.source_repositories.mcp.remote_uri
+    rtcd_repository_name      = var.source_repositories.rtcd.name
+    rtcd_github_remote_uri    = var.source_repositories.rtcd.remote_uri
     mcp_release_tag_regex     = var.mcp_release_tag_regex
     backend_release_tag_regex = var.backend_release_tag_regex
     agents_release_tag_regex  = var.agents_release_tag_regex

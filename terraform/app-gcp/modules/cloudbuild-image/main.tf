@@ -4,6 +4,14 @@ locals {
   image_repo_path       = "${var.artifact_registry_location}-docker.pkg.dev/${var.project_id}/${var.artifact_registry_repository_id}/${var.image_name}"
   rtcd_image_repo_path  = "${var.artifact_registry_location}-docker.pkg.dev/${var.project_id}/${var.artifact_registry_repository_id}/mattermost-rtcd"
   release_source_bucket = one(toset([for delivery in values(var.mattermost_deliveries) : delivery.source_bucket_name]))
+
+  # Provenance and evidence identifiers are derived from the catalog-supplied
+  # repository URLs; the module text itself names no repository.
+  source_slug              = trimsuffix(trimprefix(var.github_remote_uri, "https://github.com/"), ".git")
+  assembly_source_tree_url = "${trimsuffix(var.github_remote_uri, ".git")}/tree"
+  web_source_tree_url      = "${trimsuffix(var.web_github_remote_uri, ".git")}/tree"
+  server_source_tree_url   = "${trimsuffix(var.server_source_remote_uri, ".git")}/tree"
+
   scan_cli_image        = "gcr.io/google.com/cloudsdktool/google-cloud-cli:573.0.0@sha256:f0b4abeb30773243f9ae95abe201ec01de07d5ed582b56ca52879eb3dbe209c3"
 }
 
@@ -258,11 +266,11 @@ resource "google_cloudbuild_trigger" "this" {
             --build-arg BUILD_NUMBER="$$pipeline_version" \
             --build-arg BUILD_HASH="$$SERVER_SHA" \
             --build-arg BUILD_DATE="$$pipeline_build_date" \
-            --build-arg SOURCE_URL="https://github.com/pilprod/mattermost/tree/$$SERVER_SHA" \
+            --build-arg SOURCE_URL="${local.server_source_tree_url}/$$SERVER_SHA" \
             --build-arg WEB_BUILD_HASH="$$WEB_SHA" \
-            --build-arg WEB_SOURCE_URL="https://github.com/pilprod/yourown-chat-web/tree/$$WEB_SHA" \
+            --build-arg WEB_SOURCE_URL="${local.web_source_tree_url}/$$WEB_SHA" \
             --build-arg ASSEMBLY_BUILD_HASH="$$ASSEMBLY_SHA" \
-            --build-arg ASSEMBLY_SOURCE_URL="https://github.com/pilprod/yourown-chat-mattermost/tree/$$ASSEMBLY_SHA" \
+            --build-arg ASSEMBLY_SOURCE_URL="${local.assembly_source_tree_url}/$$ASSEMBLY_SHA" \
             --tag "${local.image_repo_path}:$$image_tag" \
             --tag "${local.image_repo_path}:$$moving_tag" \
             --attest=type=sbom \
@@ -291,9 +299,9 @@ resource "google_cloudbuild_trigger" "this" {
             image="${local.image_repo_path}:git-$COMMIT_SHA"
             pipeline_version="$BRANCH_NAME-$SHORT_SHA"
           fi
-          server_url="https://github.com/pilprod/mattermost/tree/$$SERVER_SHA"
-          web_url="https://github.com/pilprod/yourown-chat-web/tree/$$WEB_SHA"
-          assembly_url="https://github.com/pilprod/yourown-chat-mattermost/tree/$$ASSEMBLY_SHA"
+          server_url="${local.server_source_tree_url}/$$SERVER_SHA"
+          web_url="${local.web_source_tree_url}/$$WEB_SHA"
+          assembly_url="${local.assembly_source_tree_url}/$$ASSEMBLY_SHA"
           docker pull "$$image"
           sh scripts/verify-product-image.sh \
             "$$image" \
@@ -343,7 +351,7 @@ resource "google_cloudbuild_trigger" "this" {
             /workspace/mattermost-severities.txt \
             /workspace/mattermost-vulnerabilities.json \
             /workspace/mattermost-source.env \
-            "gs://${local.release_source_bucket}/evidence/yourown-chat-mattermost/$BUILD_ID/"
+            "gs://${local.release_source_bucket}/evidence/${var.repository_name}/$BUILD_ID/"
         EOT
       ]
     }
@@ -422,7 +430,7 @@ resource "google_cloudbuild_trigger" "this" {
             --skaffold-file "skaffold-mattermost.yaml" \
             --gcs-source-staging-dir "gs://${var.mattermost_deliveries[each.value.delivery].source_bucket_name}/source" \
             --deploy-parameters "$$deploy_parameters" \
-            --annotations "source-repo=pilprod/yourown-chat-mattermost,source-ref=$$source_ref,source-branch=$BRANCH_NAME,git-tag=$TAG_NAME,assembly-sha=$$ASSEMBLY_SHA,server-sha=$$SERVER_SHA,web-sha=$$WEB_SHA,build-id=$BUILD_ID,image-digest=$$digest,rtcd-image-digest=$$rtcd_digest,rtcd-source=$$RTCD_SOURCE_COMMIT,rtcd-security-build=$$RTCD_BUILD_VERSION,release-channel=${each.value.release_channel}"
+            --annotations "source-repo=${local.source_slug},source-ref=$$source_ref,source-branch=$BRANCH_NAME,git-tag=$TAG_NAME,assembly-sha=$$ASSEMBLY_SHA,server-sha=$$SERVER_SHA,web-sha=$$WEB_SHA,build-id=$BUILD_ID,image-digest=$$digest,rtcd-image-digest=$$rtcd_digest,rtcd-source=$$RTCD_SOURCE_COMMIT,rtcd-security-build=$$RTCD_BUILD_VERSION,release-channel=${each.value.release_channel}"
         EOT
       ]
     }

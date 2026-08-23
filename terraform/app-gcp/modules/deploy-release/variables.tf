@@ -14,22 +14,21 @@ variable "apply_service_account_email" {
 }
 
 # --- GitHub source: THIS repo (holds helm/, the Skaffold render root) --------
+# Every repository name and clone URL below is supplied by the private service
+# catalog through the component inputs; the public module has no defaults.
 variable "connection_name" {
   type        = string
   description = "Name of the EXISTING Cloud Build 2nd-gen GitHub connection (authorized once in the console via OAuth, see README.md) the deploy repo is linked to. Shared with the image CI; Terraform never creates or manages the connection."
-  default     = "pilprod-github"
 }
 
 variable "repository_name" {
   type        = string
-  description = "Name of the Cloud Build 2nd-gen repository resource linking the connection to the deploy source repo."
-  default     = "yourown-chat"
+  description = "Name of the Cloud Build 2nd-gen repository resource linking the connection to the deploy source repo (catalog role deploy)."
 }
 
 variable "github_remote_uri" {
   type        = string
-  description = "HTTPS clone URL of the deploy source repository (the one holding helm/), e.g. https://github.com/pilprod/yourown-chat.git."
-  default     = "https://github.com/pilprod/yourown-chat.git"
+  description = "HTTPS clone URL of the deploy source repository (the one holding helm/; catalog role deploy)."
 
   validation {
     condition     = can(regex("^https://github\\.com/.+\\.git$", var.github_remote_uri))
@@ -39,14 +38,17 @@ variable "github_remote_uri" {
 
 variable "rtcd_repository_name" {
   type        = string
-  description = "Cloud Build repository resource name for the custom RTCD source."
-  default     = "yourown-chat-rtcd"
+  description = "Cloud Build repository resource name for the RTCD source (catalog role rtcd)."
 }
 
 variable "rtcd_github_remote_uri" {
   type        = string
-  description = "HTTPS GitHub URL of the custom RTCD source repository."
-  default     = "https://github.com/pilprod/yourown-chat-rtcd.git"
+  description = "HTTPS GitHub URL of the RTCD source repository (catalog role rtcd)."
+
+  validation {
+    condition     = can(regex("^https://github\\.com/.+\\.git$", var.rtcd_github_remote_uri))
+    error_message = "rtcd_github_remote_uri must be an https github.com URL ending in .git."
+  }
 }
 
 variable "rtcd_release_tag_regex" {
@@ -57,38 +59,47 @@ variable "rtcd_release_tag_regex" {
 
 variable "backend_repository_name" {
   type        = string
-  description = "Cloud Build repository resource for the product backend source."
-  default     = "yourown-chat-server"
+  description = "Cloud Build repository resource for the product backend source (catalog role backend)."
 }
 
 variable "backend_github_remote_uri" {
   type        = string
-  description = "HTTPS GitHub URL of the product backend source repository."
-  default     = "https://github.com/pilprod/yourown-chat-server.git"
+  description = "HTTPS GitHub URL of the product backend source repository (catalog role backend)."
+
+  validation {
+    condition     = can(regex("^https://github\\.com/.+\\.git$", var.backend_github_remote_uri))
+    error_message = "backend_github_remote_uri must be an https github.com URL ending in .git."
+  }
 }
 
 variable "agents_repository_name" {
   type        = string
-  description = "Cloud Build repository resource for the agent workload source."
-  default     = "yourown-chat-agents"
+  description = "Cloud Build repository resource for the agent workload source (catalog role agents)."
 }
 
 variable "agents_github_remote_uri" {
   type        = string
-  description = "HTTPS GitHub URL of the agent workload source repository."
-  default     = "https://github.com/pilprod/yourown-chat-agents.git"
+  description = "HTTPS GitHub URL of the agent workload source repository (catalog role agents)."
+
+  validation {
+    condition     = can(regex("^https://github\\.com/.+\\.git$", var.agents_github_remote_uri))
+    error_message = "agents_github_remote_uri must be an https github.com URL ending in .git."
+  }
 }
 
 variable "mcp_repository_name" {
   type        = string
-  description = "Cloud Build repository resource for private owned MCP server source."
-  default     = "yourown-chat-mcp"
+  description = "Cloud Build repository resource for the private first-party MCP server source (catalog role mcp)."
 }
 
 variable "mcp_github_remote_uri" {
   type        = string
-  description = "HTTPS GitHub URL of the private owned MCP server source repository."
-  default     = "https://github.com/pilprod/yourown-chat-mcp.git"
+  description = "HTTPS GitHub URL of the private first-party MCP server source repository (catalog role mcp)."
+
+  validation {
+    condition     = can(regex("^https://github\\.com/.+\\.git$", var.mcp_github_remote_uri))
+    error_message = "mcp_github_remote_uri must be an https github.com URL ending in .git."
+  }
 }
 
 variable "mcp_branch_regex" {

@@ -4,9 +4,11 @@ locals {
     terraform_stacks = "${local.artifact_repository_prefix}/mcp-terraform-stacks"
   }
   mcp_builds = {
-    "yourown-chat-mcp-ci"    = { branch = var.mcp_branch_regex, tag = null, release = false }
-    "yourown-chat-mcp-image" = { branch = null, tag = var.mcp_release_tag_regex, release = true }
+    "${var.mcp_repository_name}-ci"    = { branch = var.mcp_branch_regex, tag = null, release = false }
+    "${var.mcp_repository_name}-image" = { branch = null, tag = var.mcp_release_tag_regex, release = true }
   }
+  # Release annotations identify the source by its catalog-supplied URL.
+  mcp_source_slug = trimsuffix(trimprefix(var.mcp_github_remote_uri, "https://github.com/"), ".git")
 }
 
 resource "google_cloudbuildv2_repository" "mcp_source" {
@@ -200,7 +202,7 @@ resource "google_cloudbuild_trigger" "mcp_source" {
           /workspace/*-vulnerabilities.json \
           /workspace/mcp-cover.out \
           go.mod go.sum \
-          "gs://${google_storage_bucket.source.name}/evidence/yourown-chat-mcp/$BUILD_ID/"
+          "gs://${google_storage_bucket.source.name}/evidence/${var.mcp_repository_name}/$BUILD_ID/"
       EOT
       ]
     }
@@ -236,7 +238,7 @@ resource "google_cloudbuild_trigger" "mcp_source" {
           --skaffold-file "skaffold-mcp.yaml" \
           --gcs-source-staging-dir "gs://${google_storage_bucket.source.name}/source" \
           --deploy-parameters "mcp_google_cloud_image=${local.mcp_image_paths.google_cloud}@$$google_cloud_digest,mcp_terraform_stacks_image=${local.mcp_image_paths.terraform_stacks}@$$terraform_stacks_digest,mcp_tunnel_image=$$tunnel_repo@$$tunnel_digest" \
-          --annotations "source-repo=pilprod/yourown-chat-mcp,git-tag=$TAG_NAME,git-sha=$COMMIT_SHA,build-id=$BUILD_ID,image-set=$$digest_set,platform-sha=$$platform_sha"
+          --annotations "source-repo=${local.mcp_source_slug},git-tag=$TAG_NAME,git-sha=$COMMIT_SHA,build-id=$BUILD_ID,image-set=$$digest_set,platform-sha=$$platform_sha"
       EOT
       ]
     }

@@ -42,7 +42,7 @@ output "connection_id" {
 
 output "source_repository_id" {
   type        = string
-  description = "Cloud Build 2nd-gen repository ID linking the connection to github.com/pilprod/yourown-chat-mattermost."
+  description = "Cloud Build 2nd-gen repository ID linking the connection to the product assembly source repository (catalog role mattermost)."
   value       = component.mattermost_image.repository_id
 }
 
@@ -85,7 +85,7 @@ output "release_source_bucket" {
 
 output "application_source_trigger_ids" {
   type        = map(string)
-  description = "Cloud Build CI and immutable-image triggers for yourown-chat-server and yourown-chat-agents."
+  description = "Cloud Build CI and immutable-image triggers for the backend and agent source repositories (catalog roles backend, agents)."
   value       = component.deploy_release.application_source_trigger_ids
 }
 

@@ -25,6 +25,14 @@ upstream_input "cloudflare" {
   source = "app.terraform.io/papou-work/yourown-chat/cloudflare"
 }
 
+# Private service catalog: repository connections and other private component
+# inputs are published by the service-catalog Stack (private repository) and
+# consumed here as last-applied values. Apply order: service-catalog first.
+upstream_input "catalog" {
+  type   = "stack"
+  source = "app.terraform.io/papou-work/yourown-chat/service-catalog"
+}
+
 deployment "eu" {
   inputs = {
     identity_token        = identity_token.gcp.jwt
@@ -96,13 +104,11 @@ deployment "eu" {
     # reproducible and visible instead of waiting for the periodic catalog sync.
     mcp_capability_sync_enabled = true
 
-    # Cloud Build 2nd-gen GitHub connection, authorized once out-of-band in the
-    # console (README.md); Mattermost, platform and backend repos are linked to it.
-    github_connection_name = "pilprod-github"
-    github_repository_name = "yourown-chat-mattermost"
-    github_remote_uri      = "https://github.com/pilprod/yourown-chat-mattermost.git"
-    github_web_repository_name = "yourown-chat-web"
-    github_web_remote_uri      = "https://github.com/pilprod/yourown-chat-web.git"
+    # Cloud Build 2nd-gen GitHub connection (authorized once out-of-band in the
+    # console, README.md) and every linked source repository come from the
+    # private service catalog. No repository owner, name or URL is kept here.
+    github_connection_name = upstream_input.catalog.github_connection_name
+    source_repositories    = upstream_input.catalog.source_repositories
     image_name             = "mattermost"
     # Stable assembly tags use dev -> smoke -> approval -> prod. Prerelease
     # tags and version branches are structurally limited to dev preview.
@@ -124,15 +130,13 @@ deployment "eu" {
       }
     }
 
-    # Semver tag on THIS repo cuts a Cloud Deploy release automatically.
-    github_deploy_remote_uri = "https://github.com/pilprod/yourown-chat.git"
-    release_tag_regex        = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    # Semver tag on the deploy repository (catalog role `deploy`) cuts a Cloud
+    # Deploy release automatically.
+    release_tag_regex = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
 
-    # Product backend and agent workloads are independent repositories with
-    # independent CI/tag triggers and build identities.
-    github_backend_remote_uri = "https://github.com/pilprod/yourown-chat-server.git"
-    github_agents_remote_uri  = "https://github.com/pilprod/yourown-chat-agents.git"
-    github_mcp_remote_uri     = "https://github.com/pilprod/yourown-chat-mcp.git"
+    # Product backend, agent and MCP workloads are independent repositories
+    # (catalog roles backend, agents, mcp) with independent CI/tag triggers and
+    # build identities.
     mcp_release_tag_regex     = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
     backend_release_tag_regex = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
     agents_release_tag_regex  = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
