@@ -5,6 +5,10 @@
 
 deployment "eu" {
   inputs = {
+    # Bump on every catalog change; a changed apply is what pushes the
+    # published values to downstream Stacks (an unchanged apply does not).
+    catalog_revision = "2026-08-23.2"
+
     github_connection_name = "pilprod-github"
 
     source_repositories = {
@@ -60,4 +64,9 @@ publish_output "github_connection_name" {
 publish_output "source_repositories" {
   description = "Source repositories keyed by role (deploy, mattermost, web, server_source, backend, agents, mcp, rtcd)."
   value       = deployment.eu.source_repositories
+}
+
+publish_output "catalog_revision" {
+  description = "Revision marker of the published catalog (changes on every catalog release)."
+  value       = deployment.eu.catalog_revision
 }

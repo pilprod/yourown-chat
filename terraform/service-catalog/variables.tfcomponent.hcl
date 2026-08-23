@@ -13,3 +13,8 @@ variable "source_repositories" {
   }))
   description = "Source repositories keyed by role (deploy, mattermost, web, server_source, backend, agents, mcp, rtcd). `name` is the Cloud Build 2nd-gen repository resource name; `remote_uri` is the HTTPS clone URL."
 }
+
+variable "catalog_revision" {
+  type        = string
+  description = "Human-readable revision marker of the catalog contents. Changing it forces a changed apply so the published values propagate to downstream Stacks."
+}
