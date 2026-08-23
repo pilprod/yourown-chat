@@ -194,6 +194,75 @@ variable "release_tag_regex" {
   default     = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
 }
 
+# --- kagent API v2 preview delivery -----------------------------------------
+variable "github_kagent_remote_uri" {
+  type        = string
+  description = "HTTPS clone URL of the kagent integration/release repository that owns the source lock, qualification gates, cloudbuild.preview.yaml and Skaffold source."
+  default     = "https://github.com/pilprod/yourown-chat-kagent.git"
+}
+
+variable "github_kagent_repository_name" {
+  type        = string
+  description = "Cloud Build v2 repository resource name for the kagent integration/release repository."
+  default     = "yourown-chat-kagent"
+}
+
+variable "kagent_preview_tag_regex" {
+  type        = string
+  description = "Immutable integration-repository tags allowed to build and release kagent candidates into the testbed-only preview pipeline. No branch trigger is created."
+  default     = "^preview-[0-9]{8}-[1-9][0-9]*$"
+}
+
+variable "kagent_preview_crds_ready" {
+  type        = bool
+  description = "Fail-closed declaration that a platform admin applied and verified the exact current-main CRD bundle before any API v2 preview release."
+  default     = false
+
+  validation {
+    condition     = !var.kagent_preview_crds_ready || can(regex("^[0-9a-f]{64}$", var.kagent_preview_crd_bundle_sha256))
+    error_message = "kagent_preview_crds_ready=true requires an exact 64-character SHA-256 CRD bundle digest."
+  }
+}
+
+variable "kagent_preview_crd_bundle_sha256" {
+  type        = string
+  description = "Exact raw SHA-256 digest of the product-owned current-main CRD bootstrap bundle verified by the one-time platform-admin apply."
+  default     = "b34b1165e642e5c621443550f8b212957f49ed9df77e36b87832ee7df51fe1f7"
+
+  validation {
+    condition     = can(regex("^[0-9a-f]{64}$", var.kagent_preview_crd_bundle_sha256))
+    error_message = "kagent_preview_crd_bundle_sha256 must be exactly 64 lowercase hexadecimal characters."
+  }
+}
+
+variable "kagent_preview_substrate_ready" {
+  type        = bool
+  description = "Fail-closed declaration that GKE beta APIs, the required node rollout, Substrate and the kagent WorkerPool were applied and health-checked."
+  default     = false
+}
+
+variable "kagent_preview_substrate_version" {
+  type        = string
+  description = "Expected externally managed Substrate version for the preview controller."
+  default     = "0.0.20"
+
+  validation {
+    condition     = var.kagent_preview_substrate_version == "0.0.20"
+    error_message = "The reviewed preview runtime contract currently requires Substrate 0.0.20."
+  }
+}
+
+variable "kagent_preview_ui_access_enabled" {
+  type        = bool
+  description = "Cloudflare-stack-published readiness for the kagent preview UI Access application, Tunnel route and connector token. Opens only the cloudflared-to-UI NetworkPolicy path; it does not create a public Kubernetes Service."
+  default     = false
+
+  validation {
+    condition     = !var.kagent_preview_ui_access_enabled || var.kagent_preview_enabled
+    error_message = "kagent_preview_ui_access_enabled requires kagent_preview_enabled so the isolated namespaces and default-deny policy exist."
+  }
+}
+
 # --- Labels -----------------------------------------------------------------
 variable "extra_labels" {
   type        = map(string)
@@ -332,6 +401,56 @@ variable "agent_platform_runtime_enabled" {
   type        = bool
   description = "Default semver release mode for the agent pilot. false routes the release through the static pause profile; true uses the static running profile. Both preserve Cloud SQL and GCS state."
   default     = false
+}
+
+variable "kagent_testbed_enabled" {
+  type        = bool
+  description = "Install the pinned, unqualified legacy M0 kagent Helm releases. This must remain false while Cloud Deploy owns the API v2 preview release."
+  default     = false
+}
+
+variable "kagent_preview_enabled" {
+  type        = bool
+  description = "Prepare namespaces, quotas and NetworkPolicies for the API v2 Cloud Deploy preview path without installing the legacy Terraform-owned M0 Helm release."
+  default     = false
+}
+
+variable "kagent_system_namespace" {
+  type        = string
+  description = "Namespace for the kagent controller and its bundled testbed database."
+  default     = "kagent-system"
+}
+
+variable "kagent_testbed_namespace" {
+  type        = string
+  description = "Namespace for kagent test agents and deterministic model fixtures."
+  default     = "kagent-testbed"
+}
+
+variable "kagent_chart_repository" {
+  type        = string
+  description = "Pinned upstream OCI Helm repository containing the kagent and kagent-crds charts."
+  default     = "oci://ghcr.io/kagent-dev/kagent/helm"
+}
+
+variable "kagent_chart_version" {
+  type        = string
+  description = "Reviewed kagent application and CRD chart version."
+}
+
+variable "kagent_source_commit" {
+  type        = string
+  description = "Upstream source commit corresponding to the reviewed kagent chart release."
+}
+
+variable "kagent_chart_oci_digest" {
+  type        = string
+  description = "Reviewed OCI manifest digest for the kagent application chart."
+}
+
+variable "kagent_crds_chart_oci_digest" {
+  type        = string
+  description = "Reviewed OCI manifest digest for the kagent CRD chart."
 }
 
 variable "zero_trust_enabled" {

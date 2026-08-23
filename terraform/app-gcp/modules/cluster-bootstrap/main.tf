@@ -58,3 +58,50 @@ resource "helm_release" "ingress_nginx" {
   wait    = true
   timeout = 600
 }
+
+# kagent M0 is an isolated, explicitly unqualified testbed. CRDs are installed
+# first so the controller never races custom-resource discovery. release.lock
+# and helm/test/kagent-release.test.sh verify the OCI archive checksums before
+# this gate is enabled; the reviewed OCI digests are retained in release
+# metadata so any pin change is visible in the Terraform plan.
+resource "helm_release" "kagent_crds" {
+  count = var.kagent_testbed_enabled ? 1 : 0
+
+  name       = "kagent-crds"
+  repository = var.kagent_chart_repository
+  chart      = "kagent-crds"
+  version    = var.kagent_chart_version
+  description = join(" ", [
+    "source=${var.kagent_source_commit}",
+    "oci=${var.kagent_crds_chart_oci_digest}",
+  ])
+
+  namespace        = var.kagent_system_namespace
+  create_namespace = false
+  values           = [file("${path.module}/../../../../helm/kagent/crds-values.yaml")]
+
+  wait    = true
+  timeout = 600
+}
+
+resource "helm_release" "kagent" {
+  count = var.kagent_testbed_enabled ? 1 : 0
+
+  name       = "kagent"
+  repository = var.kagent_chart_repository
+  chart      = "kagent"
+  version    = var.kagent_chart_version
+  description = join(" ", [
+    "source=${var.kagent_source_commit}",
+    "oci=${var.kagent_chart_oci_digest}",
+  ])
+
+  namespace        = var.kagent_system_namespace
+  create_namespace = false
+  values           = [file("${path.module}/../../../../helm/kagent/values-testbed.yaml")]
+
+  wait    = true
+  timeout = 900
+
+  depends_on = [helm_release.kagent_crds]
+}

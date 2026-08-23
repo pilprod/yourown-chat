@@ -139,6 +139,12 @@ variable "gke_deletion_protection" {
   default     = true
 }
 
+variable "gke_enabled_k8s_beta_apis" {
+  type        = list(string)
+  description = "Kubernetes beta API resources enabled on GKE. This is a one-way cluster setting; an empty list is the safe default."
+  default     = []
+}
+
 variable "master_authorized_networks" {
   type = list(object({
     cidr_block   = string

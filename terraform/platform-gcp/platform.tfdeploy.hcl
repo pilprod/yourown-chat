@@ -45,6 +45,11 @@ deployment "eu" {
     # workloads are preemptible and scaled down after release verification.
     gke_regional            = false
     gke_deletion_protection = true
+    # Substrate currently requires PodCertificateRequest and
+    # ClusterTrustBundle beta APIs. Enabling either is permanent for this
+    # cluster, so the release process keeps the list empty until a dedicated
+    # reviewed platform apply approves both APIs and a node-pool rollout.
+    gke_enabled_k8s_beta_apis = []
     gke_node_pools = {
       # GKE cannot add CMEK to existing boot disks. The first apply with
       # cmek_boot_disk=true intentionally deletes and recreates this pool with

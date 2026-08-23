@@ -39,6 +39,19 @@ variable "release_channel" {
   }
 }
 
+variable "enabled_k8s_beta_apis" {
+  type        = list(string)
+  description = "Kubernetes beta API resources to enable on the GKE control plane. Enabling is permanent for the lifetime of the cluster; keep empty until an explicitly reviewed platform prerequisite requires it."
+  default     = []
+
+  validation {
+    condition = alltrue([
+      for api in var.enabled_k8s_beta_apis : can(regex("^[a-z0-9.-]+/v[0-9]+beta[0-9]+/[a-z0-9.-]+$", api))
+    ])
+    error_message = "Each beta API must use group/version/resource form, for example certificates.k8s.io/v1beta1/podcertificaterequests."
+  }
+}
+
 variable "master_ipv4_cidr_block" {
   type        = string
   description = "RFC1918 /28 block for the private control plane."

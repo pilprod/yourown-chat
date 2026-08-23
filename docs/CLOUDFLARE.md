@@ -18,6 +18,24 @@ The account-scoped token stored in the HCP Terraform varset requires:
 Keep the existing zone-scoped DNS, SSL and Certificates, Zone Settings,
 Single Redirect, and Zone WAF permissions.
 
+## kagent preview UI
+
+`kagent-preview.yourown.chat` is reserved for the testbed UI. It is not a
+public Kubernetes ingress: Cloudflare Tunnel maps the hostname directly to the
+`kagent-preview-ui` ClusterIP Service, and the self-hosted Access application
+uses the existing email/IdP policy before the request reaches `cloudflared`.
+The controller API and A2A Gateway are deliberately not Tunnel origins.
+
+The route is governed by the independent
+`kagent_preview_ui_access_enabled=false` gate in
+`terraform/cloudflare/cloudflare.tfdeploy.hcl`. Keep it false until the frozen
+UI image and the current Access login/allow-list have been reviewed. After the
+Cloudflare stack applies the route, it publishes readiness to `app-gcp`, which
+then admits exactly `mcp-tunnel/cloudflared -> kagent preview UI:8080` through
+Kubernetes NetworkPolicy. Reuse the existing connector and
+`mcp-tunnel-token`; do not create an Ingress, LoadBalancer, second tunnel or
+second token for this UI.
+
 ## MCP Portal
 
 Terraform explicitly manages the AI Controls Portal and its separate

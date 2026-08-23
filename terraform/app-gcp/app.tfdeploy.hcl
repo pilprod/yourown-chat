@@ -87,6 +87,17 @@ deployment "eu" {
     agent_results_bucket           = try(upstream_input.platform.temporal_results_bucket_name, "")
     agent_platform_runtime_enabled = false
 
+    # Reproducible legacy M0 Helm baseline only. The release remains physically
+    # absent until a separate reviewed change flips this explicit gate. API v2
+    # candidates use the independent kagent-preview Cloud Deploy pipeline; the
+    # two controllers must never co-own one Helm release.
+    kagent_testbed_enabled       = false
+    kagent_preview_enabled       = true
+    kagent_chart_version         = "0.9.12"
+    kagent_source_commit         = "b45990582595acea5f6e765b86a10b251c50d5c9"
+    kagent_chart_oci_digest      = "sha256:ec0dacc1a76edbd190a554757c8bdb193ccb0b35deeb35f6d7a7e7ffc76d99fd"
+    kagent_crds_chart_oci_digest = "sha256:85174e69eab19e05fcf82dbfda86e8e84c2be97a52c645d60cf1ae51ccbca977"
+
     # Derived from the cloudflare stack's published outputs -- origin_tls_ready
     # and zero_trust_ready are true when Secret Manager versions exist.
     # try() guards the initial bootstrap.
@@ -136,6 +147,24 @@ deployment "eu" {
     mcp_release_tag_regex     = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
     backend_release_tag_regex = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
     agents_release_tag_regex  = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+
+    # kagent integration/release tags are the only preview entrypoint. Fork
+    # tags and branches cannot deploy. cloudbuild.preview.yaml re-verifies the
+    # exact fork commit pinned by the integration repository before building.
+    github_kagent_remote_uri      = "https://github.com/pilprod/yourown-chat-kagent.git"
+    github_kagent_repository_name = "yourown-chat-kagent"
+    kagent_preview_tag_regex      = "^preview-[0-9]{8}-[1-9][0-9]*$"
+    # Flip only after a platform admin has applied and verified the exact
+    # product-owned current-main CRD bundle; legacy M0 CRDs are incompatible.
+    kagent_preview_crds_ready        = false
+    kagent_preview_crd_bundle_sha256 = "b34b1165e642e5c621443550f8b212957f49ed9df77e36b87832ee7df51fe1f7"
+    # Flip only after the one-way GKE beta-API change, node rollout and the
+    # external Substrate/WorkerPool health check have completed.
+    kagent_preview_substrate_ready   = false
+    kagent_preview_substrate_version = "0.0.20"
+    # Cross-stack readiness, not a hand-kept enable switch. The cloudflare
+    # stack publishes true only after Access, Tunnel ingress and token exist.
+    kagent_preview_ui_access_enabled = try(upstream_input.cloudflare.kagent_preview_ui_access_ready, false)
 
     extra_labels = { cost-center = "platform" }
   }

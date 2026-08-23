@@ -99,6 +99,46 @@ component "clouddeploy_mattermost_preview" {
   }
 }
 
+# API v2 / external-host candidates have an isolated delivery graph. The
+# serial pipeline has exactly one testbed target, so neither the tag-triggered
+# build identity nor an operator can promote a preview release to production.
+# This is separate from the Terraform-owned, disabled M0 Helm baseline below.
+component "clouddeploy_kagent_preview" {
+  source = "./modules/clouddeploy"
+
+  inputs = {
+    project_id              = var.project_id
+    region                  = var.region
+    gke_cluster_id          = var.gke_cluster_id
+    pipeline_name           = "kagent-preview"
+    release_manager_members = []
+
+    # roles/container.developer includes CRD create/update/delete. Preview
+    # delivery instead gets cluster discovery here and exact namespaced write
+    # permissions through Terraform-owned Kubernetes Roles below.
+    execution_sa_roles = [
+      "roles/clouddeploy.jobRunner",
+      "roles/container.clusterViewer",
+      "roles/logging.logWriter",
+    ]
+
+    stages = [{
+      name             = "testbed"
+      target_name      = "kagent-testbed"
+      profiles         = ["kagent-testbed"]
+      require_approval = false
+      verify           = true
+    }]
+
+    labels = local.common_labels
+  }
+
+  providers = {
+    google      = provider.google.this
+    google-beta = provider.google-beta.this
+  }
+}
+
 component "clouddeploy_mcp" {
   source = "./modules/clouddeploy"
 
@@ -430,6 +470,26 @@ component "cluster_secrets" {
       var.agent_platform_enabled ? {
         yourown-agents = { labels = { tier = "pilot", "part-of" = "yourown-chat", component = "agents" } }
       } : {},
+      var.kagent_preview_enabled || var.kagent_testbed_enabled ? {
+        (var.kagent_system_namespace) = {
+          labels = {
+            tier                                         = "testbed"
+            "part-of"                                    = "k8s-agents-platform"
+            component                                    = "kagent-system"
+            "pod-security.kubernetes.io/enforce"         = "baseline"
+            "pod-security.kubernetes.io/enforce-version" = "latest"
+          }
+        }
+        (var.kagent_testbed_namespace) = {
+          labels = {
+            tier                                         = "testbed"
+            "part-of"                                    = "k8s-agents-platform"
+            component                                    = "kagent-workloads"
+            "pod-security.kubernetes.io/enforce"         = "restricted"
+            "pod-security.kubernetes.io/enforce-version" = "latest"
+          }
+        }
+      } : {},
       var.yourown_chat_server_enabled ? {
         edge = {
           labels = {
@@ -630,6 +690,46 @@ component "mattermost_image" {
   }
 }
 
+# Immutable tag on the integration/release repository -> build one exact fork
+# commit -> qualify its digest -> cut a testbed-only Cloud Deploy release.
+# Source changes and fork tags alone cannot invoke this trigger.
+component "kagent_preview_release" {
+  source = "./modules/kagent-preview-release"
+
+  # Do not activate the tag trigger until Terraform has prepared the two
+  # namespaces, quotas, NetworkPolicies and narrow namespaced RBAC authoring.
+  depends_on = [component.workload_scheduling]
+
+  inputs = {
+    project_id                  = var.project_id
+    region                      = var.region
+    apply_service_account_email = var.service_account_email
+
+    connection_name   = var.github_connection_name
+    repository_name   = var.github_kagent_repository_name
+    github_remote_uri = var.github_kagent_remote_uri
+    preview_tag_regex = var.kagent_preview_tag_regex
+    crds_ready        = var.kagent_preview_crds_ready
+    crd_bundle_sha256 = var.kagent_preview_crd_bundle_sha256
+    substrate_ready   = var.kagent_preview_substrate_ready
+    substrate_version = var.kagent_preview_substrate_version
+
+    artifact_registry_location      = var.artifact_registry_location
+    artifact_registry_repository_id = var.artifact_registry_repository_id
+
+    delivery_pipeline_name          = component.clouddeploy_kagent_preview.delivery_pipeline_name
+    initial_target_name             = component.clouddeploy_kagent_preview.target_names["testbed"]
+    execution_service_account_email = component.clouddeploy_kagent_preview.execution_service_account_email
+    source_bucket_kms_key_name      = var.cmek_key_id
+
+    labels = local.common_labels
+  }
+
+  providers = {
+    google = provider.google.this
+  }
+}
+
 # Semver tag on the deploy repo -> `gcloud deploy releases create`.
 component "deploy_release" {
   source = "./modules/deploy-release"
@@ -716,8 +816,14 @@ component "workload_scheduling" {
   depends_on = [component.cluster_secrets]
 
   inputs = {
-    agent_enabled  = var.agent_platform_enabled
-    server_enabled = var.yourown_chat_server_enabled
+    agent_enabled                                  = var.agent_platform_enabled
+    server_enabled                                 = var.yourown_chat_server_enabled
+    kagent_testbed_enabled                         = var.kagent_testbed_enabled
+    kagent_preview_enabled                         = var.kagent_preview_enabled
+    kagent_preview_ui_access_enabled               = var.kagent_preview_ui_access_enabled
+    kagent_system_namespace                        = var.kagent_system_namespace
+    kagent_testbed_namespace                       = var.kagent_testbed_namespace
+    kagent_preview_execution_service_account_email = component.clouddeploy_kagent_preview.execution_service_account_email
     cleanup_service_account_emails = {
       mattermost = component.clouddeploy.cleanup_service_account_email
       mcp        = component.clouddeploy_mcp.cleanup_service_account_email
@@ -746,12 +852,22 @@ component "dev_postgres" {
 component "cluster_bootstrap" {
   source = "./modules/cluster-bootstrap"
 
+  depends_on = [component.cluster_secrets]
+
   inputs = {
     mattermost_operator_chart_version = var.mattermost_operator_chart_version
     ingress_nginx_chart_version       = var.ingress_nginx_chart_version
     adopt_existing_releases           = var.adopt_existing_cluster_bootstrap_releases
 
     ingress_load_balancer_ip = var.ingress_ip_address
+
+    kagent_testbed_enabled       = var.kagent_testbed_enabled
+    kagent_system_namespace      = var.kagent_system_namespace
+    kagent_chart_repository      = var.kagent_chart_repository
+    kagent_chart_version         = var.kagent_chart_version
+    kagent_source_commit         = var.kagent_source_commit
+    kagent_chart_oci_digest      = var.kagent_chart_oci_digest
+    kagent_crds_chart_oci_digest = var.kagent_crds_chart_oci_digest
   }
 
   providers = {

@@ -563,6 +563,7 @@ component "gke" {
     services_range_name        = component.network.services_range_name
     master_authorized_networks = var.master_authorized_networks
     node_pools                 = var.gke_node_pools
+    enabled_k8s_beta_apis      = var.gke_enabled_k8s_beta_apis
     node_boot_disk_kms_key     = one([for k in component.kms : k.crypto_key_id])
     enable_secret_manager_csi  = true
     # Pilot diagnostics: retain container stderr/stdout so authentication

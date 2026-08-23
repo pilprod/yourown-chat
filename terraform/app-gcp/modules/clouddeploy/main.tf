@@ -84,7 +84,7 @@ resource "google_clouddeploy_target" "stage" {
 
   project          = var.project_id
   location         = var.region
-  name             = "${var.pipeline_name}-${each.value.name}"
+  name             = coalesce(each.value.target_name, "${var.pipeline_name}-${each.value.name}")
   require_approval = each.value.require_approval
 
   gke {

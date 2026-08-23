@@ -195,6 +195,17 @@ variable "zero_trust_enabled" {
   default     = false
 }
 
+variable "kagent_preview_ui_access_enabled" {
+  type        = bool
+  description = "Create the kagent-preview.yourown.chat Tunnel route, DNS record and self-hosted Access application. Off by default; enable only after reviewing the existing Zero Trust email/IdP policy. The origin is fixed to the kagent preview ClusterIP Service."
+  default     = false
+
+  validation {
+    condition     = !var.kagent_preview_ui_access_enabled || var.zero_trust_enabled
+    error_message = "kagent_preview_ui_access_enabled requires zero_trust_enabled so the Access application and outbound-only Tunnel exist."
+  }
+}
+
 variable "zero_trust_upstreams" {
   type        = map(string)
   description = "Hostname label => in-cluster service URL routed through the tunnel (one DNS record + Access app each). Only used when zero_trust_enabled = true."

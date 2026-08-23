@@ -48,6 +48,17 @@ resource "google_container_cluster" "this" {
     channel = var.release_channel
   }
 
+  # Kubernetes beta APIs introduced after 1.24 are disabled by default in
+  # GKE. Keep this block absent for the normal platform profile; enabling an
+  # API is a one-way cluster operation and therefore requires an explicit
+  # reviewed input change.
+  dynamic "enable_k8s_beta_apis" {
+    for_each = length(var.enabled_k8s_beta_apis) > 0 ? [var.enabled_k8s_beta_apis] : []
+    content {
+      enabled_apis = enable_k8s_beta_apis.value
+    }
+  }
+
   ip_allocation_policy {
     cluster_secondary_range_name  = var.pods_range_name
     services_secondary_range_name = var.services_range_name

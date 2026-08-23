@@ -1,0 +1,81 @@
+# Manual/render fallback for the Terraform-owned kagent bootstrap release.
+# Keep the security-relevant values in sync with cluster-bootstrap/main.tf.
+fullnameOverride: kagent
+namespaceOverride: kagent-system
+
+registry: cr.kagent.dev
+tag: "0.9.12"
+imagePullPolicy: IfNotPresent
+
+labels:
+  app.kubernetes.io/part-of: k8s-agents-platform
+  app.kubernetes.io/managed-by: terraform
+  platform.yourown.chat/release-channel: testbed
+
+rbac:
+  namespaces:
+    - kagent-system
+    - kagent-testbed
+
+controller:
+  replicas: 1
+  loglevel: info
+  watchNamespaces:
+    - kagent-system
+    - kagent-testbed
+  # v0.9.12 does not validate JWT signatures in trusted-proxy mode. Network
+  # policy isolates this explicitly unqualified testbed until auth is fixed.
+  auth:
+    mode: unsecure
+
+ui:
+  replicas: 0
+
+database:
+  postgres:
+    vectorEnabled: false
+    bundled:
+      enabled: true
+      storage: 1Gi
+
+providers:
+  # The baseline must install without committing or materialising an API key.
+  # A deterministic fixture endpoint is supplied only by the system E2E lane.
+  default: ollama
+  ollama:
+    provider: Ollama
+    model: fixture-model
+    config:
+      host: http://model-fixture.kagent-testbed.svc.cluster.local:11434
+
+kmcp:
+  enabled: false
+substrate:
+  enabled: false
+kagent-tools:
+  enabled: false
+grafana-mcp:
+  enabled: false
+querydoc:
+  enabled: false
+
+k8s-agent:
+  enabled: false
+kgateway-agent:
+  enabled: false
+istio-agent:
+  enabled: false
+promql-agent:
+  enabled: false
+observability-agent:
+  enabled: false
+argo-rollouts-agent:
+  enabled: false
+helm-agent:
+  enabled: false
+cilium-policy-agent:
+  enabled: false
+cilium-manager-agent:
+  enabled: false
+cilium-debug-agent:
+  enabled: false

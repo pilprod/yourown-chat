@@ -78,6 +78,24 @@ output "zero_trust_ready" {
   ) : false
 }
 
+# Publish this only after the Access-protected hostname, Tunnel ingress and
+# connector token have all been applied. app-gcp consumes the signal to open
+# two additive NetworkPolicies; a hand-kept mirror toggle cannot expose the UI.
+output "kagent_preview_ui_access_ready" {
+  type        = bool
+  description = "True after the gated kagent preview UI Access/Tunnel route and connector token exist. app-gcp uses it to admit only cloudflared to the UI ClusterIP."
+  value = (
+    var.kagent_preview_ui_access_enabled &&
+    length(component.zero_trust) > 0 &&
+    contains(one([for z in component.zero_trust : z.hostnames]), "kagent-preview.${var.domain}") &&
+    length(component.zero_trust_secrets) > 0 &&
+    contains(
+      keys(one([for s in component.zero_trust_secrets : s.secret_version_ids])),
+      "mcp-tunnel-token",
+    )
+  )
+}
+
 output "mcp_capability_sync_ready" {
   type        = bool
   description = "True once the Cloudflare MCP capability-sync credential has a Secret Manager version."

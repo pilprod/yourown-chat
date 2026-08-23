@@ -1,0 +1,6 @@
+# KMCP and Substrate are not part of the first legacy-v1alpha2 baseline.
+# Their CRDs must be enabled deliberately together with their controllers.
+kmcp:
+  enabled: false
+substrate:
+  enabled: false

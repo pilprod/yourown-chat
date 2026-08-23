@@ -78,6 +78,9 @@ deployment "yourown-chat" {
     zero_trust_enabled        = true
     zero_trust_team_name      = "yourown-chat"
     zero_trust_allowed_emails = ["ilya@papou.email"]
+    # A separate reviewed apply flips this after the preview UI image and
+    # identity policy are accepted. False creates no hostname, DNS or Access app.
+    kagent_preview_ui_access_enabled = false
     zero_trust_upstreams = {
       dev                  = "http://dev-mattermost.dev.svc.cluster.local:8065"
       mcp-terraform-stacks = "http://mcp-terraform-stacks.mcp-terraform-stacks.svc.cluster.local:3000"
@@ -102,6 +105,11 @@ publish_output "aop_enabled" {
 publish_output "zero_trust_ready" {
   description = "True once the Cloudflare Zero Trust tunnel token Secret Manager version exists. app-gcp derives zero_trust_enabled from it."
   value       = deployment.yourown-chat.zero_trust_ready
+}
+
+publish_output "kagent_preview_ui_access_ready" {
+  description = "True only after the kagent-preview Access application, Tunnel route and connector token are applied; app-gcp then opens the exact cloudflared-to-UI path."
+  value       = deployment.yourown-chat.kagent_preview_ui_access_ready
 }
 
 publish_output "mcp_capability_sync_ready" {

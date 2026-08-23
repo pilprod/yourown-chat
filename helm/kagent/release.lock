@@ -1,0 +1,27 @@
+# Shell-compatible release bill of materials for the kagent testbed.
+# Update through docs/KAGENT_RELEASE.md; never move a qualified version in place.
+KAGENT_RELEASE_CHANNEL=testbed
+KAGENT_QUALIFICATION_STATUS=bootstrap-unqualified
+
+KAGENT_FORK_REPOSITORY=https://github.com/pilprod/kagent.git
+KAGENT_UPSTREAM_REPOSITORY=https://github.com/kagent-dev/kagent.git
+
+# First reproducible baseline. The fork currently contains this unchanged tag.
+KAGENT_VERSION=0.9.12
+KAGENT_SOURCE_TAG=v0.9.12
+KAGENT_SOURCE_COMMIT=b45990582595acea5f6e765b86a10b251c50d5c9
+
+KAGENT_CHART_REPOSITORY=oci://ghcr.io/kagent-dev/kagent/helm
+KAGENT_CHART_OCI_DIGEST=sha256:ec0dacc1a76edbd190a554757c8bdb193ccb0b35deeb35f6d7a7e7ffc76d99fd
+KAGENT_CHART_ARCHIVE_SHA256=a6aede4fd39aab4ea0292b68a59ed2b0e41afc50f1e8de8a9a2ead2a89bd5075
+KAGENT_CRDS_CHART_OCI_DIGEST=sha256:85174e69eab19e05fcf82dbfda86e8e84c2be97a52c645d60cf1ae51ccbca977
+KAGENT_CRDS_CHART_ARCHIVE_SHA256=977e59c4ad7f751f2badea53d5f698220f37a1af28fb282fd7917103a084e7f3
+
+# SHA-256 of an empty patch set. Every future downstream patch must be listed
+# in the fork patch ledger and changes this value.
+KAGENT_PATCHSET_SHA256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+
+# Fork main is tracked as an unqualified preview input. It has no deployable
+# OCI chart until the fork release workflow publishes one.
+KAGENT_PREVIEW_SOURCE_COMMIT=5229184e280a6f3bf205b4e64405a92d1fbc259f
+KAGENT_PREVIEW_ARTIFACT_STATUS=unpublished

@@ -5,8 +5,13 @@ output "tunnel_token" {
 }
 
 output "hostnames" {
-  description = "Public hostnames routed onto the tunnel (one per upstream)."
-  value       = [for k in keys(var.upstreams) : "${k}.${var.domain}"]
+  description = "Access-protected hostnames whose self-hosted applications, DNS records and Tunnel ingress have been applied."
+  value       = sort([for application in cloudflare_zero_trust_access_application.this : application.domain])
+
+  depends_on = [
+    cloudflare_zero_trust_tunnel_cloudflared_config.this,
+    cloudflare_dns_record.this,
+  ]
 }
 
 output "mcp_portal_url" {
