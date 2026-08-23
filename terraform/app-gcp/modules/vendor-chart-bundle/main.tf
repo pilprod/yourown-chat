@@ -161,31 +161,8 @@ resource "kubernetes_network_policy_v1" "default_deny" {
   depends_on = [kubernetes_namespace_v1.this]
 }
 
-data "kubernetes_endpoints_v1" "dns" {
-  count = local.provisioned ? 1 : 0
-
-  metadata {
-    name      = "kube-dns"
-    namespace = "kube-system"
-  }
-}
-
-locals {
-  cluster_dns_subsets = [
-    for subset in try(data.kubernetes_endpoints_v1.dns[0].subset, []) : subset
-    if anytrue([
-      for port in subset.port : port.port == 53 && contains(["TCP", "UDP"], port.protocol)
-    ])
-  ]
-  cluster_dns_endpoint_ips = toset(flatten([
-    for subset in local.cluster_dns_subsets : [
-      for address in subset.address : address.ip
-    ]
-  ]))
-}
-
 # DNS is the only namespace-wide egress allowance and targets the exact cluster
-# DNS Service address and ready backend addresses on TCP/UDP 53.
+# DNS Service address and the managed DNS pods on TCP/UDP 53.
 resource "kubernetes_network_policy_v1" "dns_egress" {
   for_each = local.namespaces
 
@@ -205,23 +182,8 @@ resource "kubernetes_network_policy_v1" "dns_egress" {
         }
       }
 
-      # GKE Dataplane V2 can evaluate the destination after Service DNAT. Add
-      # only the ready kube-dns endpoint addresses; not-ready addresses are not
-      # exposed through the Endpoints address collection used above.
-      dynamic "to" {
-        for_each = local.cluster_dns_endpoint_ips
-        iterator = dns_endpoint
-
-        content {
-          ip_block {
-            cidr = "${dns_endpoint.value}/32"
-          }
-        }
-      }
-
-      # GKE network-policy enforcement can observe the DNS Service before or
-      # after kube-proxy translation. Retain the namespace-and-pod selector as
-      # defense in depth for implementations that preserve pod identity.
+      # GKE Dataplane V2 does not apply ipBlock destinations to Pod IPs. Select
+      # both supported GKE DNS implementations by namespace and pod identity.
       to {
         namespace_selector {
           match_labels = {
@@ -229,8 +191,10 @@ resource "kubernetes_network_policy_v1" "dns_egress" {
           }
         }
         pod_selector {
-          match_labels = {
-            "k8s-app" = "kube-dns"
+          match_expressions {
+            key      = "k8s-app"
+            operator = "In"
+            values   = ["kube-dns", "node-local-dns"]
           }
         }
       }
@@ -244,13 +208,6 @@ resource "kubernetes_network_policy_v1" "dns_egress" {
         port     = "53"
         protocol = "UDP"
       }
-    }
-  }
-
-  lifecycle {
-    precondition {
-      condition     = length(local.cluster_dns_endpoint_ips) > 0
-      error_message = "The kube-dns Endpoints resource must publish at least one ready TCP/UDP port 53 endpoint before DNS egress can be opened."
     }
   }
 
