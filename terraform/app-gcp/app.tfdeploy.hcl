@@ -47,8 +47,11 @@ deployment "eu" {
     artifact_registry_location      = upstream_input.platform.artifact_registry_location
     artifact_registry_repository_id = upstream_input.platform.artifact_registry_repository_id
     # Platform Helm chart repository (helm/platform profiles as OCI artifacts).
-    # try() keeps app-gcp plannable until platform-gcp publishes the output.
-    helm_registry_repository_id = try(upstream_input.platform.helm_registry_repository_id, null)
+    # Stacks reject a reference to an upstream output that does not exist yet
+    # even inside try(), so this stays a literal null until platform-gcp has
+    # applied the artifact_registry_helm repository; then switch it to
+    # upstream_input.platform.helm_registry_repository_id in a reviewed change.
+    helm_registry_repository_id = null
     cmek_key_id                     = upstream_input.platform.cmek_key_id
     workload_identity_members       = upstream_input.platform.workload_identity_members
     yourown_chat_server_enabled     = upstream_input.platform.yourown_chat_server_enabled
