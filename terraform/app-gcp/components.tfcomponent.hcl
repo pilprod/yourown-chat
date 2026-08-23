@@ -777,6 +777,35 @@ component "cluster_bootstrap" {
   }
 }
 
+# Generic adapter for private-catalog, product-owned OCI chart bundles. Service
+# identity and vendor values remain outside this reusable public Stack.
+component "vendor_chart_bundle" {
+  # Keep disabled entries instantiated so the module-level CRD
+  # prevent_destroy guard remains present during staged retirement.
+  for_each = var.vendor_chart_bundles
+
+  source = "./modules/vendor-chart-bundle"
+
+  # A bundle may add an exact egress flow in an existing external namespace,
+  # so the shared namespace owner must finish first.
+  depends_on = [component.cluster_secrets]
+
+  inputs = {
+    bundle_key          = each.key
+    bundle              = each.value
+    project_id          = var.project_id
+    database_secret_ids = var.additional_cloudsql_connection_secret_ids
+    cloudsql_private_ip = var.cloudsql_private_ip
+    cluster_dns_ip      = var.cluster_dns_ip
+    labels              = local.common_labels
+  }
+
+  providers = {
+    helm       = provider.helm.this
+    kubernetes = provider.kubernetes.this
+  }
+}
+
 # Canonical-branch publication of platform Helm chart versions as immutable
 # OCI artifacts into the dedicated Helm chart repository published by
 # platform-gcp (helm_registry_repository_id). Service wrappers in owning

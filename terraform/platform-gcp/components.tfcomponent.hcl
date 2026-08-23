@@ -638,6 +638,7 @@ component "cloudsql" {
       {
         yourown_chat_identity = {
           database_names            = ["yourown_chat_identity"]
+          manage_databases          = true
           password_secret_id        = "yourown-chat-identity-db-password"
           password_secret_accessors = []
           connection_secret_id      = "yourown-chat-identity-database-url"
@@ -661,12 +662,32 @@ component "cloudsql" {
           password_rotation = var.yourown_chat_identity_password_rotation
         }
       },
+      {
+        for user_name, settings in var.additional_database_users : user_name => {
+          database_names            = settings.database_names
+          manage_databases          = settings.manage_databases
+          password_secret_id        = settings.password_secret_id
+          password_secret_accessors = []
+          connection_secret_id      = settings.connection_secret_id
+          connection_secret_accessors = setunion(
+            settings.connection_secret_accessors,
+            toset([
+              for accessor in settings.kubernetes_connection_secret_accessors :
+              "principal://iam.googleapis.com/projects/${var.project_number}/locations/global/workloadIdentityPools/${component.gke.workload_identity_pool}/subject/ns/${accessor.namespace}/sa/${accessor.service_account}"
+            ]),
+          )
+          password_rotation = settings.password_rotation
+        }
+      },
       var.temporal_enabled ? {
         temporal = {
-          database_names            = ["temporal", "temporal_visibility"]
-          password_secret_id        = "temporal-db-password"
-          password_secret_accessors = []
-          password_rotation         = var.temporal_password_rotation
+          database_names              = ["temporal", "temporal_visibility"]
+          manage_databases            = true
+          password_secret_id          = "temporal-db-password"
+          password_secret_accessors   = []
+          connection_secret_id        = null
+          connection_secret_accessors = []
+          password_rotation           = var.temporal_password_rotation
         }
       } : {},
     )

@@ -6,8 +6,8 @@ locals {
   gcp_wif_audience = "//iam.googleapis.com/projects/1086706391144/locations/global/workloadIdentityPools/hcp-terraform/providers/hcp-terraform"
   gcp_apply_sa     = "terraform-apply@yourown-chat.iam.gserviceaccount.com"
 
-  gcp_project = "yourown-chat"
-  gcp_region  = "europe-west3"
+  gcp_project   = "yourown-chat"
+  gcp_region    = "europe-west3"
   apple_team_id = join("", ["6HSP", "UCB5ZA"])
 }
 
@@ -39,9 +39,9 @@ deployment "eu" {
     audience              = local.gcp_wif_audience
     service_account_email = local.gcp_apply_sa
 
-    project_id  = local.gcp_project
-    environment = "prod"
-    region      = local.gcp_region
+    project_id               = local.gcp_project
+    environment              = "prod"
+    region                   = local.gcp_region
     apple_association_app_id = "${local.apple_team_id}.com.yourown.chat"
 
     # --- platform-gcp published values (linked stack, last-applied) -----------
@@ -55,17 +55,18 @@ deployment "eu" {
     artifact_registry_location      = upstream_input.platform.artifact_registry_location
     artifact_registry_repository_id = upstream_input.platform.artifact_registry_repository_id
     # Platform Helm chart repository (helm/platform profiles as OCI artifacts).
-    helm_registry_repository_id     = upstream_input.platform.helm_registry_repository_id
-    cmek_key_id                     = upstream_input.platform.cmek_key_id
-    workload_identity_members       = upstream_input.platform.workload_identity_members
-    yourown_chat_server_enabled     = upstream_input.platform.yourown_chat_server_enabled
+    helm_registry_repository_id = upstream_input.platform.helm_registry_repository_id
+    cmek_key_id                 = upstream_input.platform.cmek_key_id
+    workload_identity_members   = upstream_input.platform.workload_identity_members
+    yourown_chat_server_enabled = upstream_input.platform.yourown_chat_server_enabled
     # The migration job consumes this once to create the first native user.
-    identity_bootstrap_user_password_secret_id = upstream_input.platform.identity_bootstrap_user_password_secret_id
-    yourown_chat_identity_connection_secret_id = upstream_input.platform.yourown_chat_identity_connection_secret_id
+    identity_bootstrap_user_password_secret_id         = upstream_input.platform.identity_bootstrap_user_password_secret_id
+    yourown_chat_identity_connection_secret_id         = upstream_input.platform.yourown_chat_identity_connection_secret_id
     yourown_chat_identity_runtime_connection_secret_id = upstream_input.platform.yourown_chat_identity_runtime_connection_secret_id
-    yourown_chat_registration_enabled = true
-    ingress_ip_address              = upstream_input.platform.ingress_ip_address
-    calls_ip_address                = upstream_input.platform.calls_ip_address
+    additional_cloudsql_connection_secret_ids          = try(upstream_input.platform.additional_cloudsql_connection_secret_ids, {})
+    yourown_chat_registration_enabled                  = true
+    ingress_ip_address                                 = upstream_input.platform.ingress_ip_address
+    calls_ip_address                                   = upstream_input.platform.calls_ip_address
 
     # Derived from the cloudflare stack's published outputs -- no hand-kept
     # mirror toggles. origin_tls_ready is true exactly when the Origin CA
@@ -117,6 +118,7 @@ deployment "eu" {
     # private service catalog. No repository owner, name or URL is kept here.
     github_connection_name = upstream_input.catalog.github_connection_name
     source_repositories    = upstream_input.catalog.source_repositories
+    vendor_chart_bundles   = upstream_input.catalog.vendor_chart_bundles
     image_name             = "mattermost"
     # Stable assembly tags use dev -> smoke -> approval -> prod. Prerelease
     # tags and version branches are structurally limited to dev preview.

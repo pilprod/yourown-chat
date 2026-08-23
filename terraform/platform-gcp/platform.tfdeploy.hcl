@@ -25,6 +25,14 @@ identity_token "gcp" {
   audience = ["https://iam.googleapis.com/projects/1086706391144/locations/global/workloadIdentityPools/hcp-terraform/providers/hcp-terraform"]
 }
 
+# Private typed requests for add-on database roles. The public platform owns
+# the shared Cloud SQL instance and turns Kubernetes identities into exact GKE
+# Workload Identity principals.
+upstream_input "catalog" {
+  type   = "stack"
+  source = "app.terraform.io/papou-work/yourown-chat/service-catalog"
+}
+
 deployment "eu" {
   inputs = {
     identity_token        = identity_token.gcp.jwt
@@ -80,10 +88,11 @@ deployment "eu" {
     # Rotation trigger: change the value (a date), apply, then restart the
     # consumers so they pick up the new connection secret.
     cloudsql_password_rotation = "2026-07-12"
-    # Native identity is part of the server platform; no external identity
-    # runtime is provisioned for the pilot.
-    yourown_chat_server_enabled              = true
+    # Native identity remains live until its running API/admin workloads have
+    # been drained in a separate retirement change.
+    yourown_chat_server_enabled             = true
     yourown_chat_identity_password_rotation = "1"
+    additional_database_users               = upstream_input.catalog.additional_database_users
 
     # Temporal is a platform-gcp service. Keep the launch gate closed until the
     # prerequisite MCP image has passed production verification.
@@ -180,6 +189,11 @@ publish_output "cluster_dns_ip" {
 publish_output "cloudsql_instance_name" {
   description = "Cloud SQL instance name consumed by database-owning application components."
   value       = deployment.eu.cloudsql_instance_name
+}
+
+publish_output "additional_cloudsql_connection_secret_ids" {
+  description = "Additional database role => ready-to-use connection URI Secret Manager secret ID."
+  value       = deployment.eu.additional_cloudsql_connection_secret_ids
 }
 
 publish_output "yourown_chat_identity_connection_secret_id" {
