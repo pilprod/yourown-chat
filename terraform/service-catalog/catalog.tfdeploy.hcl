@@ -7,7 +7,7 @@ deployment "eu" {
   inputs = {
     # Bump on every catalog change; a changed apply is what pushes the
     # published values to downstream Stacks (an unchanged apply does not).
-    catalog_revision = "2026-08-23.5"
+    catalog_revision = "2026-08-23.6"
 
     github_connection_name = "pilprod-github"
 
@@ -212,8 +212,13 @@ publish_output "source_repositories" {
 }
 
 publish_output "catalog_revision" {
-  description = "Revision marker of the published catalog (changes on every catalog release)."
-  value       = deployment.eu.catalog_revision
+  description = "Versioned JSON catalog envelope. This stable output name carries new contract fields to existing downstream Stack links."
+  value = jsonencode({
+    revision                  = deployment.eu.catalog_revision
+    vendor_chart_bundles      = deployment.eu.vendor_chart_bundles
+    additional_database_users = deployment.eu.additional_database_users
+    private_http_routes       = deployment.eu.private_http_routes
+  })
 }
 
 publish_output "vendor_chart_bundles" {
