@@ -20,5 +20,8 @@ Before modifying this repository, read and follow:
 If an approved private policy overlay is available at
 `.engineering-private`, read its adapter and the repository-specific policy it
 selects. Private policy may tighten but cannot weaken the public Constitution.
+An internal maintainer, release, infrastructure, secret, migration, or
+production task must not begin writes while the required private overlay is
+unavailable.
 
 This file is a discovery adapter and is not an independent source of policy.
