@@ -140,3 +140,39 @@ Secret version selection, refresh, rotation, and restart behavior are owned by
 the platform contract. A service wrapper must not bypass that lifecycle by
 copying a secret into a ConfigMap, environment overlay, generated manifest,
 release parameter, image layer, or application repository.
+
+## Configuration layers
+
+Helm configuration uses one documented precedence order:
+
+1. immutable platform chart defaults;
+2. service-owned base values;
+3. the service-owned overlay for the target environment;
+4. the narrow set of typed release parameters approved by the platform
+   contract.
+
+The service repository contains its base values and separate minimal
+environment overlays. An overlay records only an intentional difference for
+that environment. It must not replace platform templates or change a
+platform-owned security context, workload identity, secret driver, registry
+policy, network-policy baseline, admission requirement, or observability
+control.
+
+Arbitrary command-line `--set` overrides are not a deployment interface.
+Release-time values are limited to the schema-defined parameters required by
+the delivery lifecycle, such as the verified immutable image digest and an
+approved environment-specific reference. Secret values are prohibited from
+every configuration layer and release parameter; only approved logical secret
+references are permitted.
+
+For every target environment, the authoritative pipeline renders the complete
+configuration and validates it against the chart schema and platform policy
+before deployment. A configuration that has not passed the applicable render
+and policy checks is not eligible for promotion.
+
+Release evidence records the exact platform chart version, service-wrapper
+revision, immutable application image digest, environment overlay revision,
+approved release parameters, and a reproducible digest of the fully resolved
+configuration. Environment-specific configuration may differ only through
+the declared overlays and typed parameters; it must not replace the verified
+application artifact during promotion.
