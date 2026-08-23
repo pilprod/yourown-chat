@@ -21,8 +21,11 @@ approved apply through the approved Terraform MCP. Dependent Stacks (`app-gcp`)
 re-plan from the last-applied outputs; apply order is `service-catalog` then
 `app-gcp`, then `cloudflare` when a private upstream changes.
 
-The `kagent_testbed` entry is deliberately production-ineligible. It pins the
-product commit, upstream source, Helm charts, rendered-values digests,
-namespaces, and private UI origin needed for the stock Kagent testbed. Its
-candidate tag is only a reservation until the product release owner creates
-that tag in `pilprod/yourown-chat-kagent`.
+`vendor_chart_bundles` is the typed private side of the reusable public vendor
+adapter. The first entry is deliberately production-ineligible and pins the
+product/source commits, digest-addressed Helm charts, exact product-owned
+values bytes, namespaces, selectors, ports and Cloud SQL binding needed for the
+stock testbed. Its candidate tag is only a reservation until the product
+release owner creates it. `private_http_routes` remains disabled until the
+in-cluster release is ready and then supplies Cloudflare Access with a typed
+ClusterIP Service origin.
