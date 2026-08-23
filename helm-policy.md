@@ -249,3 +249,46 @@ A service-specific values file cannot weaken these controls. A necessary
 exception requires an explicitly approved platform profile or vendor adapter,
 a documented reason and scope, and verification of the resulting security,
 reliability, and resource behavior.
+
+## Network exposure
+
+A workload is private by default and receives only an internal `ClusterIP`
+Service when network discovery is required. Public ingress, direct load
+balancing, node-level ports, and host networking are disabled unless the
+selected platform capability explicitly requires them.
+
+HTTP exposure uses the approved typed platform ingress capability and the
+platform-managed edge, DNS, and TLS controls. A service wrapper declares an
+approved host and application port through the schema; it must not provide a
+raw Ingress, arbitrary controller annotations, certificates, or an alternate
+edge implementation.
+
+Direct layer-four exposure is permitted only for a protocol that cannot be
+correctly carried through the approved application edge. It uses a dedicated
+Service or load balancer, an exact TCP or UDP port set, and selectors that
+target only the approved transport workload. It must not expose unrelated
+workloads, internal control APIs, cluster administration, or the cluster as a
+whole.
+
+Service values must not select arbitrary external addresses, load-balancer
+annotations, `NodePort`, `hostNetwork`, `hostPort`, or an equivalent path around
+the platform networking contract. A required transport exception is expressed
+as a narrow typed platform profile or adapter and receives a separate threat
+and blast-radius review.
+
+The platform chart creates deny-by-default ingress and egress policy for every
+workload profile. Each allow rule identifies the exact source, destination,
+port, protocol, and purpose. Public transport traffic, private service traffic,
+control-plane traffic, and administrative traffic remain separate policy
+paths.
+
+A public transport endpoint must not publish its associated internal control
+or management endpoint. Sensitive integration and automation services remain
+internal or are reached only through an explicitly approved authenticated
+gateway or tunnel; they are not exposed merely because another workload needs
+public network traffic.
+
+The public platform policy defines these generic capabilities without naming
+private components. Approved component assignments, direct-transport
+exceptions, and gateway or tunnel mappings are maintained in the private
+repository map and cannot weaken this baseline.
