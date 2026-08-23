@@ -31,15 +31,16 @@ if rg -ni -- "$forbidden_vendor" "$module_dir" "$0" "$components" "$deployment" 
   fail "the public adapter contains a vendor-specific name"
 fi
 
-require_literal "$deployment" 'vendor_chart_bundles   = upstream_input.catalog.vendor_chart_bundles'
+require_literal "$deployment" 'catalog_contract = jsondecode(upstream_input.catalog.catalog_revision)'
+require_literal "$deployment" 'vendor_chart_bundles   = local.catalog_contract.vendor_chart_bundles'
 require_literal "$components" 'component "vendor_chart_bundle"'
 require_literal "$components" 'source = "./modules/vendor-chart-bundle"'
 require_literal "$components" 'for_each = var.vendor_chart_bundles'
 require_literal "$components" 'bundle_key          = each.key'
 require_literal "$components" 'database_secret_ids = var.additional_cloudsql_connection_secret_ids'
-require_literal "$platform_dir/platform.tfdeploy.hcl" 'additional_database_users               = upstream_input.catalog.additional_database_users'
+require_literal "$platform_dir/platform.tfdeploy.hcl" 'additional_database_users               = local.catalog_contract.additional_database_users'
 require_literal "$platform_dir/outputs.tfcomponent.hcl" 'output "additional_cloudsql_connection_secret_ids"'
-require_literal "$edge_deployment" 'for hostname, route in try(upstream_input.catalog.private_http_routes, {}) :'
+require_literal "$edge_deployment" 'for hostname, route in try(local.catalog_contract.private_http_routes, {}) :'
 
 require_literal "$main" 'chart     = var.bundle.charts.crds.ref'
 require_literal "$main" 'chart     = var.bundle.charts.application.ref'

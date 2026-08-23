@@ -4,6 +4,13 @@
 #      in platform.tfdeploy.hcl is declared here first (deployment outputs can
 #      only reference stack outputs).
 
+# --- Private catalog ----------------------------------------------------------
+output "catalog_revision" {
+  type        = string
+  description = "Last applied private service-catalog revision consumed by this platform deployment."
+  value       = var.catalog_revision
+}
+
 # --- GKE ---------------------------------------------------------------------
 output "gke_cluster_name" {
   type        = string

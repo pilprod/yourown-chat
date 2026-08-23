@@ -33,6 +33,10 @@ upstream_input "catalog" {
   source = "app.terraform.io/papou-work/yourown-chat/service-catalog"
 }
 
+locals {
+  catalog_contract = jsondecode(upstream_input.catalog.catalog_revision)
+}
+
 deployment "yourown-chat" {
   inputs = {
     identity_token        = identity_token.gcp.jwt
@@ -87,7 +91,7 @@ deployment "yourown-chat" {
     zero_trust_allowed_emails = ["ilya@papou.email"]
     zero_trust_upstreams = merge(
       {
-        for hostname, route in try(upstream_input.catalog.private_http_routes, {}) :
+        for hostname, route in try(local.catalog_contract.private_http_routes, {}) :
         hostname => "http://${route.service}.${route.namespace}.svc.cluster.local:${route.port}"
         if route.enabled
       },

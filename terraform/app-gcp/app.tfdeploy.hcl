@@ -33,6 +33,10 @@ upstream_input "catalog" {
   source = "app.terraform.io/papou-work/yourown-chat/service-catalog"
 }
 
+locals {
+  catalog_contract = jsondecode(upstream_input.catalog.catalog_revision)
+}
+
 deployment "eu" {
   inputs = {
     identity_token        = identity_token.gcp.jwt
@@ -118,7 +122,7 @@ deployment "eu" {
     # private service catalog. No repository owner, name or URL is kept here.
     github_connection_name = upstream_input.catalog.github_connection_name
     source_repositories    = upstream_input.catalog.source_repositories
-    vendor_chart_bundles   = upstream_input.catalog.vendor_chart_bundles
+    vendor_chart_bundles   = local.catalog_contract.vendor_chart_bundles
     image_name             = "mattermost"
     # Stable assembly tags use dev -> smoke -> approval -> prod. Prerelease
     # tags and version branches are structurally limited to dev preview.
