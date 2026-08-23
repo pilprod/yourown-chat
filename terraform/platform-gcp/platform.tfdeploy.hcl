@@ -33,13 +33,6 @@ upstream_input "catalog" {
   source = "app.terraform.io/papou-work/yourown-chat/service-catalog"
 }
 
-locals {
-  # HCP preserves this established published-output name across catalog schema
-  # extensions. Decode the versioned envelope so new fields reach existing
-  # Stack links without copying private values into this public repository.
-  catalog_contract = jsondecode(upstream_input.catalog.catalog_revision)
-}
-
 deployment "eu" {
   inputs = {
     identity_token        = identity_token.gcp.jwt
@@ -99,8 +92,10 @@ deployment "eu" {
     # been drained in a separate retirement change.
     yourown_chat_server_enabled             = true
     yourown_chat_identity_password_rotation = "1"
-    catalog_revision                        = local.catalog_contract.revision
-    additional_database_users               = local.catalog_contract.additional_database_users
+    # HCP deployment locals cannot reference upstream inputs, so decode this
+    # stable compatibility envelope at the component input boundary.
+    catalog_revision          = jsondecode(upstream_input.catalog.catalog_revision).revision
+    additional_database_users = jsondecode(upstream_input.catalog.catalog_revision).additional_database_users
 
     # Temporal is a platform-gcp service. Keep the launch gate closed until the
     # prerequisite MCP image has passed production verification.
