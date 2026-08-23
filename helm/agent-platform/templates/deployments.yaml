@@ -94,6 +94,9 @@ spec:
             {{- toYaml $temporalEnv | nindent 12 }}
             - name: AGENT_RESULTS_BUCKET
               value: {{ .Values.agent_results_bucket | quote }}
+            {{- if .Values.agent_rag_enabled }}
+            {{- include "agent-platform.ragEnv" . | nindent 12 }}
+            {{- end }}
           ports:
             - { name: metrics, containerPort: {{ .Values.activityWorker.metricsPort }} }
           startupProbe:
@@ -113,6 +116,18 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            {{- if .Values.agent_rag_enabled }}
+            - name: rag-secrets
+              mountPath: /var/run/secrets/rag
+              readOnly: true
+            {{- end }}
       volumes:
         - name: tmp
           emptyDir: {}
+        {{- if .Values.agent_rag_enabled }}
+        - name: rag-secrets
+          csi:
+            driver: secrets-store-gke.csi.k8s.io
+            readOnly: true
+            volumeAttributes: { secretProviderClass: agent-rag-activity-gcp }
+        {{- end }}

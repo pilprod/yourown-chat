@@ -86,4 +86,98 @@ spec:
         - ipBlock: { cidr: 169.254.169.254/32 }
       ports:
         - { protocol: TCP, port: 80 }
+    {{- if .Values.agent_rag_enabled }}
+    # Portable RAG: pgvector on the private Cloud SQL address, the in-cluster
+    # embeddings server, optional model servers in other namespaces and, only
+    # when explicitly allowed, a hosted model API over HTTPS.
+    - to:
+        - ipBlock: { cidr: {{ printf "%s/32" (required "agent_cloudsql_ip is required when agent_rag_enabled is true" .Values.agent_cloudsql_ip) | quote }} }
+      ports:
+        - { protocol: TCP, port: 5432 }
+    {{- if .Values.rag.embeddingsServer.enabled }}
+    - to:
+        - podSelector:
+            matchLabels: { app: agent-platform-embeddings }
+      ports:
+        - { protocol: TCP, port: {{ .Values.rag.embeddingsServer.port }} }
+    {{- end }}
+    {{- range .Values.rag.network.allowNamespaces }}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ required "rag.network.allowNamespaces[].namespace is required" .namespace | quote }}
+      ports:
+        - { protocol: TCP, port: {{ required "rag.network.allowNamespaces[].port is required" .port }} }
+    {{- end }}
+    {{- if .Values.rag.network.allowPublicHTTPS }}
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16]
+      ports:
+        - { protocol: TCP, port: 443 }
+    {{- end }}
+    {{- end }}
+{{- if .Values.agent_rag_enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agent-rag-migrate
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector:
+    matchLabels: { app: agent-rag-migrate }
+  policyTypes: [Ingress, Egress]
+  egress:
+    - to:
+        - ipBlock: { cidr: {{ printf "%s/32" .Values.agent_cloudsql_ip | quote }} }
+      ports:
+        - { protocol: TCP, port: 5432 }
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+        - ipBlock:
+            cidr: {{ printf "%s/32" (required "cluster_dns_ip is required" .Values.cluster_dns_ip) | quote }}
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+{{- if .Values.rag.embeddingsServer.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agent-platform-embeddings
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector:
+    matchLabels: { app: agent-platform-embeddings }
+  policyTypes: [Ingress, Egress]
+  ingress:
+    # Only the activity worker may call the embeddings server.
+    - from:
+        - podSelector:
+            matchLabels: { app: agent-platform-activity-worker }
+      ports:
+        - { protocol: TCP, port: {{ .Values.rag.embeddingsServer.port }} }
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+        - ipBlock:
+            cidr: {{ printf "%s/32" (required "cluster_dns_ip is required" .Values.cluster_dns_ip) | quote }}
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    {{- if .Values.rag.embeddingsServer.allowModelDownload }}
+    # Model download from the hub until the model is baked into the image.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16]
+      ports:
+        - { protocol: TCP, port: 443 }
+    {{- end }}
+{{- end }}
+{{- end }}
 {{- end }}

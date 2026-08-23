@@ -86,6 +86,11 @@ deployment "eu" {
     temporal_enabled               = upstream_input.platform.temporal_enabled
     agent_results_bucket           = try(upstream_input.platform.temporal_results_bucket_name, "")
     agent_platform_runtime_enabled = false
+    # Portable RAG knowledge base: follows the platform-owned database state.
+    # The Helm values in helm/agent-platform choose the model endpoints.
+    agent_rag_enabled                                = try(upstream_input.platform.agent_rag_enabled, false)
+    yourown_chat_agents_connection_secret_id         = try(upstream_input.platform.yourown_chat_agents_connection_secret_id, "yourown-chat-agents-database-url")
+    yourown_chat_agents_runtime_connection_secret_id = try(upstream_input.platform.yourown_chat_agents_runtime_connection_secret_id, "yourown-chat-agents-runtime-database-url")
 
     # Derived from the cloudflare stack's published outputs -- origin_tls_ready
     # and zero_trust_ready are true when Secret Manager versions exist.

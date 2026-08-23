@@ -1,0 +1,56 @@
+{{- if .Values.agent_rag_enabled }}
+{{- $image := required "yourown_chat_rag_migrate_image is required when agent_rag_enabled is true" .Values.yourown_chat_rag_migrate_image }}
+# Bounded schema job for the portable RAG knowledge base. The name embeds the
+# chart version and image digest so every release applies migrations exactly
+# once; the job is idempotent and uses the schema-owning role only.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: agent-rag-migrate-{{ printf "%s:%s" .Chart.Version $image | sha256sum | trunc 12 }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: agent-rag-migrate
+    {{- include "agent-platform.labels" . | nindent 4 }}
+spec:
+  backoffLimit: 6
+  ttlSecondsAfterFinished: 86400
+  activeDeadlineSeconds: 1800
+  template:
+    metadata:
+      labels:
+        app: agent-rag-migrate
+        {{- include "agent-platform.labels" . | nindent 8 }}
+    spec:
+      restartPolicy: OnFailure
+      automountServiceAccountToken: false
+      serviceAccountName: agent-rag-migrate
+      priorityClassName: {{ .Values.priorityClassName }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: rag-migrate
+          image: {{ $image | quote }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: RAG_MIGRATE_DATABASE_URL_FILE, value: /var/run/secrets/rag/database-url }
+            - { name: RAG_EMBEDDINGS_MODEL, value: {{ required "rag.embeddings.model is required" .Values.rag.embeddings.model | quote }} }
+            - { name: RAG_EMBEDDINGS_DIMENSIONS, value: {{ required "rag.embeddings.dimensions is required" .Values.rag.embeddings.dimensions | quote }} }
+            {{- with .Values.rag.runtimeRole }}
+            - { name: RAG_RUNTIME_ROLE, value: {{ . | quote }} }
+            {{- end }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            requests: { cpu: 5m, memory: 32Mi }
+            limits: { cpu: 250m, memory: 128Mi }
+          volumeMounts:
+            - { name: rag-secrets, mountPath: /var/run/secrets/rag, readOnly: true }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: rag-secrets
+          csi:
+            driver: secrets-store-gke.csi.k8s.io
+            readOnly: true
+            volumeAttributes: { secretProviderClass: agent-rag-migrate-gcp }
+        - { name: tmp, emptyDir: {} }
+{{- end }}

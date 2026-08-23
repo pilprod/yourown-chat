@@ -24,6 +24,7 @@ locals {
     identity-migrate     = { namespace = "identity", ksa = "migrate" }
     agents-workflow      = { namespace = "yourown-agents", ksa = "agent-workflow-worker" }
     agents-activity      = { namespace = "yourown-agents", ksa = "agent-activity-worker" }
+    agents-rag-migrate   = { namespace = "yourown-agents", ksa = "agent-rag-migrate" }
   }
 
   common_labels = merge({
@@ -315,6 +316,25 @@ component "workload_identity_agents" {
     display_name = "AI agent activity worker identity"
     namespace    = local.ns["agents-activity"].namespace
     ksa_name     = local.ns["agents-activity"].ksa
+  }
+
+  providers  = { google = provider.google.this }
+  depends_on = [component.gke]
+}
+
+# The portable RAG knowledge base keeps the identity split used by the
+# identity database: a schema-owning migrate identity and a DML-only runtime
+# identity (the activity worker). The identity exists even while the
+# knowledge-base database is disabled so enabling it is a single apply.
+component "workload_identity_agents_rag_migrate" {
+  source = "./modules/workload-identity"
+
+  inputs = {
+    project_id   = component.project_services.project_id
+    account_id   = "agent-rag-migrate"
+    display_name = "AI agent knowledge-base schema migration identity"
+    namespace    = local.ns["agents-rag-migrate"].namespace
+    ksa_name     = local.ns["agents-rag-migrate"].ksa
   }
 
   providers  = { google = provider.google.this }
@@ -667,6 +687,33 @@ component "cloudsql" {
           password_secret_id        = "temporal-db-password"
           password_secret_accessors = []
           password_rotation         = var.temporal_password_rotation
+        }
+      } : {},
+      # Portable RAG knowledge base (pgvector). The application only receives a
+      # postgres:// DSN file, so the same schema can later live on any
+      # PostgreSQL outside Google Cloud. The migrate role owns the schema and
+      # creates the vector extension; the runtime role receives DML grants.
+      var.agent_rag_enabled ? {
+        yourown_chat_agents = {
+          database_names            = ["yourown_chat_agents"]
+          password_secret_id        = "yourown-chat-agents-db-password"
+          password_secret_accessors = []
+          connection_secret_id      = "yourown-chat-agents-database-url"
+          connection_secret_accessors = [
+            component.workload_identity_agents_rag_migrate.iam_member,
+          ]
+          password_rotation = var.yourown_chat_agents_password_rotation
+        }
+        yourown_chat_agents_runtime = {
+          database_names            = ["yourown_chat_agents"]
+          manage_databases          = false
+          password_secret_id        = "yourown-chat-agents-runtime-db-password"
+          password_secret_accessors = []
+          connection_secret_id      = "yourown-chat-agents-runtime-database-url"
+          connection_secret_accessors = [
+            component.workload_identity_agents.iam_member,
+          ]
+          password_rotation = var.yourown_chat_agents_password_rotation
         }
       } : {},
     )
