@@ -34,6 +34,43 @@ Stacks are applied and verified in their documented ownership order. A
 successful apply is not complete until its remote state and intended downstream
 effects have been verified through the approved MCP.
 
+## Cross-Stack output ordering
+
+A required upstream output is a hard dependency contract and an apply-order
+boundary. A downstream Stack must not weaken, remove, defer, duplicate, disable,
+or make that dependency conditional merely to make validation or planning
+succeed before the upstream Stack has published it. Prohibited bypasses include
+a literal `null`, `try()`, `can()`, a default, a placeholder, a copied value, an
+empty collection, or a temporary feature-disable switch.
+
+When a change introduces or starts consuming a required cross-Stack output,
+the operator:
+
+1. creates and reviews the upstream plan;
+2. obtains explicit authorization, applies the upstream Stack, and verifies
+   through the approved MCP that the exact output is present, non-null, and
+   satisfies its documented type, shape, and invariants in remote state;
+3. creates a fresh downstream plan against the published output; and
+4. separately reviews and authorizes the downstream apply.
+
+When merging or promoting the downstream wiring would automatically create an
+invalid plan, that wiring remains unmerged or unpromoted until the upstream
+apply and output verification succeed. The downstream change may be prepared
+and reviewed in the meantime, but only a fresh plan created after publication
+is eligible for approval.
+
+Changing a consumed output's value, type, availability, sensitivity, or
+dependency state invalidates a previously reviewed downstream plan. Approval of
+the upstream apply does not authorize the downstream apply. If the required
+order cannot be completed, the downstream change remains blocked; it is not
+made temporarily optional to bypass the dependency.
+
+An output may be nullable only when the cross-Stack contract defines it as
+genuinely optional and the downstream behavior without it is independently
+valid, safe, and verified. Bootstrap timing, or reclassifying the dependency in
+the same rollout solely to bypass ordering, does not make a required output
+optional.
+
 ## Platform and application ownership
 
 `platform-gcp` owns shared durable infrastructure, state, security foundations,
