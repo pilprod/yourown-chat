@@ -42,8 +42,11 @@ registry (`pilprod/yourown-chat-rules` Issues #5, #6 and #7).
    canonical-branch Cloud Build trigger (`platform-chart-publish`, module
    `terraform/app-gcp/modules/chart-publish`, component `chart_publish` of the
    `app-gcp` Stack) lint and test every platform chart and publish each
-   application chart version exactly once to
-   `oci://<location>-docker.pkg.dev/<project>/<repository>/charts/<chart>`.
+   application chart version exactly once into the dedicated immutable-tag
+   Helm chart repository owned by `platform-gcp`
+   (`oci://<location>-docker.pkg.dev/<project>/<helm-repository>/<chart>`);
+   the rail stays unmaterialized until that repository is published to
+   `app-gcp`.
    Immutability is decided against the registry: an already published
    version is pulled and compared with the packaged source; identical content
    is recorded as already published (retry-safe), different content fails the

@@ -760,10 +760,12 @@ component "cluster_bootstrap" {
 }
 
 # Canonical-branch publication of platform Helm chart versions as immutable
-# OCI artifacts under the unified registry. Service wrappers in owning
-# repositories pin these versions (docs/HELM_PLATFORM.md). The trigger reuses
-# the deploy repository link owned by deploy_release and keeps its own durable
-# evidence bucket; it creates no Cloud Deploy release and deploys nothing.
+# OCI artifacts into the dedicated Helm chart repository published by
+# platform-gcp (helm_registry_repository_id). Service wrappers in owning
+# repositories pin these versions (docs/HELM_PLATFORM.md). The rail stays
+# unmaterialized until platform-gcp publishes the repository; it reuses the
+# deploy repository link owned by deploy_release and keeps its own durable
+# evidence bucket. It creates no Cloud Deploy release and deploys nothing.
 component "chart_publish" {
   source = "./modules/chart-publish"
 
@@ -775,8 +777,10 @@ component "chart_publish" {
 
     repository_id = component.deploy_release.repository_id
 
-    artifact_registry_location      = var.artifact_registry_location
-    artifact_registry_repository_id = var.artifact_registry_repository_id
+    chart_repository = var.helm_registry_repository_id == null ? null : {
+      location      = var.artifact_registry_location
+      repository_id = var.helm_registry_repository_id
+    }
 
     evidence_kms_key_name = var.cmek_key_id
     labels                = local.common_labels

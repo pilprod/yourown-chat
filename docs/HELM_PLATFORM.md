@@ -56,7 +56,7 @@ types, bounds and capability combinations are validated at render time.
 Discover the contract from the published artifact rather than from a copy:
 
 ```bash
-helm show values oci://<registry>/<repository>/charts/platform-service --version <x.y.z>
+helm show values oci://<location>-docker.pkg.dev/<project>/<helm-repository>/platform-service --version <x.y.z>
 ```
 
 Service values describe typed application capabilities:
@@ -163,9 +163,12 @@ declared in `terraform/app-gcp/modules/chart-publish` and wired as the
 
 - runs only for pushes to the canonical branch that touch `helm/platform/**`
   or `helm/test/platform-*.test.sh`;
+- publishes into the dedicated immutable-tag Helm chart repository that
+  `platform-gcp` owns and publishes to `app-gcp` (`helm_registry_repository_id`);
+  the whole rail stays unmaterialized until that repository exists;
 - runs as the dedicated `chart-publish` identity with a repo-scoped writer
-  binding on the unified Artifact Registry repository and a create-only
-  binding on the evidence bucket, nothing else;
+  binding on that chart repository (never the image repository) and a
+  create-only binding on the evidence bucket, nothing else;
 - uses a digest-pinned Helm 3 image and a digest-pinned Google Cloud CLI
   image; no static credential is involved;
 - discovers every `helm/platform/*/Chart.yaml` (helper directories without a
@@ -177,7 +180,7 @@ declared in `terraform/app-gcp/modules/chart-publish` and wired as the
   because lint does not replace the mandated gates;
 - packages each application chart and decides against the registry, not
   against Git history: a version that is not yet present at
-  `oci://<location>-docker.pkg.dev/<project>/<repository>/charts/<chart>` is
+  `oci://<location>-docker.pkg.dev/<project>/<helm-repository>/<chart>` is
   pushed; a version that is already present is pulled and compared file by
   file with the packaged source (dependency archives expanded) — identical
   content is recorded as already published so an interrupted build can be
@@ -223,7 +226,7 @@ version: 0.1.0
 dependencies:
   - name: platform-service
     version: 1.2.3                      # exact approved platform chart version
-    repository: oci://<location>-docker.pkg.dev/<project>/<repository>/charts
+    repository: oci://<location>-docker.pkg.dev/<project>/<helm-repository>
     alias: service
 ```
 

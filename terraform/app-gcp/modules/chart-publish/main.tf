@@ -3,19 +3,26 @@
 # The public Helm platform policy (.ai/helm-policy.md) requires every platform
 # chart version to be published once, never overwritten, and pinned by service
 # wrappers through an explicit dependency change. This module owns only the
-# publication rail: a least-privilege build identity, a repo-scoped registry
-# writer binding, a durable evidence bucket and one canonical-branch Cloud
-# Build trigger. Chart content, schemas and tests stay in helm/platform and
-# helm/test (see docs/HELM_PLATFORM.md). Nothing here deploys a workload.
+# publication rail: a least-privilege build identity, a repo-scoped writer
+# binding on the dedicated immutable-tag Helm chart repository published by
+# platform-gcp, a durable evidence bucket and one canonical-branch Cloud Build
+# trigger. The whole rail stays unmaterialized (count = 0) until app-gcp
+# receives that repository from the linked platform stack. Chart content,
+# schemas and tests stay in helm/platform and helm/test (see
+# docs/HELM_PLATFORM.md). Nothing here deploys a workload.
 
 locals {
-  registry_host       = "${var.artifact_registry_location}-docker.pkg.dev"
-  chart_registry_path = "${local.registry_host}/${var.project_id}/${var.artifact_registry_repository_id}/${var.chart_path_prefix}"
+  enabled             = var.chart_repository != null
+  registry_host       = local.enabled ? "${var.chart_repository.location}-docker.pkg.dev" : ""
+  chart_registry_path = local.enabled ? "${local.registry_host}/${var.project_id}/${var.chart_repository.repository_id}" : ""
   evidence_bucket     = "chart-evidence-${var.region}"
+  count               = local.enabled ? 1 : 0
 }
 
 # --- Least-privilege publication identity ----------------------------------
 resource "google_service_account" "chart_publish" {
+  count = local.count
+
   project      = var.project_id
   account_id   = "chart-publish"
   display_name = "Platform Helm chart publisher"
@@ -24,20 +31,25 @@ resource "google_service_account" "chart_publish" {
 
 # Required so builds running as this SA can stream logs (CLOUD_LOGGING_ONLY).
 resource "google_project_iam_member" "logs" {
+  count = local.count
+
   project = var.project_id
   role    = "roles/logging.logWriter"
-  member  = "serviceAccount:${google_service_account.chart_publish.email}"
+  member  = "serviceAccount:${google_service_account.chart_publish[0].email}"
 }
 
-# Repo-scoped push on the ONE unified repository (never project-wide writer).
-# The writer role also covers the pull needed to compare an already published
-# chart version with the packaged source before deciding to skip or fail.
+# Repo-scoped push on the dedicated immutable-tag Helm chart repository owned by
+# platform-gcp (never project-wide writer, never the image repository). The
+# writer role also covers the pull needed to compare an already published chart
+# version with the packaged source before deciding to skip or fail.
 resource "google_artifact_registry_repository_iam_member" "writer" {
+  count = local.count
+
   project    = var.project_id
-  location   = var.artifact_registry_location
-  repository = var.artifact_registry_repository_id
+  location   = var.chart_repository.location
+  repository = var.chart_repository.repository_id
   role       = "roles/artifactregistry.writer"
-  member     = "serviceAccount:${google_service_account.chart_publish.email}"
+  member     = "serviceAccount:${google_service_account.chart_publish[0].email}"
 }
 
 # --- Durable publication evidence -------------------------------------------
@@ -46,6 +58,8 @@ resource "google_artifact_registry_repository_iam_member" "writer" {
 # not force-destroyable. It is separate from the 30-day release-source staging
 # bucket owned by deploy-release.
 resource "google_storage_bucket" "evidence" {
+  count = local.count
+
   project                     = var.project_id
   name                        = local.evidence_bucket
   location                    = var.region
@@ -70,15 +84,19 @@ resource "google_storage_bucket" "evidence" {
 # creator role is sufficient; the identity can neither read back nor delete
 # evidence.
 resource "google_storage_bucket_iam_member" "evidence_creator" {
-  bucket = google_storage_bucket.evidence.name
+  count = local.count
+
+  bucket = google_storage_bucket.evidence[0].name
   role   = "roles/storage.objectCreator"
-  member = "serviceAccount:${google_service_account.chart_publish.email}"
+  member = "serviceAccount:${google_service_account.chart_publish[0].email}"
 }
 
 # Terraform (the apply SA) must actAs the publisher to create a trigger that
 # runs as it.
 resource "google_service_account_iam_member" "apply_acts_as_publisher" {
-  service_account_id = google_service_account.chart_publish.name
+  count = local.count
+
+  service_account_id = google_service_account.chart_publish[0].name
   role               = "roles/iam.serviceAccountUser"
   member             = "serviceAccount:${var.apply_service_account_email}"
 }
@@ -98,11 +116,13 @@ resource "google_service_account_iam_member" "apply_acts_as_publisher" {
 # Immutability is decided against the registry, not against Git history, so a
 # multi-commit push and a retried build are handled the same way.
 resource "google_cloudbuild_trigger" "publish" {
+  count = local.count
+
   project         = var.project_id
   location        = var.region
   name            = "platform-chart-publish"
   description     = "Lint, test and publish immutable platform Helm chart versions from branches matching ${var.branch_regex} to ${local.chart_registry_path}."
-  service_account = google_service_account.chart_publish.id
+  service_account = google_service_account.chart_publish[0].id
 
   included_files = [
     "${var.chart_source_root}/**",
@@ -147,7 +167,7 @@ resource "google_cloudbuild_trigger" "publish" {
           registry_host="${local.registry_host}"
           chart_registry="oci://${local.chart_registry_path}"
           source_root="${var.chart_source_root}"
-          evidence_bucket="${google_storage_bucket.evidence.name}"
+          evidence_bucket="${google_storage_bucket.evidence[0].name}"
           mkdir -p /workspace/packages /workspace/compare /workspace/evidence
 
           chart_dirs=()

@@ -47,26 +47,15 @@ variable "chart_test_glob" {
   default     = "helm/test/platform-*.test.sh"
 }
 
-# --- Target registry (ONE unified repository, owned by platform-gcp) --------
-variable "artifact_registry_location" {
-  type        = string
-  description = "Location of the unified Artifact Registry repository platform charts are pushed to (e.g. europe-west3)."
-}
-
-variable "artifact_registry_repository_id" {
-  type        = string
-  description = "ID of the unified Artifact Registry repository platform charts are pushed to (e.g. docker). The chart-publish SA gets a single repo-scoped writer binding on it."
-}
-
-variable "chart_path_prefix" {
-  type        = string
-  description = "Path segment under the unified repository that holds OCI chart artifacts. Charts are pushed to oci://<location>-docker.pkg.dev/<project>/<repository>/<prefix>/<chart-name>:<chart-version>."
-  default     = "charts"
-
-  validation {
-    condition     = can(regex("^[a-z0-9]([a-z0-9-]*[a-z0-9])?$", var.chart_path_prefix))
-    error_message = "chart_path_prefix must be lowercase kebab-case."
-  }
+# --- Target registry: the dedicated immutable-tag Helm chart repository ------
+variable "chart_repository" {
+  type = object({
+    location      = string
+    repository_id = string
+  })
+  description = "Artifact Registry coordinates of the platform Helm chart OCI repository published by platform-gcp (immutable tags, no cleanup policy). Charts are pushed to oci://<location>-docker.pkg.dev/<project>/<repository_id>/<chart-name>:<chart-version>. null disables the whole rail until platform-gcp has published the repository."
+  default     = null
+  nullable    = true
 }
 
 # --- Release evidence -------------------------------------------------------
