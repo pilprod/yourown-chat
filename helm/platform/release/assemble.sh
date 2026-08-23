@@ -29,7 +29,8 @@ usage: assemble.sh --repo DIR --out DIR --evidence DIR --chart-registry oci://HO
                    --profile NAME=OVERLAY [--profile ...]
                    [--image NAME=REPOSITORY@sha256:DIGEST ...]
                    [--identity KEY=SERVICE_ACCOUNT_EMAIL ...]
-                   [--secret-project PROJECT] [--cluster-dns-ip IP]
+                   --secret-project PROJECT --cluster-dns-ip IP
+                   [--cleanup-action NAME=PROFILE ...] [--actions FILE ...]
                    [--source-revision SHA] [--platform-revision SHA]
                    [--allow-file-dependencies] [--skip-dependency-build]
 
@@ -39,6 +40,13 @@ usage: assemble.sh --repo DIR --out DIR --evidence DIR --chart-registry oci://HO
                            by a workload in the manifest.
   --identity KEY=EMAIL     Workload Identity e-mail bound to workloads whose
                            manifest `identity` (default: alias) equals KEY.
+  --cleanup-action NAME=PROFILE
+                           Generate the Cloud Deploy custom action NAME that
+                           scales every workload rendered by PROFILE to zero
+                           (disposable development stage cleanup).
+  --actions FILE           Append the platform-owned customActions from FILE
+                           (a YAML document whose first line is
+                           `customActions:`) to the generated skaffold.yaml.
 USAGE
 }
 
@@ -50,7 +58,7 @@ policy_check="${here}/policy-check.sh"
 repo=""; out=""; evidence=""; chart_registry=""
 allow_file=false; skip_dep_build=false
 secret_project=""; cluster_dns_ip=""; source_revision=""; platform_revision=""
-profiles=(); images=(); identities=()
+profiles=(); images=(); identities=(); cleanup_actions=(); action_files=()
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -63,6 +71,8 @@ while [ $# -gt 0 ]; do
     --identity) identities+=("$2"); shift 2 ;;
     --secret-project) secret_project="$2"; shift 2 ;;
     --cluster-dns-ip) cluster_dns_ip="$2"; shift 2 ;;
+    --cleanup-action) cleanup_actions+=("$2"); shift 2 ;;
+    --actions) action_files+=("$2"); shift 2 ;;
     --source-revision) source_revision="$2"; shift 2 ;;
     --platform-revision) platform_revision="$2"; shift 2 ;;
     --allow-file-dependencies) allow_file=true; shift ;;
@@ -84,8 +94,11 @@ fi
 if [ -n "${chart_registry}" ] && ! [[ "${chart_registry}" =~ ^oci://[a-z0-9-]+-docker\.pkg\.dev/[a-z][a-z0-9-]{4,28}[a-z0-9]/[a-z][a-z0-9-]{0,62}$ ]]; then
   die "--chart-registry must be an Artifact Registry OCI path (oci://HOST/PROJECT/REPO)"
 fi
+seen_profiles=""
 for entry in "${profiles[@]}"; do
   [[ "${entry}" =~ ^[a-z0-9]([-a-z0-9]{0,38}[a-z0-9])?=[a-z0-9]([-a-z0-9]{0,38}[a-z0-9])?$ ]] || die "--profile must be NAME=OVERLAY in kebab-case: ${entry}"
+  [[ ",${seen_profiles}," != *",${entry%%=*},"* ]] || die "--profile ${entry%%=*} is requested more than once"
+  seen_profiles="${seen_profiles},${entry%%=*}"
 done
 for entry in "${images[@]+"${images[@]}"}"; do
   [[ "${entry}" =~ ^[a-z0-9][a-z0-9._-]*=[a-z0-9-]+-docker\.pkg\.dev/[a-z][a-z0-9-]{4,28}[a-z0-9]/[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9._/-]*@sha256:[0-9a-f]{64}$ ]] || die "--image must be NAME=ARTIFACT-REGISTRY-REPOSITORY@sha256:DIGEST: ${entry}"
@@ -93,8 +106,20 @@ done
 for entry in "${identities[@]+"${identities[@]}"}"; do
   [[ "${entry}" =~ ^[a-z0-9]([-a-z0-9]{0,38}[a-z0-9])?=[a-z][a-z0-9-]{4,28}[a-z0-9]@[a-z][a-z0-9-]{4,28}[a-z0-9]\.iam\.gserviceaccount\.com$ ]] || die "--identity must be KEY=EMAIL of a Google service account: ${entry}"
 done
-[ -z "${secret_project}" ] || [[ "${secret_project}" =~ ^[a-z][a-z0-9-]{4,28}[a-z0-9]$ ]] || die "--secret-project must be a Google Cloud project id"
-[ -z "${cluster_dns_ip}" ] || [[ "${cluster_dns_ip}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || die "--cluster-dns-ip must be an IPv4 address"
+[ -n "${secret_project}" ] || die "--secret-project is required (Secret Manager project release parameter)"
+[[ "${secret_project}" =~ ^[a-z][a-z0-9-]{4,28}[a-z0-9]$ ]] || die "--secret-project must be a Google Cloud project id"
+[ -n "${cluster_dns_ip}" ] || die "--cluster-dns-ip is required (cluster DNS address release parameter)"
+[[ "${cluster_dns_ip}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || die "--cluster-dns-ip must be an IPv4 address"
+for entry in "${cleanup_actions[@]+"${cleanup_actions[@]}"}"; do
+  [[ "${entry}" =~ ^[a-z0-9]([-a-z0-9]{0,38}[a-z0-9])?=[a-z0-9]([-a-z0-9]{0,38}[a-z0-9])?$ ]] || die "--cleanup-action must be NAME=PROFILE in kebab-case: ${entry}"
+  profile_known=false
+  for pentry in "${profiles[@]}"; do [ "${pentry%%=*}" = "${entry#*=}" ] && profile_known=true; done
+  [ "${profile_known}" = "true" ] || die "--cleanup-action ${entry} references a profile that is not requested with --profile"
+done
+for file in "${action_files[@]+"${action_files[@]}"}"; do
+  [ -f "${file}" ] || die "--actions file ${file} does not exist"
+  [ "$(head -n 1 "${file}" | sed '/^#/d' | head -n 1)" = "customActions:" ] || [ "$(grep -v '^#' "${file}" | head -n 1)" = "customActions:" ] || die "--actions file ${file} must start with a customActions: document"
+done
 
 manifest_file="${repo}/helm/release.yaml"
 [ -f "${manifest_file}" ] || die "release manifest ${manifest_file} not found"
@@ -125,7 +150,7 @@ for w in m["wrappers"]:
     if w["name"] in seen_wrappers:
         sys.exit(f"duplicate wrapper name {w['name']}")
     seen_wrappers.add(w["name"])
-    print(f"wrapper|{w['name']}|{w['path']}|{w['namespace']}")
+    print(f"wrapper|{w['name']}|{w['path']}|{w['namespace']}|{','.join(w.get('profiles') or [])}")
     for alias, wl in sorted(w["workloads"].items()):
         if alias in seen_aliases:
             sys.exit(f"workload alias {alias} is declared by more than one wrapper; aliases must be unique within a release")
@@ -155,8 +180,17 @@ facts="${evidence}/facts.tsv"
 skaffold_releases_dir="$(mktemp -d)"
 trap 'rm -rf "${skaffold_releases_dir}"' EXIT
 
-while IFS='|' read -r kind name path namespace; do
+while IFS='|' read -r kind name path namespace wrapper_profiles; do
   [ "${kind}" = "wrapper" ] || continue
+  # A wrapper is rendered in every requested profile unless the manifest
+  # limits it (for example development-only or production-only wrappers).
+  if [ -n "${wrapper_profiles}" ]; then
+    for wp in ${wrapper_profiles//,/ }; do
+      known=false
+      for pentry in "${profiles[@]}"; do [ "${pentry%%=*}" = "${wp}" ] && known=true; done
+      [ "${known}" = "true" ] || die "wrapper ${name}: manifest profile ${wp} is not requested with --profile"
+    done
+  fi
   src="${repo}/${path}"
   dest="${out}/wrappers/${name}"
   [ -d "${src}" ] || die "wrapper ${name}: ${src} does not exist"
@@ -210,7 +244,7 @@ for d in deps:
     if alias in aliases:
         sys.exit(f"wrapper {wrapper}: alias {alias} is used twice")
     aliases.append(alias)
-print("\n".join(aliases))
+    print(f"{alias}|{name}")
 PY
 )" || die "wrapper ${name}: Chart.yaml rejected"
 
@@ -224,7 +258,7 @@ PY
 
   # Manifest workloads must be exactly the aliases pinned in Chart.yaml.
   manifest_aliases="$(printf '%s\n' "${plan}" | awk -F'|' -v w="${name}" '$1 == "workload" && $2 == w { print $3 }' | sort)"
-  chart_aliases="$(printf '%s\n' "${aliases}" | sort)"
+  chart_aliases="$(printf '%s\n' "${aliases}" | cut -d'|' -f1 | sort)"
   [ "${manifest_aliases}" = "${chart_aliases}" ] || die "wrapper ${name}: manifest workloads [$(printf '%s' "${manifest_aliases}" | tr '\n' ' ')] must equal the Chart.yaml aliases [$(printf '%s' "${chart_aliases}" | tr '\n' ' ')]"
 
   cp -R "${src}" "${dest}"
@@ -260,6 +294,19 @@ PY
   # Render and policy-check every profile with the exact release parameters.
   for entry in "${profiles[@]}"; do
     profile="${entry%%=*}"; overlay="${entry#*=}"
+    if [ -n "${wrapper_profiles}" ] && ! [[ ",${wrapper_profiles}," == *",${profile},"* ]]; then
+      continue
+    fi
+    printf 'member\t%s\t%s\n' "${profile}" "${name}" >> "${facts}"
+    while IFS='|' read -r alias alias_profile; do
+      [ -n "${alias}" ] || continue
+      case "${alias_profile}" in
+        platform-service|platform-worker) controller=deployment ;;
+        platform-stateful) controller=statefulset ;;
+        *) controller=none ;;
+      esac
+      printf 'workload\t%s\t%s\t%s\t%s\n' "${profile}" "${namespace}" "${alias}" "${controller}" >> "${facts}"
+    done <<<"${aliases}"
     values_args=(-f "${dest}/values.yaml")
     overlay_file="${dest}/values-${overlay}.yaml"
     overlay_digest="none"
@@ -363,6 +410,38 @@ for kv in "${deploy_parameters[@]}"; do
 done
 (IFS=','; printf '%s\n' "${deploy_parameters[*]}") > "${out}/deploy-parameters"
 
+for entry in "${profiles[@]}"; do
+  profile="${entry%%=*}"
+  [ -f "${skaffold_releases_dir}/${profile}" ] || die "profile ${profile} selects no wrapper; check the manifest profiles lists"
+done
+
+# --- custom actions ---------------------------------------------------------------
+actions_file="${skaffold_releases_dir}/actions"
+for entry in "${cleanup_actions[@]+"${cleanup_actions[@]}"}"; do
+  action="${entry%%=*}"; target_profile="${entry#*=}"
+  {
+    printf '  # Generated: scale every workload rendered by profile %s to zero.\n' "${target_profile}"
+    printf '  - name: %s\n' "${action}"
+    printf '    containers:\n'
+    printf '      - name: %s\n' "${action}"
+    printf '        image: gcr.io/cloud-builders/kubectl@sha256:3744bfd3765ac2a09133a164fcd74c8468fac192af8accadbdfbccbb20643961\n'
+    printf '        command: ["/bin/sh", "-ceu"]\n'
+    printf '        args:\n'
+    printf '          - |\n'
+    printf '            cluster_name="${GKE_CLUSTER##*/}"\n'
+    printf '            cluster_parent="${GKE_CLUSTER%%/clusters/*}"\n'
+    printf '            cluster_location="${cluster_parent##*/}"\n'
+    printf '            cluster_project_path="${cluster_parent%%/locations/*}"\n'
+    printf '            cluster_project="${cluster_project_path##*/}"\n'
+    printf '            gcloud container clusters get-credentials "${cluster_name}" --project "${cluster_project}" --location "${cluster_location}"\n'
+    awk -F'\t' -v p="${target_profile}" '$1 == "workload" && $2 == p && $5 != "none" { printf "            kubectl --namespace %s scale %s/%s --replicas=0 --ignore-not-found\n", $3, $5, $4 }' "${facts}"
+  } >> "${actions_file}"
+done
+for file in "${action_files[@]+"${action_files[@]}"}"; do
+  grep -v '^#' "${file}" | sed '1{/^customActions:$/d;}' >> "${actions_file}"
+  printf 'actions\t%s\t%s\n' "$(basename "${file}")" "$(sha256sum "${file}" | cut -d' ' -f1)" >> "${facts}"
+done
+
 # --- skaffold.yaml ------------------------------------------------------------
 {
   cat <<'SKAFFOLD'
@@ -387,6 +466,10 @@ SKAFFOLD
       cat "${skaffold_releases_dir}/${profile}.verify"
     fi
   done
+  if [ -s "${actions_file}" ]; then
+    printf 'customActions:\n'
+    cat "${actions_file}"
+  fi
 } > "${out}/skaffold.yaml"
 
 # --- evidence -----------------------------------------------------------------
@@ -394,9 +477,17 @@ python3 - "${facts}" "${evidence}/release-evidence.json" "${out}/deploy-paramete
 import json, sys
 facts_path, evidence_path, params_path, source_rev, platform_rev, registry, *profiles = sys.argv[1:]
 wrappers = {}
+profile_members, action_files = {}, []
 for line in open(facts_path):
     parts = line.rstrip("\n").split("\t")
-    kind, wrapper = parts[0], parts[1]
+    kind = parts[0]
+    if kind == "member":
+        profile_members.setdefault(parts[1], []).append(parts[2]); continue
+    if kind == "workload":
+        continue
+    if kind == "actions":
+        action_files.append({"file": parts[1], "sha256": parts[2]}); continue
+    wrapper = parts[1]
     w = wrappers.setdefault(wrapper, {"platformCharts": [], "chartLockSha256": None, "images": [], "renders": [], "verification": []})
     if kind == "chart":
         w["platformCharts"].append({"artifact": parts[2], "sha256": parts[3]})
@@ -415,7 +506,8 @@ evidence = {
     "platformRevision": platform_rev or None,
     "sourceRevision": source_rev or None,
     "chartRegistry": registry or None,
-    "profiles": [{"name": p.split("=")[0], "overlay": p.split("=")[1]} for p in profiles],
+    "profiles": [{"name": p.split("=")[0], "overlay": p.split("=")[1], "wrappers": profile_members.get(p.split("=")[0], [])} for p in profiles],
+    "platformActions": action_files,
     "releaseParameters": sorted(params.split(",")) if params else [],
     "wrappers": wrappers,
 }

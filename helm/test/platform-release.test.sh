@@ -180,7 +180,7 @@ assert_not_contains "${work}/out3/skaffold.yaml" 'values-pilot.yaml' "missing ov
 # A workload without a matching identity renders without the binding and the
 # profile then rejects the secret mount (no Workload Identity).
 expect_assemble_fail "secret mount without identity binding" "requires identity.googleServiceAccount" "${work}/repo" \
-  --allow-file-dependencies --profile dev=dev --image "yourown-chat-identity-api=${api_image}" --image "yourown-chat-identity-migrate=${migrate_image}" --secret-project example-project
+  --allow-file-dependencies --profile dev=dev --image "yourown-chat-identity-api=${api_image}" --image "yourown-chat-identity-migrate=${migrate_image}" --secret-project example-project --cluster-dns-ip 10.30.0.10
 
 # --- contract rejections -----------------------------------------------------------
 fresh_repo "${work}/r1"; sedi "${work}/r1/helm/release.yaml" '/^    namespace: identity$/d'
@@ -205,7 +205,7 @@ fresh_repo "${work}/r6"
 expect_assemble_fail "file:// dependency without the test flag" "file:// repository" "${work}/r6" --chart-registry oci://europe-west3-docker.pkg.dev/example-project/helm "${common_args[@]}"
 
 fresh_repo "${work}/r7"
-expect_assemble_fail "image not built for a workload" "no --image provided for yourown-chat-identity-migrate" "${work}/r7" --allow-file-dependencies --profile dev=dev --image "yourown-chat-identity-api=${api_image}" --identity identity-api=identity-api@example-project.iam.gserviceaccount.com --identity identity-migrate=identity-migrate@example-project.iam.gserviceaccount.com --secret-project example-project
+expect_assemble_fail "image not built for a workload" "no --image provided for yourown-chat-identity-migrate" "${work}/r7" --allow-file-dependencies --profile dev=dev --image "yourown-chat-identity-api=${api_image}" --identity identity-api=identity-api@example-project.iam.gserviceaccount.com --identity identity-migrate=identity-migrate@example-project.iam.gserviceaccount.com --secret-project example-project --cluster-dns-ip 10.30.0.10
 
 fresh_repo "${work}/r8"; printf 'not-a-value\n' > "${work}/r8/helm/identity/secret.txt"
 expect_assemble_fail "unexpected file in wrapper" "unexpected file secret.txt" "${work}/r8" --allow-file-dependencies "${common_args[@]}"
@@ -242,5 +242,42 @@ expect_assemble_fail "verification outside the cluster" "release manifest is inv
 expect_assemble_fail "malformed profile mapping" "must be NAME=OVERLAY" "${work}/repo" --allow-file-dependencies --profile "Prod" --image "yourown-chat-identity-api=${api_image}"
 expect_assemble_fail "image with a tag instead of a digest" "must be NAME=ARTIFACT-REGISTRY-REPOSITORY@sha256" "${work}/repo" --allow-file-dependencies --profile dev=dev --image yourown-chat-identity-api=europe-west3-docker.pkg.dev/example-project/docker/app:1.0.0
 expect_assemble_fail "registry outside Artifact Registry" "must be an Artifact Registry OCI path" "${work}/repo" --chart-registry oci://ghcr.io/example/charts --profile dev=dev
+expect_assemble_fail "missing cluster DNS release parameter" "--cluster-dns-ip is required" "${work}/repo" --allow-file-dependencies --profile dev=dev --image "yourown-chat-identity-api=${api_image}" --image "yourown-chat-identity-migrate=${migrate_image}" --secret-project example-project
+expect_assemble_fail "duplicate profile request" "requested more than once" "${work}/repo" --allow-file-dependencies "${common_args[@]}" --profile dev=dev
+expect_assemble_fail "cleanup action for an unrequested profile" "references a profile that is not requested" "${work}/repo" --allow-file-dependencies "${common_args[@]}" --cleanup-action cleanup-x=pilot
+expect_assemble_fail "actions file without customActions document" "must start with a customActions: document" "${work}/repo" --allow-file-dependencies "${common_args[@]}" --actions "${fixture_dir}/service-valid.yaml"
+
+# --- profile selection, generated cleanup action, platform actions file -----------
+fresh_repo "${work}/r20"; sedi "${work}/r20/helm/release.yaml" 's/^    namespace: identity$/    namespace: identity\
+    profiles: [prod]/'
+expect_assemble_fail "profile without any wrapper" "profile dev selects no wrapper" "${work}/r20" --allow-file-dependencies "${common_args[@]}"
+bash "${assembler}" --repo "${work}/r20" --out "${work}/out20" --evidence "${work}/evidence20" --allow-file-dependencies \
+  --profile prod=prod "${common_args[@]:4}" >/dev/null
+assert_not_contains "${work}/out20/skaffold.yaml" '  - name: dev' "manifest profiles limit the wrapper to prod"
+assert_contains "${work}/out20/skaffold.yaml" '  - name: prod'
+python3 - "${work}/evidence20/release-evidence.json" <<'PY' || { echo "FAIL: profile membership evidence" >&2; failures=$((failures + 1)); }
+import json, sys
+e = json.load(open(sys.argv[1]))
+assert e["profiles"] == [{"name": "prod", "overlay": "prod", "wrappers": ["identity"]}], e["profiles"]
+PY
+
+run_assembler "${work}/repo" "${work}/out21" "${work}/evidence21" --cleanup-action cleanup-identity-dev=dev --actions "${repo_root}/helm/platform/release/actions/mcp-capability-sync.yaml" >/dev/null
+golden "${work}/out21/skaffold.yaml" release-skaffold-actions
+assert_contains "${work}/out21/skaffold.yaml" 'customActions:'
+assert_contains "${work}/out21/skaffold.yaml" '  - name: cleanup-identity-dev'
+assert_contains "${work}/out21/skaffold.yaml" 'kubectl --namespace identity scale deployment/identity-api --replicas=0 --ignore-not-found'
+assert_not_contains "${work}/out21/skaffold.yaml" 'scale deployment/identity-migrate' "jobs are not scaled by the cleanup action"
+assert_contains "${work}/out21/skaffold.yaml" 'cluster_name="${GKE_CLUSTER##*/}"'
+assert_contains "${work}/out21/skaffold.yaml" '  - name: sync-cloudflare-mcp-capabilities'
+assert_not_contains "${work}/out21/skaffold.yaml" '# Platform-owned Cloud Deploy custom action' "file comments are not copied"
+assert_count "${work}/out21/skaffold.yaml" 'customActions:' 1
+assert_contains "${work}/evidence21/release-evidence.json" '"platformActions"'
+assert_contains "${work}/evidence21/release-evidence.json" 'mcp-capability-sync.yaml'
+
+# The platform action file must equal the action still carried by the legacy
+# MCP Skaffold configuration until that file is retired.
+legacy_action="$(awk '/^  - name: sync-cloudflare-mcp-capabilities$/ { p=1 } /^  - name: cleanup-mcp-dev$/ { p=0 } p { print }' "${repo_root}/helm/skaffold-mcp.yaml")"
+platform_action="$(grep -v '^#' "${repo_root}/helm/platform/release/actions/mcp-capability-sync.yaml" | sed '1{/^customActions:$/d;}')"
+[ "${legacy_action}" = "${platform_action}" ] || { echo "FAIL: helm/platform/release/actions/mcp-capability-sync.yaml drifted from the legacy helm/skaffold-mcp.yaml action" >&2; failures=$((failures + 1)); }
 
 finish

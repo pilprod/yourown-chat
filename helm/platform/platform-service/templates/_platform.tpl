@@ -453,10 +453,8 @@ spec:
           podSelector:
             matchLabels:
               k8s-app: kube-dns
-        {{- with $n.clusterDNSIP }}
         - ipBlock:
-            cidr: {{ printf "%s/32" . | quote }}
-        {{- end }}
+            cidr: {{ printf "%s/32" (required "network.clusterDNSIP is a required release parameter (cluster DNS address)" $n.clusterDNSIP) | quote }}
       ports:
         - protocol: UDP
           port: 53

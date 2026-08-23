@@ -84,7 +84,7 @@ release-time parameters and are not hand-maintained in a service overlay:
 | `image.digest` | Artifact Registry `repository@sha256:` reference of the verified immutable image. Tags and foreign registries are rejected. |
 | `identity.googleServiceAccount` | Dedicated Workload Identity service account e-mail bound to the workload ServiceAccount. Required whenever secrets are mounted. |
 | `secrets.project` | Google Cloud project that owns the referenced Secret Manager secrets. |
-| `network.clusterDNSIP` | Optional cluster DNS address added to the DNS egress baseline. |
+| `network.clusterDNSIP` | Required cluster DNS address (kube-dns / NodeLocal DNSCache) added to the DNS egress baseline; Dataplane V2 needs the explicit address. |
 | `layer4Exposure.reservedAddress` (`platform-stateful`) | Platform-reserved address of the dedicated layer-four load balancer. |
 
 Everything else in a profile's `values.yaml` is a service-owned, typed
@@ -122,6 +122,8 @@ native `Secret` rendering, plaintext secret environment variables, `NodePort`,
 | Memory request | <= 4Gi |
 | Memory limit (required) | <= 8Gi |
 | Replicas | `platform-service`/`platform-worker` 0..10, `platform-stateful` 1..3 |
+| `workload.name` | <= 53 characters; `platform-job` <= 50 so the immutable run suffix fits in 63 |
+| CPU / memory requests | strictly positive (zero quantities are rejected) |
 | Container ports | 1024..65535 |
 | Termination grace period | 1..600 s (`platform-stateful` default 300 s) |
 
@@ -134,7 +136,9 @@ digest and configuration remain declared.
 
 Each profile renders one NetworkPolicy that selects only its workload with
 `policyTypes: [Ingress, Egress]`. Without declared rules the workload accepts
-no inbound traffic and may only resolve DNS. Every allow rule has a `name`, a
+no inbound traffic and may only resolve DNS (kube-dns pods plus the required
+`network.clusterDNSIP` address). A `platform-job` run name hashes the chart
+version and every value, so any change produces a new immutable Job. Every allow rule has a `name`, a
 `purpose` and exactly one typed peer:
 
 - ingress peers: `sameNamespace`, `namespace` (+ optional `podLabels`),

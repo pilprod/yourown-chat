@@ -3,6 +3,9 @@
 {{- if not (and $h $h.readiness (or $h.readiness.httpGet $h.readiness.exec) $h.liveness (or $h.liveness.httpGet $h.liveness.exec)) -}}
 {{- fail "platform-service requires container.health.readiness and container.health.liveness probes" -}}
 {{- end -}}
+{{- if and .Values.agentRegistry.enabled (not .Values.service.enabled) -}}
+{{- fail "agentRegistry.enabled requires service.enabled: the registry advertises the workload Service" -}}
+{{- end -}}
 {{- $r := .Values.runtime -}}
 {{- $hpa := and $r.autoscaling.enabled (not $r.paused) -}}
 apiVersion: apps/v1

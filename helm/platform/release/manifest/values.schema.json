@@ -121,6 +121,15 @@
                 }
               }
             }
+          },
+          "profiles": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 8,
+            "uniqueItems": true,
+            "items": {
+              "$ref": "#/definitions/kebab"
+            }
           }
         }
       }

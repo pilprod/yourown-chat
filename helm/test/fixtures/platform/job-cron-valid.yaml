@@ -14,6 +14,7 @@ job:
 runtime:
   priorityClass: development
 network:
+  clusterDNSIP: 10.30.0.10
   egress:
     - name: cloudsql
       purpose: Retention pruning against the private Cloud SQL address

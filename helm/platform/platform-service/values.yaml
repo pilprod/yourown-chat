@@ -99,7 +99,9 @@ secrets:
   files: []
 
 network:
-  # Optional release parameter adding the cluster DNS address to the DNS rule.
+  # Required release parameter: the cluster DNS address (kube-dns ClusterIP /
+  # NodeLocal DNSCache) added to the DNS egress rule; Dataplane V2 needs the
+  # explicit address, so an empty value is rejected.
   clusterDNSIP: ""
   # Typed allow rules. Each rule names its purpose and exactly one peer kind.
   ingress: []

@@ -33,6 +33,13 @@ render "${chart}" job-valid identity --set image.digest=europe-west3-docker.pkg.
 other_name="$(awk '/^kind: Job$/ { injob = 1 } injob && /^  name: / { print $2; exit }' "${other}")"
 [ "${job_name}" != "${other_name}" ] || { echo "FAIL: Job name must change with the image digest" >&2; failures=$((failures + 1)); }
 
+# Any value change (not only the image) yields a new immutable Job name.
+render "${chart}" job-valid identity --set runtime.priorityClass=development > "${other}"
+other_name="$(awk '/^kind: Job$/ { injob = 1 } injob && /^  name: / { print $2; exit }' "${other}")"
+[ "${job_name}" != "${other_name}" ] || { echo "FAIL: Job name must change when any pod-template value changes" >&2; failures=$((failures + 1)); }
+expect_fail "job name too long for the immutable suffix" "workload/name|workload\\.name" "${chart}" job-valid identity --set workload.name=identity-migrate-with-a-very-long-workload-name-here
+expect_fail "cron job without cluster DNS address" "network/clusterDNSIP|network\\.clusterDNSIP" "${chart}" job-cron-valid identity --set network.clusterDNSIP=""
+
 # CronJob variant.
 render "${chart}" job-cron-valid identity > "${cron}"
 assert_platform_invariants "${cron}"

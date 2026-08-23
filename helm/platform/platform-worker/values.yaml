@@ -76,6 +76,7 @@ secrets:
   files: []
 
 network:
+  # Required release parameter (cluster DNS address); empty is rejected.
   clusterDNSIP: ""
   ingress: []
   egress: []

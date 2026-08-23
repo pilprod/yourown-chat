@@ -285,6 +285,8 @@ resource "google_cloudbuild_trigger" "mcp_source" {
           --evidence /workspace/release-evidence \
           --chart-registry "${local.chart_registry}" \
           ${join(" ", [for profile in local.wrapper_profiles.mcp : "--profile ${profile}"])} \
+          --cleanup-action cleanup-mcp-dev=mcp-dev \
+          --actions /workspace/yourown-chat/helm/platform/release/actions/mcp-capability-sync.yaml \
           ${local.wrapper_identity_args} \
           --secret-project "${var.project_id}" ${local.wrapper_dns_arg} \
           --source-revision "$COMMIT_SHA" \
@@ -323,6 +325,10 @@ resource "google_cloudbuild_trigger" "mcp_source" {
     precondition {
       condition     = !var.wrapper_releases_enabled || var.helm_chart_repository != null
       error_message = "wrapper_releases_enabled requires helm_chart_repository (the platform Helm chart OCI repository published by platform-gcp)."
+    }
+    precondition {
+      condition     = !var.wrapper_releases_enabled || var.cluster_dns_ip != ""
+      error_message = "wrapper_releases_enabled requires cluster_dns_ip (the profiles require the cluster DNS address release parameter)."
     }
   }
 

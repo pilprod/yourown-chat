@@ -77,7 +77,7 @@ automountServiceAccountToken: false
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: identity-migrate-334d21e30d76
+  name: identity-migrate-0e5b081b5553
   namespace: identity
   labels:
     app: identity-migrate
@@ -90,7 +90,7 @@ metadata:
     platform.yourown.chat/profile: platform-job
     platform.yourown.chat/chart-version: "0.1.0"
   annotations:
-    platform.yourown.chat/run-id: "334d21e30d76"
+    platform.yourown.chat/run-id: "0e5b081b5553"
 spec:
   suspend: false
   backoffLimit: 8

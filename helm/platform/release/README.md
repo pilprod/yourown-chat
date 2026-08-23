@@ -38,6 +38,12 @@ The manifest workloads must be exactly the aliases pinned in the wrapper's
 are switched with chart `tags`; `condition` and `import-values` are rejected
 because they would inject keys into the profile schema.
 
+### Profiles
+
+A wrapper may list the Cloud Deploy profiles it belongs to
+(`profiles: [mcp-dev]`); without the list it is rendered in every requested
+profile. Every requested profile must select at least one wrapper.
+
 ### Verification
 
 ```yaml
@@ -92,9 +98,21 @@ For every wrapper it:
 
 Typed release parameters are the only values injected at release time:
 `<alias>.image.digest`, `<alias>.identity.googleServiceAccount`,
-`<alias>.secrets.project` and `<alias>.network.clusterDNSIP`. Cloud Deploy
-passes them to Helm as `--set` arguments; keys stay within the 63-character
-limit, values within 512 characters, and one release carries at most 50.
+`<alias>.secrets.project` and `<alias>.network.clusterDNSIP` (the Secret
+Manager project and the cluster DNS address are required). Cloud Deploy passes
+them to Helm as `--set` arguments; keys stay within the 63-character limit,
+values within 512 characters, and one release carries at most 50.
+
+### Lifecycle actions
+
+- `--cleanup-action NAME=PROFILE` generates the Cloud Deploy custom action
+  `NAME` that scales every Deployment and StatefulSet rendered by `PROFILE` to
+  zero (disposable development stage cleanup; the Terraform pipeline stage
+  references the action name, and the cleanup identity's RBAC must cover the
+  wrapper workload names).
+- `--actions FILE` appends a platform-owned `customActions:` document (for
+  example [`actions/mcp-capability-sync.yaml`](actions/mcp-capability-sync.yaml))
+  verbatim; the release evidence records the file digest.
 
 ## Cloud Build wiring
 

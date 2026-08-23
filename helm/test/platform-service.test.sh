@@ -105,6 +105,10 @@ expect_fail "writable volume over a reserved path" "writableVolumes" "${chart}" 
 expect_fail "global values are not part of the contract" "global" "${chart}" service-valid identity --set global.registry=docker.io
 expect_fail "unapproved priority class" "priorityClass" "${chart}" service-valid identity --set runtime.priorityClass=system-cluster-critical
 expect_fail "unknown workload name shape" "workload/name|workload\.name" "${chart}" service-valid identity --set workload.name=Identity_API
+expect_fail "zero CPU request" "container/resources/requests/cpu|container\\.resources\\.requests\\.cpu" "${chart}" service-valid identity --set container.resources.requests.cpu=0m
+expect_fail "zero memory request" "container/resources/requests/memory|container\\.resources\\.requests\\.memory" "${chart}" service-valid identity --set container.resources.requests.memory=0
+expect_fail "missing cluster DNS address" "network/clusterDNSIP|network\\.clusterDNSIP" "${chart}" service-valid identity --set network.clusterDNSIP=""
+expect_fail "agent registry without a Service" "agentRegistry.enabled requires service.enabled" "${chart}" service-valid identity --set agentRegistry.enabled=true --set service.enabled=false
 expect_fail "secret version must be latest or a number" "secrets/files/0/version|secrets\.files\.0\.version" "${chart}" service-valid identity --set 'secrets.files[0].version=newest'
 
 finish

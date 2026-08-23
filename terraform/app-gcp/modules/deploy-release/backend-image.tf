@@ -533,6 +533,10 @@ resource "google_cloudbuild_trigger" "source_image" {
       condition     = !var.wrapper_releases_enabled || var.helm_chart_repository != null
       error_message = "wrapper_releases_enabled requires helm_chart_repository (the platform Helm chart OCI repository published by platform-gcp)."
     }
+    precondition {
+      condition     = !var.wrapper_releases_enabled || var.cluster_dns_ip != ""
+      error_message = "wrapper_releases_enabled requires cluster_dns_ip (the profiles require the cluster DNS address release parameter)."
+    }
   }
 
   depends_on = [
