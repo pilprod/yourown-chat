@@ -1,8 +1,0 @@
-[submodule ".engineering-private"]
-	path = .engineering-private
-	url = https://github.com/pilprod/yourown-chat-rules.git
-	branch = main
-[submodule ".engineering-public"]
-	path = .engineering-public
-	url = https://github.com/pilprod/yourown-chat.git
-	branch = engineering-rules
