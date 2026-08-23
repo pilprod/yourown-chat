@@ -47,8 +47,7 @@ Before a downstream plan is eligible for approval, the authoritative upstream
 source that defines the output must be accepted into its canonical branch and
 the output must be verified in remote state.
 
-When a required output is introduced, changed, or not yet published, the
-operator:
+When a required output is introduced or not yet published, the operator:
 
 1. promotes the reviewed upstream source and output contract to the
    authoritative branch;
@@ -64,6 +63,30 @@ but it is not eligible for apply. When the upstream source, output contract, and
 published value already satisfy the dependency and have not changed, read-only
 verification through the approved MCP replaces steps 1 through 3; a no-op apply
 is not started solely to satisfy this sequence.
+
+A change to an already consumed output follows an expand-switch-contract
+migration when any affected downstream consumer or environment would not remain
+compatible with the new value or resource:
+
+1. the upstream expansion is planned from the accepted source, separately
+   reviewed and authorized, and applied to publish a new compatible output or
+   resource while preserving the old output and resource;
+2. every affected downstream Stack and environment switches through a fresh,
+   separately reviewed and authorized plan and apply, and its downstream
+   effects are verified; and
+3. only after every affected consumer and environment has switched and every
+   applicable rollback window has expired or been explicitly closed by the
+   authorized owner may a separately reviewed and authorized upstream
+   contraction remove the old output or backing resource.
+
+Until every prerequisite in step 3 is satisfied and the contraction apply is
+explicitly authorized, the old output and backing resource remain published,
+provisioned, operational, and contract-valid. After the contraction apply, the
+removal and the health of every remaining affected downstream consumer and
+environment are verified. An in-place output change may skip this migration
+only when every affected downstream consumer and environment remains compatible
+and the reviewed plans, verification, and rollback evidence demonstrate that
+continuity.
 
 When merging or promoting the downstream wiring would automatically create an
 invalid plan, that wiring remains unmerged or unpromoted until the upstream
