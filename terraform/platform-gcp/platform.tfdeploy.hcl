@@ -211,3 +211,21 @@ publish_output "temporal_results_bucket_name" {
   description = "Platform-owned agent result bucket consumed by application delivery parameters."
   value       = deployment.eu.temporal_results_bucket_name
 }
+
+# Platform Helm chart registry (helm/platform workload profiles as immutable
+# OCI artifacts). app-gcp reads these through upstream_input.platform; a Stack
+# output is visible downstream only when it is published here.
+publish_output "helm_registry_repository_id" {
+  description = "Artifact Registry repository ID of the platform Helm workload-profile charts, consumed by app-gcp wrapper releases and the chart publication rail."
+  value       = deployment.eu.helm_registry_repository_id
+}
+
+publish_output "helm_registry_location" {
+  description = "Location of the platform Helm chart repository."
+  value       = deployment.eu.helm_registry_location
+}
+
+publish_output "helm_registry_repository_path" {
+  description = "OCI path prefix of the platform Helm chart repository (HOST/PROJECT/REPO); wrappers reference it as oci://HOST/PROJECT/REPO."
+  value       = deployment.eu.helm_registry_repository_path
+}
