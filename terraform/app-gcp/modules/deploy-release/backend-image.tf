@@ -43,7 +43,7 @@ locals {
   ]...)
 
   source_builds = {
-    "yourown-chat-server-ci" = {
+    "${var.backend_repository_name}-ci" = {
       source        = "backend"
       branch        = var.backend_branch_regex
       tag           = null
@@ -51,7 +51,7 @@ locals {
       services      = "control-api auth-api transport-api identity-api identity-admin identity-migrate"
       workflowcheck = false
     }
-    "yourown-chat-server-image" = {
+    "${var.backend_repository_name}-image" = {
       source        = "backend"
       branch        = null
       tag           = var.backend_release_tag_regex
@@ -59,7 +59,7 @@ locals {
       services      = "control-api auth-api transport-api identity-api identity-admin identity-migrate"
       workflowcheck = false
     }
-    "yourown-chat-agents-ci" = {
+    "${var.agents_repository_name}-ci" = {
       source        = "agents"
       branch        = var.agents_branch_regex
       tag           = null
@@ -67,7 +67,7 @@ locals {
       services      = "workflow-worker activity-worker"
       workflowcheck = true
     }
-    "yourown-chat-agents-image" = {
+    "${var.agents_repository_name}-image" = {
       source        = "agents"
       branch        = null
       tag           = var.agents_release_tag_regex

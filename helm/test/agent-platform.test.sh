@@ -40,8 +40,9 @@ grep -Fq -- '- name: agents-running' "${repo_root}/helm/skaffold-agents.yaml"
 ! grep -Fq 'temporal' "${repo_root}/helm/skaffold-agents.yaml"
 
 source_release="${repo_root}/terraform/app-gcp/modules/deploy-release/backend-image.tf"
-grep -Fq '"yourown-chat-server-image"' "${source_release}"
-grep -Fq '"yourown-chat-agents-image"' "${source_release}"
+# Trigger keys are derived from the catalog-supplied repository names.
+grep -Fq '"${var.backend_repository_name}-image"' "${source_release}"
+grep -Fq '"${var.agents_repository_name}-image"' "${source_release}"
 grep -Fq 'services      = "control-api auth-api transport-api identity-api identity-admin identity-migrate"' "${source_release}"
 grep -Fq 'services      = "workflow-worker activity-worker"' "${source_release}"
 grep -Fq 'repository = google_cloudbuildv2_repository.source[each.value.source].id' "${source_release}"

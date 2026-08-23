@@ -95,34 +95,21 @@ variable "wrapper_releases_enabled" {
 }
 
 # --- Image-build CI (Cloud Build 2nd-gen) ------------------------------------
+# Repository connections are private service-catalog inputs. The deployment
+# reads them from the `service-catalog` Stack (upstream_input.catalog in
+# app.tfdeploy.hcl); this public platform source names no repository owner,
+# repository name, or clone URL and provides no defaults for them.
 variable "github_connection_name" {
   type        = string
-  description = "Name of the EXISTING Cloud Build 2nd-gen GitHub connection, authorized once in the console via OAuth (see README.md). Both the image and deploy repositories are linked to it by ID; Terraform never creates or manages the connection."
-  default     = "pilprod-github"
+  description = "Name of the EXISTING Cloud Build 2nd-gen GitHub connection, authorized once in the console via OAuth (see README.md). Every source repository is linked to it by ID; Terraform never creates or manages the connection. Supplied by the private service catalog."
 }
 
-variable "github_remote_uri" {
-  type        = string
-  description = "HTTPS clone URL of the Mattermost source repository."
-  default     = "https://github.com/pilprod/yourown-chat-mattermost.git"
-}
-
-variable "github_repository_name" {
-  type        = string
-  description = "Cloud Build repository resource name for the YourOwn.Chat Mattermost fork."
-  default     = "yourown-chat-mattermost"
-}
-
-variable "github_web_remote_uri" {
-  type        = string
-  description = "HTTPS clone URL of the private web source pinned by the Mattermost assembly."
-  default     = "https://github.com/pilprod/yourown-chat-web.git"
-}
-
-variable "github_web_repository_name" {
-  type        = string
-  description = "Cloud Build repository resource name for the private YourOwn.Chat web source."
-  default     = "yourown-chat-web"
+variable "source_repositories" {
+  type = map(object({
+    name       = string
+    remote_uri = string
+  }))
+  description = "Private service catalog of source repositories keyed by role. Required roles: deploy (this platform repository, the Skaffold render root), mattermost (product assembly), web (private web source), server_source (patched server source, provenance only), backend, agents, mcp, rtcd. `name` is the Cloud Build 2nd-gen repository resource name; `remote_uri` is the HTTPS clone URL. Supplied by the private service catalog."
 }
 
 variable "image_name" {
@@ -159,30 +146,8 @@ variable "builds" {
 }
 
 # --- Automated release cutting (Cloud Deploy on a git tag) ------------------
-variable "github_deploy_remote_uri" {
-  type        = string
-  description = "HTTPS clone URL of the DEPLOY repository (the one holding helm/, i.e. this repo). A second Cloud Build 2nd-gen repository link points here so a semver tag cuts a Cloud Deploy release automatically. The Cloud Build GitHub App + PAT must cover this repo too (see README.md)."
-  default     = "https://github.com/pilprod/yourown-chat.git"
-}
-
-variable "github_backend_remote_uri" {
-  type        = string
-  description = "HTTPS clone URL of the YourOwn.Chat backend repository linked to the shared Cloud Build GitHub connection."
-  default     = "https://github.com/pilprod/yourown-chat-server.git"
-}
-
-variable "github_agents_remote_uri" {
-  type        = string
-  description = "HTTPS clone URL of the YourOwn.Chat agent workload repository linked to the shared Cloud Build GitHub connection."
-  default     = "https://github.com/pilprod/yourown-chat-agents.git"
-}
-
-variable "github_mcp_remote_uri" {
-  type        = string
-  description = "HTTPS clone URL of the private YourOwn.Chat MCP source repository linked to the shared Cloud Build GitHub connection."
-  default     = "https://github.com/pilprod/yourown-chat-mcp.git"
-}
-
+# The deploy, backend, agents, mcp and rtcd repository links come from
+# var.source_repositories (private service catalog); see components.
 variable "mcp_release_tag_regex" {
   type        = string
   description = "Immutable MCP source tags that build, scan and release all owned MCP server images."
