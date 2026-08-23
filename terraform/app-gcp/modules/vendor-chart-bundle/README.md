@@ -1,7 +1,7 @@
 # Vendor chart bundle
 
-This module is the public, product-neutral adapter for a private-catalog vendor
-testbed. It accepts an immutable OCI chart reference (including its digest), the
+This module is the product-neutral adapter for a service-owned vendor testbed.
+It accepts an immutable OCI chart reference (including its digest), the
 exact base64-encoded product-owned values and a typed placement/network model.
 It does not carry vendor defaults or accept an untyped Helm-values escape hatch.
 
@@ -14,11 +14,11 @@ pinned and has `prevent_destroy = true` because its resources are cluster-wide.
 
 The caller should instantiate one module per catalog bundle and pass:
 
-- `bundle_key` and `bundle` directly from the private catalog output;
+- `bundle_key` and `bundle` from the app-gcp Stack inputs;
 - `project_id`, `cluster_dns_ip` and `cloudsql_private_ip` from platform outputs;
 - `database_secret_ids` from the platform's additional connection-secret map;
 - non-sensitive ownership `labels`.
 
-Only the catalog can open a source-to-destination path. Each declared path
+Only an explicitly declared bundle can open a source-to-destination path. Each declared path
 produces both source egress and destination ingress policy; all undeclared paths
 remain denied.

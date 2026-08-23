@@ -95,13 +95,11 @@ variable "wrapper_releases_enabled" {
 }
 
 # --- Image-build CI (Cloud Build 2nd-gen) ------------------------------------
-# Repository connections are private service-catalog inputs. The deployment
-# reads them from the `service-catalog` Stack (upstream_input.catalog in
-# app.tfdeploy.hcl); this public platform source names no repository owner,
-# repository name, or clone URL and provides no defaults for them.
+# Repository connections are service-owned inputs declared alongside the
+# app-gcp deployment. Credentials are not stored in these values.
 variable "github_connection_name" {
   type        = string
-  description = "Name of the EXISTING Cloud Build 2nd-gen GitHub connection, authorized once in the console via OAuth (see README.md). Every source repository is linked to it by ID; Terraform never creates or manages the connection. Supplied by the private service catalog."
+  description = "Name of the EXISTING Cloud Build 2nd-gen GitHub connection, authorized once in the console via OAuth (see README.md). Every source repository is linked to it by ID; Terraform never creates or manages the connection."
 }
 
 variable "source_repositories" {
@@ -109,7 +107,7 @@ variable "source_repositories" {
     name       = string
     remote_uri = string
   }))
-  description = "Private service catalog of source repositories keyed by role. Required roles: deploy (this platform repository, the Skaffold render root), mattermost (product assembly), web (private web source), server_source (patched server source, provenance only), backend, agents, mcp, rtcd. `name` is the Cloud Build 2nd-gen repository resource name; `remote_uri` is the HTTPS clone URL. Supplied by the private service catalog."
+  description = "Source repositories keyed by role. Required roles: deploy (this platform repository, the Skaffold render root), mattermost (product assembly), web, server_source (patched server source, provenance only), backend, agents, mcp, rtcd. `name` is the Cloud Build 2nd-gen repository resource name; `remote_uri` is the HTTPS clone URL."
 }
 
 variable "vendor_chart_bundles" {
@@ -169,7 +167,7 @@ variable "vendor_chart_bundles" {
       port                  = number
     }))
   }))
-  description = "Private-catalog vendor OCI chart bundles consumed by the reusable public adapter."
+  description = "Service-owned vendor OCI chart bundles consumed by the reusable adapter."
   default     = {}
 }
 
@@ -214,7 +212,7 @@ variable "builds" {
 
 # --- Automated release cutting (Cloud Deploy on a git tag) ------------------
 # The deploy, backend, agents, mcp and rtcd repository links come from
-# var.source_repositories (private service catalog); see components.
+# var.source_repositories; see service-inputs.tfdeploy.hcl and components.
 variable "mcp_release_tag_regex" {
   type        = string
   description = "Immutable MCP source tags that build, scan and release all owned MCP server images."

@@ -25,14 +25,6 @@ upstream_input "cloudflare" {
   source = "app.terraform.io/papou-work/yourown-chat/cloudflare"
 }
 
-# Private service catalog: repository connections and other private component
-# inputs are published by the service-catalog Stack (private repository) and
-# consumed here as last-applied values. Apply order: service-catalog first.
-upstream_input "catalog" {
-  type   = "stack"
-  source = "app.terraform.io/papou-work/yourown-chat/service-catalog"
-}
-
 deployment "eu" {
   inputs = {
     identity_token        = identity_token.gcp.jwt
@@ -113,17 +105,12 @@ deployment "eu" {
     # reproducible and visible instead of waiting for the periodic catalog sync.
     mcp_capability_sync_enabled = true
 
-    # Cloud Build 2nd-gen GitHub connection (authorized once out-of-band in the
-    # console, README.md) and every linked source repository come from the
-    # private service catalog. No repository owner, name or URL is kept here.
-    github_connection_name = upstream_input.catalog.github_connection_name
-    source_repositories = {
-      for key, repository in upstream_input.catalog.source_repositories :
-      key => repository if key != "catalog_contract"
-    }
-    vendor_chart_bundles = jsondecode(
-      upstream_input.catalog.source_repositories.catalog_contract.remote_uri
-    ).vendor_chart_bundles
+    # Service-owned inputs live with the app-gcp Stack. Credentials remain in
+    # the approved secret control plane; these values are names, URLs and
+    # immutable release pins.
+    github_connection_name = local.github_connection_name
+    source_repositories    = local.source_repositories
+    vendor_chart_bundles   = local.vendor_chart_bundles
     image_name = "mattermost"
     # Stable assembly tags use dev -> smoke -> approval -> prod. Prerelease
     # tags and version branches are structurally limited to dev preview.

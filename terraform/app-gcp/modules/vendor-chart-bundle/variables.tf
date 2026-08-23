@@ -65,7 +65,7 @@ variable "bundle" {
       port                  = number
     }))
   })
-  description = "Closed private-catalog contract for one immutable, production-ineligible vendor chart bundle."
+  description = "Closed service-owned contract for one immutable, production-ineligible vendor chart bundle."
 
   validation {
     condition = (

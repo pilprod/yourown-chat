@@ -8,8 +8,11 @@ main="$module_dir/main.tf"
 variables="$module_dir/variables.tf"
 components="$app_dir/components.tfcomponent.hcl"
 deployment="$app_dir/app.tfdeploy.hcl"
+service_inputs="$app_dir/service-inputs.tfdeploy.hcl"
 platform_dir="$(cd "$app_dir/../platform-gcp" && pwd)"
 edge_deployment="$app_dir/../cloudflare/cloudflare.tfdeploy.hcl"
+platform_service_inputs="$platform_dir/service-inputs.tfdeploy.hcl"
+edge_service_inputs="$app_dir/../cloudflare/service-inputs.tfdeploy.hcl"
 
 fail() {
   echo "vendor chart bundle adapter test failed: $*" >&2
@@ -27,23 +30,29 @@ for file in main.tf variables.tf outputs.tf versions.tf README.md; do
 done
 
 forbidden_vendor="$(printf '%s%s' 'ka' 'gent')"
-if rg -ni -- "$forbidden_vendor" "$module_dir" "$0" "$components" "$deployment" "$platform_dir" "$edge_deployment"; then
+if rg -ni -- "$forbidden_vendor" "$module_dir" "$0" "$components" "$deployment"; then
   fail "the public adapter contains a vendor-specific name"
 fi
 
-require_literal "$deployment" 'key => repository if key != "catalog_contract"'
-require_literal "$deployment" 'upstream_input.catalog.source_repositories.catalog_contract.remote_uri'
-require_literal "$deployment" ').vendor_chart_bundles'
+require_literal "$deployment" 'vendor_chart_bundles   = local.vendor_chart_bundles'
+require_literal "$service_inputs" 'vendor_chart_bundles = {'
 require_literal "$components" 'component "vendor_chart_bundle"'
 require_literal "$components" 'source = "./modules/vendor-chart-bundle"'
 require_literal "$components" 'for_each = var.vendor_chart_bundles'
 require_literal "$components" 'bundle_key          = each.key'
 require_literal "$components" 'database_secret_ids = var.additional_cloudsql_connection_secret_ids'
-require_literal "$platform_dir/platform.tfdeploy.hcl" 'upstream_input.catalog.source_repositories.catalog_contract.remote_uri'
-require_literal "$platform_dir/platform.tfdeploy.hcl" ').additional_database_users'
+require_literal "$platform_dir/platform.tfdeploy.hcl" 'additional_database_users = local.additional_database_users'
+require_literal "$platform_service_inputs" 'additional_database_users = {'
 require_literal "$platform_dir/outputs.tfcomponent.hcl" 'output "additional_cloudsql_connection_secret_ids"'
-require_literal "$edge_deployment" 'upstream_input.catalog.source_repositories.catalog_contract.remote_uri'
-require_literal "$edge_deployment" ').private_http_routes, {}) :'
+require_literal "$edge_deployment" 'for hostname, route in local.private_http_routes :'
+require_literal "$edge_service_inputs" 'private_http_routes = {'
+
+if rg -n -- 'upstream_input\.catalog|service-catalog' \
+  "$deployment" "$service_inputs" "$components" \
+  "$platform_dir/platform.tfdeploy.hcl" "$platform_service_inputs" \
+  "$edge_deployment" "$edge_service_inputs"; then
+  fail "service inputs must live in the existing Stacks without a service-catalog dependency"
+fi
 
 require_literal "$main" 'chart     = var.bundle.charts.crds.ref'
 require_literal "$main" 'chart     = var.bundle.charts.application.ref'

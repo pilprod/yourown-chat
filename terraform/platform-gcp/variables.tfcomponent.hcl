@@ -232,11 +232,6 @@ variable "yourown_chat_identity_password_rotation" {
   default     = "1"
 }
 
-variable "catalog_revision" {
-  type        = string
-  description = "Last applied private service-catalog revision consumed by this platform deployment."
-}
-
 variable "additional_database_users" {
   type = map(object({
     database_names              = set(string)
@@ -250,7 +245,7 @@ variable "additional_database_users" {
       service_account = string
     })), [])
   }))
-  description = "Private-catalog requests for additional logical database roles on the shared protected Cloud SQL instance."
+  description = "Service-owned requests for additional logical database roles on the shared protected Cloud SQL instance."
   default     = {}
 
   validation {

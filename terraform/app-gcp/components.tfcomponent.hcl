@@ -777,8 +777,8 @@ component "cluster_bootstrap" {
   }
 }
 
-# Generic adapter for private-catalog, product-owned OCI chart bundles. Service
-# identity and vendor values remain outside this reusable public Stack.
+# Generic adapter for service-owned OCI chart bundles declared alongside this
+# Stack. Credentials remain outside the repository.
 component "vendor_chart_bundle" {
   # Keep disabled entries instantiated so the module-level CRD
   # prevent_destroy guard remains present during staged retirement.

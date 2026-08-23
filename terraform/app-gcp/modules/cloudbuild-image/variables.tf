@@ -16,12 +16,12 @@ variable "apply_service_account_email" {
 # --- GitHub source (shared out-of-band 2nd-gen connection) -----------------
 variable "connection_name" {
   type        = string
-  description = "Name of the EXISTING Cloud Build 2nd-gen GitHub connection (authorized once in the console via OAuth, see README.md). The source repository is linked to it by its deterministic ID; Terraform never creates or manages the connection. Supplied by the private service catalog."
+  description = "Name of the EXISTING Cloud Build 2nd-gen GitHub connection (authorized once in the console via OAuth, see README.md). The source repository is linked to it by its deterministic ID; Terraform never creates or manages the connection."
 }
 
 variable "github_remote_uri" {
   type        = string
-  description = "HTTPS clone URL of the product assembly source repository (private service catalog role mattermost)."
+  description = "HTTPS clone URL of the product assembly source repository (service input role mattermost)."
 
   validation {
     condition     = can(regex("^https://github\\.com/.+\\.git$", var.github_remote_uri))
@@ -31,7 +31,7 @@ variable "github_remote_uri" {
 
 variable "repository_name" {
   type        = string
-  description = "Name of the Cloud Build 2nd-gen repository resource linking the connection to the source repo. Supplied by the private service catalog."
+  description = "Name of the Cloud Build 2nd-gen repository resource linking the connection to the source repo."
 }
 
 variable "web_github_remote_uri" {
@@ -46,12 +46,12 @@ variable "web_github_remote_uri" {
 
 variable "web_repository_name" {
   type        = string
-  description = "Name of the Cloud Build 2nd-gen repository resource used to mint short-lived read tokens for the private web source. Supplied by the private service catalog."
+  description = "Name of the Cloud Build 2nd-gen repository resource used to mint short-lived read tokens for the private web source."
 }
 
 variable "server_source_remote_uri" {
   type        = string
-  description = "HTTPS clone URL of the patched server source pinned by the assembly submodule (private service catalog role server_source). Used only for the provenance URLs recorded in the image; no Cloud Build repository link is created for it."
+  description = "HTTPS clone URL of the patched server source pinned by the assembly submodule (service input role server_source). Used only for the provenance URLs recorded in the image; no Cloud Build repository link is created for it."
 
   validation {
     condition     = can(regex("^https://github\\.com/.+\\.git$", var.server_source_remote_uri))

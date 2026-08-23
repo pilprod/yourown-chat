@@ -25,14 +25,6 @@ identity_token "gcp" {
   audience = ["https://iam.googleapis.com/projects/1086706391144/locations/global/workloadIdentityPools/hcp-terraform/providers/hcp-terraform"]
 }
 
-# Private typed requests for add-on database roles. The public platform owns
-# the shared Cloud SQL instance and turns Kubernetes identities into exact GKE
-# Workload Identity principals.
-upstream_input "catalog" {
-  type   = "stack"
-  source = "app.terraform.io/papou-work/yourown-chat/service-catalog"
-}
-
 deployment "eu" {
   inputs = {
     identity_token        = identity_token.gcp.jwt
@@ -92,10 +84,7 @@ deployment "eu" {
     # been drained in a separate retirement change.
     yourown_chat_server_enabled             = true
     yourown_chat_identity_password_rotation = "1"
-    catalog_revision                        = upstream_input.catalog.catalog_revision
-    additional_database_users = jsondecode(
-      upstream_input.catalog.source_repositories.catalog_contract.remote_uri
-    ).additional_database_users
+    additional_database_users = local.additional_database_users
 
     # Temporal is a platform-gcp service. Keep the launch gate closed until the
     # prerequisite MCP image has passed production verification.
