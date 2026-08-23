@@ -93,9 +93,21 @@ deployment "eu" {
     yourown_chat_server_enabled             = true
     yourown_chat_identity_password_rotation = "1"
     catalog_revision                        = upstream_input.catalog.catalog_revision
-    additional_database_users = jsondecode(
-      upstream_input.catalog.source_repositories.kagent.remote_uri
-    ).additional_database_users
+    # Kagent M0 bootstrap is owned by platform-gcp while the legacy service
+    # catalog is retired. Values here are identifiers only; generated
+    # credentials remain in Secret Manager.
+    additional_database_users = {
+      kagent = {
+        database_names       = ["kagent"]
+        password_secret_id   = "kagent-db-password"
+        connection_secret_id = "kagent-database-url"
+        password_rotation    = "1"
+        kubernetes_connection_secret_accessors = [{
+          namespace       = "kagent-system"
+          service_account = "kagent-controller"
+        }]
+      }
+    }
 
     # Temporal is a platform-gcp service. Keep the launch gate closed until the
     # prerequisite MCP image has passed production verification.
