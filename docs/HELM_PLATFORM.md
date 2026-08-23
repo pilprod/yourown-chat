@@ -168,7 +168,9 @@ declared in `terraform/app-gcp/modules/chart-publish` and wired as the
   binding on the evidence bucket, nothing else;
 - uses a digest-pinned Helm 3 image and a digest-pinned Google Cloud CLI
   image; no static credential is involved;
-- builds sibling `file://` dependencies (remote chart dependencies are
+- discovers every `helm/platform/*/Chart.yaml` (helper directories without a
+  `Chart.yaml`, such as `_common`, are not charts), builds sibling `file://`
+  dependencies when a chart declares any (remote chart dependencies are
   rejected), runs `helm lint --strict` for every chart, then runs every
   `helm/test/platform-*.test.sh` (deterministic render, schema negative and
   policy tests); a chart tree with no matching test script fails the build

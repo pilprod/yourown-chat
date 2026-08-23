@@ -24,8 +24,10 @@ registry (`pilprod/yourown-chat-rules` Issues #5, #6 and #7).
 1. **Four platform profiles** are implemented as Helm charts under
    `helm/platform/`: `platform-service`, `platform-worker`, `platform-job`,
    `platform-stateful`. Shared rendering (labels, security context, probes,
-   secret mounts, deny-by-default network policy) lives in one library chart
-   consumed through sibling `file://` dependencies. Each profile ships a strict
+   secret mounts, deny-by-default network policy) is maintained once under
+   `helm/platform/_common` and synchronized into every profile, so each
+   published profile chart is self-contained; a sibling `file://` library
+   dependency remains an accepted alternative. Each profile ships a strict
    `values.schema.json` (`additionalProperties: false`), deterministic render
    tests and negative policy tests under `helm/test/platform-*.test.sh`.
 2. **Typed capabilities only.** Image identity is an immutable digest supplied
