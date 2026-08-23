@@ -92,6 +92,7 @@ deployment "eu" {
     # been drained in a separate retirement change.
     yourown_chat_server_enabled             = true
     yourown_chat_identity_password_rotation = "1"
+    catalog_revision                        = upstream_input.catalog.catalog_revision
     additional_database_users               = upstream_input.catalog.additional_database_users
 
     # Temporal is a platform-gcp service. Keep the launch gate closed until the

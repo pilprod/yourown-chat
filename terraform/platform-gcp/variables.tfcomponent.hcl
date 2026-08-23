@@ -232,6 +232,11 @@ variable "yourown_chat_identity_password_rotation" {
   default     = "1"
 }
 
+variable "catalog_revision" {
+  type        = string
+  description = "Last applied private service-catalog revision consumed by this platform deployment."
+}
+
 variable "additional_database_users" {
   type = map(object({
     database_names              = set(string)
