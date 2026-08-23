@@ -176,3 +176,34 @@ approved release parameters, and a reproducible digest of the fully resolved
 configuration. Environment-specific configuration may differ only through
 the declared overlays and typed parameters; it must not replace the verified
 application artifact during promotion.
+
+## Platform chart versioning
+
+Platform charts use Semantic Versioning for their public contract:
+
+- a major version introduces an incompatible schema, rendering, or behavioral
+  change;
+- a minor version adds a backward-compatible capability;
+- a patch version fixes an implementation or security defect without changing
+  the supported contract.
+
+Every chart version is published as an immutable OCI artifact. An existing
+version must not be overwritten, retagged, or rebuilt with different content.
+A security correction is published as a new version rather than replacing a
+previous artifact. A chart version identifies the platform contract and does
+not include a service or environment name.
+
+Before publication, the chart passes schema validation, deterministic render
+tests, platform policy tests, and the applicable tests for every supported
+workload profile. Release evidence identifies the source revision, chart
+version, OCI digest, test results, and provenance required by the release
+policy.
+
+An incompatible change requires an approved migration guide and deprecation
+period. It must not be disguised as a minor or patch update, and a patch update
+must not silently change a service's declared behavior or required values.
+
+A service adopts a new platform chart through an explicit change to its pinned
+dependency and committed `Chart.lock`. The service then completes its own
+authoritative tests and dev-to-production lifecycle; publication of the chart
+alone does not update a service or a running environment.
