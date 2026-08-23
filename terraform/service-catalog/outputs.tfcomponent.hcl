@@ -13,3 +13,9 @@ output "source_repositories" {
   description = "Source repositories keyed by role."
   value       = var.source_repositories
 }
+
+output "catalog_revision" {
+  type        = string
+  description = "Revision marker of the published catalog."
+  value       = var.catalog_revision
+}
