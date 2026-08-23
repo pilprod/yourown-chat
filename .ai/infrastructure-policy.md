@@ -43,15 +43,27 @@ succeed before the upstream Stack has published it. Prohibited bypasses include
 a literal `null`, `try()`, `can()`, a default, a placeholder, a copied value, an
 empty collection, or a temporary feature-disable switch.
 
-When a change introduces or starts consuming a required cross-Stack output,
-the operator:
+Before a downstream plan is eligible for approval, the authoritative upstream
+source that defines the output must be accepted into its canonical branch and
+the output must be verified in remote state.
 
-1. creates and reviews the upstream plan;
-2. obtains explicit authorization, applies the upstream Stack, and verifies
+When a required output is introduced, changed, or not yet published, the
+operator:
+
+1. promotes the reviewed upstream source and output contract to the
+   authoritative branch;
+2. creates and reviews an upstream plan from that exact revision;
+3. obtains explicit authorization, applies the upstream Stack, and verifies
    through the approved MCP that the exact output is present, non-null, and
    satisfies its documented type, shape, and invariants in remote state;
-3. creates a fresh downstream plan against the published output; and
-4. separately reviews and authorizes the downstream apply.
+4. creates a fresh downstream plan against the published output; and
+5. separately reviews and authorizes the downstream apply.
+
+A speculative upstream plan created before source promotion may inform review,
+but it is not eligible for apply. When the upstream source, output contract, and
+published value already satisfy the dependency and have not changed, read-only
+verification through the approved MCP replaces steps 1 through 3; a no-op apply
+is not started solely to satisfy this sequence.
 
 When merging or promoting the downstream wiring would automatically create an
 invalid plan, that wiring remains unmerged or unpromoted until the upstream
