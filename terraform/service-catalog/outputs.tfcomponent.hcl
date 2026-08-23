@@ -16,8 +16,13 @@ output "source_repositories" {
 
 output "catalog_revision" {
   type        = string
-  description = "Revision marker of the published catalog."
-  value       = var.catalog_revision
+  description = "Versioned JSON catalog envelope published through the stable catalog_revision cross-Stack output name."
+  value = jsonencode({
+    revision                  = var.catalog_revision
+    vendor_chart_bundles      = var.vendor_chart_bundles
+    additional_database_users = var.additional_database_users
+    private_http_routes       = var.private_http_routes
+  })
 }
 
 output "vendor_chart_bundles" {
