@@ -7,10 +7,13 @@ It does not carry vendor defaults or accept an untyped Helm-values escape hatch.
 
 The adapter creates restricted namespaces with quotas, deny-by-default ingress
 and egress, paired policies for every catalog flow, exact `/32` DNS, Kubernetes
-API and private database allowances, and Secret Manager CSI bindings. The
-application release stays absent until every declared database connection secret
-ID has been published by the platform Stack. The CRD release is independently
-pinned and has `prevent_destroy = true` because its resources are cluster-wide.
+API and private database allowances, and Secret Manager CSI bindings. Kubernetes
+API egress covers both the Service ClusterIP and its ready TCP/443 endpoint
+addresses because policy enforcement may occur on either side of Service DNAT;
+every destination remains an exact `/32`. The application release stays absent
+until every declared database connection secret ID has been published by the
+platform Stack. The CRD release is independently pinned and has
+`prevent_destroy = true` because its resources are cluster-wide.
 
 The caller should instantiate one module per catalog bundle and pass:
 

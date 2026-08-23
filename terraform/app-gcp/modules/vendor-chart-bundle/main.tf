@@ -302,6 +302,34 @@ data "kubernetes_service_v1" "api" {
   }
 }
 
+data "kubernetes_endpoints_v1" "api" {
+  count = local.provisioned && length(var.bundle.kubernetes_api_egress_from) > 0 ? 1 : 0
+
+  metadata {
+    name      = "kubernetes"
+    namespace = "default"
+  }
+}
+
+locals {
+  kubernetes_api_service_ip = try(data.kubernetes_service_v1.api[0].spec[0].cluster_ip, null)
+  kubernetes_api_https_subsets = [
+    for subset in try(data.kubernetes_endpoints_v1.api[0].subset, []) : subset
+    if anytrue([
+      for port in subset.port : port.port == 443 && port.protocol == "TCP"
+    ])
+  ]
+  kubernetes_api_endpoint_ips = toset(flatten([
+    for subset in local.kubernetes_api_https_subsets : [
+      for address in subset.address : address.ip
+    ]
+  ]))
+  kubernetes_api_destination_ips = setunion(
+    local.kubernetes_api_service_ip == null ? toset([]) : toset([local.kubernetes_api_service_ip]),
+    local.kubernetes_api_endpoint_ips,
+  )
+}
+
 resource "kubernetes_network_policy_v1" "kubernetes_api_egress" {
   for_each = local.provisioned ? var.bundle.kubernetes_api_egress_from : toset([])
 
@@ -317,15 +345,31 @@ resource "kubernetes_network_policy_v1" "kubernetes_api_egress" {
     policy_types = ["Egress"]
 
     egress {
-      to {
-        ip_block {
-          cidr = "${data.kubernetes_service_v1.api[0].spec[0].cluster_ip}/32"
+      # NetworkPolicy enforcement can observe a Service connection either
+      # before or after destination NAT. Permit the exact ClusterIP and the
+      # exact ready TCP/443 endpoint addresses, never a control-plane CIDR.
+      dynamic "to" {
+        for_each = local.kubernetes_api_destination_ips
+        iterator = api_destination
+
+        content {
+          ip_block {
+            cidr = "${api_destination.value}/32"
+          }
         }
       }
+
       ports {
         port     = "443"
         protocol = "TCP"
       }
+    }
+  }
+
+  lifecycle {
+    precondition {
+      condition     = length(local.kubernetes_api_endpoint_ips) > 0
+      error_message = "The kubernetes Service must publish at least one ready TCP/443 endpoint before API egress can be opened."
     }
   }
 
