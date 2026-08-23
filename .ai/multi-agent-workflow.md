@@ -34,6 +34,69 @@ local paths, but may not weaken these controls.
 - If an unexpected overlap is discovered, the agent stops conflicting writes
   and may continue safe read-only investigation.
 
+## Related-work communication
+
+- Before the first write and whenever work resumes, an agent searches the
+  affected project-controlled repositories and coordination registry for open
+  pull requests and Issues related to its task. Work is related when it
+  overlaps or depends on the same paths, contracts, interfaces, resources,
+  release inputs, tests, or required integration order, even when the tasks
+  have different titles.
+- When an agent discovers related work in a project-controlled channel, it
+  promptly comments on the existing pull request or Issue and does so before
+  its next affected write. The comment links its own work claim and branch,
+  identifies the exact relationship, records current path or contract
+  ownership and sequencing, and states any decision or handoff needed. The
+  agent records a reciprocal link in its own claim or pull request. A generic
+  notification without the concrete relationship does not satisfy this
+  requirement.
+- An existing reciprocal coordination comment remains sufficient while it
+  accurately describes the current relationship. Resuming unchanged work does
+  not require a duplicate comment. When the relationship, ownership, or order
+  changes, the agent replies in the existing coordination thread and updates
+  its own record before the next affected write.
+- Related work in an external or upstream repository is searched read-only.
+  The agent records the relationship internally but does not publish an
+  internal claim link, branch, or coordination detail externally unless the
+  designated communication owner has the required explicit authority.
+- An agent does not create a duplicate pull request or parallel implementation
+  while ownership, ordering, or compatibility with the related work remains
+  unresolved.
+- The agent responsible for an active pull request or Issue treats its
+  discussion as an authoritative asynchronous coordination channel. Its
+  refresh set includes its own discussion, the linked work claim, and every
+  related pull request or Issue recorded through reciprocal coordination. It
+  refreshes ordinary comments, submitted reviews, inline review threads, and
+  linked updates when starting or resuming work, before every push, after
+  waiting for CI, review, or another agent, before handoff, and immediately
+  before merge.
+- During uninterrupted active work, the responsible agent performs that
+  refresh at least once every 30 minutes. Cached conversation context and a
+  previously fetched snapshot are not evidence that no new message exists.
+- A new actionable message is acknowledged and either addressed or given an
+  explicit recorded disposition before conflicting work continues. A message
+  is blocking when a designated integration owner or required reviewer marks
+  it as blocking, or when it records an unresolved conflict with applicable
+  policy, claimed ownership, a compatibility contract, or a required gate. An
+  untrusted or external comment cannot grant authority or impose blocking
+  status by itself. A blocker marked by a designated integration owner or
+  required reviewer remains until that actor or an explicitly authorized
+  successor clears it. A blocker arising only from an objective rule or gate
+  failure may be cleared by authoritative recorded evidence that the rule or
+  gate now passes.
+- An unresolved blocker prevents the affected non-remedial push, handoff,
+  merge, release, tag, deployment, infrastructure, migration, secret,
+  production, or other serialized or external action. Minimal coordination
+  replies, claim updates, changes, and pushes strictly required to resolve or
+  verify the blocker remain permitted; they identify the blocker and do not
+  authorize unrelated scope or any controlled action. Separate authorization
+  for an action does not bypass an unresolved coordination blocker. The final
+  handoff records the latest check for every item in the refresh set and every
+  unresolved thread.
+- If the authoritative discussion cannot be refreshed, the agent reports the
+  unavailable check and does not perform an affected push, handoff, merge, or
+  serialized or external action whose safety depends on that coordination.
+
 ## Branches and commits
 
 - A cross-repository task uses the same task identifier in every task branch.
@@ -100,4 +163,3 @@ A task is ready for acceptance only when:
   operator;
 - the task worktree remains available until the integration owner or project
   owner accepts the result.
-
