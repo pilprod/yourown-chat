@@ -122,9 +122,11 @@ values within 512 characters, and one release carries at most 50.
 [`tooling.env`](tooling.env), authenticates to the chart registry with the
 build identity, creates the Cloud Deploy release from the assembled source and
 uploads the evidence next to the image evidence. The legacy chart release path
-is skipped while the switch is on. The `platform-charts` trigger
-(`chart_publication_enabled`) tests and publishes missing `helm/platform`
-chart versions on platform release tags; published versions are never rebuilt.
+is skipped while the switch is on. Publication of the `helm/platform` chart
+versions into the dedicated immutable chart repository is owned by the
+separate chart publication rail (`terraform/app-gcp/modules/chart-publish`),
+which discovers `helm/platform/*/Chart.yaml`, gates on
+`helm/test/platform-*.test.sh` and never rebuilds a published version.
 
 ## Tests
 

@@ -184,9 +184,12 @@ correction is a new version. A service adopts a new version only through an
 explicit change to its pinned dependency and committed `Chart.lock`, followed by
 its own tests and dev-to-production lifecycle.
 
-Publication of these charts to the platform Artifact Registry chart repository
-is a serialized release action owned by the platform release pipeline and is not
-performed from a local machine.
+Publication of these charts into the dedicated immutable Artifact Registry
+chart repository (platform-gcp `artifact_registry_helm`) is a serialized
+release action owned by the chart publication rail
+(`terraform/app-gcp/modules/chart-publish`) and is never performed from a
+local machine. `0.1.0` is the first published contract of every profile; bump
+the version before any change that follows publication.
 
 ## Release integration
 

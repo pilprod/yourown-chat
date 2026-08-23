@@ -217,18 +217,12 @@ variable "wrapper_releases_enabled" {
   default     = false
 }
 
-variable "chart_publication_enabled" {
-  type        = bool
-  description = "Create the platform-charts Cloud Build trigger that publishes every helm/platform chart version missing from the chart repository on platform release tags. Requires helm_chart_repository."
-  default     = false
-}
-
 variable "helm_chart_repository" {
   type = object({
     location      = string
     repository_id = string
   })
-  description = "Artifact Registry coordinates of the platform Helm chart OCI repository published by platform-gcp. null disables chart publication and wrapper releases."
+  description = "Artifact Registry coordinates of the platform Helm chart OCI repository published by platform-gcp. null disables wrapper releases. Chart publication into it is owned by the separate chart publication rail."
   default     = null
   nullable    = true
 }

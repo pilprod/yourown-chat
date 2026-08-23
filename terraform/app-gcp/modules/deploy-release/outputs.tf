@@ -37,13 +37,3 @@ output "application_source_trigger_ids" {
   description = "Branch and immutable-tag build triggers for the server and agent sources."
   value       = { for name, trigger in google_cloudbuild_trigger.source_image : name => trigger.id }
 }
-
-output "chart_publisher_service_account_email" {
-  description = "Email of the platform chart publisher identity, or null when chart publication is disabled."
-  value       = local.chart_publication ? google_service_account.chart_publisher[0].email : null
-}
-
-output "chart_publish_trigger_id" {
-  description = "ID of the platform-charts publication trigger, or null when chart publication is disabled."
-  value       = local.chart_publication ? google_cloudbuild_trigger.chart_publish[0].id : null
-}
