@@ -92,10 +92,10 @@ deployment "eu" {
     # been drained in a separate retirement change.
     yourown_chat_server_enabled             = true
     yourown_chat_identity_password_rotation = "1"
-    # HCP deployment locals cannot reference upstream inputs, so decode this
-    # stable compatibility envelope at the component input boundary.
-    catalog_revision          = jsondecode(upstream_input.catalog.catalog_revision).revision
-    additional_database_users = jsondecode(upstream_input.catalog.catalog_revision).additional_database_users
+    catalog_revision                        = upstream_input.catalog.catalog_revision
+    additional_database_users = jsondecode(
+      upstream_input.catalog.source_repositories.catalog_contract.remote_uri
+    ).additional_database_users
 
     # Temporal is a platform-gcp service. Keep the launch gate closed until the
     # prerequisite MCP image has passed production verification.

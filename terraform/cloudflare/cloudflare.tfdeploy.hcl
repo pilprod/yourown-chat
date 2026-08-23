@@ -87,7 +87,9 @@ deployment "yourown-chat" {
     zero_trust_allowed_emails = ["ilya@papou.email"]
     zero_trust_upstreams = merge(
       {
-        for hostname, route in try(jsondecode(upstream_input.catalog.catalog_revision).private_http_routes, {}) :
+        for hostname, route in try(jsondecode(
+          upstream_input.catalog.source_repositories.catalog_contract.remote_uri
+        ).private_http_routes, {}) :
         hostname => "http://${route.service}.${route.namespace}.svc.cluster.local:${route.port}"
         if route.enabled
       },
