@@ -88,7 +88,7 @@ deployment "yourown-chat" {
     zero_trust_upstreams = merge(
       {
         for hostname, route in try(jsondecode(
-          upstream_input.catalog.source_repositories.catalog_contract.remote_uri
+          upstream_input.catalog.source_repositories.kagent.remote_uri
         ).private_http_routes, {}) :
         hostname => "http://${route.service}.${route.namespace}.svc.cluster.local:${route.port}"
         if route.enabled

@@ -117,12 +117,19 @@ deployment "eu" {
     # console, README.md) and every linked source repository come from the
     # private service catalog. No repository owner, name or URL is kept here.
     github_connection_name = upstream_input.catalog.github_connection_name
-    source_repositories = {
-      for key, repository in upstream_input.catalog.source_repositories :
-      key => repository if key != "catalog_contract"
-    }
+    source_repositories = merge(
+      {
+        for key, repository in upstream_input.catalog.source_repositories :
+        key => repository if key != "kagent"
+      },
+      {
+        kagent = jsondecode(
+          upstream_input.catalog.source_repositories.kagent.remote_uri
+        ).source_repository
+      },
+    )
     vendor_chart_bundles = jsondecode(
-      upstream_input.catalog.source_repositories.catalog_contract.remote_uri
+      upstream_input.catalog.source_repositories.kagent.remote_uri
     ).vendor_chart_bundles
     image_name = "mattermost"
     # Stable assembly tags use dev -> smoke -> approval -> prod. Prerelease
