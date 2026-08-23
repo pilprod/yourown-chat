@@ -19,6 +19,6 @@ sources:
   - https://github.com/pilprod/yourown-chat
 annotations:
   platform.yourown.chat/profile: platform-service
-  platform.yourown.chat/contract: "Public Helm platform policy (.ai/helm-policy.md)"
+  platform.yourown.chat/contract: "Platform profile contract (docs/HELM_PLATFORM.md)"
   # Profile resource bounds enforced by the shared helpers (not values).
   platform.yourown.chat/bounds: '{"maxRequestCPUMillis":2000,"maxLimitCPUMillis":4000,"maxRequestMemoryBytes":4294967296,"maxLimitMemoryBytes":8589934592}'
