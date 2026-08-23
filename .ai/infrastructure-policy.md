@@ -71,13 +71,16 @@ compatible with the new value or resource:
 1. the upstream expansion is planned from the accepted source, separately
    reviewed and authorized, and applied to publish a new compatible output or
    resource while preserving the old output and resource;
-2. every affected downstream Stack and environment switches through a fresh,
-   separately reviewed and authorized plan and apply, and its downstream
-   effects are verified; and
+2. the reviewed wiring for every affected downstream Stack and environment is
+   promoted to its canonical branch, then switches through a fresh plan from
+   that exact revision, a separate review and authorization, and an apply whose
+   downstream effects are verified; and
 3. only after every affected consumer and environment has switched and every
    applicable rollback window has expired or been explicitly closed by the
-   authorized owner may a separately reviewed and authorized upstream
-   contraction remove the old output or backing resource.
+   authorized owner may the reviewed upstream contraction source be promoted to
+   its authoritative branch and a fresh plan from that exact revision be
+   separately reviewed, authorized, and applied to remove the old output or
+   backing resource.
 
 Until every prerequisite in step 3 is satisfied and the contraction apply is
 explicitly authorized, the old output and backing resource remain published,
@@ -91,8 +94,9 @@ continuity.
 When merging or promoting the downstream wiring would automatically create an
 invalid plan, that wiring remains unmerged or unpromoted until the upstream
 apply and output verification succeed. The downstream change may be prepared
-and reviewed in the meantime, but only a fresh plan created after publication
-is eligible for approval.
+and reviewed in the meantime, but before an eligible downstream plan or apply,
+the reviewed wiring must be accepted into its canonical branch and the fresh
+plan must be created from that exact revision after publication.
 
 Changing a consumed output's value, type, availability, sensitivity, or
 dependency state invalidates a previously reviewed downstream plan. Approval of
