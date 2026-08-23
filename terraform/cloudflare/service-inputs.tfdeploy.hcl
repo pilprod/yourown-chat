@@ -2,11 +2,10 @@
 locals {
   private_http_routes = {
     kagent = {
-      enabled   = false
+      enabled   = true
       namespace = "kagent-system"
       service   = "kagent-ui"
       port      = 8080
     }
   }
 }
-
