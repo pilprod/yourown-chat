@@ -7,7 +7,7 @@ deployment "eu" {
   inputs = {
     # Bump on every catalog change; a changed apply is what pushes the
     # published values to downstream Stacks (an unchanged apply does not).
-    catalog_revision = "2026-08-23.4"
+    catalog_revision = "2026-08-23.5"
 
     github_connection_name = "pilprod-github"
 
