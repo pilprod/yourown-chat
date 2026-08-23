@@ -1,0 +1,56 @@
+# Representative Temporal activity worker wrapper values.
+workload:
+  name: activity-worker
+  partOf: yourown-chat-agents
+image:
+  digest: europe-west3-docker.pkg.dev/example-project/docker/yourown-chat-activity-worker@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+container:
+  env:
+    TEMPORAL_ADDRESS: temporal-frontend.temporal.svc.cluster.local:7233
+    TEMPORAL_NAMESPACE: yourown-chat
+    TEMPORAL_ACTIVITY_TASK_QUEUE: agent-activities-go-v1
+    AGENT_RESULTS_BUCKET: example-results
+  ports:
+    - name: metrics
+      port: 9464
+  health:
+    port: metrics
+    startup:
+      httpGet: { path: /healthz }
+    readiness:
+      httpGet: { path: /readyz }
+    liveness:
+      httpGet: { path: /healthz }
+  resources:
+    requests: { cpu: 50m, memory: 256Mi }
+    limits: { cpu: "1", memory: 1Gi }
+runtime:
+  replicas: 1
+  paused: true
+  priorityClass: development
+identity:
+  googleServiceAccount: agent-activity-worker@example-project.iam.gserviceaccount.com
+network:
+  clusterDNSIP: 10.30.0.10
+  ingress:
+    - name: metrics-scrape
+      purpose: In-namespace Prometheus scrape of the worker metrics endpoint
+      from: { sameNamespace: true }
+      ports: [{ port: 9464 }]
+  egress:
+    - name: temporal
+      purpose: Temporal frontend gRPC for activity polling
+      to: { namespace: temporal }
+      ports: [{ port: 7233 }]
+    - name: mcp-google-cloud
+      purpose: Approved MCP tool calls from activities
+      to: { namespace: mcp-google-cloud, podLabels: { app: mcp-google-cloud } }
+      ports: [{ port: 8080 }]
+    - name: workload-identity
+      purpose: Workload Identity token exchange for Cloud Storage access
+      to: { metadataServer: true }
+      ports: [{ port: 80 }]
+observability:
+  metrics:
+    enabled: true
+    port: metrics

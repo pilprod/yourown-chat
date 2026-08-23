@@ -1,0 +1,138 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/pilprod/yourown-chat/helm/platform/release/manifest/values.schema.json",
+  "title": "Service release manifest",
+  "description": "helm/release.yaml in a service repository: the service-owned list of platform-profile release wrappers and the typed release-parameter bindings of their workloads. No pipeline, Skaffold or Kubernetes content is accepted. Each wrapper may declare typed in-cluster HTTP verification checks; wrappers that pin platform-service or platform-stateful must declare at least one.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "apiVersion",
+    "kind",
+    "wrappers"
+  ],
+  "definitions": {
+    "kebab": {
+      "type": "string",
+      "pattern": "^[a-z0-9]([-a-z0-9]{0,38}[a-z0-9])?$"
+    }
+  },
+  "properties": {
+    "global": {
+      "type": "object",
+      "additionalProperties": false
+    },
+    "apiVersion": {
+      "type": "string",
+      "enum": [
+        "platform.yourown.chat/v1"
+      ]
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "ReleaseManifest"
+      ]
+    },
+    "wrappers": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "path",
+          "namespace",
+          "workloads"
+        ],
+        "properties": {
+          "name": {
+            "$ref": "#/definitions/kebab"
+          },
+          "path": {
+            "type": "string",
+            "pattern": "^helm/[a-z0-9]([-a-z0-9]{0,38}[a-z0-9])?$"
+          },
+          "namespace": {
+            "$ref": "#/definitions/kebab"
+          },
+          "workloads": {
+            "type": "object",
+            "minProperties": 1,
+            "maxProperties": 16,
+            "additionalProperties": false,
+            "patternProperties": {
+              "^[a-z0-9]([-a-z0-9]{0,38}[a-z0-9])?$": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "image"
+                ],
+                "properties": {
+                  "image": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9]([a-z0-9._-]{0,62}[a-z0-9])?$"
+                  },
+                  "identity": {
+                    "$ref": "#/definitions/kebab"
+                  }
+                }
+              }
+            }
+          },
+          "verify": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "http"
+            ],
+            "properties": {
+              "http": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 16,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "name",
+                    "url"
+                  ],
+                  "properties": {
+                    "name": {
+                      "$ref": "#/definitions/kebab"
+                    },
+                    "url": {
+                      "type": "string",
+                      "pattern": "^http://[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?\\.[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?\\.svc\\.cluster\\.local:[0-9]{2,5}/[A-Za-z0-9._~/?=&%-]*$"
+                    },
+                    "retries": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 60
+                    },
+                    "delaySeconds": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 60
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "profiles": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 8,
+            "uniqueItems": true,
+            "items": {
+              "$ref": "#/definitions/kebab"
+            }
+          }
+        }
+      }
+    }
+  }
+}

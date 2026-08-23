@@ -1,0 +1,188 @@
+# Platform-owned Cloud Deploy custom action appended to generated wrapper
+# releases of the MCP pipeline (assemble.sh --actions). Canonical copy of the
+# action also present in the legacy helm/skaffold-mcp.yaml until that file is
+# retired; helm/test/platform-release.test.sh fails when the two drift.
+customActions:
+  - name: sync-cloudflare-mcp-capabilities
+    containers:
+      - name: sync-cloudflare-mcp-capabilities
+        image: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+        command: ["/bin/bash", "-ceu"]
+        args:
+          - |
+            credential_file="$(mktemp)"
+            trap 'rm -f "$credential_file"' EXIT
+            gcloud secrets versions access latest \
+              --secret=cloudflare-mcp-capability-sync \
+              > "$credential_file"
+
+            python3 - "$credential_file" <<'PY'
+            import json
+            import sys
+            import time
+            import urllib.error
+            import urllib.parse
+            import urllib.request
+
+            with open(sys.argv[1], encoding="utf-8") as handle:
+                credential = json.load(handle)
+
+            account_id = credential["account_id"]
+            token = credential["api_token"]
+            configured_server_ids = credential["server_ids"]
+            root = (
+                "https://api.cloudflare.com/client/v4/accounts/"
+                f"{urllib.parse.quote(account_id, safe='')}"
+                "/access/ai-controls/mcp/servers"
+            )
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            }
+
+            def request(url, method="GET"):
+                call = urllib.request.Request(url, method=method, headers=headers)
+                try:
+                    with urllib.request.urlopen(call, timeout=60) as response:
+                        payload = json.load(response)
+                except urllib.error.HTTPError as error:
+                    body = error.read().decode("utf-8", errors="replace")
+                    raise RuntimeError(
+                        f"Cloudflare {method} failed ({error.code}): {body}"
+                    ) from error
+                if not payload.get("success", False):
+                    raise RuntimeError(
+                        f"Cloudflare {method} failed: {payload.get('errors', payload)}"
+                    )
+                return payload.get("result") or {}
+
+            if isinstance(configured_server_ids, dict):
+                configured_servers = list(configured_server_ids.items())
+            elif isinstance(configured_server_ids, list):
+                configured_servers = [
+                    (str(server_id), str(server_id))
+                    for server_id in configured_server_ids
+                ]
+            else:
+                raise RuntimeError(
+                    "server_ids must be an object or an array in the sync credential"
+                )
+
+            catalog = request(root)
+            if isinstance(catalog, dict):
+                catalog = catalog.get("servers") or catalog.get("items") or []
+            if not isinstance(catalog, list):
+                raise RuntimeError("Cloudflare returned an invalid MCP server catalog")
+
+            def resolve_server_id(alias, configured_id):
+                short_alias = alias.removeprefix("mcp-")
+                expected = {
+                    alias.lower(),
+                    short_alias.lower(),
+                    f"mcp-{short_alias}".lower(),
+                    configured_id.lower(),
+                }
+                legacy_aliases = {
+                    "terraform": {
+                        "terraform-stacks",
+                        "mcp-terraform-stacks",
+                    },
+                }
+                expected.update(legacy_aliases.get(short_alias.lower(), set()))
+                matches = []
+                for server in catalog:
+                    if not isinstance(server, dict):
+                        continue
+                    hostname = str(server.get("hostname") or "")
+                    hostname_label = (
+                        urllib.parse.urlparse(hostname).hostname or ""
+                    ).split(".", 1)[0]
+                    identities = {
+                        str(server.get("id") or "").lower(),
+                        str(server.get("name") or "").lower(),
+                        hostname_label.lower(),
+                    }
+                    if expected & identities:
+                        matches.append(server)
+
+                if not matches:
+                    print(
+                        f"{alias}: configured server no longer exists; skipping",
+                        flush=True,
+                    )
+                    return None
+                if len(matches) != 1:
+                    raise RuntimeError(
+                        f"{alias}: expected one current Cloudflare MCP server, "
+                        f"found {len(matches)}"
+                    )
+                server_id = matches[0].get("id")
+                if not server_id:
+                    raise RuntimeError(f"{alias}: current server has no id")
+                if server_id != configured_id:
+                    print(
+                        f"{alias}: using current server id {server_id} "
+                        f"instead of stale credential id {configured_id}",
+                        flush=True,
+                    )
+                return str(server_id)
+
+            synced_server_ids = set()
+            for alias, configured_id in configured_servers:
+                server_id = resolve_server_id(str(alias), str(configured_id))
+                if server_id is None or server_id in synced_server_ids:
+                    continue
+                encoded_id = urllib.parse.quote(server_id, safe="")
+                server_url = f"{root}/{encoded_id}"
+                result = request(f"{server_url}/sync", method="POST")
+                status = result.get("status")
+                print(f"{server_id}: sync requested, status={status}", flush=True)
+
+                deadline = time.monotonic() + 120
+                while status == "waiting" and time.monotonic() < deadline:
+                    time.sleep(5)
+                    result = request(server_url)
+                    status = result.get("status")
+
+                if status != "ready":
+                    details = result.get("error_details") or result.get("error")
+                    raise RuntimeError(
+                        f"{server_id}: capability sync ended in {status}: {details}"
+                    )
+
+                tools = result.get("tools") or []
+                prompts = result.get("prompts") or []
+                required_tools = {
+                    "google-cloud": {
+                        "security_get_scanning",
+                        "security_list_images",
+                        "security_list_vulnerabilities",
+                        "security_get_vulnerability",
+                        "security_set_scanning",
+                    },
+                }.get(server_id, set())
+                discovered_tools = {
+                    tool.get("name") or tool.get("id")
+                    for tool in tools
+                    if isinstance(tool, dict)
+                }
+                missing_tools = required_tools - discovered_tools
+                if missing_tools:
+                    raise RuntimeError(
+                        f"{server_id}: capability sync omitted required tools: "
+                        f"{sorted(missing_tools)}"
+                    )
+                print(
+                    f"{server_id}: ready, tools={len(tools)}, prompts={len(prompts)}",
+                    flush=True,
+                )
+                synced_server_ids.add(server_id)
+
+            required_server_ids = {"google-cloud", "terraform-stacks"}
+            missing_servers = required_server_ids - synced_server_ids
+            if missing_servers:
+                raise RuntimeError(
+                    "capability sync omitted required MCP servers: "
+                    f"{sorted(missing_servers)}"
+                )
+            PY

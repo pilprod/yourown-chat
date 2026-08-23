@@ -1,0 +1,56 @@
+{{- if not .Values.container.ports }}{{ fail "platform-service requires at least one container port" }}{{ end -}}
+{{- $h := .Values.container.health -}}
+{{- if not (and $h $h.readiness (or $h.readiness.httpGet $h.readiness.exec) $h.liveness (or $h.liveness.httpGet $h.liveness.exec)) -}}
+{{- fail "platform-service requires container.health.readiness and container.health.liveness probes" -}}
+{{- end -}}
+{{- if and .Values.agentRegistry.enabled (not .Values.service.enabled) -}}
+{{- fail "agentRegistry.enabled requires service.enabled: the registry advertises the workload Service" -}}
+{{- end -}}
+{{- $r := .Values.runtime -}}
+{{- $hpa := and $r.autoscaling.enabled (not $r.paused) -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "platform.name" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+    {{- if .Values.agentRegistry.enabled }}
+    registry.gke.io/functional-type: {{ .Values.agentRegistry.functionalType | quote }}
+    {{- end }}
+  annotations:
+    platform.yourown.chat/paused: {{ $r.paused | quote }}
+    {{- if .Values.agentRegistry.enabled }}
+    {{- $port := fromJson (include "platform.portByName" (dict "ports" .Values.container.ports "name" "http" "context" "agentRegistry")) }}
+    modelcontextprotocol.info/urls: |
+      - http://{{ include "platform.name" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ $port.port }}{{ .Values.agentRegistry.mcpPath }}
+    modelcontextprotocol.info/capabilities: |
+      card:
+        endpoint: {{ .Values.agentRegistry.mcpPath | quote }}
+        protocol: "HTTP"
+    {{- end }}
+spec:
+  {{- if $r.paused }}
+  replicas: 0
+  {{- else if not $hpa }}
+  replicas: {{ $r.replicas }}
+  {{- end }}
+  revisionHistoryLimit: 3
+  strategy:
+    type: {{ $r.rollout.strategy }}
+    {{- if eq $r.rollout.strategy "RollingUpdate" }}
+    rollingUpdate:
+      maxSurge: {{ $r.rollout.maxSurge }}
+      maxUnavailable: {{ $r.rollout.maxUnavailable }}
+    {{- end }}
+  selector:
+    matchLabels:
+      {{- include "platform.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "platform.labels" . | nindent 8 }}
+      annotations:
+        {{- include "platform.podAnnotations" . | nindent 8 }}
+    spec:
+      {{- include "platform.podSpec" . | nindent 6 }}

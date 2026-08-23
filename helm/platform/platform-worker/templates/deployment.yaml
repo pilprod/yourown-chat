@@ -1,0 +1,36 @@
+{{- $r := .Values.runtime -}}
+{{- $hpa := and $r.autoscaling.enabled (not $r.paused) -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "platform.name" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+  annotations:
+    platform.yourown.chat/paused: {{ $r.paused | quote }}
+spec:
+  {{- if $r.paused }}
+  replicas: 0
+  {{- else if not $hpa }}
+  replicas: {{ $r.replicas }}
+  {{- end }}
+  revisionHistoryLimit: 3
+  strategy:
+    type: {{ $r.rollout.strategy }}
+    {{- if eq $r.rollout.strategy "RollingUpdate" }}
+    rollingUpdate:
+      maxSurge: {{ $r.rollout.maxSurge }}
+      maxUnavailable: {{ $r.rollout.maxUnavailable }}
+    {{- end }}
+  selector:
+    matchLabels:
+      {{- include "platform.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "platform.labels" . | nindent 8 }}
+      annotations:
+        {{- include "platform.podAnnotations" . | nindent 8 }}
+    spec:
+      {{- include "platform.podSpec" . | nindent 6 }}

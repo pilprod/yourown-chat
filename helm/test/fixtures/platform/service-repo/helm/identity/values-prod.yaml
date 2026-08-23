@@ -1,0 +1,7 @@
+# Production overlay: two replicas with a maintenance-friendly budget.
+identity-api:
+  runtime:
+    replicas: 2
+    disruptionBudget:
+      enabled: true
+      minAvailable: 1

@@ -1,0 +1,193 @@
+---
+# Source: platform-job/templates/networkpolicy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: identity-migrate
+  namespace: identity
+  labels:
+    app: identity-migrate
+    app.kubernetes.io/name: identity-migrate
+    app.kubernetes.io/instance: test-job-valid
+    app.kubernetes.io/component: platform-job
+    app.kubernetes.io/part-of: yourown-chat-server
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: "platform-job-0.1.0"
+    platform.yourown.chat/profile: platform-job
+    platform.yourown.chat/chart-version: "0.1.0"
+  annotations:
+    platform.yourown.chat/ingress-rules: ""
+    platform.yourown.chat/egress-rules: "cloudsql"
+spec:
+  podSelector:
+    matchLabels:
+      app: identity-migrate
+      app.kubernetes.io/name: identity-migrate
+      app.kubernetes.io/instance: test-job-valid
+  policyTypes: [Ingress, Egress]
+  # No ingress rule is declared: the workload accepts no inbound traffic.
+  ingress: []
+  egress:
+    # platform-dns: cluster DNS resolution
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+        - ipBlock:
+            cidr: "10.30.0.10/32"
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # cloudsql: PostgreSQL migrations on the private Cloud SQL address
+    - to:
+        - ipBlock:
+            cidr: "10.20.30.40/32"
+      ports:
+        - protocol: TCP
+          port: 5432
+
+---
+# Source: platform-job/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: identity-migrate
+  namespace: identity
+  labels:
+    app: identity-migrate
+    app.kubernetes.io/name: identity-migrate
+    app.kubernetes.io/instance: test-job-valid
+    app.kubernetes.io/component: platform-job
+    app.kubernetes.io/part-of: yourown-chat-server
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: "platform-job-0.1.0"
+    platform.yourown.chat/profile: platform-job
+    platform.yourown.chat/chart-version: "0.1.0"
+  annotations:
+    iam.gke.io/gcp-service-account: "identity-migrate@example-project.iam.gserviceaccount.com"
+automountServiceAccountToken: false
+
+---
+# Source: platform-job/templates/job.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: identity-migrate-0e5b081b5553
+  namespace: identity
+  labels:
+    app: identity-migrate
+    app.kubernetes.io/name: identity-migrate
+    app.kubernetes.io/instance: test-job-valid
+    app.kubernetes.io/component: platform-job
+    app.kubernetes.io/part-of: yourown-chat-server
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: "platform-job-0.1.0"
+    platform.yourown.chat/profile: platform-job
+    platform.yourown.chat/chart-version: "0.1.0"
+  annotations:
+    platform.yourown.chat/run-id: "0e5b081b5553"
+spec:
+  suspend: false
+  backoffLimit: 8
+  activeDeadlineSeconds: 1800
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app: identity-migrate
+        app.kubernetes.io/name: identity-migrate
+        app.kubernetes.io/instance: test-job-valid
+        app.kubernetes.io/component: platform-job
+        app.kubernetes.io/part-of: yourown-chat-server
+        app.kubernetes.io/managed-by: Helm
+        helm.sh/chart: "platform-job-0.1.0"
+        platform.yourown.chat/profile: platform-job
+        platform.yourown.chat/chart-version: "0.1.0"
+      annotations:
+        platform.yourown.chat/image-digest: "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        checksum/secrets: "2a082eece03b354d486b875dfe1daf6a831f143542a53a141fc449d08e65fc09"
+    spec:
+      restartPolicy: OnFailure
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      serviceAccountName: identity-migrate
+      priorityClassName: production
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: identity-migrate
+          image: "europe-west3-docker.pkg.dev/example-project/docker/yourown-chat-identity-migrate@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: IDENTITY_BOOTSTRAP_PASSWORD_FILE
+              value: "/var/run/secrets/app/bootstrap-password"
+            - name: IDENTITY_DATABASE_URL_FILE
+              value: "/var/run/secrets/app/database-url"
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: "5m"
+              memory: "16Mi"
+            limits:
+              cpu: "250m"
+              memory: "128Mi"
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: platform-secrets
+              mountPath: /var/run/secrets/app
+              readOnly: true
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+        - name: platform-secrets
+          csi:
+            driver: secrets-store-gke.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: identity-migrate-secrets
+
+---
+# Source: platform-job/templates/secretproviderclass.yaml
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: identity-migrate-secrets
+  namespace: identity
+  labels:
+    app: identity-migrate
+    app.kubernetes.io/name: identity-migrate
+    app.kubernetes.io/instance: test-job-valid
+    app.kubernetes.io/component: platform-job
+    app.kubernetes.io/part-of: yourown-chat-server
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: "platform-job-0.1.0"
+    platform.yourown.chat/profile: platform-job
+    platform.yourown.chat/chart-version: "0.1.0"
+spec:
+  provider: gke
+  parameters:
+    secrets: |
+      - resourceName: "projects/example-project/secrets/yourown-chat-identity-database-url/versions/latest"
+        path: "database-url"
+      - resourceName: "projects/example-project/secrets/yourown-chat-bootstrap-password/versions/3"
+        path: "bootstrap-password"

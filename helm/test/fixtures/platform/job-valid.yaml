@@ -1,0 +1,33 @@
+# Representative schema migration wrapper values.
+workload:
+  name: identity-migrate
+  partOf: yourown-chat-server
+image:
+  digest: europe-west3-docker.pkg.dev/example-project/docker/yourown-chat-identity-migrate@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+container:
+  env:
+    IDENTITY_DATABASE_URL_FILE: /var/run/secrets/app/database-url
+    IDENTITY_BOOTSTRAP_PASSWORD_FILE: /var/run/secrets/app/bootstrap-password
+  resources:
+    requests: { cpu: 5m, memory: 16Mi }
+    limits: { cpu: 250m, memory: 128Mi }
+job:
+  backoffLimit: 8
+  activeDeadlineSeconds: 1800
+identity:
+  googleServiceAccount: identity-migrate@example-project.iam.gserviceaccount.com
+secrets:
+  project: example-project
+  files:
+    - secret: yourown-chat-identity-database-url
+      file: database-url
+    - secret: yourown-chat-bootstrap-password
+      file: bootstrap-password
+      version: "3"
+network:
+  clusterDNSIP: 10.30.0.10
+  egress:
+    - name: cloudsql
+      purpose: PostgreSQL migrations on the private Cloud SQL address
+      to: { cidr: 10.20.30.40/32 }
+      ports: [{ port: 5432 }]

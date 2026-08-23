@@ -87,6 +87,17 @@ variable "artifact_registry_kms_key_name" {
   default     = null
 }
 
+variable "helm_registry_repository_id" {
+  type        = string
+  description = "ID of the Artifact Registry repository that stores the platform Helm workload-profile charts as immutable OCI artifacts (helm/platform). Service release wrappers pin exact chart versions from it; app-gcp publishes charts into it and reads from it at release time."
+  default     = "helm"
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9-]{0,62}$", var.helm_registry_repository_id))
+    error_message = "helm_registry_repository_id must be lowercase alphanumeric/hyphen, starting with a letter."
+  }
+}
+
 variable "artifact_registry_vulnerability_scanning" {
   type        = bool
   description = "Default repository scanning gate. Keep false for routine builds; the production Google Cloud MCP opens bounded paid scan windows when explicitly approved."

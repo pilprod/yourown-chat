@@ -1,0 +1,45 @@
+{{- $i := .Values.ingress -}}
+{{- if $i.enabled }}
+{{- if not .Values.service.enabled }}{{ fail "ingress.enabled requires service.enabled" }}{{ end -}}
+{{- if not $i.paths }}{{ fail "ingress.enabled requires at least one entry in ingress.paths" }}{{ end -}}
+{{- $port := fromJson (include "platform.portByName" (dict "ports" .Values.container.ports "name" $i.port "context" "ingress.port")) -}}
+{{- if ne ($port.protocol | default "TCP") "TCP" }}{{ fail "ingress.port must reference a TCP port" }}{{ end }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "platform.name" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: {{ $i.sslRedirect | quote }}
+    nginx.ingress.kubernetes.io/enable-access-log: {{ $i.accessLog | quote }}
+    nginx.ingress.kubernetes.io/proxy-body-size: {{ printf "%dm" (int $i.proxy.bodySizeMiB) | quote }}
+    nginx.ingress.kubernetes.io/proxy-request-buffering: {{ ternary "on" "off" $i.proxy.requestBuffering | quote }}
+    nginx.ingress.kubernetes.io/proxy-read-timeout: {{ $i.proxy.readTimeoutSeconds | quote }}
+    nginx.ingress.kubernetes.io/proxy-send-timeout: {{ $i.proxy.sendTimeoutSeconds | quote }}
+    {{- if $i.rateLimit.enabled }}
+    nginx.ingress.kubernetes.io/limit-connections: {{ $i.rateLimit.connections | quote }}
+    nginx.ingress.kubernetes.io/limit-rps: {{ $i.rateLimit.rps | quote }}
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: {{ $i.rateLimit.burstMultiplier | quote }}
+    {{- end }}
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - {{ $i.host | quote }}
+      secretName: {{ $i.originTLSSecret }}
+  rules:
+    - host: {{ $i.host | quote }}
+      http:
+        paths:
+          {{- range $i.paths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType }}
+            backend:
+              service:
+                name: {{ include "platform.name" $ }}
+                port:
+                  name: {{ $i.port }}
+          {{- end }}
+{{- end }}

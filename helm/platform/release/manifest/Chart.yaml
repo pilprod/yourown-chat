@@ -1,0 +1,9 @@
+apiVersion: v2
+name: release-manifest
+description: >-
+  Validation chart for the service release manifest (helm/release.yaml in a
+  service repository). It renders no Kubernetes objects; Helm validates the
+  manifest against values.schema.json and the single template emits the
+  manifest as JSON for the platform release assembler.
+type: application
+version: 0.1.0

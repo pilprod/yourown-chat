@@ -1,0 +1,65 @@
+# Representative stateless service wrapper values used by render and golden tests.
+workload:
+  name: identity-api
+  partOf: yourown-chat-server
+image:
+  digest: europe-west3-docker.pkg.dev/example-project/docker/yourown-chat-identity-api@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+container:
+  env:
+    IDENTITY_API_PORT: "8081"
+    IDENTITY_DATABASE_URL_FILE: /var/run/secrets/app/database-url
+    IDENTITY_SESSION_TTL: 720h
+  ports:
+    - name: http
+      port: 8081
+    - name: metrics
+      port: 9464
+  health:
+    startup:
+      httpGet: { path: /healthz }
+    readiness:
+      httpGet: { path: /readyz }
+    liveness:
+      httpGet: { path: /healthz }
+  resources:
+    requests: { cpu: 5m, memory: 16Mi }
+    limits: { cpu: 250m, memory: 256Mi }
+runtime:
+  replicas: 2
+  disruptionBudget:
+    enabled: true
+    minAvailable: 1
+identity:
+  googleServiceAccount: identity-api@example-project.iam.gserviceaccount.com
+secrets:
+  project: example-project
+  files:
+    - secret: yourown-chat-identity-runtime-database-url
+      file: database-url
+network:
+  clusterDNSIP: 10.30.0.10
+  ingress:
+    - name: from-transport
+      purpose: Transport gateway forwards authenticated identity requests
+      from:
+        namespace: edge
+        podLabels: { app: transport }
+      ports: [{ port: 8081 }]
+    - name: metrics-scrape
+      purpose: In-namespace Prometheus scrape of the metrics endpoint
+      from:
+        sameNamespace: true
+      ports: [{ port: 9464 }]
+  egress:
+    - name: cloudsql
+      purpose: PostgreSQL on the private Cloud SQL address
+      to: { cidr: 10.20.30.40/32 }
+      ports: [{ port: 5432 }]
+    - name: mattermost
+      purpose: Workspace link verification against the private Mattermost Service
+      to: { namespace: mattermost }
+      ports: [{ port: 8065 }]
+observability:
+  metrics:
+    enabled: true
+    port: metrics

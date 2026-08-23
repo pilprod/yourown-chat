@@ -46,6 +46,9 @@ deployment "eu" {
     workload_identity_emails        = upstream_input.platform.workload_identity_emails
     artifact_registry_location      = upstream_input.platform.artifact_registry_location
     artifact_registry_repository_id = upstream_input.platform.artifact_registry_repository_id
+    # Platform Helm chart repository (helm/platform profiles as OCI artifacts).
+    # try() keeps app-gcp plannable until platform-gcp publishes the output.
+    helm_registry_repository_id = try(upstream_input.platform.helm_registry_repository_id, null)
     cmek_key_id                     = upstream_input.platform.cmek_key_id
     workload_identity_members       = upstream_input.platform.workload_identity_members
     yourown_chat_server_enabled     = upstream_input.platform.yourown_chat_server_enabled
@@ -76,6 +79,12 @@ deployment "eu" {
 
     # Per-server on/off lives in helm/mcp/values.yaml.
     mcp_servers_enabled = true
+
+    # Wrapper-based delivery (service helm/release.yaml + platform workload
+    # profiles). Stays off until the platform charts are published by the
+    # chart publication rail and the owning service repositories carry
+    # reviewed release wrappers.
+    wrapper_releases_enabled = false
 
     # The delivery path and cheap persistent state stay present. This switch
     # chooses the static start/pause profile used by the next semver release.

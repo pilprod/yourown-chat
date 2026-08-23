@@ -1,0 +1,64 @@
+{{- $j := .Values.job -}}
+{{- $name := include "platform.name" . -}}
+{{- if eq $j.kind "CronJob" }}
+{{- if not $j.schedule }}{{ fail "job.schedule is required when job.kind is CronJob" }}{{ end }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+spec:
+  schedule: {{ $j.schedule | quote }}
+  suspend: {{ $j.suspend }}
+  concurrencyPolicy: {{ $j.concurrencyPolicy }}
+  startingDeadlineSeconds: {{ $j.startingDeadlineSeconds }}
+  successfulJobsHistoryLimit: {{ $j.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ $j.failedJobsHistoryLimit }}
+  jobTemplate:
+    metadata:
+      labels:
+        {{- include "platform.labels" . | nindent 8 }}
+    spec:
+      backoffLimit: {{ $j.backoffLimit }}
+      activeDeadlineSeconds: {{ $j.activeDeadlineSeconds }}
+      ttlSecondsAfterFinished: {{ $j.ttlSecondsAfterFinished }}
+      template:
+        metadata:
+          labels:
+            {{- include "platform.labels" . | nindent 12 }}
+          annotations:
+            {{- include "platform.podAnnotations" . | nindent 12 }}
+        spec:
+          restartPolicy: {{ $j.restartPolicy }}
+          {{- include "platform.podSpec" . | nindent 10 }}
+{{- else }}
+{{- if $j.schedule }}{{ fail "job.schedule is only valid when job.kind is CronJob" }}{{ end }}
+{{- /* Every value that can change the Job or its pod template feeds the run identity, so any change yields a new immutable Job instead of a rejected patch. */ -}}
+{{- $suffix := printf "%s:%s" .Chart.Version (toJson .Values) | sha256sum | trunc 12 }}
+{{- if gt (len $name) 50 }}{{ fail (printf "platform-job workload.name %q must be at most 50 characters so the suffixed Job name stays within 63" $name) }}{{ end }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ printf "%s-%s" $name $suffix }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+  annotations:
+    platform.yourown.chat/run-id: {{ $suffix | quote }}
+spec:
+  suspend: {{ $j.suspend }}
+  backoffLimit: {{ $j.backoffLimit }}
+  activeDeadlineSeconds: {{ $j.activeDeadlineSeconds }}
+  ttlSecondsAfterFinished: {{ $j.ttlSecondsAfterFinished }}
+  template:
+    metadata:
+      labels:
+        {{- include "platform.labels" . | nindent 8 }}
+      annotations:
+        {{- include "platform.podAnnotations" . | nindent 8 }}
+    spec:
+      restartPolicy: {{ $j.restartPolicy }}
+      {{- include "platform.podSpec" . | nindent 6 }}
+{{- end }}

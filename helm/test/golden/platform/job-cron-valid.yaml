@@ -1,0 +1,166 @@
+---
+# Source: platform-job/templates/networkpolicy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: nightly-maintenance
+  namespace: identity
+  labels:
+    app: nightly-maintenance
+    app.kubernetes.io/name: nightly-maintenance
+    app.kubernetes.io/instance: test-job-cron-valid
+    app.kubernetes.io/component: platform-job
+    app.kubernetes.io/part-of: nightly-maintenance
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: "platform-job-0.1.0"
+    platform.yourown.chat/profile: platform-job
+    platform.yourown.chat/chart-version: "0.1.0"
+  annotations:
+    platform.yourown.chat/ingress-rules: ""
+    platform.yourown.chat/egress-rules: "cloudsql"
+spec:
+  podSelector:
+    matchLabels:
+      app: nightly-maintenance
+      app.kubernetes.io/name: nightly-maintenance
+      app.kubernetes.io/instance: test-job-cron-valid
+  policyTypes: [Ingress, Egress]
+  # No ingress rule is declared: the workload accepts no inbound traffic.
+  ingress: []
+  egress:
+    # platform-dns: cluster DNS resolution
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+        - ipBlock:
+            cidr: "10.30.0.10/32"
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # cloudsql: Retention pruning against the private Cloud SQL address
+    - to:
+        - ipBlock:
+            cidr: "10.20.30.40/32"
+      ports:
+        - protocol: TCP
+          port: 5432
+
+---
+# Source: platform-job/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nightly-maintenance
+  namespace: identity
+  labels:
+    app: nightly-maintenance
+    app.kubernetes.io/name: nightly-maintenance
+    app.kubernetes.io/instance: test-job-cron-valid
+    app.kubernetes.io/component: platform-job
+    app.kubernetes.io/part-of: nightly-maintenance
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: "platform-job-0.1.0"
+    platform.yourown.chat/profile: platform-job
+    platform.yourown.chat/chart-version: "0.1.0"
+automountServiceAccountToken: false
+
+---
+# Source: platform-job/templates/job.yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: nightly-maintenance
+  namespace: identity
+  labels:
+    app: nightly-maintenance
+    app.kubernetes.io/name: nightly-maintenance
+    app.kubernetes.io/instance: test-job-cron-valid
+    app.kubernetes.io/component: platform-job
+    app.kubernetes.io/part-of: nightly-maintenance
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: "platform-job-0.1.0"
+    platform.yourown.chat/profile: platform-job
+    platform.yourown.chat/chart-version: "0.1.0"
+spec:
+  schedule: "15 3 * * *"
+  suspend: false
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    metadata:
+      labels:
+        app: nightly-maintenance
+        app.kubernetes.io/name: nightly-maintenance
+        app.kubernetes.io/instance: test-job-cron-valid
+        app.kubernetes.io/component: platform-job
+        app.kubernetes.io/part-of: nightly-maintenance
+        app.kubernetes.io/managed-by: Helm
+        helm.sh/chart: "platform-job-0.1.0"
+        platform.yourown.chat/profile: platform-job
+        platform.yourown.chat/chart-version: "0.1.0"
+    spec:
+      backoffLimit: 3
+      activeDeadlineSeconds: 3600
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app: nightly-maintenance
+            app.kubernetes.io/name: nightly-maintenance
+            app.kubernetes.io/instance: test-job-cron-valid
+            app.kubernetes.io/component: platform-job
+            app.kubernetes.io/part-of: nightly-maintenance
+            app.kubernetes.io/managed-by: Helm
+            helm.sh/chart: "platform-job-0.1.0"
+            platform.yourown.chat/profile: platform-job
+            platform.yourown.chat/chart-version: "0.1.0"
+          annotations:
+            platform.yourown.chat/image-digest: "1111111111111111111111111111111111111111111111111111111111111111"
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          enableServiceLinks: false
+          serviceAccountName: nightly-maintenance
+          priorityClassName: development
+          terminationGracePeriodSeconds: 30
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            fsGroup: 65532
+            fsGroupChangePolicy: OnRootMismatch
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: nightly-maintenance
+              image: "europe-west3-docker.pkg.dev/example-project/docker/yourown-chat-maintenance@sha256:1111111111111111111111111111111111111111111111111111111111111111"
+              imagePullPolicy: IfNotPresent
+              args: ["--prune"]
+              securityContext:
+                allowPrivilegeEscalation: false
+                privileged: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                requests:
+                  cpu: "10m"
+                  memory: "32Mi"
+                limits:
+                  memory: "128Mi"
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir:
+                sizeLimit: 64Mi

@@ -1,0 +1,68 @@
+# Service-owned base values. Release-time parameters (image digests, Workload
+# Identity, Secret Manager project, cluster DNS) are supplied by the release
+# pipeline and are intentionally absent here.
+identity-api:
+  workload:
+    name: identity-api
+    partOf: identity
+  container:
+    env:
+      IDENTITY_API_PORT: "8081"
+      IDENTITY_DATABASE_URL_FILE: /var/run/secrets/app/database-url
+    ports:
+      - name: http
+        port: 8081
+    health:
+      startup:
+        httpGet: { path: /healthz }
+      readiness:
+        httpGet: { path: /readyz }
+      liveness:
+        httpGet: { path: /healthz }
+    resources:
+      requests: { cpu: 5m, memory: 16Mi }
+      limits: { cpu: 250m, memory: 256Mi }
+  secrets:
+    files:
+      - secret: yourown-chat-identity-runtime-database-url
+        file: database-url
+  network:
+    ingress:
+      - name: from-transport
+        purpose: Transport gateway forwards authenticated identity requests
+        from:
+          namespace: edge
+          podLabels: { app: transport }
+      - name: platform-verify
+        purpose: Cloud Deploy verification job probes the readiness endpoint
+        from:
+          sameNamespace: true
+          podLabels: { app: verify }
+    egress:
+      - name: cloudsql
+        purpose: PostgreSQL on the private Cloud SQL address
+        to: { cidr: 10.20.30.40/32 }
+        ports: [{ port: 5432 }]
+
+identity-migrate:
+  workload:
+    name: identity-migrate
+    partOf: identity
+  container:
+    env:
+      IDENTITY_DATABASE_URL_FILE: /var/run/secrets/app/database-url
+    resources:
+      requests: { cpu: 5m, memory: 16Mi }
+      limits: { cpu: 250m, memory: 128Mi }
+  job:
+    backoffLimit: 8
+  secrets:
+    files:
+      - secret: yourown-chat-identity-database-url
+        file: database-url
+  network:
+    egress:
+      - name: cloudsql
+        purpose: PostgreSQL migrations on the private Cloud SQL address
+        to: { cidr: 10.20.30.40/32 }
+        ports: [{ port: 5432 }]

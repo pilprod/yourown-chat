@@ -1,0 +1,8 @@
+apiVersion: v2
+name: yaml2json
+description: >-
+  Helper chart used by the platform release assembler to read a YAML document
+  (for example a wrapper Chart.yaml) as JSON without extra tooling. It renders
+  no Kubernetes objects.
+type: application
+version: 0.1.0

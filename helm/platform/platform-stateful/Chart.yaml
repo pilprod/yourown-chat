@@ -1,0 +1,26 @@
+apiVersion: v2
+name: platform-stateful
+description: >-
+  YourOwn.Chat platform workload profile for a workload that requires stable
+  identity or retained persistent volumes. Renders a StatefulSet with retained
+  volume claims, headless and ClusterIP Services, a deny-by-default
+  NetworkPolicy, ServiceAccount, optional Secret Manager CSI provider class,
+  PodDisruptionBudget and, only when explicitly enabled, the narrow typed
+  layer-four transport exposure for protocols that cannot traverse the
+  application edge. Service wrappers pin an exact published version and supply
+  only schema-validated values.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.29.0-0"
+keywords:
+  - yourown-chat
+  - platform-profile
+home: https://github.com/pilprod/yourown-chat/tree/main/helm/platform
+sources:
+  - https://github.com/pilprod/yourown-chat
+annotations:
+  platform.yourown.chat/profile: platform-stateful
+  platform.yourown.chat/contract: "Public Helm platform policy (.ai/helm-policy.md)"
+  # Profile resource bounds enforced by the shared helpers (not values).
+  platform.yourown.chat/bounds: '{"maxRequestCPUMillis":2000,"maxLimitCPUMillis":4000,"maxRequestMemoryBytes":4294967296,"maxLimitMemoryBytes":8589934592}'

@@ -1,0 +1,378 @@
+---
+# Source: platform-stateful/templates/networkpolicy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: rtcd
+  namespace: mattermost-rtcd
+  labels:
+    app: rtcd
+    app.kubernetes.io/name: rtcd
+    app.kubernetes.io/instance: test-stateful-valid
+    app.kubernetes.io/component: platform-stateful
+    app.kubernetes.io/part-of: yourown-chat-mattermost
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: "platform-stateful-0.1.0"
+    platform.yourown.chat/profile: platform-stateful
+    platform.yourown.chat/chart-version: "0.1.0"
+  annotations:
+    platform.yourown.chat/ingress-rules: "mattermost-api,public-transport"
+    platform.yourown.chat/egress-rules: "public-media"
+spec:
+  podSelector:
+    matchLabels:
+      app: rtcd
+      app.kubernetes.io/name: rtcd
+      app.kubernetes.io/instance: test-stateful-valid
+  policyTypes: [Ingress, Egress]
+  ingress:
+    # mattermost-api: Mattermost Calls plugin registers with the private RTCD API
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: "mattermost"
+      ports:
+        - protocol: TCP
+          port: 8045
+    # public-transport: Public transport traffic through the dedicated layer-four load balancer
+    - from:
+        - ipBlock:
+            cidr: "0.0.0.0/0"
+      ports:
+        - protocol: TCP
+          port: 8443
+        - protocol: UDP
+          port: 8443
+  egress:
+    # platform-dns: cluster DNS resolution
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+        - ipBlock:
+            cidr: "10.30.0.10/32"
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # public-media: WebRTC media to clients on the public internet
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 169.254.0.0/16
+      ports:
+        - protocol: TCP
+          port: 8443
+        - protocol: UDP
+          port: 8443
+
+---
+# Source: platform-stateful/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: rtcd
+  namespace: mattermost-rtcd
+  labels:
+    app: rtcd
+    app.kubernetes.io/name: rtcd
+    app.kubernetes.io/instance: test-stateful-valid
+    app.kubernetes.io/component: platform-stateful
+    app.kubernetes.io/part-of: yourown-chat-mattermost
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: "platform-stateful-0.1.0"
+    platform.yourown.chat/profile: platform-stateful
+    platform.yourown.chat/chart-version: "0.1.0"
+automountServiceAccountToken: false
+
+---
+# Source: platform-stateful/templates/services.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: rtcd-headless
+  namespace: mattermost-rtcd
+  labels:
+    app: rtcd
+    app.kubernetes.io/name: rtcd
+    app.kubernetes.io/instance: test-stateful-valid
+    app.kubernetes.io/component: platform-stateful
+    app.kubernetes.io/part-of: yourown-chat-mattermost
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: "platform-stateful-0.1.0"
+    platform.yourown.chat/profile: platform-stateful
+    platform.yourown.chat/chart-version: "0.1.0"
+spec:
+  type: ClusterIP
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app: rtcd
+    app.kubernetes.io/name: rtcd
+    app.kubernetes.io/instance: test-stateful-valid
+  ports:
+    - name: api
+      port: 8045
+      targetPort: api
+      protocol: TCP
+    - name: rtc-tcp
+      port: 8443
+      targetPort: rtc-tcp
+      protocol: TCP
+    - name: rtc-udp
+      port: 8443
+      targetPort: rtc-udp
+      protocol: UDP
+---
+# Source: platform-stateful/templates/services.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: rtcd
+  namespace: mattermost-rtcd
+  labels:
+    app: rtcd
+    app.kubernetes.io/name: rtcd
+    app.kubernetes.io/instance: test-stateful-valid
+    app.kubernetes.io/component: platform-stateful
+    app.kubernetes.io/part-of: yourown-chat-mattermost
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: "platform-stateful-0.1.0"
+    platform.yourown.chat/profile: platform-stateful
+    platform.yourown.chat/chart-version: "0.1.0"
+spec:
+  type: ClusterIP
+  selector:
+    app: rtcd
+    app.kubernetes.io/name: rtcd
+    app.kubernetes.io/instance: test-stateful-valid
+  ports:
+    - name: api
+      port: 8045
+      targetPort: api
+      protocol: TCP
+---
+# Source: platform-stateful/templates/services.yaml
+# Dedicated layer-four exposure for TCP transport only. Separate
+# per-protocol Services share one reserved address and select only this
+# workload; no control, administrative or unrelated port is published.
+apiVersion: v1
+kind: Service
+metadata:
+  name: rtcd-tcp
+  namespace: mattermost-rtcd
+  labels:
+    app: rtcd
+    app.kubernetes.io/name: rtcd
+    app.kubernetes.io/instance: test-stateful-valid
+    app.kubernetes.io/component: platform-stateful
+    app.kubernetes.io/part-of: yourown-chat-mattermost
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: "platform-stateful-0.1.0"
+    platform.yourown.chat/profile: platform-stateful
+    platform.yourown.chat/chart-version: "0.1.0"
+    platform.yourown.chat/exposure: layer4
+  annotations:
+    cloud.google.com/l4-rbs: "enabled"
+spec:
+  type: LoadBalancer
+  loadBalancerIP: "203.0.113.10"
+  externalTrafficPolicy: Local
+  selector:
+    app: rtcd
+    app.kubernetes.io/name: rtcd
+    app.kubernetes.io/instance: test-stateful-valid
+  ports:
+    - name: rtc-tcp
+      port: 8443
+      targetPort: rtc-tcp
+      protocol: TCP
+---
+# Source: platform-stateful/templates/services.yaml
+# Dedicated layer-four exposure for UDP transport only. Separate
+# per-protocol Services share one reserved address and select only this
+# workload; no control, administrative or unrelated port is published.
+apiVersion: v1
+kind: Service
+metadata:
+  name: rtcd-udp
+  namespace: mattermost-rtcd
+  labels:
+    app: rtcd
+    app.kubernetes.io/name: rtcd
+    app.kubernetes.io/instance: test-stateful-valid
+    app.kubernetes.io/component: platform-stateful
+    app.kubernetes.io/part-of: yourown-chat-mattermost
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: "platform-stateful-0.1.0"
+    platform.yourown.chat/profile: platform-stateful
+    platform.yourown.chat/chart-version: "0.1.0"
+    platform.yourown.chat/exposure: layer4
+  annotations:
+    cloud.google.com/l4-rbs: "enabled"
+spec:
+  type: LoadBalancer
+  loadBalancerIP: "203.0.113.10"
+  externalTrafficPolicy: Local
+  selector:
+    app: rtcd
+    app.kubernetes.io/name: rtcd
+    app.kubernetes.io/instance: test-stateful-valid
+  ports:
+    - name: rtc-udp
+      port: 8443
+      targetPort: rtc-udp
+      protocol: UDP
+
+---
+# Source: platform-stateful/templates/statefulset.yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: rtcd
+  namespace: mattermost-rtcd
+  labels:
+    app: rtcd
+    app.kubernetes.io/name: rtcd
+    app.kubernetes.io/instance: test-stateful-valid
+    app.kubernetes.io/component: platform-stateful
+    app.kubernetes.io/part-of: yourown-chat-mattermost
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: "platform-stateful-0.1.0"
+    platform.yourown.chat/profile: platform-stateful
+    platform.yourown.chat/chart-version: "0.1.0"
+  annotations:
+    platform.yourown.chat/paused: "false"
+spec:
+  serviceName: rtcd-headless
+  replicas: 1
+  revisionHistoryLimit: 3
+  podManagementPolicy: OrderedReady
+  updateStrategy:
+    type: RollingUpdate
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  selector:
+    matchLabels:
+      app: rtcd
+      app.kubernetes.io/name: rtcd
+      app.kubernetes.io/instance: test-stateful-valid
+  template:
+    metadata:
+      labels:
+        app: rtcd
+        app.kubernetes.io/name: rtcd
+        app.kubernetes.io/instance: test-stateful-valid
+        app.kubernetes.io/component: platform-stateful
+        app.kubernetes.io/part-of: yourown-chat-mattermost
+        app.kubernetes.io/managed-by: Helm
+        helm.sh/chart: "platform-stateful-0.1.0"
+        platform.yourown.chat/profile: platform-stateful
+        platform.yourown.chat/chart-version: "0.1.0"
+      annotations:
+        platform.yourown.chat/image-digest: "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      serviceAccountName: rtcd
+      priorityClassName: production
+      terminationGracePeriodSeconds: 300
+      nodeSelector:
+        pool: "general"
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: rtcd
+          image: "europe-west3-docker.pkg.dev/example-project/docker/rtcd@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: RTCD_API_SECURITY_ALLOWSELFREGISTRATION
+              value: "true"
+            - name: RTCD_LOGGER_CONSOLEJSON
+              value: "true"
+            - name: RTCD_RTC_ICEHOSTOVERRIDE
+              value: "203.0.113.10"
+            - name: RTCD_RTC_ICEPORTTCP
+              value: "8443"
+            - name: RTCD_RTC_ICEPORTUDP
+              value: "8443"
+            - name: RTCD_STORE_DATASOURCE
+              value: "/var/lib/rtcd/rtcd_db"
+          ports:
+            - name: api
+              containerPort: 8045
+              protocol: TCP
+            - name: rtc-tcp
+              containerPort: 8443
+              protocol: TCP
+            - name: rtc-udp
+              containerPort: 8443
+              protocol: UDP
+          readinessProbe:
+            httpGet:
+              path: /version
+              port: api
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 24
+            successThreshold: 1
+          livenessProbe:
+            httpGet:
+              path: /version
+              port: api
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+            successThreshold: 1
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: "10m"
+              memory: "32Mi"
+            limits:
+              cpu: "2"
+              memory: "2Gi"
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: data
+              mountPath: /var/lib/rtcd
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          app: rtcd
+          app.kubernetes.io/name: rtcd
+          app.kubernetes.io/instance: test-stateful-valid
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: "rtcd-cmek"
+        resources:
+          requests:
+            storage: 1Gi
