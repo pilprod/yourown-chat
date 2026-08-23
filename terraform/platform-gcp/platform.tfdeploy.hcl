@@ -94,7 +94,7 @@ deployment "eu" {
     yourown_chat_identity_password_rotation = "1"
     catalog_revision                        = upstream_input.catalog.catalog_revision
     additional_database_users = jsondecode(
-      upstream_input.catalog.source_repositories.catalog_contract.remote_uri
+      upstream_input.catalog.source_repositories.kagent.remote_uri
     ).additional_database_users
 
     # Temporal is a platform-gcp service. Keep the launch gate closed until the
