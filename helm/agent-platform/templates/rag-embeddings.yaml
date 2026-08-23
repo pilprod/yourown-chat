@@ -1,0 +1,90 @@
+{{- if and .Values.agent_rag_enabled .Values.rag.embeddingsServer.enabled }}
+{{- $server := .Values.rag.embeddingsServer }}
+{{- $image := required "rag.embeddingsServer.image must be an immutable mirrored digest when the in-cluster embeddings server is enabled" $server.image }}
+# Self-hosted OpenAI-compatible embeddings server (text-embeddings-inference,
+# CPU build). It is a vendor-packaged workload composed with the platform
+# security and networking contract: non-root, read-only root filesystem,
+# bounded resources, ClusterIP only, default-deny network policy.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-platform-embeddings
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: agent-platform-embeddings
+    {{- include "agent-platform.labels" . | nindent 4 }}
+spec:
+  replicas: {{ $server.replicaCount }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: { app: agent-platform-embeddings }
+  template:
+    metadata:
+      labels:
+        app: agent-platform-embeddings
+        {{- include "agent-platform.labels" . | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      priorityClassName: {{ .Values.priorityClassName }}
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: embeddings
+          image: {{ $image | quote }}
+          imagePullPolicy: IfNotPresent
+          args:
+            - --model-id
+            - {{ required "rag.embeddingsServer.modelId is required" $server.modelId | quote }}
+            - --port
+            - {{ $server.port | quote }}
+            - --max-client-batch-size
+            - {{ $server.maxClientBatchSize | quote }}
+            - --json-output
+          env:
+            - { name: HF_HOME, value: /data }
+            - { name: HUGGINGFACE_HUB_CACHE, value: /data/hub }
+            - { name: HF_HUB_ENDPOINT, value: {{ $server.hubEndpoint | quote }} }
+            {{- if not $server.allowModelDownload }}
+            - { name: HF_HUB_OFFLINE, value: "1" }
+            {{- end }}
+          ports:
+            - { name: http, containerPort: {{ $server.port }}, protocol: TCP }
+          startupProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+            failureThreshold: 90
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 30
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml $server.resources | nindent 12 }}
+          volumeMounts:
+            - { name: model-cache, mountPath: /data }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: model-cache
+          emptyDir:
+            sizeLimit: {{ $server.modelCacheSizeLimit }}
+        - { name: tmp, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-platform-embeddings
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: agent-platform-embeddings
+    {{- include "agent-platform.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector: { app: agent-platform-embeddings }
+  ports:
+    - { name: http, port: {{ $server.port }}, targetPort: http, protocol: TCP }
+{{- end }}

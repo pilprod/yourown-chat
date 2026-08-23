@@ -325,3 +325,16 @@ variable "agent_results_retention_days" {
   description = "Retention period for agent report objects in the platform results bucket."
   default     = 30
 }
+
+# --- Portable RAG knowledge base --------------------------------------------
+variable "agent_rag_enabled" {
+  type        = bool
+  description = "Create the agent knowledge-base logical database, migrate/runtime roles and connection secrets for the portable RAG on the shared Cloud SQL instance. The application depends only on a postgres:// DSN file, so this toggle is a deployment choice, not an architectural one."
+  default     = false
+}
+
+variable "yourown_chat_agents_password_rotation" {
+  type        = string
+  description = "Explicit rotation trigger for the agent knowledge-base database users."
+  default     = "1"
+}

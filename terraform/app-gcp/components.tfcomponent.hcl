@@ -220,6 +220,14 @@ component "clouddeploy_agents_start" {
       agent_secret_project      = var.project_id
       agent_results_bucket      = var.agent_results_bucket
       cluster_dns_ip            = var.cluster_dns_ip
+      # Portable RAG knowledge base. Only infrastructure-derived values travel
+      # as deploy parameters; model endpoints and chart behaviour stay in the
+      # authored Helm values.
+      agent_rag_enabled                    = var.agent_rag_enabled ? "true" : "false"
+      agent_rag_migrate_gsa                = lookup(var.workload_identity_emails, "agents-rag-migrate", "")
+      agent_cloudsql_ip                    = var.cloudsql_private_ip
+      agent_rag_database_secret_id         = var.yourown_chat_agents_connection_secret_id
+      agent_rag_runtime_database_secret_id = var.yourown_chat_agents_runtime_connection_secret_id
     }
 
     labels = local.common_labels
@@ -256,6 +264,14 @@ component "clouddeploy_agents_pause" {
       agent_secret_project      = var.project_id
       agent_results_bucket      = var.agent_results_bucket
       cluster_dns_ip            = var.cluster_dns_ip
+      # Portable RAG knowledge base. Only infrastructure-derived values travel
+      # as deploy parameters; model endpoints and chart behaviour stay in the
+      # authored Helm values.
+      agent_rag_enabled                    = var.agent_rag_enabled ? "true" : "false"
+      agent_rag_migrate_gsa                = lookup(var.workload_identity_emails, "agents-rag-migrate", "")
+      agent_cloudsql_ip                    = var.cloudsql_private_ip
+      agent_rag_database_secret_id         = var.yourown_chat_agents_connection_secret_id
+      agent_rag_runtime_database_secret_id = var.yourown_chat_agents_runtime_connection_secret_id
     }
 
     labels = local.common_labels
@@ -361,6 +377,19 @@ component "secrets" {
       # private value never enters HCL, plan output or Terraform state.
       "yourown-chat-transport-private-key" = {
         accessors = [var.workload_identity_members["transport-api"]]
+      }
+      # Portable RAG: the Mattermost bot token used to read enrolled channels
+      # and an optional bearer token for an external OpenAI-compatible model
+      # API. Placeholders let the CSI mount start; replace them by adding new
+      # Secret Manager versions out-of-band. Self-hosted model servers inside
+      # the cluster need no token at all.
+      "yourown-chat-agents-mattermost-token" = {
+        value     = "REPLACE_ME_MATTERMOST_BOT_TOKEN"
+        accessors = [var.workload_identity_members["agents-activity"]]
+      }
+      "yourown-chat-agents-model-api-token" = {
+        value     = "REPLACE_ME_MODEL_API_TOKEN"
+        accessors = [var.workload_identity_members["agents-activity"]]
       }
     }
   }

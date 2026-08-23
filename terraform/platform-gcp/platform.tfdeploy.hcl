@@ -77,6 +77,10 @@ deployment "eu" {
     cloudsql_txlog_retention_days  = 7
     cloudsql_deletion_protection   = true
     cloudsql_studio_users          = ["ilya@papou.email"]
+    # Portable RAG knowledge base (pgvector logical database + roles on the
+    # same instance). Flip to true in a reviewed plan; the application only
+    # sees a DSN file and can move to any PostgreSQL later.
+    agent_rag_enabled = false
     # Rotation trigger: change the value (a date), apply, then restart the
     # consumers so they pick up the new connection secret.
     cloudsql_password_rotation = "2026-07-12"

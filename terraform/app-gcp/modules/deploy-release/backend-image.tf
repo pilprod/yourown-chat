@@ -8,6 +8,7 @@ locals {
     identity_migrate = "${local.artifact_repository_prefix}/${var.backend_image_prefix}-identity-migrate"
     workflow_worker  = "${local.artifact_repository_prefix}/${var.agents_image_prefix}-workflow-worker"
     activity_worker  = "${local.artifact_repository_prefix}/${var.agents_image_prefix}-activity-worker"
+    rag_migrate      = "${local.artifact_repository_prefix}/${var.agents_image_prefix}-rag-migrate"
   }
 
   source_repositories = {
@@ -64,7 +65,7 @@ locals {
       branch        = var.agents_branch_regex
       tag           = null
       release       = false
-      services      = "workflow-worker activity-worker"
+      services      = "workflow-worker activity-worker rag-migrate"
       workflowcheck = true
     }
     "${var.agents_repository_name}-image" = {
@@ -72,7 +73,7 @@ locals {
       branch        = null
       tag           = var.agents_release_tag_regex
       release       = true
-      services      = "workflow-worker activity-worker"
+      services      = "workflow-worker activity-worker rag-migrate"
       workflowcheck = true
     }
   }
@@ -374,7 +375,7 @@ resource "google_cloudbuild_trigger" "source_image" {
 
         deploy_parameters=""
         digest_set_input=""
-        for service in control-api workflow-worker activity-worker; do
+        for service in control-api workflow-worker activity-worker rag-migrate; do
           if [ "$$service" = "control-api" ]; then
             image_path="${local.artifact_repository_prefix}/${var.backend_image_prefix}-$$service"
           else

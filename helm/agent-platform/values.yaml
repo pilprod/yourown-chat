@@ -2,11 +2,24 @@
 # Temporal имеют отдельный жизненный цикл.
 yourown_chat_workflow_worker_image: ""
 yourown_chat_activity_worker_image: ""
+yourown_chat_rag_migrate_image: ""
 agent_workflow_worker_gsa: ""
 agent_activity_worker_gsa: ""
+agent_rag_migrate_gsa: ""
+agent_secret_project: ""
 agent_results_bucket: ""
+agent_cloudsql_ip: ""
 cluster_dns_ip: ""
 agent_runtime_enabled: false
+
+# Portable RAG knowledge base. Cloud Deploy supplies the infrastructure
+# parameters above (agent_rag_enabled, migrate identity, Cloud SQL address,
+# secret IDs); this block owns the application-level choices. The workers only
+# see URLs, model names and secret files, so the same values shape moves to
+# another cluster or bare metal unchanged.
+agent_rag_enabled: false
+agent_rag_database_secret_id: yourown-chat-agents-database-url
+agent_rag_runtime_database_secret_id: yourown-chat-agents-runtime-database-url
 
 temporal:
   address: temporal-frontend.temporal.svc.cluster.local:7233
@@ -48,3 +61,67 @@ securityContext:
 networkPolicy:
   enabled: true
   activityNamespaces: [mattermost, mcp-google-cloud, mcp-terraform-stacks]
+
+rag:
+  mattermostURL: http://mattermost.mattermost.svc.cluster.local:8065
+  mattermostPublicURL: https://yourown.chat
+  mattermostTokenSecretId: yourown-chat-agents-mattermost-token
+  # PostgreSQL role that receives DML grants from rag-migrate. Must match the
+  # runtime user created by platform-gcp.
+  runtimeRole: yourown_chat_agents_runtime
+  embeddings:
+    # Defaults to the in-cluster embeddings server rendered below. Any
+    # OpenAI-compatible /v1/embeddings endpoint works.
+    url: ""
+    model: BAAI/bge-m3
+    dimensions: 1024
+    batchSize: 32
+    tokenSecretId: ""
+  generation:
+    # Required when agent_rag_enabled: an OpenAI-compatible
+    # /v1/chat/completions endpoint (self-hosted vLLM/Ollama/llama.cpp in the
+    # cluster, a bare-metal host, or a hosted API). Empty fails the render so a
+    # release never ships a RAG without a model.
+    url: ""
+    model: ""
+    # Secret Manager ID of a bearer token for a hosted API; empty for
+    # in-cluster servers.
+    tokenSecretId: ""
+    maxTokens: 1024
+    temperature: 0.2
+  chunkSize: 1200
+  chunkOverlap: 200
+  topK: 8
+  minScore: 0
+  maxContextChars: 12000
+  indexInterval: 15m
+  httpTimeout: 60s
+  # USD per 1M tokens for Usage.EstimatedCost; zero for self-hosted models.
+  prices:
+    embeddingPerMTok: 0
+    inputPerMTok: 0
+    outputPerMTok: 0
+  network:
+    # Extra egress for the activity worker to reach model servers in other
+    # namespaces: [{ namespace: llm, port: 8000 }].
+    allowNamespaces: []
+    # Allow encrypted egress to the public internet for a hosted model API.
+    allowPublicHTTPS: false
+  embeddingsServer:
+    # Self-hosted text-embeddings-inference (CPU build) inside the agent
+    # namespace. image must be an immutable Artifact Registry digest of the
+    # mirrored upstream image (docker/images.tsv is the mirror source).
+    enabled: true
+    image: ""
+    modelId: BAAI/bge-m3
+    port: 8080
+    replicaCount: 1
+    maxClientBatchSize: 64
+    resources:
+      requests: { cpu: 500m, memory: 2Gi }
+      limits: { cpu: "2", memory: 4Gi }
+    # The model is downloaded into an ephemeral cache until it is baked into
+    # the mirrored image; downloads need encrypted egress to the hub.
+    modelCacheSizeLimit: 4Gi
+    allowModelDownload: true
+    hubEndpoint: https://huggingface.co

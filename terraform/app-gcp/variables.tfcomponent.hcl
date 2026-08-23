@@ -306,6 +306,24 @@ variable "agent_results_bucket" {
   default     = ""
 }
 
+variable "agent_rag_enabled" {
+  type        = bool
+  description = "Wire the portable RAG knowledge base into agent delivery: schema-migration job, activity-worker secret mounts and network policy. Requires platform-gcp agent_rag_enabled so the database, roles and connection secrets exist."
+  default     = false
+}
+
+variable "yourown_chat_agents_connection_secret_id" {
+  type        = string
+  description = "Platform-owned Secret Manager ID containing the agent knowledge-base migration database URI."
+  default     = "yourown-chat-agents-database-url"
+}
+
+variable "yourown_chat_agents_runtime_connection_secret_id" {
+  type        = string
+  description = "Platform-owned Secret Manager ID containing the least-privilege agent knowledge-base runtime database URI."
+  default     = "yourown-chat-agents-runtime-database-url"
+}
+
 variable "agent_platform_runtime_enabled" {
   type        = bool
   description = "Default semver release mode for the agent pilot. false routes the release through the static pause profile; true uses the static running profile. Both preserve Cloud SQL and GCS state."

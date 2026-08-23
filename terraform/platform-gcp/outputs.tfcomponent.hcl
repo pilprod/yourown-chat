@@ -110,6 +110,24 @@ output "yourown_chat_identity_runtime_connection_secret_id" {
   value       = try(one([for c in component.cloudsql : c.additional_connection_secret_ids["yourown_chat_identity_runtime"]]), null)
 }
 
+output "agent_rag_enabled" {
+  type        = bool
+  description = "Whether the agent knowledge-base database and roles exist; app-gcp mirrors it into the agent delivery parameters."
+  value       = var.agent_rag_enabled
+}
+
+output "yourown_chat_agents_connection_secret_id" {
+  type        = string
+  description = "Secret Manager ID of the schema-owning agent knowledge-base connection URI (null until agent_rag_enabled)."
+  value       = try(one([for c in component.cloudsql : c.additional_connection_secret_ids["yourown_chat_agents"]]), null)
+}
+
+output "yourown_chat_agents_runtime_connection_secret_id" {
+  type        = string
+  description = "Secret Manager ID of the least-privilege agent knowledge-base runtime connection URI (null until agent_rag_enabled)."
+  value       = try(one([for c in component.cloudsql : c.additional_connection_secret_ids["yourown_chat_agents_runtime"]]), null)
+}
+
 # --- Cloud Billing -------------------------------------------------------------
 output "billing_export_dataset_id" {
   type        = string
@@ -150,6 +168,7 @@ output "workload_identity_emails" {
     identity-migrate      = component.workload_identity_identity_migrate.email
     agents-workflow      = component.workload_identity_agent_workflow.email
     agents-activity      = component.workload_identity_agents.email
+    agents-rag-migrate   = component.workload_identity_agents_rag_migrate.email
   }
 }
 
@@ -173,6 +192,7 @@ output "workload_identity_members" {
     identity-migrate      = component.workload_identity_identity_migrate.iam_member
     agents-workflow      = component.workload_identity_agent_workflow.iam_member
     agents-activity      = component.workload_identity_agents.iam_member
+    agents-rag-migrate   = component.workload_identity_agents_rag_migrate.iam_member
   }
 }
 
