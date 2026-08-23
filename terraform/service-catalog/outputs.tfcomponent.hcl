@@ -10,12 +10,13 @@ output "source_repositories" {
     name       = string
     remote_uri = string
   }))
-  description = "Source repositories keyed by role plus a non-repository catalog_contract entry carrying the versioned compatibility envelope."
+  description = "Source repositories keyed by role; the existing kagent remote_uri carries the versioned compatibility envelope for older HCP Stacks consumers."
   value = merge(var.source_repositories, {
-    catalog_contract = {
-      name = "catalog-contract"
+    kagent = {
+      name = var.source_repositories.kagent.name
       remote_uri = jsonencode({
         revision                  = var.catalog_revision
+        source_repository         = var.source_repositories.kagent
         vendor_chart_bundles      = var.vendor_chart_bundles
         additional_database_users = var.additional_database_users
         private_http_routes       = var.private_http_routes
