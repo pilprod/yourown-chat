@@ -305,7 +305,7 @@ resource "google_cloudbuild_trigger" "mcp_source" {
           --source /workspace/release-source \
           --gcs-source-staging-dir "gs://${google_storage_bucket.source.name}/source" \
           --deploy-parameters "$$(cat /workspace/release-source/deploy-parameters)" \
-          --annotations "source-repo=pilprod/yourown-chat-mcp,git-tag=$TAG_NAME,git-sha=$COMMIT_SHA,build-id=$BUILD_ID,platform-sha=$$platform_sha,render=platform-wrapper" 2>&1)"
+          --annotations "source-repo=${local.mcp_source_slug},git-tag=$TAG_NAME,git-sha=$COMMIT_SHA,build-id=$BUILD_ID,platform-sha=$$platform_sha,render=platform-wrapper" 2>&1)"
         status=$$?
         set -e
         if [ $$status -ne 0 ] && ! printf '%s' "$$output" | grep -q 'ALREADY_EXISTS'; then
@@ -314,7 +314,7 @@ resource "google_cloudbuild_trigger" "mcp_source" {
         fi
         printf '%s\n' "$$output"
         gcloud storage cp -r /workspace/release-evidence \
-          "gs://${google_storage_bucket.source.name}/evidence/yourown-chat-mcp/$BUILD_ID/release/"
+          "gs://${google_storage_bucket.source.name}/evidence/${var.mcp_repository_name}/$BUILD_ID/release/"
       EOT
       ]
     }

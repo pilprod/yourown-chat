@@ -12,7 +12,7 @@ locals {
   web_source_tree_url      = "${trimsuffix(var.web_github_remote_uri, ".git")}/tree"
   server_source_tree_url   = "${trimsuffix(var.server_source_remote_uri, ".git")}/tree"
 
-  scan_cli_image        = "gcr.io/google.com/cloudsdktool/google-cloud-cli:573.0.0@sha256:f0b4abeb30773243f9ae95abe201ec01de07d5ed582b56ca52879eb3dbe209c3"
+  scan_cli_image = "gcr.io/google.com/cloudsdktool/google-cloud-cli:573.0.0@sha256:f0b4abeb30773243f9ae95abe201ec01de07d5ed582b56ca52879eb3dbe209c3"
 }
 
 # Preserve the existing production IAM objects while widening the module to
