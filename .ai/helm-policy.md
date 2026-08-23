@@ -207,3 +207,45 @@ A service adopts a new platform chart through an explicit change to its pinned
 dependency and committed `Chart.lock`. The service then completes its own
 authoritative tests and dev-to-production lifecycle; publication of the chart
 alone does not update a service or a running environment.
+
+## Runtime safety and resources
+
+Platform profiles enforce secure container defaults: the process runs as a
+non-root user, privilege escalation is disabled, the default seccomp profile
+is `RuntimeDefault`, unnecessary Linux capabilities are dropped, and the root
+filesystem is read-only. Writable paths are provided only through typed,
+bounded ephemeral-volume or persistent-volume capabilities.
+
+A remotely deployed network service has readiness and liveness probes. A
+workload with a slow or dependency-sensitive startup also has a startup probe.
+The service declares the approved health endpoint or command, while the
+platform profile constrains probe behavior and prevents a normal service
+overlay from silently disabling required health checks. A bounded Job uses its
+completion status rather than artificial service probes.
+
+Every remotely deployed workload declares resource requests. Requests and
+applicable resource ceilings remain within profile-defined schema bounds and
+are based on measured consumption, startup behavior, concurrency, and
+documented safety headroom. A large generic default must not be copied to a
+low-usage workload without evidence; resource values are tuned for the
+workload profile and verified under representative load.
+
+Service values must not create arbitrary or effectively unbounded resource
+allocations. A profile documents any deliberate platform-level exception,
+such as CPU-limit behavior for a latency-sensitive workload, and verifies the
+result through load and failure testing.
+
+Replica counts, autoscaling, rollout strategy, and disruption budgets must be
+internally consistent. A disruption budget must not prevent maintenance of a
+single-replica workload, and a single replica must not be represented as highly
+available. Scaling to zero follows the component's approved operational class
+and pause lifecycle rather than an ad hoc deployment override.
+
+The platform profile provides graceful termination and a termination period
+appropriate to the workload type. A workload drains or stops accepting new
+work before exit when its protocol and responsibility require it.
+
+A service-specific values file cannot weaken these controls. A necessary
+exception requires an explicitly approved platform profile or vendor adapter,
+a documented reason and scope, and verification of the resulting security,
+reliability, and resource behavior.
