@@ -424,7 +424,7 @@ resource "helm_release" "crds" {
 
     precondition {
       condition     = sha256(local.crd_values) == var.bundle.charts.crds.values_sha256
-      error_message = "Decoded CRD values do not match the private-catalog checksum."
+      error_message = "Decoded CRD values do not match the declared bundle checksum."
     }
   }
 
@@ -463,7 +463,7 @@ resource "helm_release" "application" {
   lifecycle {
     precondition {
       condition     = sha256(local.application_values) == var.bundle.charts.application.values_sha256
-      error_message = "Decoded application values do not match the private-catalog checksum."
+      error_message = "Decoded application values do not match the declared bundle checksum."
     }
   }
 

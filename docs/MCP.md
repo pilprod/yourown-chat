@@ -355,9 +355,7 @@ Creation and settings updates are constrained to the committed policy:
 
 - organization `papou-work`;
 - project `prj-QuYKhn6EzLX9jB53`;
-- repositories `pilprod/yourown-chat` (public platform Stacks) and
-  `pilprod/yourown-chat-catalog` (private service catalog Stack) through the
-  existing HCP GitHub App;
+- repository `pilprod/yourown-chat` through the existing HCP GitHub App;
 - relative working directories below `terraform/`;
 - remote execution and a trigger pattern scoped to that working directory.
 
@@ -376,13 +374,14 @@ and are then resolved from the committed name allowlist:
 - `cloudflare`;
 - `app-gcp`;
 - `platform-gcp`;
-- `agent-registry-gcp`;
-- `service-catalog` (private repository `pilprod/yourown-chat-catalog`; publishes
-  repository connections consumed by `app-gcp` through `upstream_input`).
+- `agent-registry-gcp`.
+
+Service-owned configuration lives directly under the existing Stack roots:
+`terraform/app-gcp`, `terraform/platform-gcp` and `terraform/cloudflare`.
+There is no separate service-catalog Stack or repository.
 
 An allowlisted name may be absent until its HCP Stack is created (for example
-`agent-registry-gcp` before that Stack exists, or `service-catalog` before the
-catalog Stack is created); it becomes available automatically once a Stack
+`agent-registry-gcp` before that Stack exists); it becomes available automatically once a Stack
 with that name matches the project, repository, and directory policy. Approval requires the exact `sdr-*` run ID, the exact `stc-*`
 configuration ID returned by the inspection tool, a reason, and the literal
 confirmation `APPROVE`. The adapter verifies that the run belongs to the named

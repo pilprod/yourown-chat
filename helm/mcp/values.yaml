@@ -101,11 +101,9 @@ servers:
       TFE_ORGANIZATION: "papou-work"
       # Approval remains name-based and intentionally narrower than Stack
       # creation/update management policy.
-      TFE_STACK_ALLOWLIST: "cloudflare,app-gcp,platform-gcp,agent-registry-gcp,service-catalog"
+      TFE_STACK_ALLOWLIST: "cloudflare,app-gcp,platform-gcp,agent-registry-gcp"
       TFE_STACK_PROJECT_ALLOWLIST: "prj-QuYKhn6EzLX9jB53"
-      # The private service catalog Stack lives in its own private repository
-      # and publishes repository connections for app-gcp (upstream_input).
-      TFE_STACK_REPOSITORY_ALLOWLIST: "pilprod/yourown-chat,pilprod/yourown-chat-catalog"
+      TFE_STACK_REPOSITORY_ALLOWLIST: "pilprod/yourown-chat"
       TFE_STACK_DIRECTORY_PREFIX_ALLOWLIST: "terraform/"
       TFE_STACK_GITHUB_APP_INSTALLATION_ID: "ghain-PoBaBziU2edUHeaR"
       TFE_TOKEN_FILE: /var/run/secrets/mcp/tfe-token
