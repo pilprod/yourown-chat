@@ -70,10 +70,16 @@ variable "chart_path_prefix" {
 }
 
 # --- Release evidence -------------------------------------------------------
-variable "evidence_bucket_name" {
+variable "evidence_kms_key_name" {
   type        = string
-  description = "Existing private bucket that receives one JSON evidence object per published chart version (source revision, chart version, OCI digest, test results, build ID). null disables evidence upload; Cloud Logging still records the build."
+  description = "CMEK key resource name for the durable evidence bucket (null keeps Google-managed encryption). Normally the platform's shared CMEK key."
   default     = null
+}
+
+variable "labels" {
+  type        = map(string)
+  description = "Labels applied to the evidence bucket."
+  default     = {}
 }
 
 # --- Pinned build tool images ------------------------------------------------

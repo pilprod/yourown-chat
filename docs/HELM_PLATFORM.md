@@ -164,22 +164,29 @@ declared in `terraform/app-gcp/modules/chart-publish` and wired as the
 - runs only for pushes to the canonical branch that touch `helm/platform/**`
   or `helm/test/platform-*.test.sh`;
 - runs as the dedicated `chart-publish` identity with a repo-scoped writer
-  binding on the unified Artifact Registry repository and nothing else;
+  binding on the unified Artifact Registry repository and a create-only
+  binding on the evidence bucket, nothing else;
 - uses a digest-pinned Helm 3 image and a digest-pinned Google Cloud CLI
   image; no static credential is involved;
 - builds sibling `file://` dependencies (remote chart dependencies are
   rejected), runs `helm lint --strict` for every chart, then runs every
   `helm/test/platform-*.test.sh` (deterministic render, schema negative and
-  policy tests);
-- publishes each application chart whose `version` is not yet present at
-  `oci://<location>-docker.pkg.dev/<project>/<repository>/charts/<chart>`;
-  library charts are bundled into their dependents and are not published
+  policy tests); a chart tree with no matching test script fails the build
+  because lint does not replace the mandated gates;
+- packages each application chart and decides against the registry, not
+  against Git history: a version that is not yet present at
+  `oci://<location>-docker.pkg.dev/<project>/<repository>/charts/<chart>` is
+  pushed; a version that is already present is pulled and compared file by
+  file with the packaged source (dependency archives expanded) — identical
+  content is recorded as already published so an interrupted build can be
+  retried, different content fails the build: bump `Chart.yaml` `version`.
+  Library charts are bundled into their dependents and are not published
   separately;
-- fails when a chart directory changed in the push but its version is already
-  published — bump `Chart.yaml` `version` instead;
-- writes one evidence object per published version (source revision, build
-  ID, chart name and version, OCI digest, package SHA-256, Helm version, lint
-  and test outcome) to the release-evidence bucket and to the build log.
+- writes one evidence object per chart version (source revision, build ID,
+  chart name and version, publication state, OCI digest, package SHA-256,
+  Helm version, lint and test outcome) to the dedicated `chart-evidence`
+  bucket — versioned, never expired by lifecycle, create-only for the
+  publisher — and to the build log.
 
 Feature branches are verified by review and the same local checks; they never
 publish. The trigger does not create a Cloud Deploy release and deploys

@@ -42,9 +42,13 @@ registry (`pilprod/yourown-chat-rules` Issues #5, #6 and #7).
    `app-gcp` Stack) lint and test every platform chart and publish each
    application chart version exactly once to
    `oci://<location>-docker.pkg.dev/<project>/<repository>/charts/<chart>`.
-   A changed chart whose version already exists fails the build. Evidence
-   (source revision, build ID, version, OCI digest, package SHA-256, Helm
-   version, test outcome) is recorded per published version.
+   Immutability is decided against the registry: an already published
+   version is pulled and compared with the packaged source; identical content
+   is recorded as already published (retry-safe), different content fails the
+   build. Publication requires the platform test scripts to be present and
+   passing. Evidence (source revision, build ID, version, publication state,
+   OCI digest, package SHA-256, Helm version, test outcome) is recorded per
+   version in a dedicated durable evidence bucket.
 4. **Wrappers follow publication.** Each owning service repository adds a
    minimal wrapper (`Chart.yaml` pinning one exact profile version,
    `Chart.lock`, base values, minimal environment overlays). Generic Skaffold

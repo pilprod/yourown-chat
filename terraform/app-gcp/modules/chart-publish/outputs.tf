@@ -12,3 +12,8 @@ output "chart_registry" {
   description = "OCI base reference that service wrappers pin platform charts from, e.g. oci://europe-west3-docker.pkg.dev/<project>/docker/charts."
   value       = "oci://${local.chart_registry_path}"
 }
+
+output "evidence_bucket_name" {
+  description = "Durable, versioned bucket holding one evidence object per published chart version."
+  value       = google_storage_bucket.evidence.name
+}
