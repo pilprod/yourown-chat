@@ -1,10 +1,10 @@
 # Helm platform contract
 
-This document explains how the public
-[Helm platform policy](../.ai/helm-policy.md) is implemented in this
-repository and how service repositories consume it. The policy is normative;
-this page is the operating description. If they disagree, the policy wins and
-this page is corrected.
+This document describes the Helm platform contract implemented in this
+repository and how service repositories consume it. The former public
+[Helm platform policy](https://github.com/pilprod/yourown-chat-rules/blob/main/public/helm-policy.md)
+is retained only as a disconnected archive. The schemas, tests and source in
+this repository define the current implementation.
 
 Status: phase 1. The platform profile charts live under `helm/platform/`
 (added by the parallel platform-profiles work), the publication rail is

@@ -1,8 +1,9 @@
 # Publishes approved platform Helm chart versions as immutable OCI artifacts.
 #
-# The public Helm platform policy (.ai/helm-policy.md) requires every platform
-# chart version to be published once, never overwritten, and pinned by service
-# wrappers through an explicit dependency change. This module owns only the
+# The former Helm platform policy, retained in the disconnected
+# pilprod/yourown-chat-rules/public archive, documented publishing each
+# platform chart version once, never overwriting it, and pinning it through an
+# explicit service-wrapper dependency change. This module owns only the
 # publication rail: a least-privilege build identity, a repo-scoped writer
 # binding on the dedicated immutable-tag Helm chart repository published by
 # platform-gcp, a durable evidence bucket and one canonical-branch Cloud Build

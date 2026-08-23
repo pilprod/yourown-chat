@@ -1,8 +1,9 @@
 # Platform workload profiles
 
 This directory is the authoritative source of the reusable YourOwn.Chat
-platform Helm charts required by the public
-[Helm platform policy](../../.ai/helm-policy.md). Each chart is one approved
+platform Helm charts. The former
+[Helm platform policy](https://github.com/pilprod/yourown-chat-rules/blob/main/public/helm-policy.md)
+is retained only as a disconnected archive. Each chart is one supported
 workload profile. A service repository does not copy these templates; it owns a
 minimal release wrapper that pins an exact published profile version and
 supplies only schema-validated values.

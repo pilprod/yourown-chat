@@ -6,8 +6,9 @@
 
 ## Context
 
-The public Helm platform policy (`.ai/helm-policy.md`) was accepted on
-2026-08-22. It requires reusable platform charts with strict typed values
+The public Helm platform policy, now retained in the disconnected archive at
+`pilprod/yourown-chat-rules/public/helm-policy.md`, was accepted on
+2026-08-22. It specified reusable platform charts with strict typed values
 contracts, immutable versioned OCI publication, and minimal service wrappers in
 the owning repositories. The repository currently contains five
 service-specific charts under `helm/` (`yourown-chat`, `mcp`, `agent-platform`,
@@ -89,7 +90,8 @@ registry (`pilprod/yourown-chat-rules` Issues #5, #6 and #7).
 
 ## References
 
-- `.ai/helm-policy.md`, `.ai/infrastructure-policy.md`, `.ai/release-policy.md`,
-  `.ai/multi-agent-workflow.md`
+- `pilprod/yourown-chat-rules/public/helm-policy.md`,
+  `public/infrastructure-policy.md`, `public/release-policy.md` and
+  `public/multi-agent-workflow.md` in the same disconnected archive
 - `docs/HELM_PLATFORM.md`
 - `pilprod/yourown-chat-rules` Issues #5, #6, #7

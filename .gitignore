@@ -36,7 +36,6 @@ service-account*.json
 .vscode/
 .codex/*
 !.codex/config.toml
-.engineering-private
 
 # JavaScript / TypeScript
 **/node_modules/
