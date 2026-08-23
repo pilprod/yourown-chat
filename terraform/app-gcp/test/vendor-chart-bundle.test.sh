@@ -66,12 +66,25 @@ require_literal "$main" 'condition     = sha256(local.application_values) == var
 require_literal "$main" 'prevent_destroy = true'
 
 require_literal "$main" 'policy_types = ["Ingress", "Egress"]'
+require_literal "$main" 'data "kubernetes_endpoints_v1" "dns"'
+require_literal "$main" 'name      = "kube-dns"'
+require_literal "$main" 'namespace = "kube-system"'
 require_literal "$main" 'cidr = "${var.cluster_dns_ip}/32"'
+require_literal "$main" 'for port in subset.port : port.port == 53 && contains(["TCP", "UDP"], port.protocol)'
+require_literal "$main" 'for address in subset.address : address.ip'
+require_literal "$main" 'for_each = local.cluster_dns_endpoint_ips'
+require_literal "$main" 'cidr = "${dns_endpoint.value}/32"'
+require_literal "$main" 'condition     = length(local.cluster_dns_endpoint_ips) > 0'
 require_literal "$main" 'port     = "53"'
 require_literal "$main" 'protocol = "TCP"'
 require_literal "$main" 'protocol = "UDP"'
 require_literal "$main" '"kubernetes.io/metadata.name" = "kube-system"'
 require_literal "$main" '"k8s-app" = "kube-dns"'
+
+if rg -n -- 'not_ready_address' "$main"; then
+  fail "DNS egress must never include not-ready endpoint addresses"
+fi
+
 require_literal "$main" 'resource "kubernetes_network_policy_v1" "flow_ingress"'
 require_literal "$main" 'resource "kubernetes_network_policy_v1" "flow_egress"'
 require_literal "$main" 'data "kubernetes_service_v1" "api"'
