@@ -193,10 +193,12 @@ the version before any change that follows publication.
 
 ## Release integration
 
-The generic Skaffold and Cloud Deploy integration for wrapper-based releases
-lives in [`release/`](release/README.md): the service release manifest
-contract, the release assembler, the shared policy check, and the pinned
-tooling used by the platform-owned Cloud Build steps.
+The profile charts are consumed by service release wrappers that the owning
+service repositories pin once the charts are published. Wrapper-based Skaffold
+and Cloud Deploy integration is not part of this repository yet; the existing
+per-component Skaffold configurations under `helm/` remain the release path
+until the owner approves that migration. The generic render policy check that
+every profile render must satisfy lives in `helm/test/platform-policy-check.sh`.
 
 ## Tests
 

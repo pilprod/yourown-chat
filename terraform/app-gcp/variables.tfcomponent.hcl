@@ -83,15 +83,8 @@ variable "workload_identity_members" {
 
 variable "helm_registry_repository_id" {
   type        = string
-  description = "Artifact Registry repository ID of the platform Helm workload-profile charts (published by the platform-gcp stack as helm_registry_repository_id). null until platform-gcp has been applied with that repository; wrapper releases require it and the chart publication rail publishes into it."
+  description = "Artifact Registry repository ID of the platform Helm workload-profile charts (published by the platform-gcp stack as helm_registry_repository_id). null until platform-gcp has been applied with that repository; the chart publication rail publishes into it."
   default     = null
-}
-
-# --- Wrapper-based delivery (platform workload profiles) -----------------------
-variable "wrapper_releases_enabled" {
-  type        = bool
-  description = "Cut service releases from the service repository's helm/release.yaml and platform-profile release wrappers (rendered through helm/platform/release/assemble.sh) instead of the legacy charts under helm/. Requires helm_registry_repository_id. Default false keeps the legacy release path unchanged."
-  default     = false
 }
 
 # --- Image-build CI (Cloud Build 2nd-gen) ------------------------------------

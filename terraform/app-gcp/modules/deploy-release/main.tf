@@ -10,42 +10,6 @@ locals {
   # digest so release gates cannot change underneath an immutable source tag.
   scan_cli_image = "gcr.io/google.com/cloudsdktool/google-cloud-cli:573.0.0@sha256:f0b4abeb30773243f9ae95abe201ec01de07d5ed582b56ca52879eb3dbe209c3"
 
-  # --- Wrapper-based delivery through the platform workload profiles ---------
-  chart_registry_host = var.helm_chart_repository == null ? "" : "${var.helm_chart_repository.location}-docker.pkg.dev"
-  chart_registry      = var.helm_chart_repository == null ? "" : "oci://${local.chart_registry_host}/${var.project_id}/${var.helm_chart_repository.repository_id}"
-
-  # Cloud Deploy profile => wrapper overlay suffix per source repository. The
-  # profile names are the ones the existing pipelines select per stage; the
-  # overlay selects values-<overlay>.yaml inside each wrapper.
-  wrapper_profiles = {
-    backend = ["server-pilot=prod"]
-    agents  = ["agents-running=running", "agents-paused=paused"]
-    mcp     = ["mcp-dev=dev", "mcp-prod=prod"]
-  }
-
-  wrapper_identity_args = join(" ", [for key, email in var.workload_identity_emails : "--identity ${key}=${email}"])
-  wrapper_dns_arg       = var.cluster_dns_ip == "" ? "" : "--cluster-dns-ip ${var.cluster_dns_ip}"
-
-  # Installs the Helm release pinned and checksummed by the public platform
-  # checkout (helm/platform/release/tooling.env) into a cloud-sdk step. The
-  # step sets platform_dir to the platform checkout first. Bash variables are
-  # $$-escaped for Cloud Build.
-  helm_install_script = <<-EOT
-    . "$$platform_dir/helm/platform/release/tooling.env"
-    helm_version="$$HELM_VERSION"
-    helm_sha256="$$HELM_LINUX_AMD64_SHA256"
-    curl -fsSL "https://get.helm.sh/helm-$$helm_version-linux-amd64.tar.gz" -o /tmp/helm.tgz
-    echo "$$helm_sha256  /tmp/helm.tgz" | sha256sum -c -
-    tar -xzf /tmp/helm.tgz -C /tmp
-    install -m 0755 /tmp/linux-amd64/helm /usr/local/bin/helm
-    helm version --short
-  EOT
-
-  # Non-interactive Helm login to the platform chart registry with the build
-  # identity's short-lived access token.
-  helm_registry_login_script = <<-EOT
-    gcloud auth print-access-token | helm registry login -u oauth2accesstoken --password-stdin "${local.chart_registry_host}"
-  EOT
 }
 
 resource "google_cloudbuildv2_repository" "this" {
