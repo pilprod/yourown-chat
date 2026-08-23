@@ -10,19 +10,24 @@ output "source_repositories" {
     name       = string
     remote_uri = string
   }))
-  description = "Source repositories keyed by role."
-  value       = var.source_repositories
+  description = "Source repositories keyed by role plus a non-repository catalog_contract entry carrying the versioned compatibility envelope."
+  value = merge(var.source_repositories, {
+    catalog_contract = {
+      name = "catalog-contract"
+      remote_uri = jsonencode({
+        revision                  = var.catalog_revision
+        vendor_chart_bundles      = var.vendor_chart_bundles
+        additional_database_users = var.additional_database_users
+        private_http_routes       = var.private_http_routes
+      })
+    }
+  })
 }
 
 output "catalog_revision" {
   type        = string
-  description = "Versioned JSON catalog envelope published through the stable catalog_revision cross-Stack output name."
-  value = jsonencode({
-    revision                  = var.catalog_revision
-    vendor_chart_bundles      = var.vendor_chart_bundles
-    additional_database_users = var.additional_database_users
-    private_http_routes       = var.private_http_routes
-  })
+  description = "Revision marker of the published catalog."
+  value       = var.catalog_revision
 }
 
 output "vendor_chart_bundles" {
