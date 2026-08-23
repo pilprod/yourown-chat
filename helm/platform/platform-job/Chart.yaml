@@ -1,0 +1,22 @@
+apiVersion: v2
+name: platform-job
+description: >-
+  YourOwn.Chat platform workload profile for a bounded Job or CronJob such as a
+  schema migration or maintenance operation. Renders the Job or CronJob, a
+  deny-by-default NetworkPolicy, ServiceAccount and optional Secret Manager CSI
+  provider class with explicit deadline, retry, concurrency and cleanup
+  controls. Service wrappers pin an exact published version and supply only
+  schema-validated values.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.29.0-0"
+keywords:
+  - yourown-chat
+  - platform-profile
+home: https://github.com/pilprod/yourown-chat/tree/main/helm/platform
+sources:
+  - https://github.com/pilprod/yourown-chat
+annotations:
+  platform.yourown.chat/profile: platform-job
+  platform.yourown.chat/contract: "Public Helm platform policy (.ai/helm-policy.md)"

@@ -1,0 +1,316 @@
+---
+# Source: platform-service/templates/networkpolicy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: identity-api
+  namespace: identity
+  labels:
+    app: identity-api
+    app.kubernetes.io/name: identity-api
+    app.kubernetes.io/instance: test-service-valid
+    app.kubernetes.io/component: platform-service
+    app.kubernetes.io/part-of: yourown-chat-server
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: "platform-service-0.1.0"
+    platform.yourown.chat/profile: platform-service
+    platform.yourown.chat/chart-version: "0.1.0"
+  annotations:
+    platform.yourown.chat/ingress-rules: "from-transport,metrics-scrape"
+    platform.yourown.chat/egress-rules: "cloudsql,mattermost"
+spec:
+  podSelector:
+    matchLabels:
+      app: identity-api
+      app.kubernetes.io/name: identity-api
+      app.kubernetes.io/instance: test-service-valid
+  policyTypes: [Ingress, Egress]
+  ingress:
+    # from-transport: Transport gateway forwards authenticated identity requests
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: "edge"
+          podSelector:
+            matchLabels:
+              app: transport
+      ports:
+        - protocol: TCP
+          port: 8081
+    # metrics-scrape: In-namespace Prometheus scrape of the metrics endpoint
+    - from:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 9464
+  egress:
+    # platform-dns: cluster DNS resolution
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+        - ipBlock:
+            cidr: "10.30.0.10/32"
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # cloudsql: PostgreSQL on the private Cloud SQL address
+    - to:
+        - ipBlock:
+            cidr: "10.20.30.40/32"
+      ports:
+        - protocol: TCP
+          port: 5432
+    # mattermost: Workspace link verification against the private Mattermost Service
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: "mattermost"
+      ports:
+        - protocol: TCP
+          port: 8065
+
+---
+# Source: platform-service/templates/pdb.yaml
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: identity-api
+  namespace: identity
+  labels:
+    app: identity-api
+    app.kubernetes.io/name: identity-api
+    app.kubernetes.io/instance: test-service-valid
+    app.kubernetes.io/component: platform-service
+    app.kubernetes.io/part-of: yourown-chat-server
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: "platform-service-0.1.0"
+    platform.yourown.chat/profile: platform-service
+    platform.yourown.chat/chart-version: "0.1.0"
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: identity-api
+      app.kubernetes.io/name: identity-api
+      app.kubernetes.io/instance: test-service-valid
+
+---
+# Source: platform-service/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: identity-api
+  namespace: identity
+  labels:
+    app: identity-api
+    app.kubernetes.io/name: identity-api
+    app.kubernetes.io/instance: test-service-valid
+    app.kubernetes.io/component: platform-service
+    app.kubernetes.io/part-of: yourown-chat-server
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: "platform-service-0.1.0"
+    platform.yourown.chat/profile: platform-service
+    platform.yourown.chat/chart-version: "0.1.0"
+  annotations:
+    iam.gke.io/gcp-service-account: "identity-api@example-project.iam.gserviceaccount.com"
+automountServiceAccountToken: false
+
+---
+# Source: platform-service/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: identity-api
+  namespace: identity
+  labels:
+    app: identity-api
+    app.kubernetes.io/name: identity-api
+    app.kubernetes.io/instance: test-service-valid
+    app.kubernetes.io/component: platform-service
+    app.kubernetes.io/part-of: yourown-chat-server
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: "platform-service-0.1.0"
+    platform.yourown.chat/profile: platform-service
+    platform.yourown.chat/chart-version: "0.1.0"
+spec:
+  type: ClusterIP
+  selector:
+    app: identity-api
+    app.kubernetes.io/name: identity-api
+    app.kubernetes.io/instance: test-service-valid
+  ports:
+    - name: http
+      port: 8081
+      targetPort: http
+      protocol: TCP
+    - name: metrics
+      port: 9464
+      targetPort: metrics
+      protocol: TCP
+
+---
+# Source: platform-service/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: identity-api
+  namespace: identity
+  labels:
+    app: identity-api
+    app.kubernetes.io/name: identity-api
+    app.kubernetes.io/instance: test-service-valid
+    app.kubernetes.io/component: platform-service
+    app.kubernetes.io/part-of: yourown-chat-server
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: "platform-service-0.1.0"
+    platform.yourown.chat/profile: platform-service
+    platform.yourown.chat/chart-version: "0.1.0"
+  annotations:
+    platform.yourown.chat/paused: "false"
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: identity-api
+      app.kubernetes.io/name: identity-api
+      app.kubernetes.io/instance: test-service-valid
+  template:
+    metadata:
+      labels:
+        app: identity-api
+        app.kubernetes.io/name: identity-api
+        app.kubernetes.io/instance: test-service-valid
+        app.kubernetes.io/component: platform-service
+        app.kubernetes.io/part-of: yourown-chat-server
+        app.kubernetes.io/managed-by: Helm
+        helm.sh/chart: "platform-service-0.1.0"
+        platform.yourown.chat/profile: platform-service
+        platform.yourown.chat/chart-version: "0.1.0"
+      annotations:
+        platform.yourown.chat/image-digest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        checksum/secrets: "9e9e237a62edcedd92fda1c709dcbc0d1a31d1aee6bf1c3e7a354fc5926085ef"
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9464"
+        prometheus.io/path: "/metrics"
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      serviceAccountName: identity-api
+      priorityClassName: production
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: identity-api
+          image: "europe-west3-docker.pkg.dev/example-project/docker/yourown-chat-identity-api@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: IDENTITY_API_PORT
+              value: "8081"
+            - name: IDENTITY_DATABASE_URL_FILE
+              value: "/var/run/secrets/app/database-url"
+            - name: IDENTITY_SESSION_TTL
+              value: "720h"
+          ports:
+            - name: http
+              containerPort: 8081
+              protocol: TCP
+            - name: metrics
+              containerPort: 9464
+              protocol: TCP
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 3
+            timeoutSeconds: 3
+            failureThreshold: 40
+            successThreshold: 1
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+            successThreshold: 1
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+            successThreshold: 1
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: "5m"
+              memory: "16Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: platform-secrets
+              mountPath: /var/run/secrets/app
+              readOnly: true
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+        - name: platform-secrets
+          csi:
+            driver: secrets-store-gke.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: identity-api-secrets
+
+---
+# Source: platform-service/templates/secretproviderclass.yaml
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: identity-api-secrets
+  namespace: identity
+  labels:
+    app: identity-api
+    app.kubernetes.io/name: identity-api
+    app.kubernetes.io/instance: test-service-valid
+    app.kubernetes.io/component: platform-service
+    app.kubernetes.io/part-of: yourown-chat-server
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: "platform-service-0.1.0"
+    platform.yourown.chat/profile: platform-service
+    platform.yourown.chat/chart-version: "0.1.0"
+spec:
+  provider: gke
+  parameters:
+    secrets: |
+      - resourceName: "projects/example-project/secrets/yourown-chat-identity-runtime-database-url/versions/latest"
+        path: "database-url"

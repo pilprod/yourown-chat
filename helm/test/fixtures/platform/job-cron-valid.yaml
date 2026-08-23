@@ -1,0 +1,21 @@
+workload:
+  name: nightly-maintenance
+image:
+  digest: europe-west3-docker.pkg.dev/example-project/docker/yourown-chat-maintenance@sha256:1111111111111111111111111111111111111111111111111111111111111111
+container:
+  args: ["--prune"]
+  resources:
+    requests: { cpu: 10m, memory: 32Mi }
+    limits: { memory: 128Mi }
+job:
+  kind: CronJob
+  schedule: "15 3 * * *"
+  restartPolicy: Never
+runtime:
+  priorityClass: development
+network:
+  egress:
+    - name: cloudsql
+      purpose: Retention pruning against the private Cloud SQL address
+      to: { cidr: 10.20.30.40/32 }
+      ports: [{ port: 5432 }]

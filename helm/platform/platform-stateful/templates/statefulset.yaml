@@ -1,0 +1,54 @@
+{{- if not .Values.container.ports }}{{ fail "platform-stateful requires at least one container port" }}{{ end -}}
+{{- $h := .Values.container.health -}}
+{{- if not (and $h $h.readiness (or $h.readiness.httpGet $h.readiness.exec) $h.liveness (or $h.liveness.httpGet $h.liveness.exec)) -}}
+{{- fail "platform-stateful requires container.health.readiness and container.health.liveness probes" -}}
+{{- end -}}
+{{- $r := .Values.runtime -}}
+{{- $p := .Values.persistence -}}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "platform.name" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+  annotations:
+    platform.yourown.chat/paused: {{ $r.paused | quote }}
+spec:
+  serviceName: {{ include "platform.name" . }}-headless
+  replicas: {{ ternary 0 $r.replicas $r.paused }}
+  revisionHistoryLimit: 3
+  podManagementPolicy: OrderedReady
+  updateStrategy:
+    type: RollingUpdate
+  {{- if $p.enabled }}
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: {{ ternary "Retain" "Delete" $p.retain }}
+    whenScaled: {{ ternary "Retain" "Delete" $p.retain }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "platform.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "platform.labels" . | nindent 8 }}
+      annotations:
+        {{- include "platform.podAnnotations" . | nindent 8 }}
+    spec:
+      {{- include "platform.podSpec" . | nindent 6 }}
+  {{- if $p.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "platform.selectorLabels" . | nindent 10 }}
+      spec:
+        accessModes: [{{ $p.accessMode }}]
+        {{- with $p.storageClass }}
+        storageClassName: {{ . | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ $p.size }}
+  {{- end }}

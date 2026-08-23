@@ -1,0 +1,144 @@
+# platform-service profile defaults.
+#
+# This chart is consumed as a pinned dependency of a service release wrapper.
+# It is intentionally not renderable without wrapper values: workload.name,
+# image.digest, container.ports, container.health probes and resources are
+# required and validated by values.schema.json and by the templates. Every key
+# below is part of the typed contract; unknown keys are rejected.
+
+# Reserved for Helm; the platform contract defines no global values.
+global: {}
+
+workload:
+  # Required. Lowercase kebab-case DNS label naming every rendered object.
+  name: ""
+  # Optional app.kubernetes.io/part-of grouping label. Defaults to workload.name.
+  partOf: ""
+
+image:
+  # Required release parameter: Artifact Registry repository@sha256 digest
+  # supplied by the authoritative release pipeline. Tags are rejected.
+  digest: ""
+
+container:
+  command: []
+  args: []
+  # Non-secret configuration only. Keys that look like secret material are
+  # rejected; secrets are mounted read-only through secrets.files.
+  env: {}
+  # Required: at least one named non-privileged port. The first port is the
+  # default health and Service port.
+  ports: []
+  health:
+    # Name of the declared port used by HTTP probes.
+    port: http
+    # Each probe declares exactly one of httpGet.path or exec.command.
+    startup:
+      periodSeconds: 3
+      timeoutSeconds: 3
+      failureThreshold: 40
+    readiness:
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 3
+    liveness:
+      periodSeconds: 20
+      timeoutSeconds: 3
+      failureThreshold: 3
+  resources:
+    # Required, measured values within the profile bounds published in
+    # templates/_bounds.tpl (requests: cpu <= 2000m, memory <= 4Gi;
+    # limits: cpu <= 4000m, memory <= 8Gi).
+    requests:
+      cpu: ""
+      memory: ""
+    limits:
+      # cpu limit is optional; omitting it is the documented exception for
+      # latency-sensitive services. memory limit is required.
+      cpu: ""
+      memory: ""
+  # Non-root UID/GID used by the pod and container security context.
+  runAsUser: 65532
+  # The root filesystem is read-only. /tmp is always an ephemeral volume;
+  # additional writable paths are declared here.
+  tmpSizeLimit: 64Mi
+  writableVolumes: []
+  terminationGracePeriodSeconds: 30
+
+runtime:
+  replicas: 1
+  # paused scales the workload to zero while preserving configuration.
+  paused: false
+  priorityClass: production
+  # Optional node pool selector (label pool=<value>).
+  nodePool: ""
+  rollout:
+    strategy: RollingUpdate
+    maxSurge: 1
+    maxUnavailable: 0
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 70
+  disruptionBudget:
+    enabled: false
+    minAvailable: 1
+
+identity:
+  # Release-supplied Workload Identity email. Required when secrets are mounted.
+  googleServiceAccount: ""
+
+secrets:
+  # Release-supplied Secret Manager project. Values never contain secret data.
+  project: ""
+  mountPath: /var/run/secrets/app
+  # - secret: logical Secret Manager secret id
+  #   file: file name under mountPath
+  #   version: latest | <number>
+  files: []
+
+network:
+  # Optional release parameter adding the cluster DNS address to the DNS rule.
+  clusterDNSIP: ""
+  # Typed allow rules. Each rule names its purpose and exactly one peer kind.
+  ingress: []
+  egress: []
+
+service:
+  # Extra named ports exposed by the ClusterIP Service are taken from
+  # container.ports; this block only allows disabling the Service for a
+  # workload that is never called over the network.
+  enabled: true
+
+ingress:
+  enabled: false
+  host: ""
+  port: http
+  paths: []
+  # Platform-managed origin TLS secret reference (not certificate material).
+  originTLSSecret: ""
+  sslRedirect: true
+  accessLog: false
+  proxy:
+    bodySizeMiB: 1
+    readTimeoutSeconds: 60
+    sendTimeoutSeconds: 60
+    requestBuffering: true
+  rateLimit:
+    enabled: false
+    connections: 8
+    rps: 10
+    burstMultiplier: 2
+
+observability:
+  metrics:
+    enabled: false
+    port: metrics
+    path: /metrics
+
+agentRegistry:
+  # Google Cloud Agent Registry discovery for first-party MCP servers.
+  enabled: false
+  functionalType: MCP_SERVER
+  mcpPath: /mcp

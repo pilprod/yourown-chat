@@ -1,0 +1,87 @@
+# platform-worker profile defaults.
+#
+# Consumed as a pinned dependency of a service release wrapper; not renderable
+# without wrapper values (workload.name, image.digest, resources). A worker has
+# no Service and no ingress; it may expose a metrics port for in-namespace
+# scraping. Unknown keys are rejected by values.schema.json.
+
+global: {}
+
+workload:
+  name: ""
+  partOf: ""
+
+image:
+  digest: ""
+
+container:
+  command: []
+  args: []
+  env: {}
+  # Optional named ports (for example a metrics endpoint). No Service is rendered.
+  ports: []
+  health:
+    port: metrics
+    startup:
+      periodSeconds: 3
+      timeoutSeconds: 3
+      failureThreshold: 40
+    readiness:
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 3
+    liveness:
+      periodSeconds: 20
+      timeoutSeconds: 3
+      failureThreshold: 3
+  resources:
+    requests:
+      cpu: ""
+      memory: ""
+    limits:
+      cpu: ""
+      memory: ""
+  runAsUser: 65532
+  tmpSizeLimit: 64Mi
+  writableVolumes: []
+  # Workers drain in-flight work before exit; the default is deliberately longer.
+  terminationGracePeriodSeconds: 60
+
+runtime:
+  replicas: 1
+  # paused declares the application-runtime pause state: compute scales to zero
+  # while the approved digest and configuration remain declared.
+  paused: false
+  priorityClass: production
+  nodePool: ""
+  rollout:
+    strategy: RollingUpdate
+    maxSurge: 1
+    maxUnavailable: 0
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 70
+  disruptionBudget:
+    enabled: false
+    minAvailable: 1
+
+identity:
+  googleServiceAccount: ""
+
+secrets:
+  project: ""
+  mountPath: /var/run/secrets/app
+  files: []
+
+network:
+  clusterDNSIP: ""
+  ingress: []
+  egress: []
+
+observability:
+  metrics:
+    enabled: false
+    port: metrics
+    path: /metrics

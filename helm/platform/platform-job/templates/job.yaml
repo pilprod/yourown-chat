@@ -1,0 +1,62 @@
+{{- $j := .Values.job -}}
+{{- $name := include "platform.name" . -}}
+{{- if eq $j.kind "CronJob" }}
+{{- if not $j.schedule }}{{ fail "job.schedule is required when job.kind is CronJob" }}{{ end }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+spec:
+  schedule: {{ $j.schedule | quote }}
+  suspend: {{ $j.suspend }}
+  concurrencyPolicy: {{ $j.concurrencyPolicy }}
+  startingDeadlineSeconds: {{ $j.startingDeadlineSeconds }}
+  successfulJobsHistoryLimit: {{ $j.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ $j.failedJobsHistoryLimit }}
+  jobTemplate:
+    metadata:
+      labels:
+        {{- include "platform.labels" . | nindent 8 }}
+    spec:
+      backoffLimit: {{ $j.backoffLimit }}
+      activeDeadlineSeconds: {{ $j.activeDeadlineSeconds }}
+      ttlSecondsAfterFinished: {{ $j.ttlSecondsAfterFinished }}
+      template:
+        metadata:
+          labels:
+            {{- include "platform.labels" . | nindent 12 }}
+          annotations:
+            {{- include "platform.podAnnotations" . | nindent 12 }}
+        spec:
+          restartPolicy: {{ $j.restartPolicy }}
+          {{- include "platform.podSpec" . | nindent 10 }}
+{{- else }}
+{{- if $j.schedule }}{{ fail "job.schedule is only valid when job.kind is CronJob" }}{{ end }}
+{{- $suffix := printf "%s:%s:%s" .Chart.Version (include "platform.image" .) (toJson .Values.container) | sha256sum | trunc 12 }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ printf "%s-%s" $name $suffix }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+  annotations:
+    platform.yourown.chat/run-id: {{ $suffix | quote }}
+spec:
+  suspend: {{ $j.suspend }}
+  backoffLimit: {{ $j.backoffLimit }}
+  activeDeadlineSeconds: {{ $j.activeDeadlineSeconds }}
+  ttlSecondsAfterFinished: {{ $j.ttlSecondsAfterFinished }}
+  template:
+    metadata:
+      labels:
+        {{- include "platform.labels" . | nindent 8 }}
+      annotations:
+        {{- include "platform.podAnnotations" . | nindent 8 }}
+    spec:
+      restartPolicy: {{ $j.restartPolicy }}
+      {{- include "platform.podSpec" . | nindent 6 }}
+{{- end }}

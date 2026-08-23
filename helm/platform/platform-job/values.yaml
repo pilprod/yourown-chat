@@ -1,0 +1,63 @@
+# platform-job profile defaults.
+#
+# Consumed as a pinned dependency of a service release wrapper; not renderable
+# without wrapper values (workload.name, image.digest, resources). A Job uses
+# its completion status instead of service probes and accepts no ingress.
+
+global: {}
+
+workload:
+  name: ""
+  partOf: ""
+
+image:
+  digest: ""
+
+container:
+  command: []
+  args: []
+  env: {}
+  resources:
+    requests:
+      cpu: ""
+      memory: ""
+    limits:
+      cpu: ""
+      memory: ""
+  runAsUser: 65532
+  tmpSizeLimit: 64Mi
+  writableVolumes: []
+  terminationGracePeriodSeconds: 30
+
+job:
+  # Job renders one immutable, digest-suffixed Job per release so a new image
+  # always creates a new run. CronJob renders a schedule-driven controller.
+  kind: Job
+  # Required for CronJob (standard five-field cron expression).
+  schedule: ""
+  suspend: false
+  backoffLimit: 3
+  activeDeadlineSeconds: 3600
+  ttlSecondsAfterFinished: 86400
+  restartPolicy: OnFailure
+  # CronJob only.
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+
+runtime:
+  priorityClass: production
+  nodePool: ""
+
+identity:
+  googleServiceAccount: ""
+
+secrets:
+  project: ""
+  mountPath: /var/run/secrets/app
+  files: []
+
+network:
+  clusterDNSIP: ""
+  egress: []

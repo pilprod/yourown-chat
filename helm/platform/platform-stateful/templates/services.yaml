@@ -1,0 +1,93 @@
+{{- $name := include "platform.name" . -}}
+{{- $l4 := .Values.layer4Exposure -}}
+{{- $l4Keys := dict -}}
+{{- if $l4.enabled -}}
+{{- if not $l4.ports }}{{ fail "layer4Exposure.enabled requires at least one entry in layer4Exposure.ports" }}{{ end -}}
+{{- if not $l4.reservedAddress }}{{ fail "layer4Exposure.enabled requires layer4Exposure.reservedAddress (platform-reserved address)" }}{{ end -}}
+{{- range $l4.ports -}}
+{{- $port := fromJson (include "platform.portByName" (dict "ports" $.Values.container.ports "name" .name "context" "layer4Exposure.ports")) -}}
+{{- if ne (int $port.port) (int .port) }}{{ fail (printf "layer4Exposure port %q must use the same port number as the container port" .name) }}{{ end -}}
+{{- if ne ($port.protocol | default "TCP") .protocol }}{{ fail (printf "layer4Exposure port %q must use the same protocol as the container port" .name) }}{{ end -}}
+{{- $_ := set $l4Keys .name true -}}
+{{- end -}}
+{{- end -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-headless
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "platform.selectorLabels" . | nindent 4 }}
+  ports:
+    {{- range .Values.container.ports }}
+    - name: {{ .name }}
+      port: {{ .port }}
+      targetPort: {{ .name }}
+      protocol: {{ .protocol | default "TCP" }}
+    {{- end }}
+{{- if .Values.service.enabled }}
+{{- $internal := list -}}
+{{- range .Values.container.ports }}{{ if not (hasKey $l4Keys .name) }}{{ $internal = append $internal . }}{{ end }}{{ end -}}
+{{- if $internal }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "platform.selectorLabels" . | nindent 4 }}
+  ports:
+    {{- range $internal }}
+    - name: {{ .name }}
+      port: {{ .port }}
+      targetPort: {{ .name }}
+      protocol: {{ .protocol | default "TCP" }}
+    {{- end }}
+{{- end }}
+{{- end }}
+{{- if $l4.enabled }}
+{{- range $protocol := list "TCP" "UDP" }}
+{{- $ports := list -}}
+{{- range $l4.ports }}{{ if eq .protocol $protocol }}{{ $ports = append $ports . }}{{ end }}{{ end -}}
+{{- if $ports }}
+---
+# Dedicated layer-four exposure for {{ $protocol }} transport only. Separate
+# per-protocol Services share one reserved address and select only this
+# workload; no control, administrative or unrelated port is published.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-{{ lower $protocol }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "platform.labels" $ | nindent 4 }}
+    platform.yourown.chat/exposure: layer4
+  annotations:
+    cloud.google.com/l4-rbs: "enabled"
+spec:
+  type: LoadBalancer
+  loadBalancerIP: {{ $l4.reservedAddress | quote }}
+  externalTrafficPolicy: {{ $l4.externalTrafficPolicy }}
+  selector:
+    {{- include "platform.selectorLabels" $ | nindent 4 }}
+  ports:
+    {{- range $ports }}
+    - name: {{ .name }}
+      port: {{ .port }}
+      targetPort: {{ .name }}
+      protocol: {{ .protocol }}
+    {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

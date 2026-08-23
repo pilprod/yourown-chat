@@ -1,0 +1,105 @@
+# platform-stateful profile defaults.
+#
+# Consumed as a pinned dependency of a service release wrapper; not renderable
+# without wrapper values (workload.name, image.digest, ports, probes,
+# resources). Retained-state, backup, restore and resume semantics are the
+# wrapper owner's documented responsibility; the profile guarantees claim
+# retention and stable identity.
+
+global: {}
+
+workload:
+  name: ""
+  partOf: ""
+
+image:
+  digest: ""
+
+container:
+  command: []
+  args: []
+  env: {}
+  ports: []
+  health:
+    port: http
+    startup:
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 24
+    readiness:
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 3
+    liveness:
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 3
+  resources:
+    requests:
+      cpu: ""
+      memory: ""
+    limits:
+      cpu: ""
+      memory: ""
+  runAsUser: 65532
+  tmpSizeLimit: 64Mi
+  writableVolumes: []
+  # Stateful workloads drain connections before exit.
+  terminationGracePeriodSeconds: 300
+
+runtime:
+  # Bounded to three ordered replicas; more requires a platform decision.
+  replicas: 1
+  paused: false
+  priorityClass: production
+  nodePool: ""
+  disruptionBudget:
+    enabled: false
+    minAvailable: 1
+
+identity:
+  googleServiceAccount: ""
+
+secrets:
+  project: ""
+  mountPath: /var/run/secrets/app
+  files: []
+
+network:
+  clusterDNSIP: ""
+  ingress: []
+  egress: []
+
+service:
+  # ClusterIP Service for the declared ports that are not part of the
+  # layer-four exposure. The headless Service is always rendered.
+  enabled: true
+
+persistence:
+  enabled: true
+  size: 1Gi
+  # Optional platform storage class (for example a CMEK-backed class).
+  storageClass: ""
+  mountPath: /var/lib/app
+  accessMode: ReadWriteOnce
+  # Claims are retained on delete and scale-down.
+  retain: true
+
+layer4Exposure:
+  # Direct TCP/UDP exposure for a protocol that cannot be carried through the
+  # application edge. Requires the platform-reserved address and an exact port
+  # set that selects only this workload. Receives a separate threat and
+  # blast-radius review.
+  enabled: false
+  reservedAddress: ""
+  externalTrafficPolicy: Local
+  # - name: rtc-udp
+  #   port: 8443
+  #   protocol: UDP
+  ports: []
+
+observability:
+  metrics:
+    enabled: false
+    port: metrics
+    path: /metrics

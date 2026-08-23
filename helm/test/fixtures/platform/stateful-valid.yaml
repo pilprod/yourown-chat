@@ -1,0 +1,59 @@
+# Representative RTCD media transport wrapper values (multi-protocol layer-four exposure).
+workload:
+  name: rtcd
+  partOf: yourown-chat-mattermost
+image:
+  digest: europe-west3-docker.pkg.dev/example-project/docker/rtcd@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+container:
+  env:
+    RTCD_API_SECURITY_ALLOWSELFREGISTRATION: "true"
+    RTCD_STORE_DATASOURCE: /var/lib/rtcd/rtcd_db
+    RTCD_RTC_ICEHOSTOVERRIDE: 203.0.113.10
+    RTCD_RTC_ICEPORTUDP: "8443"
+    RTCD_RTC_ICEPORTTCP: "8443"
+    RTCD_LOGGER_CONSOLEJSON: "true"
+  ports:
+    - name: api
+      port: 8045
+    - name: rtc-tcp
+      port: 8443
+    - name: rtc-udp
+      port: 8443
+      protocol: UDP
+  health:
+    port: api
+    readiness:
+      httpGet: { path: /version }
+      periodSeconds: 5
+      failureThreshold: 24
+    liveness:
+      httpGet: { path: /version }
+      initialDelaySeconds: 20
+      periodSeconds: 10
+  resources:
+    requests: { cpu: 10m, memory: 32Mi }
+    limits: { cpu: "2", memory: 2Gi }
+runtime:
+  nodePool: general
+persistence:
+  size: 1Gi
+  storageClass: rtcd-cmek
+  mountPath: /var/lib/rtcd
+network:
+  clusterDNSIP: 10.30.0.10
+  ingress:
+    - name: mattermost-api
+      purpose: Mattermost Calls plugin registers with the private RTCD API
+      from: { namespace: mattermost }
+      ports: [{ port: 8045 }]
+  egress:
+    - name: public-media
+      purpose: WebRTC media to clients on the public internet
+      to: { internet: true }
+      ports: [{ port: 8443 }, { port: 8443, protocol: UDP }]
+layer4Exposure:
+  enabled: true
+  reservedAddress: 203.0.113.10
+  ports:
+    - { name: rtc-tcp, port: 8443, protocol: TCP }
+    - { name: rtc-udp, port: 8443, protocol: UDP }

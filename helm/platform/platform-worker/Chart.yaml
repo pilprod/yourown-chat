@@ -1,0 +1,22 @@
+apiVersion: v2
+name: platform-worker
+description: >-
+  YourOwn.Chat platform workload profile for background processing without
+  network exposure by default. Renders a Deployment, deny-by-default
+  NetworkPolicy, ServiceAccount, optional Secret Manager CSI provider class,
+  HorizontalPodAutoscaler and PodDisruptionBudget. Supports the declared pause
+  and scale-to-zero lifecycle. Service wrappers pin an exact published version
+  and supply only schema-validated values.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.29.0-0"
+keywords:
+  - yourown-chat
+  - platform-profile
+home: https://github.com/pilprod/yourown-chat/tree/main/helm/platform
+sources:
+  - https://github.com/pilprod/yourown-chat
+annotations:
+  platform.yourown.chat/profile: platform-worker
+  platform.yourown.chat/contract: "Public Helm platform policy (.ai/helm-policy.md)"
