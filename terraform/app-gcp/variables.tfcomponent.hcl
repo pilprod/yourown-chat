@@ -81,6 +81,25 @@ variable "workload_identity_members" {
   description = "Tenant (mattermost/matterbridge/dev) => IAM member string (serviceAccount:<email>) used as least-privilege secretAccessor grants. Published by the platform stack."
 }
 
+variable "helm_registry_repository_id" {
+  type        = string
+  description = "Artifact Registry repository ID of the platform Helm workload-profile charts (published by the platform-gcp stack as helm_registry_repository_id). null until platform-gcp has been applied with that repository; wrapper releases and chart publication require it."
+  default     = null
+}
+
+# --- Wrapper-based delivery (platform workload profiles) -----------------------
+variable "wrapper_releases_enabled" {
+  type        = bool
+  description = "Cut service releases from the service repository's helm/release.yaml and platform-profile release wrappers (rendered through helm/platform/release/assemble.sh) instead of the legacy charts under helm/. Requires helm_registry_repository_id. Default false keeps the legacy release path unchanged."
+  default     = false
+}
+
+variable "chart_publication_enabled" {
+  type        = bool
+  description = "Create the Cloud Build trigger that publishes helm/platform chart versions as immutable OCI artifacts on platform release tags. Requires helm_registry_repository_id. Publication itself happens only when a platform tag is pushed."
+  default     = false
+}
+
 # --- Image-build CI (Cloud Build 2nd-gen) ------------------------------------
 variable "github_connection_name" {
   type        = string

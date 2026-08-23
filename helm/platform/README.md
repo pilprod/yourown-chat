@@ -184,6 +184,13 @@ Publication of these charts to the platform Artifact Registry chart repository
 is a serialized release action owned by the platform release pipeline and is not
 performed from a local machine.
 
+## Release integration
+
+The generic Skaffold and Cloud Deploy integration for wrapper-based releases
+lives in [`release/`](release/README.md): the service release manifest
+contract, the release assembler, the shared policy check, and the pinned
+tooling used by the platform-owned Cloud Build steps.
+
 ## Tests
 
 ```bash

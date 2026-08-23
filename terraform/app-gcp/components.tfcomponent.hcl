@@ -684,6 +684,17 @@ component "deploy_release" {
 
     source_bucket_kms_key_name = var.cmek_key_id
 
+    # Wrapper-based delivery through the platform workload profiles. Both
+    # switches default to false; the chart repository comes from platform-gcp.
+    wrapper_releases_enabled  = var.wrapper_releases_enabled
+    chart_publication_enabled = var.chart_publication_enabled
+    helm_chart_repository = var.helm_registry_repository_id == null ? null : {
+      location      = var.artifact_registry_location
+      repository_id = var.helm_registry_repository_id
+    }
+    workload_identity_emails = var.workload_identity_emails
+    cluster_dns_ip           = var.cluster_dns_ip
+
     labels = local.common_labels
   }
 

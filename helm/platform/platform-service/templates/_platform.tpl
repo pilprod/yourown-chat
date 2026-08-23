@@ -19,16 +19,21 @@ helm/test/platform-common.test.sh fails when a copy drifts from this source.
 {{- default (include "platform.name" .) .Values.workload.partOf -}}
 {{- end -}}
 
-{{/* Platform-owned labels applied to every rendered object. */}}
+{{/*
+Platform-owned labels applied to every rendered object. The profile name comes
+from the chart's own platform.profileName definition, not from the chart
+metadata name, because Helm replaces the metadata name with the dependency
+alias inside a wrapper.
+*/}}
 {{- define "platform.labels" -}}
 app: {{ include "platform.name" . }}
 app.kubernetes.io/name: {{ include "platform.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
-app.kubernetes.io/component: {{ .Chart.Name }}
+app.kubernetes.io/component: {{ include "platform.profileName" . }}
 app.kubernetes.io/part-of: {{ include "platform.partOf" . }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
-helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | quote }}
-platform.yourown.chat/profile: {{ .Chart.Name }}
+helm.sh/chart: {{ printf "%s-%s" (include "platform.profileName" .) .Chart.Version | quote }}
+platform.yourown.chat/profile: {{ include "platform.profileName" . }}
 platform.yourown.chat/chart-version: {{ .Chart.Version | quote }}
 {{- end -}}
 
@@ -84,13 +89,13 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- $reqMem := include "platform.memoryBytes" (required "container.resources.requests.memory is required" $r.requests.memory) | int64 -}}
 {{- $limMem := include "platform.memoryBytes" (required "container.resources.limits.memory is required" $r.limits.memory) | int64 -}}
 {{- if gt $reqCPU (int64 $b.maxRequestCPUMillis) -}}
-{{- fail (printf "container.resources.requests.cpu %s exceeds the %s profile bound of %dm" $r.requests.cpu .Chart.Name (int64 $b.maxRequestCPUMillis)) -}}
+{{- fail (printf "container.resources.requests.cpu %s exceeds the %s profile bound of %dm" $r.requests.cpu (include "platform.profileName" .) (int64 $b.maxRequestCPUMillis)) -}}
 {{- end -}}
 {{- if gt $reqMem (int64 $b.maxRequestMemoryBytes) -}}
-{{- fail (printf "container.resources.requests.memory %s exceeds the %s profile bound" $r.requests.memory .Chart.Name) -}}
+{{- fail (printf "container.resources.requests.memory %s exceeds the %s profile bound" $r.requests.memory (include "platform.profileName" .)) -}}
 {{- end -}}
 {{- if gt $limMem (int64 $b.maxLimitMemoryBytes) -}}
-{{- fail (printf "container.resources.limits.memory %s exceeds the %s profile bound" $r.limits.memory .Chart.Name) -}}
+{{- fail (printf "container.resources.limits.memory %s exceeds the %s profile bound" $r.limits.memory (include "platform.profileName" .)) -}}
 {{- end -}}
 {{- if gt $reqMem $limMem -}}
 {{- fail "container.resources.requests.memory must not exceed container.resources.limits.memory" -}}
@@ -98,7 +103,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- if $r.limits.cpu -}}
 {{- $limCPU := include "platform.cpuMillis" $r.limits.cpu | int64 -}}
 {{- if gt $limCPU (int64 $b.maxLimitCPUMillis) -}}
-{{- fail (printf "container.resources.limits.cpu %s exceeds the %s profile bound of %dm" $r.limits.cpu .Chart.Name (int64 $b.maxLimitCPUMillis)) -}}
+{{- fail (printf "container.resources.limits.cpu %s exceeds the %s profile bound of %dm" $r.limits.cpu (include "platform.profileName" .) (int64 $b.maxLimitCPUMillis)) -}}
 {{- end -}}
 {{- if gt $reqCPU $limCPU -}}
 {{- fail "container.resources.requests.cpu must not exceed container.resources.limits.cpu" -}}

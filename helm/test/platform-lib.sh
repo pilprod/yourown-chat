@@ -107,18 +107,16 @@ golden() {
   fi
 }
 
-# Platform-owned invariants every profile render must satisfy.
+# Platform-owned invariants every profile render must satisfy. The policy
+# check itself is shared with the release assembler
+# (helm/platform/release/policy-check.sh); the test adds label and annotation
+# expectations that only hold for a direct profile render.
 assert_platform_invariants() {
   local file="$1"
-  assert_not_regex "${file}" 'type: (NodePort|ExternalName)' "no node-level or external-name Service"
-  assert_not_contains "${file}" 'hostNetwork' "no host networking"
-  assert_not_contains "${file}" 'hostPID' "no host PID"
-  assert_not_contains "${file}" 'hostPort' "no host port"
-  assert_not_contains "${file}" 'privileged: true' "no privileged container"
-  assert_not_regex "${file}" '^kind: Secret$' "no native Secret rendered"
-  assert_not_contains "${file}" 'secretKeyRef' "no plaintext secret environment"
-  assert_not_regex "${file}" 'image: "[^@"]*"$' "image is digest-qualified"
-  assert_not_regex "${file}" 'image: "(docker\.io|gcr\.io|ghcr\.io|quay\.io)' "image comes from Artifact Registry"
+  if ! bash "${repo_root}/helm/platform/release/policy-check.sh" "${file}"; then
+    echo "FAIL: platform policy check rejected ${file}" >&2
+    failures=$((failures + 1))
+  fi
   assert_contains "${file}" 'automountServiceAccountToken: false' "service account token is not mounted"
   assert_contains "${file}" 'enableServiceLinks: false' "service links disabled"
   assert_contains "${file}" 'runAsNonRoot: true' "non-root"
@@ -126,11 +124,8 @@ assert_platform_invariants() {
   assert_contains "${file}" 'readOnlyRootFilesystem: true' "read-only root filesystem"
   assert_contains "${file}" 'type: RuntimeDefault' "RuntimeDefault seccomp"
   assert_contains "${file}" 'drop: ["ALL"]' "capabilities dropped"
-  assert_contains "${file}" 'policyTypes: [Ingress, Egress]' "deny-by-default network policy"
   assert_contains "${file}" 'k8s-app: kube-dns' "DNS egress baseline"
-  assert_contains "${file}" 'platform.yourown.chat/profile:' "profile label"
   assert_contains "${file}" 'platform.yourown.chat/image-digest:' "digest annotation"
-  assert_not_contains "${file}" 'imagePullSecrets' "no pull secrets"
 }
 
 finish() {

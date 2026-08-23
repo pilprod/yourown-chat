@@ -128,6 +128,17 @@ resource "google_artifact_registry_repository_iam_member" "source_writer" {
   member     = "serviceAccount:${google_service_account.source_build[each.key].email}"
 }
 
+# Wrapper releases vendor the pinned platform charts from the chart repository.
+resource "google_artifact_registry_repository_iam_member" "source_chart_reader" {
+  for_each = var.helm_chart_repository == null ? {} : local.source_builders
+
+  project    = var.project_id
+  location   = var.helm_chart_repository.location
+  repository = var.helm_chart_repository.repository_id
+  role       = "roles/artifactregistry.reader"
+  member     = "serviceAccount:${google_service_account.source_build[each.key].email}"
+}
+
 resource "google_storage_bucket_iam_member" "source_evidence_writer" {
   for_each = local.source_builders
 
@@ -317,6 +328,10 @@ resource "google_cloudbuild_trigger" "source_image" {
           echo "Branch verification completed; no Cloud Deploy release is created"
           exit 0
         fi
+        if [ "${var.wrapper_releases_enabled}" = "true" ]; then
+          echo "Legacy chart release path is superseded by the wrapper-release step"
+          exit 0
+        fi
 
         safe_tag="$$(printf '%s' "$TAG_NAME" | tr '.+' '--')"
         platform_sha="$$(git -C /workspace/yourown-chat rev-parse HEAD)"
@@ -407,8 +422,94 @@ resource "google_cloudbuild_trigger" "source_image" {
       ]
     }
 
+    # Wrapper-based release: the service repository owns helm/release.yaml and
+    # its platform-profile release wrappers; the public platform checkout owns
+    # the assembler, the policy check and the pinned tooling. The release source
+    # uploaded to Cloud Deploy contains only the generic Skaffold configuration,
+    # the wrappers with vendored platform charts and the service values.
+    step {
+      id         = "wrapper-release"
+      name       = "gcr.io/google.com/cloudsdktool/cloud-sdk:slim"
+      entrypoint = "bash"
+      args = ["-ceu", <<-EOT
+        if [ "${var.wrapper_releases_enabled}" != "true" ] || [ -z "$TAG_NAME" ]; then
+          echo "Wrapper-based release path is disabled or this is not a release tag"
+          exit 0
+        fi
+        if [ "${each.value.source}" = "backend" ] && [ "${var.server_enabled}" != "true" ]; then
+          echo "yourown_chat_server_enabled=false; no server release is created"
+          exit 0
+        fi
+        if [ "${each.value.source}" = "agents" ] && [ "${var.agents_enabled}" != "true" ]; then
+          echo "Agent delivery is not enabled; no agent release is created"
+          exit 0
+        fi
+
+        platform_dir=/workspace/yourown-chat
+        ${indent(8, local.helm_install_script)}
+        ${indent(8, local.helm_registry_login_script)}
+
+        image_args=""
+        for service in ${each.value.services}; do
+          image_name="${var.backend_image_prefix}-$$service"
+          if [ "${each.value.source}" = "agents" ]; then
+            image_name="${var.agents_image_prefix}-$$service"
+          fi
+          image_args="$$image_args --image $$image_name=$$(cat "/workspace/$$service-image-uri")"
+        done
+        platform_sha="$$(git -C /workspace/yourown-chat rev-parse HEAD)"
+
+        bash /workspace/yourown-chat/helm/platform/release/assemble.sh \
+          --repo "$$PWD" \
+          --out /workspace/release-source \
+          --evidence /workspace/release-evidence \
+          --chart-registry "${local.chart_registry}" \
+          ${join(" ", [for profile in local.wrapper_profiles[each.value.source] : "--profile ${profile}"])} \
+          ${local.wrapper_identity_args} \
+          --secret-project "${var.project_id}" ${local.wrapper_dns_arg} \
+          --source-revision "$COMMIT_SHA" \
+          --platform-revision "$$platform_sha" \
+          $$image_args
+
+        safe_tag="$$(printf '%s' "$TAG_NAME" | tr '.+' '--')"
+        pipeline="yourown-chat"
+        mode="server"
+        if [ "${each.value.source}" = "agents" ]; then
+          pipeline="${var.agents_runtime_enabled ? "agents-start" : "agents-pause"}"
+          mode="${var.agents_runtime_enabled ? "running" : "paused"}"
+        fi
+        release_name="$$pipeline-$$safe_tag"
+        set +e
+        output="$$(gcloud deploy releases create "$$release_name" \
+          --project "${var.project_id}" \
+          --region "${var.region}" \
+          --delivery-pipeline "$$pipeline" \
+          --source /workspace/release-source \
+          --gcs-source-staging-dir "gs://${google_storage_bucket.source.name}/source" \
+          --deploy-parameters "$$(cat /workspace/release-source/deploy-parameters)" \
+          --annotations "release-tag=$TAG_NAME,build-id=$BUILD_ID,source-sha=$COMMIT_SHA,platform-sha=$$platform_sha,render=platform-wrapper,agent-mode=$$mode" 2>&1)"
+        status=$$?
+        set -e
+        if [ $$status -ne 0 ] && ! printf '%s' "$$output" | grep -q 'ALREADY_EXISTS'; then
+          printf '%s\n' "$$output" >&2
+          exit $$status
+        fi
+        printf '%s\n' "$$output"
+        gcloud storage cp -r /workspace/release-evidence \
+          "gs://${google_storage_bucket.source.name}/evidence/yourown-chat-${each.value.source}/$BUILD_ID/release/"
+      EOT
+      ]
+    }
+
     timeout = "3600s"
     options { logging = "CLOUD_LOGGING_ONLY" }
+  }
+
+  lifecycle {
+    precondition {
+      condition     = !var.wrapper_releases_enabled || var.helm_chart_repository != null
+      error_message = "wrapper_releases_enabled requires helm_chart_repository (the platform Helm chart OCI repository published by platform-gcp)."
+    }
   }
 
   depends_on = [

@@ -722,3 +722,30 @@ component "artifact_registry" {
     google = provider.google.this
   }
 }
+
+# Immutable OCI repository for the platform Helm workload-profile charts
+# (helm/platform). Chart versions are pinned by service release wrappers and
+# must never disappear or change, so tags are immutable and no cleanup policy
+# is attached. Charts carry no runtime binaries; vulnerability scanning stays
+# off.
+component "artifact_registry_helm" {
+  source = "./modules/artifact-registry"
+
+  inputs = {
+    project_id    = component.project_services.project_id
+    location      = var.region
+    repository_id = var.helm_registry_repository_id
+    description   = "Platform Helm workload-profile charts as immutable OCI artifacts, pinned by service release wrappers."
+    kms_key_name  = var.artifact_registry_kms_key_name
+    labels        = local.common_labels
+
+    immutable_tags         = true
+    keep_untagged_days     = 0
+    keep_recent_versions   = 0
+    vulnerability_scanning = false
+  }
+
+  providers = {
+    google = provider.google.this
+  }
+}

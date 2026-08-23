@@ -208,6 +208,25 @@ output "artifact_registry_repository_id" {
   value       = component.artifact_registry.repository_id
 }
 
+# --- Platform Helm chart registry ----------------------------------------------
+output "helm_registry_repository_id" {
+  type        = string
+  description = "Artifact Registry repository ID holding the platform Helm workload-profile charts. Consumed by the app-gcp stack's chart publication and wrapper release steps."
+  value       = component.artifact_registry_helm.repository_id
+}
+
+output "helm_registry_location" {
+  type        = string
+  description = "Location of the platform Helm chart repository."
+  value       = component.artifact_registry_helm.location
+}
+
+output "helm_registry_repository_path" {
+  type        = string
+  description = "OCI path prefix of the platform Helm chart repository: HOST/PROJECT/REPO. Service wrappers reference it as oci://HOST/PROJECT/REPO."
+  value       = component.artifact_registry_helm.repository_path
+}
+
 # --- Temporal platform service ----------------------------------------------
 output "temporal_enabled" {
   type        = bool
