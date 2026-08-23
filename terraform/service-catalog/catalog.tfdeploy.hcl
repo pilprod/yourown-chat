@@ -7,7 +7,7 @@ deployment "eu" {
   inputs = {
     # Bump on every catalog change; a changed apply is what pushes the
     # published values to downstream Stacks (an unchanged apply does not).
-    catalog_revision = "2026-08-23.7"
+    catalog_revision = "2026-08-23.8"
 
     github_connection_name = "pilprod-github"
 
@@ -207,7 +207,7 @@ publish_output "github_connection_name" {
 }
 
 publish_output "source_repositories" {
-  description = "Source repositories keyed by role plus the typed catalog_contract compatibility envelope."
+  description = "Source repositories keyed by role; the existing kagent entry carries the typed compatibility envelope."
   value       = deployment.eu.source_repositories
 }
 
