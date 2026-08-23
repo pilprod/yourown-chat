@@ -119,8 +119,31 @@ assert_contains "${prod_render}" "image: \"${api_image}\""
 assert_contains "${prod_render}" 'iam.gke.io/gcp-service-account: "identity-migrate@example-project.iam.gserviceaccount.com"'
 assert_contains "${prod_render}" 'resourceName: "projects/example-project/secrets/yourown-chat-identity-database-url/versions/latest"'
 assert_contains "${prod_render}" 'cidr: "10.30.0.10/32"'
-assert_regex_count() { :; }
 bash "${repo_root}/helm/platform/release/policy-check.sh" "${prod_render}" || { echo "FAIL: prod render fails policy" >&2; failures=$((failures + 1)); }
+
+# Mixed wrapper: each controller carries the identity of the profile that
+# rendered it (Helm named templates are global; identity comes from chart
+# metadata, not from a per-chart define).
+deployment_doc="$(awk 'BEGIN { RS="---" } /\nkind: Deployment\n/ { print }' "${prod_render}")"
+job_doc="$(awk 'BEGIN { RS="---" } /\nkind: Job\n/ { print }' "${prod_render}")"
+grep -Fq 'platform.yourown.chat/profile: platform-service' <<<"${deployment_doc}" || { echo "FAIL: Deployment must carry the platform-service profile label" >&2; failures=$((failures + 1)); }
+grep -Fq 'helm.sh/chart: "platform-service-0.1.0"' <<<"${deployment_doc}" || { echo "FAIL: Deployment must carry the platform-service chart label" >&2; failures=$((failures + 1)); }
+grep -Fq 'platform.yourown.chat/profile: platform-job' <<<"${job_doc}" || { echo "FAIL: Job must carry the platform-job profile label" >&2; failures=$((failures + 1)); }
+grep -Fq 'helm.sh/chart: "platform-job-0.1.0"' <<<"${job_doc}" || { echo "FAIL: Job must carry the platform-job chart label" >&2; failures=$((failures + 1)); }
+grep -Fq 'app.kubernetes.io/component: platform-job' <<<"${job_doc}" || { echo "FAIL: Job must carry the platform-job component label" >&2; failures=$((failures + 1)); }
+
+# Verification: the generated profiles carry the declared in-cluster checks
+# and a per-wrapper verification Job manifest.
+assert_contains "${skaffold}" '    verify:'
+assert_contains "${skaffold}" '      - name: identity-verify'
+assert_contains "${skaffold}" 'curl -sSf --connect-timeout 3 --max-time 10 --retry 30 --retry-all-errors --retry-delay 5 "http://identity-api.identity.svc.cluster.local:8081/readyz"'
+assert_contains "${skaffold}" 'jobManifestPath: verify/identity.yaml'
+assert_count "${skaffold}" 'jobManifestPath: verify/identity.yaml' 2
+[ -f "${work}/out/verify/identity.yaml" ] || { echo "FAIL: verification Job manifest missing" >&2; failures=$((failures + 1)); }
+assert_contains "${work}/out/verify/identity.yaml" 'namespace: identity'
+assert_contains "${work}/out/verify/identity.yaml" 'app: verify'
+assert_contains "${work}/out/verify/identity.yaml" 'automountServiceAccountToken: false'
+assert_contains "${prod_render}" 'app: verify'
 
 python3 - "${evidence_json}" "${api_image}" <<'PY' || { echo "FAIL: release evidence is incomplete" >&2; failures=$((failures + 1)); }
 import json, sys
@@ -131,6 +154,7 @@ assert e["platformRevision"] == "fedcba9876543210fedcba9876543210fedcba98"
 assert [p["name"] for p in e["profiles"]] == ["dev", "prod"]
 assert len(e["releaseParameters"]) == 8
 w = e["wrappers"]["identity"]
+assert w["verification"] == [{"name": "identity-api-ready", "url": "http://identity-api.identity.svc.cluster.local:8081/readyz"}]
 assert {c["artifact"] for c in w["platformCharts"]} == {"platform-service-0.1.0.tgz", "platform-job-0.1.0.tgz"}
 assert all(len(c["sha256"]) == 64 for c in w["platformCharts"])
 assert len(w["chartLockSha256"]) == 64
@@ -162,7 +186,10 @@ expect_assemble_fail "secret mount without identity binding" "requires identity.
 fresh_repo "${work}/r1"; sedi "${work}/r1/helm/release.yaml" '/^    namespace: identity$/d'
 expect_assemble_fail "manifest without namespace" "release manifest is invalid" "${work}/r1" --allow-file-dependencies "${common_args[@]}"
 
-fresh_repo "${work}/r2"; printf '      identity-admin:\n        image: yourown-chat-identity-admin\n' >> "${work}/r2/helm/release.yaml"
+fresh_repo "${work}/r2"; sedi "${work}/r2/helm/release.yaml" 's/^        identity: identity-migrate$/        identity: identity-migrate\
+      identity-admin:\
+        image: yourown-chat-identity-admin/'
+
 expect_assemble_fail "manifest workload not pinned in Chart.yaml" "must equal the Chart.yaml aliases" "${work}/r2" --allow-file-dependencies "${common_args[@]}" --image "yourown-chat-identity-admin=${api_image}"
 
 fresh_repo "${work}/r3"; sedi "${work}/r3/helm/identity/Chart.yaml" 's/^    version: 0.1.0$/    version: ^0.1.0/'
@@ -200,6 +227,17 @@ expect_assemble_fail "duplicate alias across wrappers" "aliases must be unique" 
 
 fresh_repo "${work}/r14"; sedi "${work}/r14/helm/identity/Chart.yaml" 's/^    alias: identity-migrate$/    alias: identity-migrate\n    condition: identity-migrate.enabled/'
 expect_assemble_fail "dependency condition" "must not use condition" "${work}/r14" --allow-file-dependencies "${common_args[@]}"
+
+fresh_repo "${work}/r15"; python3 - "${work}/r15/helm/release.yaml" <<'PY'
+import sys
+p=sys.argv[1]; s=open(p).read()
+i=s.index("    verify:")
+open(p,"w").write(s[:i])
+PY
+expect_assemble_fail "network service wrapper without verification" "must declare verify.http checks" "${work}/r15" --allow-file-dependencies "${common_args[@]}"
+
+fresh_repo "${work}/r16"; sedi "${work}/r16/helm/release.yaml" 's#http://identity-api.identity.svc.cluster.local:8081/readyz#https://example.com/readyz#'
+expect_assemble_fail "verification outside the cluster" "release manifest is invalid" "${work}/r16" --allow-file-dependencies "${common_args[@]}"
 
 expect_assemble_fail "malformed profile mapping" "must be NAME=OVERLAY" "${work}/repo" --allow-file-dependencies --profile "Prod" --image "yourown-chat-identity-api=${api_image}"
 expect_assemble_fail "image with a tag instead of a digest" "must be NAME=ARTIFACT-REGISTRY-REPOSITORY@sha256" "${work}/repo" --allow-file-dependencies --profile dev=dev --image yourown-chat-identity-api=europe-west3-docker.pkg.dev/example-project/docker/app:1.0.0

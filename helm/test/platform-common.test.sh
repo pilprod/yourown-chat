@@ -67,6 +67,15 @@ PY
   grep -Fq "platform.yourown.chat/profile: ${profile}" "${chart}/Chart.yaml" || { echo "FAIL: ${profile} Chart.yaml lacks the profile annotation" >&2; failures=$((failures + 1)); }
   grep -Fq "type: application" "${chart}/Chart.yaml" || { echo "FAIL: ${profile} must be an application chart" >&2; failures=$((failures + 1)); }
 
+  # Helm named templates are global across a wrapper and its aliased profile
+  # dependencies: the only templates a profile may define are the shared,
+  # identical helper copy. Profile identity and bounds live in Chart.yaml.
+  if grep -RlE '\{\{-? *define ' "${chart}/templates" | grep -v '/_platform.tpl$' | grep -q .; then
+    echo "FAIL: ${profile} defines named templates outside the shared _platform.tpl copy" >&2
+    failures=$((failures + 1))
+  fi
+  grep -Fq "platform.yourown.chat/bounds:" "${chart}/Chart.yaml" || { echo "FAIL: ${profile} Chart.yaml lacks the bounds annotation" >&2; failures=$((failures + 1)); }
+
   # The public profile stays generic: no hardcoded product host, registry
   # project or namespace. Every namespace comes from the release.
   if grep -RhE 'yourown\.chat' "${chart}/templates" | grep -Ev 'platform\.yourown\.chat/' | grep -q .; then

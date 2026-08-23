@@ -445,6 +445,29 @@ resource "google_cloudbuild_trigger" "source_image" {
           exit 0
         fi
 
+        # Agent workers are only compatible with the control API released from
+        # the same version tag. The agent release waits (bounded) until the
+        # server repository has published control-api for this exact tag and
+        # records that digest; push the server tag first when cutting a
+        # coordinated release.
+        control_api_annotation=""
+        if [ "${each.value.source}" = "agents" ]; then
+          control_api_repo="${local.workload_image_paths.control_api}"
+          control_api_digest=""
+          for attempt in $$(seq 1 40); do
+            control_api_digest="$$(gcloud artifacts docker images describe \
+              "$$control_api_repo:$TAG_NAME" --format='value(image_summary.digest)' 2>/dev/null || true)"
+            [ -n "$$control_api_digest" ] && break
+            echo "Waiting for the matching control-api image $$control_api_repo:$TAG_NAME (attempt $$attempt/40)"
+            sleep 30
+          done
+          if [ -z "$$control_api_digest" ]; then
+            echo "Release tag $TAG_NAME is not complete: no control-api image for this tag after 20 minutes; push the matching server tag first and re-run this build" >&2
+            exit 1
+          fi
+          control_api_annotation=",control-api-digest=$$control_api_digest"
+        fi
+
         platform_dir=/workspace/yourown-chat
         ${indent(8, local.helm_install_script)}
         ${indent(8, local.helm_registry_login_script)}
@@ -487,7 +510,7 @@ resource "google_cloudbuild_trigger" "source_image" {
           --source /workspace/release-source \
           --gcs-source-staging-dir "gs://${google_storage_bucket.source.name}/source" \
           --deploy-parameters "$$(cat /workspace/release-source/deploy-parameters)" \
-          --annotations "release-tag=$TAG_NAME,build-id=$BUILD_ID,source-sha=$COMMIT_SHA,platform-sha=$$platform_sha,render=platform-wrapper,agent-mode=$$mode" 2>&1)"
+          --annotations "release-tag=$TAG_NAME,build-id=$BUILD_ID,source-sha=$COMMIT_SHA,platform-sha=$$platform_sha,render=platform-wrapper,agent-mode=$$mode$$control_api_annotation" 2>&1)"
         status=$$?
         set -e
         if [ $$status -ne 0 ] && ! printf '%s' "$$output" | grep -q 'ALREADY_EXISTS'; then

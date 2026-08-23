@@ -33,6 +33,11 @@ identity-api:
         from:
           namespace: edge
           podLabels: { app: transport }
+      - name: platform-verify
+        purpose: Cloud Deploy verification job probes the readiness endpoint
+        from:
+          sameNamespace: true
+          podLabels: { app: verify }
     egress:
       - name: cloudsql
         purpose: PostgreSQL on the private Cloud SQL address

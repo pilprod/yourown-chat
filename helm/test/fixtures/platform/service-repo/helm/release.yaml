@@ -14,3 +14,7 @@ wrappers:
       identity-migrate:
         image: yourown-chat-identity-migrate
         identity: identity-migrate
+    verify:
+      http:
+        - name: identity-api-ready
+          url: http://identity-api.identity.svc.cluster.local:8081/readyz

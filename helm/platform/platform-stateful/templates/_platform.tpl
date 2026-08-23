@@ -15,6 +15,24 @@ helm/test/platform-common.test.sh fails when a copy drifts from this source.
 {{- $name -}}
 {{- end -}}
 
+{{/*
+Profile identity and bounds come from the chart's own Chart.yaml annotations.
+Helm named templates are global across a wrapper and all of its aliased
+dependencies, so a per-chart define would collide between profiles; chart
+metadata does not. Annotations survive aliasing, unlike .Chart.Name.
+*/}}
+{{- define "platform.profileName" -}}
+{{- $profile := index .Chart.Annotations "platform.yourown.chat/profile" | toString -}}
+{{- if not (regexMatch "^platform-(service|worker|job|stateful)$" $profile) -}}
+{{- fail (printf "chart %s lacks a valid platform.yourown.chat/profile annotation" .Chart.Name) -}}
+{{- end -}}
+{{- $profile -}}
+{{- end -}}
+
+{{- define "platform.bounds" -}}
+{{- required (printf "chart %s lacks the platform.yourown.chat/bounds annotation" .Chart.Name) (index .Chart.Annotations "platform.yourown.chat/bounds") -}}
+{{- end -}}
+
 {{- define "platform.partOf" -}}
 {{- default (include "platform.name" .) .Values.workload.partOf -}}
 {{- end -}}

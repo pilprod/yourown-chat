@@ -38,6 +38,26 @@ The manifest workloads must be exactly the aliases pinned in the wrapper's
 are switched with chart `tags`; `condition` and `import-values` are rejected
 because they would inject keys into the profile schema.
 
+### Verification
+
+```yaml
+    verify:
+      http:
+        - name: identity-api-ready
+          url: http://identity-api.identity.svc.cluster.local:8081/readyz
+          retries: 30        # optional, default 30
+          delaySeconds: 5    # optional, default 5
+```
+
+Each wrapper may declare typed in-cluster HTTP checks; a wrapper that pins
+`platform-service` or `platform-stateful` must declare at least one. The
+assembler turns them into a Cloud Deploy `verify` entry per wrapper and profile
+(a `curl` container with retries, running as a Job in the wrapper namespace
+from the generated `verify/<wrapper>.yaml` manifest with the `app: verify`
+label). The service allows that traffic with a typed ingress rule
+(`from: { sameNamespace: true, podLabels: { app: verify } }`). Workers and jobs
+are verified by rollout status and completion.
+
 ## `assemble.sh`
 
 ```text
@@ -62,8 +82,10 @@ For every wrapper it:
 4. renders each requested Cloud Deploy profile with `values.yaml`, the matching
    `values-<overlay>.yaml` when it exists, and the typed release parameters,
    so every profile schema is enforced before a release exists;
-5. runs [`policy-check.sh`](policy-check.sh) on each render;
-6. writes the generic `skaffold.yaml`, the `deploy-parameters` line, and
+5. runs [`policy-check.sh`](policy-check.sh) on each render (platform
+   invariants and profile-label/kind consistency);
+6. writes the generic `skaffold.yaml` with the verification entries, the
+   per-wrapper verification Job manifests, the `deploy-parameters` line, and
    `release-evidence.json` (platform chart artifacts and digests, `Chart.lock`
    digest, image references, overlay digests, typed release parameters and the
    resolved-configuration digest per profile).

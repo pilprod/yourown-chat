@@ -46,6 +46,27 @@ if grep -Eq '^kind: (DaemonSet|ReplicaSet|Pod)$' "${file}"; then
   fail "DaemonSet, bare ReplicaSet and bare Pod are not approved workload profiles"
 fi
 
+# The profile label must match the controller kind it produced; a wrapper that
+# mixes profiles must not let one profile's identity leak into another.
+mismatches="$(awk 'BEGIN { RS="---" }
+  /\nkind: (Deployment|StatefulSet|Job|CronJob)\n/ {
+    kind=""; profile=""; name="";
+    n=split($0, lines, "\n");
+    for (i=1;i<=n;i++) {
+      if (lines[i] ~ /^kind: /) kind=substr(lines[i], 7);
+      if (lines[i] ~ /^  name: / && name=="") name=substr(lines[i], 9);
+      if (lines[i] ~ /^    platform.yourown.chat\/profile: / && profile=="") profile=substr(lines[i], 36);
+    }
+    ok=0;
+    if (kind=="Deployment" && (profile=="platform-service" || profile=="platform-worker")) ok=1;
+    if (kind=="StatefulSet" && profile=="platform-stateful") ok=1;
+    if ((kind=="Job" || kind=="CronJob") && profile=="platform-job") ok=1;
+    if (!ok) print kind " " name " carries profile label \"" profile "\"";
+  }' "${file}")"
+if [ -n "${mismatches}" ]; then
+  while IFS= read -r line; do fail "profile label does not match the workload kind: ${line}"; done <<<"${mismatches}"
+fi
+
 if [ "${violations}" -ne 0 ]; then
   echo "policy: ${violations} violation(s) in ${file}" >&2
   exit 1
