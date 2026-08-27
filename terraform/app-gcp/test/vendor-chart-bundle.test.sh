@@ -3,9 +3,11 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 app_dir="$(cd "$script_dir/.." && pwd)"
+repo_dir="$(cd "$app_dir/../.." && pwd)"
 module_dir="$app_dir/modules/vendor-chart-bundle"
 main="$module_dir/main.tf"
 variables="$module_dir/variables.tf"
+outputs="$module_dir/outputs.tf"
 components="$app_dir/components.tfcomponent.hcl"
 deployment="$app_dir/app.tfdeploy.hcl"
 service_inputs="$app_dir/service-inputs.tfdeploy.hcl"
@@ -57,13 +59,157 @@ fi
 require_literal "$main" 'chart     = var.bundle.charts.crds.ref'
 require_literal "$main" 'chart     = var.bundle.charts.application.ref'
 require_literal "$variables" 'can(regex("^oci://[^@]+@sha256:[0-9a-f]{64}$", chart.ref))'
-require_literal "$variables" 'strcontains(base64decode(var.bundle.charts.application.values_base64), digest)'
 require_literal "$variables" 'length(var.bundle.image_digests) > 0'
-require_literal "$main" 'crd_values         = base64decode(var.bundle.charts.crds.values_base64)'
-require_literal "$main" 'application_values = base64decode(var.bundle.charts.application.values_base64)'
-require_literal "$main" 'condition     = sha256(local.crd_values) == var.bundle.charts.crds.values_sha256'
-require_literal "$main" 'condition     = sha256(local.application_values) == var.bundle.charts.application.values_sha256'
+require_literal "$variables" 'values_path   = string'
+require_literal "$variables" '^helm/vendor/'
+require_literal "$variables" 'startswith(chart.values_path, "helm/vendor/${var.bundle_key}/")'
+require_literal "$main" 'repository_root         = abspath("${path.module}/../../../..")'
+require_literal "$main" 'crd_values              = try(file(local.crd_values_path), "")'
+require_literal "$main" 'application_values      = try(file(local.application_values_path), "")'
+require_literal "$main" 'fileexists(local.crd_values_path) && sha256(local.crd_values) == var.bundle.charts.crds.values_sha256'
+require_literal "$main" 'fileexists(local.application_values_path) && sha256(local.application_values) == var.bundle.charts.application.values_sha256'
+require_literal "$main" 'strcontains(local.application_values, digest)'
+require_literal "$outputs" 'fileexists(local.crd_values_path) && sha256(local.crd_values) == var.bundle.charts.crds.values_sha256'
+require_literal "$outputs" 'fileexists(local.application_values_path) && sha256(local.application_values) == var.bundle.charts.application.values_sha256'
+require_literal "$outputs" 'startswith(chart.values_path, "helm/vendor/${var.bundle_key}/")'
+require_literal "$outputs" 'strcontains(local.application_values, digest)'
 require_literal "$main" 'prevent_destroy = true'
+
+opaque_values_key="$(printf '%s%s' 'values_' 'base64')"
+opaque_values_decoder="$(printf '%s%s' 'base64decode(var.bundle.' 'charts')"
+if rg -n -F -- "$opaque_values_key" "$module_dir" "$service_inputs" "$app_dir/variables.tfcomponent.hcl" || \
+  rg -n -F -- "$opaque_values_decoder" "$module_dir"; then
+  fail "Helm values must be readable tracked files, not opaque base64 deployment inputs"
+fi
+
+sha256_file() {
+  local file="$1"
+
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$file" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$file" | awk '{print $1}'
+  else
+    fail "sha256sum or shasum is required"
+  fi
+}
+
+bundle_keys() {
+  awk '
+    $0 == "  vendor_chart_bundles = {" { in_bundles = 1; next }
+    in_bundles && $0 == "  }" { exit }
+    in_bundles && $0 ~ /^    [a-z0-9][-a-z0-9]* = \{$/ {
+      key = $0
+      sub(/^    /, "", key)
+      sub(/ = \{$/, "", key)
+      print key
+    }
+  ' "$service_inputs"
+}
+
+bundle_chart_records() {
+  local target_bundle="$1"
+
+  awk -v target="$target_bundle" '
+    $0 == "  vendor_chart_bundles = {" { in_bundles = 1; next }
+    in_bundles && $0 == "  }" { exit }
+    in_bundles && $0 ~ /^    [a-z0-9][-a-z0-9]* = \{$/ {
+      bundle = $0
+      sub(/^    /, "", bundle)
+      sub(/ = \{$/, "", bundle)
+      chart = ""
+      next
+    }
+    bundle == target && $0 ~ /^        (crds|application) = \{$/ {
+      chart = $0
+      sub(/^        /, "", chart)
+      sub(/ = \{$/, "", chart)
+      next
+    }
+    bundle == target && chart != "" && $0 ~ /^          values_path[[:space:]]*=/ {
+      split($0, parts, "\"")
+      path = parts[2]
+      next
+    }
+    bundle == target && chart != "" && $0 ~ /^          values_sha256[[:space:]]*=/ {
+      split($0, parts, "\"")
+      print chart "\t" path "\t" parts[2]
+      chart = ""
+      path = ""
+    }
+  ' "$service_inputs"
+}
+
+bundle_image_digests() {
+  local target_bundle="$1"
+
+  awk -v target="$target_bundle" '
+    $0 == "  vendor_chart_bundles = {" { in_bundles = 1; next }
+    in_bundles && $0 == "  }" { exit }
+    in_bundles && $0 ~ /^    [a-z0-9][-a-z0-9]* = \{$/ {
+      bundle = $0
+      sub(/^    /, "", bundle)
+      sub(/ = \{$/, "", bundle)
+      in_images = 0
+      next
+    }
+    bundle == target && $0 == "      image_digests = {" { in_images = 1; next }
+    bundle == target && in_images && $0 == "      }" { in_images = 0; next }
+    bundle == target && in_images {
+      if (match($0, /sha256:[0-9a-f]{64}/)) {
+        print substr($0, RSTART, RLENGTH)
+      }
+    }
+  ' "$service_inputs"
+}
+
+values_path_owned_by_bundle() {
+  local bundle_key="$1"
+  local relative_path="$2"
+
+  [[ "$relative_path" == "helm/vendor/$bundle_key/"*.values.yaml ]]
+}
+
+if values_path_owned_by_bundle bundle-one helm/vendor/bundle-two/application.values.yaml; then
+  fail "cross-bundle values path ownership test did not fail closed"
+fi
+
+bundle_count=0
+while IFS= read -r bundle_key; do
+  [[ -n "$bundle_key" ]] || continue
+  bundle_count=$((bundle_count + 1))
+  chart_count=0
+  application_values=""
+
+  while IFS=$'\t' read -r chart_name relative_path declared_hash; do
+    [[ -n "$chart_name" && -n "$relative_path" && -n "$declared_hash" ]] || \
+      fail "incomplete chart values record for bundle $bundle_key"
+    chart_count=$((chart_count + 1))
+    values_path_owned_by_bundle "$bundle_key" "$relative_path" || \
+      fail "$relative_path is not owned by bundle $bundle_key"
+    values_file="$repo_dir/$relative_path"
+    [[ -f "$values_file" ]] || fail "missing tracked Helm values file: ${values_file#$repo_dir/}"
+    [[ "$declared_hash" =~ ^[0-9a-f]{64}$ ]] || fail "missing checksum for $relative_path"
+    actual_hash="$(sha256_file "$values_file")"
+    [[ "$actual_hash" == "$declared_hash" ]] || fail "$relative_path does not match its declared checksum"
+    if [[ "$chart_name" == "application" ]]; then
+      application_values="$values_file"
+    fi
+  done < <(bundle_chart_records "$bundle_key")
+
+  [[ "$chart_count" -eq 2 ]] || fail "bundle $bundle_key must declare exactly two tracked values files"
+  [[ -n "$application_values" ]] || fail "bundle $bundle_key is missing application values"
+
+  image_count=0
+  while IFS= read -r image_digest; do
+    [[ -n "$image_digest" ]] || continue
+    image_count=$((image_count + 1))
+    require_literal "$application_values" "$image_digest"
+  done < <(bundle_image_digests "$bundle_key")
+  [[ "$image_count" -gt 0 ]] || fail "bundle $bundle_key must declare at least one image digest"
+done < <(bundle_keys)
+
+[[ "$bundle_count" -gt 0 ]] || fail "service inputs must declare at least one vendor chart bundle"
 
 require_literal "$main" 'policy_types = ["Ingress", "Egress"]'
 require_literal "$main" 'cidr = "${var.cluster_dns_ip}/32"'

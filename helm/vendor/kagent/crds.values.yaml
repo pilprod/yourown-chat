@@ -1,0 +1,7 @@
+# The M0 baseline uses only the core kagent CRDs. KMCP and Agent Substrate are
+# qualified separately and must not arrive as transitive CRD dependencies.
+kmcp:
+  enabled: false
+
+substrate:
+  enabled: false

@@ -126,14 +126,14 @@ variable "vendor_chart_bundles" {
         release_name  = string
         ref           = string
         version       = string
-        values_base64 = string
+        values_path   = string
         values_sha256 = string
       })
       application = object({
         release_name  = string
         ref           = string
         version       = string
-        values_base64 = string
+        values_path   = string
         values_sha256 = string
       })
     })

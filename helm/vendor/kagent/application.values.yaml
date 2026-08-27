@@ -1,0 +1,143 @@
+# Product-owned values for the stock, single-user M0 testbed. The public
+# platform adapter mirrors this closed profile and verifies its release digest.
+fullnameOverride: kagent
+namespaceOverride: kagent-system
+
+registry: cr.kagent.dev
+# Keep the global tag empty so each independently built image can be pinned to
+# its own immutable OCI manifest digest below.
+tag: ""
+imagePullPolicy: IfNotPresent
+
+labels:
+  app.kubernetes.io/part-of: k8s-agents-platform
+  platform.yourown.chat/release-channel: testbed
+
+rbac:
+  namespaces:
+    - kagent-system
+    - kagent-testbed
+
+controller:
+  replicas: 1
+  loglevel: info
+  image:
+    tag: "0.9.12@sha256:d1ea7b70bb8d97de9f0774d44b598971c944b3ab4e88294b0bb78e59d1a63c15"
+  # M0 qualifies only the Python agent runtime. The chart derives a different
+  # repository for Go agents while reusing this tag, so Go remains disabled
+  # until kagent publishes and we lock a matching Go runtime image.
+  agentImage:
+    tag: "0.9.12@sha256:5ee30b4584e8de3266eb3cc11f5c46e8627716339d04d14166c50bda5f0f4182"
+  skillsInitImage:
+    tag: "0.9.12@sha256:a1152800fbee8b9143877dcebb981b8a3b450c2c0c3904c8c61e8aa7ce87852a"
+  volumes:
+    - name: database-url
+      csi:
+        driver: secrets-store-gke.csi.k8s.io
+        readOnly: true
+        volumeAttributes:
+          secretProviderClass: kagent-database-gcp
+  volumeMounts:
+    - name: database-url
+      mountPath: /var/run/secrets/kagent-database
+      readOnly: true
+  watchNamespaces:
+    - kagent-system
+    - kagent-testbed
+  # v0.9.12 is not a multi-user authorization boundary. Cloudflare Access and
+  # the platform NetworkPolicies isolate this explicitly single-user testbed.
+  auth:
+    mode: unsecure
+  substrate:
+    enabled: false
+
+ui:
+  replicas: 1
+  image:
+    tag: "0.9.12@sha256:1d5ada8d7f65a6b9ad28232463f9fd670c4c20875baa1c8008aaa1f1f988382e"
+  # The stock chart allows only three one-second startup attempts. On the
+  # constrained testbed node, supervisord can need longer to bring nginx up.
+  startupProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    failureThreshold: 20
+  service:
+    type: ClusterIP
+    ports:
+      port: 8080
+      targetPort: 8080
+
+database:
+  postgres:
+    # The platform creates a dedicated database/user in the existing protected
+    # Cloud SQL instance. The ready-to-use URI is mounted from Secret Manager.
+    urlFile: /var/run/secrets/kagent-database/database-url
+    vectorEnabled: false
+    bundled:
+      enabled: false
+
+providers:
+  # M0 must start without a model-provider secret. System E2E supplies a
+  # deterministic fixture at this private address; real providers are opt-in.
+  default: ollama
+  ollama:
+    provider: Ollama
+    model: fixture-model
+    config:
+      host: http://model-fixture.kagent-testbed.svc.cluster.local:11434
+
+kmcp:
+  enabled: false
+
+substrate:
+  enabled: false
+
+substrateWorkerPool:
+  create: false
+
+kagent-tools:
+  enabled: false
+
+grafana-mcp:
+  enabled: false
+
+querydoc:
+  enabled: false
+
+oauth2-proxy:
+  # Human authentication is provided by the existing Cloudflare Access edge.
+  # Do not deploy a second, independently configured identity proxy in M0.
+  enabled: false
+
+k8s-agent:
+  enabled: false
+
+kgateway-agent:
+  enabled: false
+
+istio-agent:
+  enabled: false
+
+promql-agent:
+  enabled: false
+
+observability-agent:
+  enabled: false
+
+argo-rollouts-agent:
+  enabled: false
+
+helm-agent:
+  enabled: false
+
+cilium-policy-agent:
+  enabled: false
+
+cilium-manager-agent:
+  enabled: false
+
+cilium-debug-agent:
+  enabled: false
