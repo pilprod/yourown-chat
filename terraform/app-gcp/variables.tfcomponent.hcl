@@ -566,3 +566,26 @@ variable "dev_team_rbac_subjects" {
   description = "Dev-team RBAC subjects granted edit rights in the `dev` namespace (Google Group or Users). Empty (default) creates no RBAC. Created by Terraform, NOT Cloud Deploy (whose execution SA cannot manage RBAC). A Group subject requires 'Google Groups for GKE RBAC' on the cluster."
   default     = []
 }
+
+variable "kagent_preview_publisher" {
+  type = object({
+    enabled                    = bool
+    evidence_bucket_name       = string
+    evidence_retention_seconds = number
+    ghcr_secret_id             = string
+    submitter_members          = set(string)
+  })
+  description = "Dedicated Cloud Build publication infrastructure for immutable kagent fork previews. It creates an empty Secret Manager container only; credential values never enter Terraform."
+  default = {
+    enabled                    = false
+    evidence_bucket_name       = "disabled-kagent-preview-evidence"
+    evidence_retention_seconds = 31536000
+    ghcr_secret_id             = "kagent-ghcr-write"
+    submitter_members          = []
+  }
+
+  validation {
+    condition     = !var.kagent_preview_publisher.enabled || var.kagent_preview_publisher.evidence_bucket_name != "disabled-kagent-preview-evidence"
+    error_message = "An enabled kagent_preview_publisher requires an explicit evidence_bucket_name."
+  }
+}
