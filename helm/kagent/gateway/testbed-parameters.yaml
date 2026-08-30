@@ -1,0 +1,39 @@
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayParameters
+metadata:
+  name: substrate-broker
+  namespace: ate-system
+spec:
+  deployment:
+    spec:
+      replicas: 1
+      template:
+        spec:
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: agentgateway
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
+  service:
+    metadata:
+      annotations:
+        cloud.google.com/l4-rbs: "enabled"
+        networking.gke.io/load-balancer-ip-addresses: from-deploy-parameters # from-param: ${agentgateway_public_ip_name}
+    spec:
+      type: LoadBalancer
+      externalTrafficPolicy: Local

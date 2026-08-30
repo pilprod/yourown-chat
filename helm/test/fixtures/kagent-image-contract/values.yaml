@@ -1,0 +1,11 @@
+tag: ""
+controller:
+  image:
+    registry: ""
+    repository: ""
+    tag: ""
+ui:
+  image:
+    registry: ""
+    repository: ""
+    tag: ""

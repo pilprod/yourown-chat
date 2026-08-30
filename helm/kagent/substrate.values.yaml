@@ -1,0 +1,87 @@
+# Existing external-control-plane-only release in ate-system. The chart owns
+# the only Gateway/TLSRoute; the raw manifest owns only AgentgatewayParameters.
+profile: external-control-plane-only
+
+rbac:
+  # Required fork capability: Terraform owns the external profile RBAC.
+  create: false
+
+externalProviderBroker:
+  containerPort: 8443
+  sessionTokenTTL: 5m
+  gateway:
+    enabled: true
+    gatewayClassName: agentgateway
+    listenerPort: 443
+    hostname: api.ate-system.svc
+    addresses: []
+    infrastructure:
+      parametersRef:
+        group: agentgateway.dev
+        kind: AgentgatewayParameters
+        name: substrate-broker
+
+externalControlPlane:
+  postgres:
+    existingSecret:
+      name: substrate-cloud-sql
+      key: connection-string
+  tls:
+    apiServer:
+      existingSecret:
+        name: substrate-ate-api-tls
+        credentialBundleKey: server-credential-bundle.pem
+        clientCAKey: client-ca.pem
+    controller:
+      existingSecret:
+        name: substrate-ate-controller-tls
+        credentialBundleKey: client-credential-bundle.pem
+        serverCAKey: server-ca.pem
+    egressGateway:
+      serverName: atenet-egress.ate-system.svc
+      existingSecret:
+        name: substrate-atenet-egress-server-tls
+        credentialBundleKey: server-credential-bundle.pem
+        serverCAKey: server-ca.pem
+    egressAuthorizer:
+      principal: spiffe://cluster.local/ns/ate-system/sa/atenet-egress
+      existingSecret:
+        name: substrate-atenet-egress-client-tls
+        credentialBundleKey: client-credential-bundle.pem
+        serverCAKey: server-ca.pem
+  networkPolicy:
+    enabled: true
+    allowDNS: true
+    apiIngress:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: kagent-system
+        podSelector:
+          matchLabels:
+            app.kubernetes.io/name: kagent
+            app.kubernetes.io/instance: kagent
+            app.kubernetes.io/component: controller
+      - podSelector:
+          matchLabels:
+            app: ate-controller
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: verify
+            app.kubernetes.io/part-of: kagent-substrate-testbed
+    brokerIngress: []
+    # Terraform adds the exact Kubernetes Service/endpoints and Cloud SQL IP
+    # as additive policies; addresses are intentionally not tracked here.
+    controllerEgress:
+      - to:
+          - podSelector:
+              matchLabels:
+                app: ate-api-server
+        ports:
+          - protocol: TCP
+            port: 443
+    # Terraform adds reviewed, non-default Actor/MCP CIDRs and ports and keeps
+    # the delivery gate closed while that destination set is empty.
+    egressGatewayEgress: []
+
+image:
+  pullPolicy: IfNotPresent

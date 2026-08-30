@@ -26,6 +26,10 @@ case "${component}" in
     workload_regex='^helm/yourown-chat/'
     config_path='helm/skaffold-yourown-chat.yaml'
     ;;
+  kagent-substrate)
+    workload_regex='^(helm/kagent/|terraform/app-gcp/service-inputs\.tfdeploy\.hcl$)'
+    config_path='helm/kagent/render-release.py'
+    ;;
   *)
     printf 'Unknown release component: %s\n' "${component}" >&2
     exit 2
