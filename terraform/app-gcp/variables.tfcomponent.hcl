@@ -233,7 +233,8 @@ variable "kagent_substrate_delivery" {
           version = string
         })
       })
-      image_refs = map(string)
+      image_refs     = map(string)
+      runtime_images = optional(map(string), {})
     })), {})
     compatibility = optional(object({
       kagent_rbac_create_false            = bool
@@ -271,6 +272,7 @@ variable "kagent_substrate_delivery" {
       !var.kagent_substrate_delivery.production_eligible &&
       toset(keys(var.kagent_substrate_delivery.artifacts)) == toset(["kagent", "substrate"]) &&
       var.kagent_substrate_delivery.artifacts["kagent"].source_repository == "https://github.com/pilprod/kagent" &&
+      var.kagent_substrate_delivery.artifacts["kagent"].artifact_schema_version == "3" &&
       var.kagent_substrate_delivery.artifacts["substrate"].source_repository == "https://github.com/pilprod/substrate" &&
       alltrue([
         for artifact in values(var.kagent_substrate_delivery.artifacts) :
@@ -288,7 +290,13 @@ variable "kagent_substrate_delivery" {
           can(regex("^[^@[:space:]]+/[^@[:space:]]+@sha256:[0-9a-f]{64}$", ref))
         ])
       ]) &&
-      toset(keys(var.kagent_substrate_delivery.artifacts["kagent"].image_refs)) == toset(["controller", "ui", "agent"]) &&
+      toset(keys(var.kagent_substrate_delivery.artifacts["kagent"].image_refs)) == toset(["controller", "ui"]) &&
+      toset(keys(var.kagent_substrate_delivery.artifacts["kagent"].runtime_images)) == toset(["kagentHarness", "codexHarness"]) &&
+      alltrue([
+        for ref in values(var.kagent_substrate_delivery.artifacts["kagent"].runtime_images) :
+        can(regex("^[^@[:space:]]+/[^@[:space:]]+@sha256:[0-9a-f]{64}$", ref))
+      ]) &&
+      length(var.kagent_substrate_delivery.artifacts["substrate"].runtime_images) == 0 &&
       toset(keys(var.kagent_substrate_delivery.artifacts["substrate"].image_refs)) == toset(["ateapi", "atecontroller", "atenet", "agentgateway", "releaseVerifier"]) &&
       can(regex("^ghcr\\.io/pilprod/substrate/substrate-release-verify@sha256:[0-9a-f]{64}$", var.kagent_substrate_delivery.artifacts["substrate"].image_refs.releaseVerifier)) &&
       toset(keys(var.kagent_substrate_delivery.helm_set_values)) == toset(["kagent", "substrate"]) &&
@@ -312,7 +320,7 @@ variable "kagent_substrate_delivery" {
         destination.port <= 65535
       ])
     )
-    error_message = "Enabled bootstrap or release requires separate pilprod/kagent and pilprod/substrate manifests, digest-qualified app+CRD charts/images, an exact Substrate dependency commit, RBAC/Gateway API capabilities, a verifier and testbed-only endpoints. External Broker smoke is a post-bootstrap local-agent-ready gate."
+    error_message = "Enabled bootstrap or release requires kagent evidence schema 3 with controller/UI image refs and exact kagentHarness/codexHarness runtime refs, a separate Substrate manifest, digest-qualified app+CRD charts/images, an exact Substrate dependency commit, RBAC/Gateway API capabilities, a verifier and testbed-only endpoints. External Broker smoke is a post-bootstrap local-agent-ready gate."
   }
 
   validation {

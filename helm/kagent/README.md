@@ -28,16 +28,23 @@ Gateway/TLSRoute owner.
 
 `render-release.py` accepts two separate reviewed artifact manifests. Each
 must carry source repository/commit, schema/checksum, digest-qualified app and
-CRD charts, and digest-qualified images. Helm overrides use exact image-only
-allowlists: structural settings such as RBAC, subcharts, NetworkPolicy, Secret
-names and topology cannot bypass the checksummed tracked values. Controller,
-UI and agent-runtime tags use `<chart-version>@sha256:<digest>` because the
-adopted chart renders tag fields, while the Substrate fork's component digest
-fields are validated explicitly. The kagent artifact is restricted to
-`https://github.com/pilprod/kagent`; the deployed Substrate source commit must
-exactly match kagent's Substrate Go dependency. Both artifacts must prove
-`rbac.create=false`; the Substrate artifact must additionally attest that its
-Gateway and TLSRoute use `gateway.networking.k8s.io/v1`.
+CRD charts, and digest-qualified images. The kagent artifact must use evidence
+schema v3: `image_refs` contains only the chart-installed controller and UI,
+while `runtime_images` contains exactly `kagentHarness` and `codexHarness`.
+Those runtime references are retained in generated release evidence but do not
+create an agent. The agents repository must copy the selected immutable digest
+into `Harness.spec.workload.image`; kagent then propagates it into Revision and
+Substrate ActorTemplate state. Helm overrides use exact image-only allowlists:
+structural settings such as RBAC, subcharts, NetworkPolicy, Secret names and
+topology cannot bypass the checksummed tracked values. Controller and UI tags
+use `<chart-version>@sha256:<digest>` because the adopted chart renders tag
+fields, while the removed legacy `controller.agentImage` knob is rejected. The
+Substrate fork's component digest fields are validated explicitly. The kagent
+artifact is restricted to `https://github.com/pilprod/kagent`; the deployed
+Substrate source commit must exactly match kagent's Substrate Go dependency.
+Both artifacts must prove `rbac.create=false`; the Substrate artifact must
+additionally attest that its Gateway and TLSRoute use
+`gateway.networking.k8s.io/v1`.
 
 The native Secret gate covers Cloud SQL, ate-api/controller mTLS, atenet egress
 server and authorizer mTLS, actor identity pools, and the kagent client bundle.
