@@ -2,11 +2,14 @@
 
 This module is the product-neutral adapter for a service-owned vendor testbed.
 It accepts an immutable OCI chart reference (including its digest), the
-exact base64-encoded product-owned values and a typed placement/network model.
+repository-relative path and SHA-256 of exact product-owned values, and a typed
+placement/network model. Values remain readable YAML under
+`helm/vendor/<bundle_key>/*.values.yaml`; no opaque encoded payload is copied into
+Stack inputs.
 It does not carry vendor defaults or accept an untyped Helm-values escape hatch.
 
 The adapter creates restricted namespaces with quotas, deny-by-default ingress
-and egress, paired policies for every catalog flow, exact `/32` DNS, Kubernetes
+and egress, paired policies for every declared flow, exact `/32` DNS, Kubernetes
 API and private database allowances, and Secret Manager CSI bindings. Kubernetes
 API egress covers both the Service ClusterIP and its ready TCP/443 endpoint
 addresses because policy enforcement may occur on either side of Service DNAT;
@@ -18,12 +21,18 @@ database connection secret ID has been published by the platform Stack. The CRD
 release is independently pinned and has `prevent_destroy = true` because its
 resources are cluster-wide.
 
-The caller should instantiate one module per catalog bundle and pass:
+The caller should instantiate one module per service-owned bundle and pass:
 
 - `bundle_key` and `bundle` from the app-gcp Stack inputs;
 - `project_id`, `cluster_dns_ip` and `cloudsql_private_ip` from platform outputs;
 - `database_secret_ids` from the platform's additional connection-secret map;
 - non-sensitive ownership `labels`.
+
+Each chart values path is restricted to
+`helm/vendor/<bundle_key>/<name>.values.yaml`; the directory must match the
+calling bundle key. The component reads the file from the checked-out
+repository, verifies its declared SHA-256 before Helm runs, and verifies that
+every declared image digest appears in the application values.
 
 Only an explicitly declared bundle can open a source-to-destination path. Each declared path
 produces both source egress and destination ingress policy; all undeclared paths

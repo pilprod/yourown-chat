@@ -59,8 +59,14 @@ locals {
 
   application_ready = local.provisioned && var.bundle.application_enabled && local.database_bindings_ready
 
-  crd_values         = base64decode(var.bundle.charts.crds.values_base64)
-  application_values = base64decode(var.bundle.charts.application.values_base64)
+  # The Stack runs this component from terraform/app-gcp/modules. Resolve only
+  # the validated helm/vendor/<bundle>/*.values.yaml paths from the checked-out
+  # repository; no opaque values payload travels through deployment inputs.
+  repository_root         = abspath("${path.module}/../../../..")
+  crd_values_path         = "${local.repository_root}/${var.bundle.charts.crds.values_path}"
+  application_values_path = "${local.repository_root}/${var.bundle.charts.application.values_path}"
+  crd_values              = try(file(local.crd_values_path), "")
+  application_values      = try(file(local.application_values_path), "")
 
   quota_profiles = {
     testbed-control = {
@@ -143,7 +149,7 @@ resource "kubernetes_limit_range_v1" "this" {
 }
 
 # Every managed namespace is closed in both directions. The policies below add
-# only catalog-declared paths; no same-namespace or cluster-wide exception is
+# only bundle-declared paths; no same-namespace or cluster-wide exception is
 # implicit in this module.
 resource "kubernetes_network_policy_v1" "default_deny" {
   for_each = local.namespaces
@@ -407,7 +413,7 @@ resource "kubernetes_network_policy_v1" "database_egress" {
   depends_on = [kubernetes_network_policy_v1.default_deny]
 }
 
-# The GKE Secret Manager CSI driver resolves the URI only for the catalog-bound
+# The GKE Secret Manager CSI driver resolves the URI only for the bundle-bound
 # endpoint service account. Secret bytes never pass through Terraform state.
 resource "kubernetes_manifest" "database_secret_provider_class" {
   for_each = local.ready_database_bindings
@@ -468,8 +474,13 @@ resource "helm_release" "crds" {
     prevent_destroy = true
 
     precondition {
-      condition     = sha256(local.crd_values) == var.bundle.charts.crds.values_sha256
-      error_message = "Decoded CRD values do not match the declared bundle checksum."
+      condition     = fileexists(local.crd_values_path) && sha256(local.crd_values) == var.bundle.charts.crds.values_sha256
+      error_message = "The tracked CRD values file is missing or does not match the declared bundle checksum."
+    }
+
+    precondition {
+      condition     = try(length(keys(yamldecode(local.crd_values))) >= 0, false)
+      error_message = "The tracked CRD values file must contain a YAML object."
     }
   }
 
@@ -507,8 +518,21 @@ resource "helm_release" "application" {
 
   lifecycle {
     precondition {
-      condition     = sha256(local.application_values) == var.bundle.charts.application.values_sha256
-      error_message = "Decoded application values do not match the declared bundle checksum."
+      condition     = fileexists(local.application_values_path) && sha256(local.application_values) == var.bundle.charts.application.values_sha256
+      error_message = "The tracked application values file is missing or does not match the declared bundle checksum."
+    }
+
+    precondition {
+      condition     = try(length(keys(yamldecode(local.application_values))) >= 0, false)
+      error_message = "The tracked application values file must contain a YAML object."
+    }
+
+    precondition {
+      condition = alltrue([
+        for digest in values(var.bundle.image_digests) :
+        strcontains(local.application_values, digest)
+      ])
+      error_message = "Every declared image digest must be present in the tracked application values file."
     }
   }
 
