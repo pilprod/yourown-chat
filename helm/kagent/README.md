@@ -46,6 +46,16 @@ Both artifacts must prove `rbac.create=false`; the Substrate artifact must
 additionally attest that its Gateway and TLSRoute use
 `gateway.networking.k8s.io/v1`.
 
+Substrate `v0.0.22` is recorded separately at
+`evidence/substrate/v0.0.22/substrate-v0.0.22.consumer-evidence.json`. Its
+schema deliberately says `consumer-evidence`: the semver publisher exposed
+public OCI artifacts but did not emit the old `substrate-gke-preview.json`
+producer asset. The adjacent checksum detects repository drift, and the release
+renderer reloads that exact checked-in file and compares every Substrate
+artifact field before producing Skaffold. This evidence does not assert kagent
+artifacts, compatibility gates, native Secret readiness or ownership handoff
+readiness.
+
 The native Secret gate covers Cloud SQL, ate-api/controller mTLS, atenet egress
 server and authorizer mTLS, actor identity pools, and the kagent client bundle.
 It also requires Kubernetes-only `actor-id-ca-certs/ca.crt`, derived exactly
@@ -89,8 +99,9 @@ requires release-supplied digest pins; this repository does not invent a
 `kubectl-ate` image digest.
 
 The current service input intentionally sets every activation attestation to
-false. Remaining prerequisites include publishable immutable fork artifacts
-containing the verifier image pin, populated and natively synchronized TLS
-material, the explicit local-provider-only network posture, the two-step kagent
-ownership handoff, and external Broker smoke evidence. Do not flip the rail
-until all of them are reviewed.
+false. The immutable Substrate `v0.0.22` consumer record includes the verifier
+pin, but independent immutable kagent evidence is still absent. Remaining
+prerequisites also include populated and natively synchronized TLS material,
+the explicit local-provider-only network posture, the two-step kagent ownership
+handoff, and external Broker smoke evidence. Do not flip the rail until all of
+them are reviewed.

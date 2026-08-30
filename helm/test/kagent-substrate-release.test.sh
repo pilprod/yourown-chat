@@ -13,17 +13,23 @@ sha256_file() {
 }
 
 kagent_commit="$(hex 1 40)"
-substrate_commit="$(hex 2 40)"
+consumer_evidence="${repo_root}/helm/kagent/evidence/substrate/v0.0.22/substrate-v0.0.22.consumer-evidence.json"
+consumer_evidence_path="kagent/evidence/substrate/v0.0.22/substrate-v0.0.22.consumer-evidence.json"
+consumer_evidence_sha="$(sha256_file "${consumer_evidence}")"
+substrate_commit="$(jq -er '.source.commit' "${consumer_evidence}")"
+substrate_version="$(jq -er '.charts.application.version' "${consumer_evidence}")"
+substrate_application_ref="$(jq -er '.charts.application.ref' "${consumer_evidence}")"
+substrate_crds_ref="$(jq -er '.charts.crds.ref' "${consumer_evidence}")"
 d1="sha256:$(hex a 64)"
 d2="sha256:$(hex b 64)"
-d3="sha256:$(hex c 64)"
-d4="sha256:$(hex d 64)"
+d3="$(jq -er '.images.ateapi.digest' "${consumer_evidence}")"
+d4="$(jq -er '.images.atecontroller.digest' "${consumer_evidence}")"
 d5="sha256:$(hex e 64)"
 d6="sha256:$(hex f 64)"
 d7="sha256:$(hex 0 64)"
-d8="sha256:$(hex 8 64)"
-d9="sha256:$(hex 9 64)"
-d10="sha256:$(hex 7 64)"
+d8="$(jq -er '.images.atenet.digest' "${consumer_evidence}")"
+d9="$(jq -er '.dependency_images.agentgateway.digest' "${consumer_evidence}")"
+d10="$(jq -er '.images.releaseVerifier.digest' "${consumer_evidence}")"
 d11="sha256:$(hex 6 64)"
 
 contract="${work}/contract.json"
@@ -32,6 +38,11 @@ jq -n \
   --arg d1 "${d1}" --arg d2 "${d2}" --arg d3 "${d3}" \
   --arg d4 "${d4}" --arg d5 "${d5}" --arg d6 "${d6}" \
   --arg d7 "${d7}" --arg d8 "${d8}" --arg d9 "${d9}" --arg d10 "${d10}" --arg d11 "${d11}" \
+  --arg consumer_evidence_path "${consumer_evidence_path}" \
+  --arg consumer_evidence_sha "${consumer_evidence_sha}" \
+  --arg substrate_version "${substrate_version}" \
+  --arg substrate_application_ref "${substrate_application_ref}" \
+  --arg substrate_crds_ref "${substrate_crds_ref}" \
   --arg kbase "$(sha256_file "${repo_root}/helm/kagent/kagent.values.yaml")" \
   --arg ktest "$(sha256_file "${repo_root}/helm/kagent/kagent-testbed.values.yaml")" \
   --arg sbase "$(sha256_file "${repo_root}/helm/kagent/substrate.values.yaml")" \
@@ -64,11 +75,12 @@ jq -n \
       substrate: {
         source_repository: "https://github.com/pilprod/substrate",
         source_commit: $sc,
-        artifact_manifest_sha256: ($sc + $sc[0:24]),
-        artifact_schema_version: "yourown.chat/substrate-release/v1",
+        artifact_manifest_sha256: $consumer_evidence_sha,
+        artifact_schema_version: "yourown.chat/substrate-semver-consumer-evidence/v1",
+        artifact_manifest_path: $consumer_evidence_path,
         charts: {
-          application: {ref: ("oci://ghcr.io/pilprod/substrate/helm/substrate@" + $d5), version: "0.1.0"},
-          crds: {ref: ("oci://ghcr.io/pilprod/substrate/helm/substrate-crds@" + $d6), version: "0.1.0"}
+          application: {ref: $substrate_application_ref, version: $substrate_version},
+          crds: {ref: $substrate_crds_ref, version: $substrate_version}
         },
         image_refs: {
           ateapi: ("ghcr.io/pilprod/substrate/ateapi@" + $d3),
@@ -126,6 +138,7 @@ grep -Fq 'namespace: ate-system' "${output}"
 grep -Fq 'name: kagent' "${output}"
 grep -Fq 'namespace: kagent-system' "${output}"
 grep -Fq 'production_eligible=false' "${output}"
+grep -Fq 'Substrate pins use app-gcp consumer evidence; this was not a producer release asset.' "${output}"
 grep -Fq 'external_broker_smoke_ready=false; required for local-agent-ready, not bootstrap' "${output}"
 grep -Fq "runtime_images.kagentHarness=ghcr.io/pilprod/kagent/golang-adk@${d7}" "${output}"
 grep -Fq "runtime_images.codexHarness=ghcr.io/pilprod/kagent/codex-harness@${d11}" "${output}"
@@ -328,6 +341,33 @@ if KAGENT_SUBSTRATE_RELEASE_JSON="$(<"${work}/foreign-release-verifier.json")" \
   echo "foreign release verifier image unexpectedly rendered" >&2
   exit 1
 fi
-grep -Fq 'releaseVerifier must be the immutable substrate-release-verify image from the artifact registry' "${work}/foreign-release-verifier.err"
+grep -Fq 'Substrate artifact fields must exactly match the checked-in consumer evidence' "${work}/foreign-release-verifier.err"
+
+jq '.artifacts.substrate.artifact_manifest_sha256 = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"' \
+  "${contract}" > "${work}/wrong-consumer-checksum.json"
+if KAGENT_SUBSTRATE_RELEASE_JSON="$(<"${work}/wrong-consumer-checksum.json")" \
+  python3 "${renderer}" --source-root "${repo_root}/helm" --output "${work}/wrong-consumer-checksum.yaml" 2>"${work}/wrong-consumer-checksum.err"; then
+  echo "Substrate consumer evidence with a mismatched checksum unexpectedly rendered" >&2
+  exit 1
+fi
+grep -Fq 'consumer evidence does not match artifact_manifest_sha256' "${work}/wrong-consumer-checksum.err"
+
+jq '.artifacts.substrate.artifact_schema_version = "yourown.chat/substrate-gke-preview/v1" | del(.artifacts.substrate.artifact_manifest_path)' \
+  "${contract}" > "${work}/wrong-substrate-schema.json"
+if KAGENT_SUBSTRATE_RELEASE_JSON="$(<"${work}/wrong-substrate-schema.json")" \
+  python3 "${renderer}" --source-root "${repo_root}/helm" --output "${work}/wrong-substrate-schema.yaml" 2>"${work}/wrong-substrate-schema.err"; then
+  echo "legacy GKE preview evidence unexpectedly rendered as a Cloud Deploy artifact" >&2
+  exit 1
+fi
+grep -Fq 'producer release schema v1 or checked-in semver consumer evidence' "${work}/wrong-substrate-schema.err"
+
+jq '.artifacts.substrate.artifact_manifest_path = "kagent/evidence/substrate/v0.0.23/substrate-v0.0.23.consumer-evidence.json"' \
+  "${contract}" > "${work}/missing-consumer-evidence.json"
+if KAGENT_SUBSTRATE_RELEASE_JSON="$(<"${work}/missing-consumer-evidence.json")" \
+  python3 "${renderer}" --source-root "${repo_root}/helm" --output "${work}/missing-consumer-evidence.yaml" 2>"${work}/missing-consumer-evidence.err"; then
+  echo "Substrate consumer evidence with a missing checked-in manifest unexpectedly rendered" >&2
+  exit 1
+fi
+grep -Fq 'consumer evidence must be a regular file' "${work}/missing-consumer-evidence.err"
 
 printf 'kagent/Substrate immutable testbed render tests passed\n'

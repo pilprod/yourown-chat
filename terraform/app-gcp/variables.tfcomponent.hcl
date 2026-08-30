@@ -223,6 +223,7 @@ variable "kagent_substrate_delivery" {
       source_commit            = string
       artifact_manifest_sha256 = string
       artifact_schema_version  = string
+      artifact_manifest_path   = optional(string, "")
       charts = object({
         application = object({
           ref     = string
@@ -274,7 +275,25 @@ variable "kagent_substrate_delivery" {
       toset(keys(var.kagent_substrate_delivery.artifacts)) == toset(["kagent", "substrate"]) &&
       var.kagent_substrate_delivery.artifacts["kagent"].source_repository == "https://github.com/pilprod/kagent" &&
       var.kagent_substrate_delivery.artifacts["kagent"].artifact_schema_version == "3" &&
+      var.kagent_substrate_delivery.artifacts["kagent"].artifact_manifest_path == "" &&
       var.kagent_substrate_delivery.artifacts["substrate"].source_repository == "https://github.com/pilprod/substrate" &&
+      (
+        (
+          var.kagent_substrate_delivery.artifacts["substrate"].artifact_schema_version == "yourown.chat/substrate-semver-consumer-evidence/v1" &&
+          can(regex(
+            "^kagent/evidence/substrate/v[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?/substrate-v[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?\\.consumer-evidence\\.json$",
+            var.kagent_substrate_delivery.artifacts["substrate"].artifact_manifest_path,
+          )) &&
+          try(
+            basename(var.kagent_substrate_delivery.artifacts["substrate"].artifact_manifest_path) ==
+            "substrate-${split("/", var.kagent_substrate_delivery.artifacts["substrate"].artifact_manifest_path)[3]}.consumer-evidence.json",
+            false,
+          )
+          ) || (
+          var.kagent_substrate_delivery.artifacts["substrate"].artifact_schema_version == "yourown.chat/substrate-release/v1" &&
+          var.kagent_substrate_delivery.artifacts["substrate"].artifact_manifest_path == ""
+        )
+      ) &&
       alltrue([
         for artifact in values(var.kagent_substrate_delivery.artifacts) :
         can(regex("^[0-9a-f]{40}$", artifact.source_commit)) &&
@@ -329,7 +348,7 @@ variable "kagent_substrate_delivery" {
         destination.port <= 65535
       ])
     )
-    error_message = "Enabled bootstrap or release requires kagent evidence schema 3 with controller/UI image refs and exact kagentHarness/codexHarness runtime refs, a separate Substrate manifest, digest-qualified app+CRD charts/images, an exact Substrate dependency commit, RBAC/Gateway API capabilities, a verifier and testbed-only endpoints. Use either explicit atenet destinations or local_provider_only=true with no Actor/MCP egress; External Broker smoke is a post-bootstrap local-agent-ready gate."
+    error_message = "Enabled bootstrap or release requires kagent evidence schema 3 with controller/UI image refs and exact kagentHarness/codexHarness runtime refs, plus either producer Substrate release schema v1 or checked-in semver consumer evidence with its canonical manifest path. Both artifacts require digest-qualified app+CRD charts/images, an exact Substrate dependency commit, RBAC/Gateway API capabilities, a verifier and testbed-only endpoints. Use either explicit atenet destinations or local_provider_only=true with no Actor/MCP egress; External Broker smoke is a post-bootstrap local-agent-ready gate."
   }
 
   validation {
