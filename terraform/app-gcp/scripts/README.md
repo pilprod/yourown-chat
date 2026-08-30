@@ -114,24 +114,37 @@ must already be listed in `externalProviderEnrollmentAdmins`; app-gcp creates
 
 Before running it:
 
-1. obtain the reviewed release's exact digest-qualified `kubectl-ate` image;
-2. choose a reviewed minimal transfer image which supplies POSIX `sh`, `sleep`,
-   `test`, `mkdir`, `chmod`, and `cat` and runs as uid/gid 65532;
-3. apply the app-gcp bootstrap prerequisites, including the persistent
+1. choose the pinned native Substrate `v0.0.22` release, provide an owner-only
+   copy of its exact Linux archive, or explicitly retain the digest-qualified
+   `kubectl-ate` image path;
+2. choose the target Linux node architecture (`amd64` or `arm64`) when using a
+   native archive;
+3. choose a reviewed minimal transfer image which supplies POSIX `sh`, `sleep`,
+   `test`, `mkdir`, `chmod`, `cat`, and `sha256sum` and runs as uid/gid 65532;
+4. apply the app-gcp bootstrap prerequisites, including the persistent
    enrollment default-deny NetworkPolicy;
-4. save the reviewed slot policy in a real, current-user-owned regular file
+5. save the reviewed slot policy in a real, current-user-owned regular file
    with mode `0400` or `0600`, inside a real owner-writable/searchable directory
    owned by the current user with no group/other permissions; and
-5. create a real current-user-owned output directory with no group/other
+6. create a real current-user-owned output directory with no group/other
    permissions. The destination file must not exist.
 
-No placeholder digest is checked in. After the Substrate release supplies the
-real pins, invoke the helper with environment variables that came from that
-reviewed handoff:
+The primary path downloads the exact `linux-<arch>` archive and published
+checksums from the immutable public release. It requires no GitHub login. It
+fail-closes on any mismatch in the pinned release ID, asset identities and
+sizes, GitHub asset digests, checksum file, annotated tag object, signed-tag
+presence, or the GitHub-verified source commit. When an already-authenticated
+compatible `gh` CLI is available, it additionally verifies GitHub's
+cryptographically signed immutable-release attestation; the helper never
+invokes `gh auth login` or `gh auth refresh` and the unauthenticated API path
+remains complete.
+
+Invoke it with the release and the target node architecture:
 
 ```sh
 terraform/app-gcp/scripts/issue-substrate-external-provider-enrollment.sh \
-  --kubectl-ate-image "${KUBECTL_ATE_IMAGE}" \
+  --kubectl-ate-release v0.0.22 \
+  --runtime-arch amd64 \
   --transfer-image "${TRANSFER_IMAGE}" \
   --context gke_yourown-chat_europe-west3-b_europe-west3-b \
   --cluster-dns-ip "${CLUSTER_DNS_IP}" \
@@ -149,12 +162,23 @@ terraform/app-gcp/scripts/issue-substrate-external-provider-enrollment.sh \
   --output-file /absolute/private/enrollment-token
 ```
 
-The main container writes an atomic `0600` credential into a memory-backed
-shared volume. A non-logging transfer sidecar waits for that file. Only after
-the main container terminates successfully and the file is present does the
-local script stream it directly into a same-directory `0600` temporary file.
-It publishes the final path with a hard link, so a concurrent file creation is
-never overwritten. The credential file itself must remain the sole handoff to
-the Agent Host. The transferred bytes are accepted only when every byte is in
-the credential alphabet `A-Za-z0-9_-`; line terminators and other raw bytes are
-rejected.
+For an offline/pre-fetched handoff, replace the first two flags with
+`--kubectl-ate-archive /absolute/private/kubectl-ate-v0.0.22-linux-amd64.tar.gz`
+and keep `--runtime-arch amd64`. The archive and its parent must meet the same
+owner-only rules as the policy; the helper hard-links it before validation to
+prevent pathname replacement and accepts only the exact built-in release size
+and digest. Darwin release assets are not accepted because this executable is
+run in a Linux Pod. The older `--kubectl-ate-image IMAGE@sha256:DIGEST` mode
+remains available and is mutually exclusive with both native sources.
+
+In native mode the extracted binary is kept `0700` in local owner-only scratch,
+then streamed over `kubectl exec -i` stdin into a memory-backed `emptyDir` on a
+restricted, digest-pinned transfer Pod. The Pod is pinned with Linux/architecture
+node selectors, and its received binary digest is checked again before it can
+execute. No binary ConfigMap, `kubectl cp`, port-forward, or broad egress is
+used. The in-cluster process writes an atomic `0600` credential into the
+memory-backed handoff volume. Only after it succeeds does the local script
+stream the credential directly into a same-directory `0600` temporary file and
+publish it with a hard link, so a concurrent destination is never overwritten.
+The credential file itself remains the sole handoff to the Agent Host. Every
+byte must be in `A-Za-z0-9_-`; line terminators and other raw bytes are rejected.

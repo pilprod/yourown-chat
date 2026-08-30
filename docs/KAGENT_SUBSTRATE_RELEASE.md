@@ -176,11 +176,19 @@ The long-lived local Agent Host uses the public Broker without a port-forward.
 Initial external-provider enrollment is issued separately with
 `terraform/app-gcp/scripts/issue-substrate-external-provider-enrollment.sh`.
 That helper verifies the Terraform-managed persistent default-deny policy,
-runs digest-pinned `kubectl-ate` and transfer images in a restricted in-cluster
-Pod, talks only to `api.ate-system.svc:443`, and publishes the single-use
-credential into an owner-only local file. It does not pass credential bytes
-through Terraform state, a Kubernetes Secret, Pod logs, or a port-forward.
+runs either the exact verified Substrate `v0.0.22` native `kubectl-ate` binary
+or the legacy digest-pinned image in a restricted in-cluster Pod, talks only to
+`api.ate-system.svc:443`, and publishes the single-use credential into an
+owner-only local file. The native binary is selected for the explicit Linux
+node architecture, checked against immutable GitHub release metadata,
+checksums, annotated tag/source identity and pinned extracted-binary digest,
+then streamed through `kubectl exec -i` into a memory-backed `emptyDir`. This
+requires no GitHub authentication; an existing authenticated modern `gh` CLI
+adds signed immutable-release attestation verification without any login or
+refresh action. The helper does not pass credential bytes through Terraform
+state, a Kubernetes Secret, ConfigMap, Pod logs, command arguments, or a
+port-forward.
 
 The enrollment helper is not part of the native Secret bootstrap and does not
 change any activation attestation. Run it only after the app-gcp bootstrap
-prerequisites and reviewed immutable image digests exist.
+prerequisites and the reviewed immutable transfer image digest exist.
