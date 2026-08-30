@@ -209,7 +209,7 @@ variable "additional_database_users" {
     password_rotation             = optional(string, "1")
     manage_databases              = optional(bool, true)
   }))
-  description = "Additional logical database groups and users hosted by this shared Cloud SQL instance. The map key is the PostgreSQL user name."
+  description = "Additional logical database groups and users hosted by this shared Cloud SQL instance. The map key is the PostgreSQL user name. Set adopt_existing_database_names only for a reviewed one-shot import, then clear it after success; the imported resources remain managed in state."
   default     = {}
 
   validation {
