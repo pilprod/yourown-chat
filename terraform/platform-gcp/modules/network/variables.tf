@@ -70,6 +70,12 @@ variable "calls_static_ip" {
   default     = false
 }
 
+variable "agentgateway_static_ip" {
+  type        = bool
+  description = "Reserve a dedicated regional external IP for the agentgateway data plane used by direct Substrate Broker clients."
+  default     = false
+}
+
 variable "nat_min_ports_per_vm" {
   type        = number
   description = "Minimum NAT source ports per VM."

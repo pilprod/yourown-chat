@@ -58,6 +58,16 @@ output "calls_ip_address" {
   value       = one(google_compute_address.calls[*].address)
 }
 
+output "agentgateway_ip_address" {
+  description = "Dedicated regional external IP for the direct agentgateway/Broker data plane."
+  value       = one(google_compute_address.agentgateway[*].address)
+}
+
+output "agentgateway_ip_name" {
+  description = "GCP regional address resource name consumed by the GKE L4 RBS Service annotation."
+  value       = one(google_compute_address.agentgateway[*].name)
+}
+
 output "nat_egress_ip_address" {
   description = "Reserved regional external IP used by Cloud NAT for stable outbound allowlists such as Google Workspace SMTP Relay."
   value       = google_compute_address.nat.address

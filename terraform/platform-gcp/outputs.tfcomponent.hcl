@@ -257,3 +257,35 @@ output "temporal_release_name" {
   description = "Installed official Temporal Helm release name, or null while the launch gate is closed."
   value       = component.temporal.release_name
 }
+
+# --- Agent gateway platform service -----------------------------------------
+output "agentgateway" {
+  type = object({
+    enabled                    = bool
+    namespace                  = string
+    gateway_api_version        = string
+    gateway_class_name         = string
+    controller_name            = string
+    chart_version              = string
+    service_account_name       = string
+    read_cluster_role_name     = string
+    deployer_cluster_role_name = string
+    controller_release_name    = string
+    crd_release_name           = string
+    gateway_api_asset_sha256   = string
+  })
+  description = "Official agentgateway control-plane contract; workload Gateways and routes are app-gcp owned."
+  value       = component.agentgateway.contract
+}
+
+output "agentgateway_public_ip_address" {
+  type        = string
+  description = "Dedicated regional public IP consumed by the app-owned AgentgatewayParameters service contract."
+  value       = component.network.agentgateway_ip_address
+}
+
+output "agentgateway_public_ip_name" {
+  type        = string
+  description = "Dedicated GCP address resource name for optional GKE LoadBalancer annotations."
+  value       = component.network.agentgateway_ip_name
+}
