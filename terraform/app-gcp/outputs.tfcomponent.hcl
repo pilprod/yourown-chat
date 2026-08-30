@@ -14,6 +14,54 @@ output "clouddeploy_pipeline_names" {
   }
 }
 
+output "kagent_substrate_bootstrap_ready" {
+  type        = bool
+  description = "Whether the pre-sync Secret Manager containers, namespace, exact contract, RBAC and immutable Substrate CRDs are ready."
+  value = (
+    var.kagent_substrate_delivery.bootstrap_enabled &&
+    component.substrate_prerequisites.bootstrap_ready
+  )
+}
+
+output "kagent_substrate_delivery_ready" {
+  type        = bool
+  description = "Whether immutable application pins, Terraform CRD ownership and native Substrate secret synchronization are all enabled."
+  value = (
+    var.kagent_substrate_delivery.release_enabled &&
+    var.kagent_substrate_delivery.native_secret_sync_ready &&
+    local.kagent_substrate_crd_prerequisites_ready &&
+    component.substrate_prerequisites.release_ready &&
+    var.agentgateway_platform.enabled &&
+    var.agentgateway_public_ip_address != null
+  )
+}
+
+output "kagent_substrate_production_eligible" {
+  type        = bool
+  description = "The fork issue-validation rail is structurally forbidden from promoting into production."
+  value       = false
+}
+
+output "external_broker_smoke_required" {
+  type        = bool
+  description = "True until an external client/Cloud Build TLS+gRPC smoke has been explicitly attested; this does not block the first testbed bootstrap release."
+  value       = !var.kagent_substrate_delivery.external_broker_smoke_ready
+}
+
+output "kagent_local_agent_ready" {
+  type        = bool
+  description = "True only after the deploy rail is ready and a real external Broker smoke has been separately attested."
+  value = (
+    var.kagent_substrate_delivery.release_enabled &&
+    var.kagent_substrate_delivery.native_secret_sync_ready &&
+    local.kagent_substrate_crd_prerequisites_ready &&
+    component.substrate_prerequisites.release_ready &&
+    var.agentgateway_platform.enabled &&
+    var.agentgateway_public_ip_address != null &&
+    var.kagent_substrate_delivery.external_broker_smoke_ready
+  )
+}
+
 # --- Application secrets --------------------------------------------------------
 output "app_secret_ids" {
   type        = map(string)

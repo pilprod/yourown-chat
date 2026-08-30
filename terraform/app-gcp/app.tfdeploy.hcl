@@ -56,9 +56,22 @@ deployment "eu" {
     yourown_chat_identity_connection_secret_id         = upstream_input.platform.yourown_chat_identity_connection_secret_id
     yourown_chat_identity_runtime_connection_secret_id = upstream_input.platform.yourown_chat_identity_runtime_connection_secret_id
     additional_cloudsql_connection_secret_ids          = try(upstream_input.platform.additional_cloudsql_connection_secret_ids, {})
-    yourown_chat_registration_enabled                  = true
-    ingress_ip_address                                 = upstream_input.platform.ingress_ip_address
-    calls_ip_address                                   = upstream_input.platform.calls_ip_address
+    agentgateway_platform = try(upstream_input.platform.agentgateway, {
+      enabled                    = false
+      namespace                  = "agentgateway-system"
+      gateway_api_version        = "v1.6.0"
+      gateway_class_name         = "agentgateway"
+      controller_name            = "agentgateway.dev/agentgateway"
+      chart_version              = "v1.5.0"
+      service_account_name       = "agentgateway"
+      read_cluster_role_name     = "agentgateway-agentgateway-system"
+      deployer_cluster_role_name = "agentgateway-agentgateway-system-deployer"
+    })
+    agentgateway_public_ip_address    = try(upstream_input.platform.agentgateway_public_ip_address, null)
+    agentgateway_public_ip_name       = try(upstream_input.platform.agentgateway_public_ip_name, null)
+    yourown_chat_registration_enabled = true
+    ingress_ip_address                = upstream_input.platform.ingress_ip_address
+    calls_ip_address                  = upstream_input.platform.calls_ip_address
 
     # Derived from the cloudflare stack's published outputs -- no hand-kept
     # mirror toggles. origin_tls_ready is true exactly when the Origin CA
@@ -108,10 +121,11 @@ deployment "eu" {
     # Service-owned inputs live with the app-gcp Stack. Credentials remain in
     # the approved secret control plane; these values are names, URLs and
     # immutable release pins.
-    github_connection_name = local.github_connection_name
-    source_repositories    = local.source_repositories
-    vendor_chart_bundles   = local.vendor_chart_bundles
-    image_name = "mattermost"
+    github_connection_name    = local.github_connection_name
+    source_repositories       = local.source_repositories
+    vendor_chart_bundles      = local.vendor_chart_bundles
+    kagent_substrate_delivery = local.kagent_substrate_delivery
+    image_name                = "mattermost"
     # Stable assembly tags use dev -> smoke -> approval -> prod. Prerelease
     # tags and version branches are structurally limited to dev preview.
     builds = {
