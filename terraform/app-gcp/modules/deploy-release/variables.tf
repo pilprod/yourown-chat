@@ -181,6 +181,21 @@ variable "agents_runtime_enabled" {
   default     = false
 }
 
+variable "kagent_substrate_delivery" {
+  type        = any
+  description = "Validated immutable dual-artifact testbed contract forwarded to the stdlib-only release renderer."
+  default = {
+    bootstrap_enabled = false
+    release_enabled   = false
+  }
+}
+
+variable "kagent_substrate_prerequisites_ready" {
+  type        = bool
+  description = "Fail-closed gate covering retained ownership handoff, CRDs, native Secrets, agentgateway and the dedicated public IP."
+  default     = false
+}
+
 variable "mattermost_image_repository" {
   type = object({
     location      = string

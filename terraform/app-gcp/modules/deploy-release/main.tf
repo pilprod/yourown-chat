@@ -172,7 +172,7 @@ resource "google_cloudbuild_trigger" "release" {
   project         = var.project_id
   location        = var.region
   name            = "release"
-  description     = "Route Mattermost, MCP and agent pilot changes to component Cloud Deploy pipelines on ${var.release_tag_regex} tags."
+  description     = "Route Mattermost, MCP, agents and the production-ineligible kagent/Substrate testbed to component Cloud Deploy pipelines on ${var.release_tag_regex} tags."
   service_account = google_service_account.releaser.id
 
   repository_event_config {
@@ -218,6 +218,9 @@ resource "google_cloudbuild_trigger" "release" {
       name       = "gcr.io/google.com/cloudsdktool/cloud-sdk:slim"
       entrypoint = "bash"
       dir        = var.source_subdir
+      env = [
+        "KAGENT_SUBSTRATE_RELEASE_JSON=${jsonencode(var.kagent_substrate_delivery)}",
+      ]
       args = [
         "-ceu",
         <<-EOT
@@ -233,6 +236,8 @@ resource "google_cloudbuild_trigger" "release" {
             /workspace/changed-files agents "$$previous_tag")"
           server_changed="$$(bash route-components.sh \
             /workspace/changed-files yourown-chat "$$previous_tag")"
+          kagent_substrate_changed="$$(bash route-components.sh \
+            /workspace/changed-files kagent-substrate "$$previous_tag")"
 
           create_release() {
             pipeline="$$1"
@@ -398,8 +403,22 @@ resource "google_cloudbuild_trigger" "release" {
             echo "Agent pilot changes detected, but agent_platform_enabled=false; skipping release"
           fi
 
-          if [ "$$mattermost_changed" = "false" ] && [ "$$mcp_changed" = "false" ] && [ "$$agents_changed" = "false" ]; then
-            echo "No Mattermost, MCP or agent deployment changes in $TAG_NAME"
+          if [ "${try(var.kagent_substrate_delivery.release_enabled, false)}" = "true" ]; then
+            if [ "$$kagent_substrate_changed" = "true" ]; then
+              python3 kagent/render-release.py \
+                --source-root . \
+                --output skaffold-kagent-substrate.yaml
+              create_release \
+                kagent-substrate \
+                "kagent-substrate-$$safe_tag-$SHORT_SHA-$$short_build" \
+                "git-tag=$TAG_NAME,git-sha=$COMMIT_SHA,build-id=$BUILD_ID,production-eligible=false,kagent-source=${try(var.kagent_substrate_delivery.artifacts["kagent"].source_commit, "disabled")},kagent-manifest=${try(var.kagent_substrate_delivery.artifacts["kagent"].artifact_manifest_sha256, "disabled")},substrate-source=${try(var.kagent_substrate_delivery.artifacts["substrate"].source_commit, "disabled")},substrate-manifest=${try(var.kagent_substrate_delivery.artifacts["substrate"].artifact_manifest_sha256, "disabled")}"
+            fi
+          elif [ "$$kagent_substrate_changed" = "true" ]; then
+            echo "kagent/Substrate testbed changes detected, but release_enabled=false; bootstrap may proceed without admitting Helm workloads"
+          fi
+
+          if [ "$$mattermost_changed" = "false" ] && [ "$$mcp_changed" = "false" ] && [ "$$agents_changed" = "false" ] && [ "$$server_changed" = "false" ] && [ "$$kagent_substrate_changed" = "false" ]; then
+            echo "No Mattermost, MCP, agent, server or kagent/Substrate deployment changes in $TAG_NAME"
           fi
         EOT
       ]
@@ -420,4 +439,11 @@ resource "google_cloudbuild_trigger" "release" {
     google_project_iam_member.releaser_logs,
     google_artifact_registry_repository_iam_member.releaser_registry,
   ]
+
+  lifecycle {
+    precondition {
+      condition     = !try(var.kagent_substrate_delivery.release_enabled, false) || var.kagent_substrate_prerequisites_ready
+      error_message = "kagent/Substrate delivery is fail-closed until retained Terraform ownership handoff, fork CRDs, native Secrets, scoped agentgateway and the dedicated public IP are all ready."
+    }
+  }
 }

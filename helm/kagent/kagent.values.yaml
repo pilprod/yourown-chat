@@ -1,0 +1,148 @@
+# Existing single-user testbed contract for the kagent release in
+# kagent-system. Immutable fork image coordinates are injected from the
+# reviewed artifact manifest; this file preserves the live runtime shape.
+fullnameOverride: kagent
+namespaceOverride: kagent-system
+
+registry: cr.kagent.dev
+tag: ""
+imagePullPolicy: IfNotPresent
+
+labels:
+  app.kubernetes.io/part-of: k8s-agents-platform
+  platform.yourown.chat/release-channel: testbed
+
+rbac:
+  # Required fork capability: Terraform owns Roles and RoleBindings.
+  create: false
+  namespaces:
+    - kagent-system
+    - kagent-testbed
+
+controller:
+  replicas: 1
+  loglevel: info
+  image:
+    # registry/repository/digest are injected from the immutable manifest.
+    tag: ""
+  agentImage:
+    tag: ""
+  volumes:
+    - name: database-url
+      csi:
+        driver: secrets-store-gke.csi.k8s.io
+        readOnly: true
+        volumeAttributes:
+          secretProviderClass: kagent-database-gcp
+  volumeMounts:
+    - name: database-url
+      mountPath: /var/run/secrets/kagent-database
+      readOnly: true
+  watchNamespaces:
+    - kagent-system
+    - kagent-testbed
+  # This remains an explicitly isolated single-user testbed. Human access is
+  # protected by the existing Cloudflare Access route.
+  auth:
+    mode: unsecure
+  substrate:
+    enabled: true
+    ateApiEndpoint: dns:///api.ate-system.svc:443
+    atenetRouterURL: ""
+    ateApiServer:
+      namespace: ate-system
+      serviceAccount: ate-api-server
+    tls:
+      mode: existingSecret
+      serverName: api.ate-system.svc
+      existingSecret:
+        name: kagent-ate-client-tls
+        serverCAKey: server-ca.pem
+        clientCredentialBundleKey: client-credential-bundle.pem
+
+ui:
+  replicas: 1
+  image:
+    # registry/repository/digest are injected from the immutable manifest.
+    tag: ""
+  startupProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    failureThreshold: 20
+  service:
+    type: ClusterIP
+    ports:
+      port: 8080
+      targetPort: 8080
+
+database:
+  postgres:
+    urlFile: /var/run/secrets/kagent-database/database-url
+    vectorEnabled: false
+    bundled:
+      enabled: false
+
+providers:
+  # The testbed starts without a model-provider API Secret. E2E uses the
+  # deterministic in-cluster fixture; real providers remain opt-in.
+  default: ollama
+  ollama:
+    provider: Ollama
+    model: fixture-model
+    config:
+      host: http://model-fixture.kagent-testbed.svc.cluster.local:11434
+
+kmcp:
+  enabled: false
+
+# Substrate is delivered as its own reviewed release in ate-system.
+substrate:
+  enabled: false
+
+substrateWorkerPool:
+  create: false
+
+kagent-tools:
+  enabled: false
+
+grafana-mcp:
+  enabled: false
+
+querydoc:
+  enabled: false
+
+oauth2-proxy:
+  enabled: false
+
+k8s-agent:
+  enabled: false
+
+kgateway-agent:
+  enabled: false
+
+istio-agent:
+  enabled: false
+
+promql-agent:
+  enabled: false
+
+observability-agent:
+  enabled: false
+
+argo-rollouts-agent:
+  enabled: false
+
+helm-agent:
+  enabled: false
+
+cilium-policy-agent:
+  enabled: false
+
+cilium-manager-agent:
+  enabled: false
+
+cilium-debug-agent:
+  enabled: false

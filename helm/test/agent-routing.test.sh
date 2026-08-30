@@ -14,6 +14,16 @@ printf '%s\n' 'helm/yourown-chat/templates/deployments.yaml' > "${changed}"
 [[ "$(bash "${repo_root}/helm/route-components.sh" "${changed}" yourown-chat)" == true ]]
 [[ "$(bash "${repo_root}/helm/route-components.sh" "${changed}" agents)" == false ]]
 
+printf '%s\n' 'helm/kagent/kagent.values.yaml' > "${changed}"
+[[ "$(bash "${repo_root}/helm/route-components.sh" "${changed}" kagent-substrate)" == true ]]
+[[ "$(bash "${repo_root}/helm/route-components.sh" "${changed}" agents)" == false ]]
+
+printf '%s\n' 'terraform/app-gcp/service-inputs.tfdeploy.hcl' > "${changed}"
+[[ "$(bash "${repo_root}/helm/route-components.sh" "${changed}" kagent-substrate)" == true ]]
+
+printf '%s\n' 'terraform/app-gcp/components.tfcomponent.hcl' > "${changed}"
+[[ "$(bash "${repo_root}/helm/route-components.sh" "${changed}" kagent-substrate)" == false ]]
+
 printf '%s\n' 'terraform/components/temporal/main.tf' > "${changed}"
 [[ "$(bash "${repo_root}/helm/route-components.sh" "${changed}" agents)" == false ]]
 

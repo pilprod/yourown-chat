@@ -1,0 +1,66 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kagent-substrate-health
+  namespace: ate-system
+spec:
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 120
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: verify
+        app.kubernetes.io/part-of: kagent-substrate-testbed
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      serviceAccountName: ate-enrollment-admin
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      volumes:
+        - name: substrate-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  path: substrate-token
+                  audience: api.ate-system.svc
+                  expirationSeconds: 600
+              - serviceAccountToken:
+                  path: kubernetes-token
+                  expirationSeconds: 600
+              - configMap:
+                  name: kube-root-ca.crt
+                  items:
+                    - key: ca.crt
+                      path: kubernetes-ca.crt
+        - name: substrate-server-ca
+          secret:
+            secretName: substrate-ate-controller-tls
+            # The serving CA is public trust material. World-readable keeps the
+            # projection usable by the image's arbitrary non-root UID without
+            # granting access to any private key or client credential.
+            defaultMode: 0444
+            items:
+              - key: server-ca.pem
+                path: server-ca.pem
+      containers:
+        - name: smoke-test
+          image: replaced-by-skaffold
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+          volumeMounts:
+            - name: substrate-token
+              mountPath: /var/run/secrets/tokens
+              readOnly: true
+            - name: substrate-server-ca
+              mountPath: /var/run/secrets/substrate
+              readOnly: true

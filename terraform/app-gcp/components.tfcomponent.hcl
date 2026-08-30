@@ -162,6 +162,44 @@ component "clouddeploy_mcp" {
   }
 }
 
+component "clouddeploy_kagent_substrate" {
+  source = "./modules/clouddeploy"
+
+  inputs = {
+    project_id              = var.project_id
+    region                  = var.region
+    gke_cluster_id          = var.gke_cluster_id
+    pipeline_name           = "kagent-substrate"
+    release_manager_members = [var.workload_identity_members.mcp]
+
+    stages = [
+      {
+        name             = "testbed"
+        profiles         = ["kagent-substrate-testbed"]
+        require_approval = false
+        verify           = true
+      },
+    ]
+
+    deploy_parameters = {
+      agentgateway_gateway_class         = var.agentgateway_platform.gateway_class_name
+      agentgateway_public_ip_address     = var.agentgateway_public_ip_address == null ? "" : var.agentgateway_public_ip_address
+      agentgateway_public_ip_name        = var.agentgateway_public_ip_name == null ? "" : var.agentgateway_public_ip_name
+      agentgateway_public_broker_address = var.agentgateway_public_ip_address == null ? "" : "${var.agentgateway_public_ip_address}:443"
+      substrate_broker_service_name      = var.kagent_substrate_delivery.broker_service_name
+      substrate_broker_service_port      = tostring(var.kagent_substrate_delivery.broker_service_port)
+      substrate_broker_server_name       = var.kagent_substrate_delivery.broker_server_name
+    }
+
+    labels = local.common_labels
+  }
+
+  providers = {
+    google      = provider.google.this
+    google-beta = provider.google-beta.this
+  }
+}
+
 component "clouddeploy_server" {
   source = "./modules/clouddeploy"
 
@@ -719,13 +757,26 @@ component "deploy_release" {
       agents-pause = {
         execution_service_account_email = component.clouddeploy_agents_pause.execution_service_account_email
       }
+      kagent-substrate = {
+        execution_service_account_email = component.clouddeploy_kagent_substrate.execution_service_account_email
+      }
     }
 
-    release_tag_regex      = var.release_tag_regex
-    mcp_enabled            = var.mcp_servers_enabled
-    server_enabled         = var.yourown_chat_server_enabled
-    agents_enabled         = var.agent_platform_enabled && var.temporal_enabled
-    agents_runtime_enabled = var.agent_platform_runtime_enabled
+    release_tag_regex         = var.release_tag_regex
+    mcp_enabled               = var.mcp_servers_enabled
+    server_enabled            = var.yourown_chat_server_enabled
+    agents_enabled            = var.agent_platform_enabled && var.temporal_enabled
+    agents_runtime_enabled    = var.agent_platform_runtime_enabled
+    kagent_substrate_delivery = var.kagent_substrate_delivery
+    kagent_substrate_prerequisites_ready = (
+      var.kagent_substrate_delivery.release_enabled &&
+      var.kagent_substrate_delivery.native_secret_sync_ready &&
+      local.kagent_substrate_crd_prerequisites_ready &&
+      component.substrate_prerequisites.release_ready &&
+      var.agentgateway_platform.enabled &&
+      var.agentgateway_public_ip_address != null &&
+      var.agentgateway_public_ip_name != null
+    )
     mattermost_image_repository = {
       location      = var.artifact_registry_location
       repository_id = var.artifact_registry_repository_id

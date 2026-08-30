@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kagent-image-contract
+spec:
+  containers:
+    - name: controller
+      image: {{ printf "%s/%s:%s" .Values.controller.image.registry .Values.controller.image.repository (coalesce .Values.tag .Values.controller.image.tag .Chart.Version) }}
+    - name: ui
+      image: {{ printf "%s/%s:%s" .Values.ui.image.registry .Values.ui.image.repository (coalesce .Values.tag .Values.ui.image.tag .Chart.Version) }}

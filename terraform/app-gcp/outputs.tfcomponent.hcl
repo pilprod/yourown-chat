@@ -11,6 +11,7 @@ output "clouddeploy_pipeline_names" {
     yourown-chat       = component.clouddeploy_server.delivery_pipeline_name
     agents-start       = component.clouddeploy_agents_start.delivery_pipeline_name
     agents-pause       = component.clouddeploy_agents_pause.delivery_pipeline_name
+    kagent-substrate   = component.clouddeploy_kagent_substrate.delivery_pipeline_name
   }
 }
 
