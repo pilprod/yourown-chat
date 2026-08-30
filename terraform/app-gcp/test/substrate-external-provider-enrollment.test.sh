@@ -31,8 +31,10 @@ forbid_pattern() {
 
 file_mode() {
   local file="$1"
+  local output
 
-  if stat -f '%Lp' "${file}" 2>/dev/null; then
+  if output="$(stat -f '%Lp' "${file}" 2>/dev/null)"; then
+    printf '%s\n' "${output}"
     return
   fi
   stat -c '%a' "${file}"
@@ -50,6 +52,7 @@ fake_bin="${temporary_dir}/bin"
 private_dir="${temporary_dir}/private"
 mkdir -p "${fake_bin}" "${private_dir}"
 chmod 0700 "${private_dir}"
+real_stat_command="$(command -v stat)"
 
 policy_file="${private_dir}/slot-policy.yaml"
 printf '%s\n' \
@@ -117,6 +120,30 @@ exit 0
 EOF
 chmod 0755 "${fake_bin}/kubectl"
 
+cat > "${fake_bin}/stat" <<'EOF'
+#!/usr/bin/env bash
+set -o errexit -o nounset -o pipefail
+
+if [[ "$1" == -f ]]; then
+  printf '%s\n' 'File: simulated GNU stat probe output'
+  exit 1
+fi
+if [[ "$1" == -c ]]; then
+  format="$2"
+  path="$3"
+  if output="$("${REAL_STAT:?}" -c "${format}" "${path}" 2>/dev/null)"; then
+    printf '%s\n' "${output}"
+    exit 0
+  fi
+  case "${format}" in
+    '%u %a %s') exec "${REAL_STAT}" -f '%u %Lp %z' "${path}" ;;
+    '%a') exec "${REAL_STAT}" -f '%Lp' "${path}" ;;
+  esac
+fi
+exec "${REAL_STAT:?}" "$@"
+EOF
+chmod 0755 "${fake_bin}/stat"
+
 digest_a="sha256:$(repeat_hex a)"
 digest_b="sha256:$(repeat_hex b)"
 valid_kubectl_image="ghcr.io/pilprod/substrate/kubectl-ate@${digest_a}"
@@ -126,6 +153,7 @@ invoke_subject() {
   local destination="$1"
 
   PATH="${fake_bin}:${PATH}" \
+  REAL_STAT="${real_stat_command}" \
   FAKE_KUBECTL_LOG_DIR="${FAKE_KUBECTL_LOG_DIR}" \
   FAKE_MAIN_EXIT_CODE="${FAKE_MAIN_EXIT_CODE:-0}" \
   FAKE_CREDENTIAL_READY="${FAKE_CREDENTIAL_READY:-1}" \
@@ -174,7 +202,8 @@ FAKE_KUBECTL_LOG_DIR="${success_log}" invoke_subject "${success_output}" \
   > "${temporary_dir}/success.stdout" 2> "${temporary_dir}/success.stderr"
 
 [[ -f "${success_output}" ]] || fail "valid invocation did not publish the credential"
-[[ "$(file_mode "${success_output}")" == 600 ]] || fail "published credential mode is not 0600"
+[[ "$(PATH="${fake_bin}:${PATH}" REAL_STAT="${real_stat_command}" file_mode "${success_output}")" == 600 ]] ||
+  fail "published credential mode is not 0600"
 [[ "$(<"${success_output}")" == 'enrollment_A1-b2' ]] || fail "published credential bytes changed"
 success_output_canonical="$(cd "${private_dir}" && pwd -P)/enrollment-token"
 require_literal "${temporary_dir}/success.stdout" "Substrate external-provider enrollment credential written to ${success_output_canonical}"

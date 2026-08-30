@@ -92,8 +92,10 @@ validate_dns_subdomain() {
 
 portable_stat() {
   local path="$1"
+  local output
 
-  if stat -f '%u %Lp %z' "${path}" 2>/dev/null; then
+  if output="$(stat -f '%u %Lp %z' "${path}" 2>/dev/null)"; then
+    printf '%s\n' "${output}"
     return 0
   fi
   stat -c '%u %a %s' "${path}"
