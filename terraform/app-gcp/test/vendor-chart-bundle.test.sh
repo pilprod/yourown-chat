@@ -248,6 +248,14 @@ require_literal "$main" 'kind       = "SecretProviderClass"'
 require_literal "$main" 'provider = "gke"'
 require_literal "$main" 'resourceName = "projects/${var.project_id}/secrets/${var.database_secret_ids[each.value.secret_id_key]}/versions/latest"'
 require_literal "$main" 'application_ready = local.provisioned && var.bundle.application_enabled && local.database_bindings_ready'
+require_literal "$main" 'from = helm_release.application'
+require_literal "$main" 'to   = helm_release.application_handoff_source'
+require_literal "$main" 'resource "helm_release" "application_handoff_source"'
+require_literal "$outputs" 'helm_release.application_handoff_source[0].name'
+require_literal "$outputs" 'helm_release.application_handoff_source[0].status'
+if rg -n -- 'resource "helm_release" "application"|helm_release\.application\[0\]' "$main" "$outputs"; then
+  fail "the legacy application address must exist only as the moved-block source"
+fi
 require_literal "$main" 'kubernetes_manifest.database_secret_provider_class,'
 require_literal "$main" 'kubernetes_network_policy_v1.database_egress,'
 require_literal "$main" 'kubernetes_network_policy_v1.flow_egress,'
