@@ -9,6 +9,22 @@ readonly token_path="/var/run/secrets/substrate/token"
 readonly server_ca_path="/var/run/secrets/substrate-ca/server-ca.pem"
 readonly wait_timeout_seconds=600
 readonly persistent_networkpolicy_name="substrate-enrollment-admin-default-deny"
+readonly kubectl_ate_release_repository="github.com/pilprod/substrate"
+readonly kubectl_ate_release_tag="v0.0.22"
+readonly kubectl_ate_release_tag_object="00a6a684cea3b3feea67461cf79347332ec759ef"
+readonly kubectl_ate_release_commit="e9ed68e587b56df2aa2a7f0267a744598c4d48b4"
+readonly kubectl_ate_checksums_name="kubectl-ate-v0.0.22-checksums.txt"
+readonly kubectl_ate_checksums_sha256="f03851b9fa61cf37b2dbf32b2069ee98685603f5b2f4f07e9d1df56f9888a038"
+readonly kubectl_ate_checksums_size="422"
+readonly kubectl_ate_linux_amd64_sha256="ea43473b1bc144236541d1e9213a375f23f0a1705254332eae5465d500ce7e15"
+readonly kubectl_ate_linux_amd64_size="14619282"
+readonly kubectl_ate_linux_amd64_binary_sha256="bcefdf7b564233272c299a1182ca905d092426a2fa4b516e7adfe9ed8d9ebc3a"
+readonly kubectl_ate_linux_amd64_binary_size="51855522"
+readonly kubectl_ate_linux_arm64_sha256="fa6b8356c2745761ebf24e4448960fcc4e067721bcadeec603bb11364f60f211"
+readonly kubectl_ate_linux_arm64_size="12892846"
+readonly kubectl_ate_linux_arm64_binary_sha256="58276a98cad397865ab4eae838371a6353b1b549b37a62b70443428de5158dce"
+readonly kubectl_ate_linux_arm64_binary_size="48627874"
+readonly kubectl_ate_binary_path="/var/run/substrate-runtime/bin/kubectl-ate"
 
 usage() {
   cat <<'EOF'
@@ -18,7 +34,10 @@ a Kubernetes Secret, Pod logs, or a port-forward.
 
 Usage:
   issue-substrate-external-provider-enrollment.sh \
-    --kubectl-ate-image REGISTRY/REPOSITORY@sha256:DIGEST \
+    (--kubectl-ate-release v0.0.22 | \
+     --kubectl-ate-archive /absolute/owner-only/kubectl-ate-v0.0.22-linux-ARCH.tar.gz | \
+     --kubectl-ate-image REGISTRY/REPOSITORY@sha256:DIGEST) \
+    [--runtime-arch amd64|arm64] \
     --transfer-image REGISTRY/REPOSITORY@sha256:DIGEST \
     --context KUBERNETES_CONTEXT \
     --cluster-dns-ip IPV4 \
@@ -35,9 +54,19 @@ Usage:
     --ttl INTEGER[s|m|h] \
     --output-file /absolute/owner-only/new-enrollment-file
 
-Both images must be exact sha256 digest references without tags. The transfer
-image must be a reviewed, minimal image that provides /bin/sh, sleep, test,
-mkdir, chmod, and cat and can run as uid/gid 65532.
+Exactly one kubectl-ate source is required. The release and owner-supplied
+archive modes require --runtime-arch and run the exact pinned v0.0.22 Linux
+binary inside the transfer Pod. The release asset metadata, annotated tag
+object, verified source commit, and published checksums are all checked before
+upload. An existing authenticated compatible gh CLI adds GitHub's signed
+immutable-release attestation check without prompting or changing auth. A
+supplied archive must be an owner-only regular file and match the same release
+digest. Darwin assets are not accepted because the binary executes on Linux.
+
+Every supplied container image must be an exact sha256 digest reference without
+a tag. The transfer image must be a reviewed, minimal image that provides
+/bin/sh, sleep, test, mkdir, chmod, cat, and sha256sum and can run as uid/gid
+65532.
 EOF
 }
 
@@ -132,7 +161,147 @@ sha256_file() {
   fail "sha256sum or shasum is required"
 }
 
+github_api_to_file() {
+  local endpoint="$1"
+  local destination="$2"
+
+  if [[ "${github_cli_authenticated}" -eq 1 ]]; then
+    GH_PROMPT_DISABLED=1 gh api --hostname github.com "${endpoint}" > "${destination}" ||
+      fail "could not read pinned Substrate release metadata from GitHub"
+    return
+  fi
+
+  curl --proto '=https' --proto-redir '=https' --tlsv1.2 \
+    --fail --location --silent --show-error --connect-timeout 15 --max-time 60 \
+    --max-filesize 5242880 \
+    --header 'Accept: application/vnd.github+json' \
+    --header 'X-GitHub-Api-Version: 2022-11-28' \
+    --output "${destination}" "https://api.github.com/${endpoint}" ||
+    fail "could not read pinned Substrate release metadata from GitHub"
+}
+
+download_github_release_asset() {
+  local asset_name="$1"
+  local destination="$2"
+
+  curl --proto '=https' --proto-redir '=https' --tlsv1.2 \
+    --fail --location --silent --show-error --connect-timeout 15 --max-time 300 \
+    --max-filesize 67108864 \
+    --output "${destination}" \
+    "https://github.com/pilprod/substrate/releases/download/${kubectl_ate_release_tag}/${asset_name}" ||
+    fail "could not download pinned Substrate release asset ${asset_name}"
+}
+
+verify_release_asset_metadata() {
+  local release_json="$1"
+  local asset_name="$2"
+  local asset_sha256="$3"
+  local asset_size="$4"
+
+  jq -e \
+    --arg asset "${asset_name}" \
+    --arg digest "sha256:${asset_sha256}" \
+    --arg tag "${kubectl_ate_release_tag}" \
+    --argjson size "${asset_size}" \
+    '(.id == 379407334 and
+      .tag_name == $tag and
+      .target_commitish == "main" and
+      .immutable == true and
+      .draft == false and
+      .prerelease == false and
+      .author.login == "pilprod" and
+      .author.id == 51009687) and
+     (([.assets[] | select(.name == $asset)] | length) == 1) and
+     ([.assets[] | select(.name == $asset)][0] |
+       .state == "uploaded" and
+       .size == $size and
+       .digest == $digest and
+       .browser_download_url ==
+         ("https://github.com/pilprod/substrate/releases/download/" + $tag + "/" + $asset))' \
+    "${release_json}" >/dev/null ||
+    fail "GitHub release metadata does not match pinned asset ${asset_name}"
+}
+
+verify_release_source_identity() {
+  local ref_json="$1"
+  local tag_json="$2"
+  local commit_json="$3"
+
+  jq -e \
+    --arg tag "${kubectl_ate_release_tag}" \
+    --arg tag_object "${kubectl_ate_release_tag_object}" \
+    '.ref == ("refs/tags/" + $tag) and
+     .object.type == "tag" and
+     .object.sha == $tag_object' "${ref_json}" >/dev/null ||
+    fail "Substrate release tag ref does not match the pinned annotated tag"
+
+  jq -e \
+    --arg tag "${kubectl_ate_release_tag}" \
+    --arg tag_object "${kubectl_ate_release_tag_object}" \
+    --arg commit "${kubectl_ate_release_commit}" \
+    '.sha == $tag_object and
+     .tag == $tag and
+     .object.type == "commit" and
+     .object.sha == $commit and
+     (.verification.signature | type == "string" and length > 0) and
+     (.verification.payload | type == "string" and length > 0)' \
+    "${tag_json}" >/dev/null ||
+    fail "Substrate annotated release tag identity does not match the pinned source"
+
+  jq -e \
+    --arg commit "${kubectl_ate_release_commit}" \
+    '.sha == $commit and
+     .author.login == "pilprod" and
+     .author.id == 51009687 and
+     .committer.login == "web-flow" and
+     .commit.verification.verified == true and
+     .commit.verification.reason == "valid"' \
+    "${commit_json}" >/dev/null ||
+    fail "Substrate release source commit is not the pinned GitHub-verified commit"
+}
+
+verify_release_attestation_if_available() {
+  local archive="$1"
+  local archive_name="$2"
+  local archive_sha256="$3"
+  local attestation_json="$4"
+
+  if [[ "${github_cli_authenticated}" -ne 1 ]] ||
+    ! GH_PROMPT_DISABLED=1 gh release verify-asset --help >/dev/null 2>&1; then
+    return
+  fi
+
+  GH_PROMPT_DISABLED=1 gh release verify-asset "${kubectl_ate_release_tag}" "${archive}" \
+    --repo "${kubectl_ate_release_repository}" --format json > "${attestation_json}" ||
+    fail "GitHub's signed immutable-release attestation did not verify the kubectl-ate archive"
+  jq -e \
+    --arg tag "${kubectl_ate_release_tag}" \
+    --arg tag_object "${kubectl_ate_release_tag_object}" \
+    --arg asset "${archive_name}" \
+    --arg digest "${archive_sha256}" \
+    '.verificationResult.signature.certificate.subjectAlternativeName ==
+       "https://dotcom.releases.github.com" and
+     (.verificationResult.verifiedTimestamps | length) > 0 and
+     (.verificationResult.statement |
+       .predicateType == "https://in-toto.io/attestation/release/v0.2" and
+       .predicate.repository == "pilprod/substrate" and
+       .predicate.repositoryId == "1351629720" and
+       .predicate.ownerId == "51009687" and
+       .predicate.databaseId == "379407334" and
+       .predicate.tag == $tag and
+       ([.subject[] |
+         select(.uri == ("pkg:github/pilprod/substrate@" + $tag) and
+           .digest.sha1 == $tag_object)] | length) == 1 and
+       ([.subject[] |
+         select(.name == $asset and .digest.sha256 == $digest)] | length) == 1)' \
+    "${attestation_json}" >/dev/null ||
+    fail "GitHub's signed immutable-release attestation has an unexpected identity"
+}
+
 kubectl_ate_image=""
+kubectl_ate_release=""
+kubectl_ate_archive_input=""
+runtime_arch=""
 transfer_image=""
 kube_context=""
 cluster_dns_ip=""
@@ -148,6 +317,7 @@ max_slots=""
 policy_file=""
 ttl=""
 output_file_input=""
+github_cli_authenticated=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -155,6 +325,24 @@ while [[ $# -gt 0 ]]; do
       require_value "$1" "$#"
       require_once "${kubectl_ate_image}" "$1"
       kubectl_ate_image="$2"
+      shift 2
+      ;;
+    --kubectl-ate-release)
+      require_value "$1" "$#"
+      require_once "${kubectl_ate_release}" "$1"
+      kubectl_ate_release="$2"
+      shift 2
+      ;;
+    --kubectl-ate-archive)
+      require_value "$1" "$#"
+      require_once "${kubectl_ate_archive_input}" "$1"
+      kubectl_ate_archive_input="$2"
+      shift 2
+      ;;
+    --runtime-arch)
+      require_value "$1" "$#"
+      require_once "${runtime_arch}" "$1"
+      runtime_arch="$2"
       shift 2
       ;;
     --transfer-image)
@@ -258,7 +446,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 for required_value in \
-  "${kubectl_ate_image}" "${transfer_image}" "${kube_context}" \
+  "${transfer_image}" "${kube_context}" \
   "${cluster_dns_ip}" "${namespace}" "${service_account}" "${api_endpoint}" \
   "${server_name}" "${ca_secret}" "${owner_atespace}" \
   "${worker_namespace}" "${worker_pool}" "${max_slots}" \
@@ -266,7 +454,24 @@ for required_value in \
   [[ -n "${required_value}" ]] || fail "all documented arguments are required"
 done
 
-validate_digest_image "${kubectl_ate_image}" "--kubectl-ate-image"
+kubectl_ate_source_count=0
+[[ -z "${kubectl_ate_image}" ]] || kubectl_ate_source_count=$((kubectl_ate_source_count + 1))
+[[ -z "${kubectl_ate_release}" ]] || kubectl_ate_source_count=$((kubectl_ate_source_count + 1))
+[[ -z "${kubectl_ate_archive_input}" ]] || kubectl_ate_source_count=$((kubectl_ate_source_count + 1))
+[[ "${kubectl_ate_source_count}" -eq 1 ]] ||
+  fail "exactly one of --kubectl-ate-release, --kubectl-ate-archive, or --kubectl-ate-image is required"
+
+kubectl_ate_mode="native"
+if [[ -n "${kubectl_ate_image}" ]]; then
+  kubectl_ate_mode="image"
+  validate_digest_image "${kubectl_ate_image}" "--kubectl-ate-image"
+  [[ -z "${runtime_arch}" ]] || fail "--runtime-arch is only valid with a native kubectl-ate source"
+else
+  [[ -z "${kubectl_ate_release}" || "${kubectl_ate_release}" == "${kubectl_ate_release_tag}" ]] ||
+    fail "--kubectl-ate-release must be exactly ${kubectl_ate_release_tag}"
+  [[ "${runtime_arch}" == "amd64" || "${runtime_arch}" == "arm64" ]] ||
+    fail "--runtime-arch must be exactly amd64 or arm64 for a native kubectl-ate source"
+fi
 validate_digest_image "${transfer_image}" "--transfer-image"
 [[ ${#kube_context} -le 253 && "${kube_context}" =~ ^[A-Za-z0-9][A-Za-z0-9._:/@-]*$ ]] ||
   fail "--context contains unsupported characters or is too long"
@@ -372,11 +577,26 @@ output_parent_mode_value=$((8#${output_parent_mode}))
 command -v kubectl >/dev/null 2>&1 || fail "kubectl is required"
 command -v mktemp >/dev/null 2>&1 || fail "mktemp is required"
 command -v awk >/dev/null 2>&1 || fail "awk is required"
+if [[ "${kubectl_ate_mode}" == "native" ]]; then
+  command -v tar >/dev/null 2>&1 || fail "tar is required for a native kubectl-ate source"
+  if [[ -n "${kubectl_ate_release}" ]]; then
+    command -v curl >/dev/null 2>&1 || fail "curl is required for --kubectl-ate-release"
+    command -v jq >/dev/null 2>&1 || fail "jq is required for --kubectl-ate-release"
+    if command -v gh >/dev/null 2>&1 &&
+      GH_PROMPT_DISABLED=1 gh auth status --hostname github.com >/dev/null 2>&1; then
+      github_cli_authenticated=1
+    fi
+  fi
+fi
 
 scratch_dir=""
 policy_stage_dir=""
 policy_anchor=""
+archive_stage_dir=""
+archive_anchor=""
 local_partial=""
+staged_archive=""
+runtime_binary=""
 pod_name=""
 configmap_name=""
 networkpolicy_name=""
@@ -444,6 +664,19 @@ cleanup() {
       printf 'Substrate enrollment cleanup could not delete its policy staging directory\n' >&2
     fi
   fi
+  if [[ -n "${archive_anchor}" && -e "${archive_anchor}" ]]; then
+    if ! rm -f -- "${archive_anchor}"; then
+      cleanup_failed=1
+      printf 'Substrate enrollment cleanup could not delete its pinned kubectl-ate archive link\n' >&2
+    fi
+  fi
+  if [[ -n "${archive_stage_dir}" && -n "${archive_parent:-}" &&
+    "${archive_stage_dir}" == "${archive_parent}"/.yourown-chat-kubectl-ate-stage.* && -d "${archive_stage_dir}" ]]; then
+    if ! rmdir -- "${archive_stage_dir}"; then
+      cleanup_failed=1
+      printf 'Substrate enrollment cleanup could not delete its kubectl-ate archive staging directory\n' >&2
+    fi
+  fi
   if [[ "${cleanup_failed}" -eq 1 && "${status}" -eq 0 ]]; then
     status=1
   fi
@@ -496,6 +729,167 @@ rm -f -- "${policy_anchor}"
 policy_anchor=""
 rmdir -- "${policy_stage_dir}"
 policy_stage_dir=""
+
+if [[ "${kubectl_ate_mode}" == "native" ]]; then
+  archive_name="kubectl-ate-${kubectl_ate_release_tag}-linux-${runtime_arch}.tar.gz"
+  case "${runtime_arch}" in
+    amd64)
+      expected_archive_sha256="${kubectl_ate_linux_amd64_sha256}"
+      expected_archive_size="${kubectl_ate_linux_amd64_size}"
+      expected_binary_sha256="${kubectl_ate_linux_amd64_binary_sha256}"
+      expected_binary_size="${kubectl_ate_linux_amd64_binary_size}"
+      ;;
+    arm64)
+      expected_archive_sha256="${kubectl_ate_linux_arm64_sha256}"
+      expected_archive_size="${kubectl_ate_linux_arm64_size}"
+      expected_binary_sha256="${kubectl_ate_linux_arm64_binary_sha256}"
+      expected_binary_size="${kubectl_ate_linux_arm64_binary_size}"
+      ;;
+    *) fail "unreachable native runtime architecture" ;;
+  esac
+
+  staged_archive="${scratch_dir}/${archive_name}"
+  runtime_binary="${scratch_dir}/kubectl-ate"
+
+  if [[ -n "${kubectl_ate_archive_input}" ]]; then
+    [[ "${kubectl_ate_archive_input}" == /* ]] ||
+      fail "--kubectl-ate-archive must be an absolute path"
+    [[ "${kubectl_ate_archive_input}" != *$'\n'* && "${kubectl_ate_archive_input}" != *$'\r'* ]] ||
+      fail "--kubectl-ate-archive must not contain control characters"
+    archive_basename="${kubectl_ate_archive_input##*/}"
+    [[ -n "${archive_basename}" && "${archive_basename}" != "." && "${archive_basename}" != ".." ]] ||
+      fail "--kubectl-ate-archive must name a file"
+    archive_parent_input="${kubectl_ate_archive_input%/*}"
+    [[ -n "${archive_parent_input}" ]] || archive_parent_input="/"
+    [[ -d "${archive_parent_input}" && ! -L "${archive_parent_input}" ]] ||
+      fail "--kubectl-ate-archive parent must be a real directory, not a symlink"
+    archive_parent="$(cd -- "${archive_parent_input}" && pwd -P)"
+    if [[ "${archive_parent}" == "/" ]]; then
+      kubectl_ate_archive="/${archive_basename}"
+    else
+      kubectl_ate_archive="${archive_parent}/${archive_basename}"
+    fi
+
+    archive_parent_uid=""
+    archive_parent_mode=""
+    archive_parent_size=""
+    if ! IFS=' ' read -r archive_parent_uid archive_parent_mode archive_parent_size < <(portable_stat "${archive_parent}"); then
+      fail "could not inspect --kubectl-ate-archive parent"
+    fi
+    [[ "${archive_parent_uid}" == "${current_uid}" ]] ||
+      fail "--kubectl-ate-archive parent must be owned by the invoking user"
+    [[ "${archive_parent_mode}" =~ ^[0-7]{3,4}$ ]] ||
+      fail "could not determine --kubectl-ate-archive parent mode"
+    archive_parent_mode_value=$((8#${archive_parent_mode}))
+    (( (archive_parent_mode_value & 077) == 0 )) ||
+      fail "--kubectl-ate-archive parent must exclude all group and other permissions"
+    (( (archive_parent_mode_value & 0300) == 0300 )) ||
+      fail "--kubectl-ate-archive parent must be owner-writable and owner-searchable"
+
+    archive_stage_dir="$(mktemp -d "${archive_parent}/.yourown-chat-kubectl-ate-stage.XXXXXXXX")"
+    chmod 0700 "${archive_stage_dir}"
+    archive_anchor="${archive_stage_dir}/source"
+    ln -P "${kubectl_ate_archive}" "${archive_anchor}" ||
+      fail "could not securely pin --kubectl-ate-archive for staging"
+    [[ -f "${archive_anchor}" && ! -L "${archive_anchor}" ]] ||
+      fail "--kubectl-ate-archive must be a regular file, not a symlink"
+
+    archive_uid=""
+    archive_mode=""
+    archive_size=""
+    if ! IFS=' ' read -r archive_uid archive_mode archive_size < <(portable_stat "${archive_anchor}"); then
+      fail "could not inspect --kubectl-ate-archive"
+    fi
+    [[ "${archive_uid}" == "${current_uid}" ]] ||
+      fail "--kubectl-ate-archive must be owned by the invoking user"
+    [[ "${archive_mode}" == "400" || "${archive_mode}" == "600" ]] ||
+      fail "--kubectl-ate-archive mode must be exactly 0400 or 0600"
+    [[ "${archive_size}" == "${expected_archive_size}" ]] ||
+      fail "--kubectl-ate-archive size does not match ${archive_name}"
+
+    archive_sha_before="$(sha256_file "${archive_anchor}")"
+    [[ "${archive_sha_before}" == "${expected_archive_sha256}" ]] ||
+      fail "--kubectl-ate-archive digest does not match ${archive_name}"
+    cp -- "${archive_anchor}" "${staged_archive}"
+    chmod 0600 "${staged_archive}"
+    archive_sha_staged="$(sha256_file "${staged_archive}")"
+    archive_sha_after="$(sha256_file "${archive_anchor}")"
+    [[ "${archive_sha_before}" == "${archive_sha_staged}" &&
+      "${archive_sha_before}" == "${archive_sha_after}" ]] ||
+      fail "--kubectl-ate-archive changed while it was being staged"
+    rm -f -- "${archive_anchor}"
+    archive_anchor=""
+    rmdir -- "${archive_stage_dir}"
+    archive_stage_dir=""
+  else
+    release_json="${scratch_dir}/release.json"
+    ref_json="${scratch_dir}/release-ref.json"
+    tag_json="${scratch_dir}/release-tag.json"
+    commit_json="${scratch_dir}/release-commit.json"
+    checksums_file="${scratch_dir}/${kubectl_ate_checksums_name}"
+    attestation_json="${scratch_dir}/release-attestation.json"
+
+    github_api_to_file \
+      "repos/pilprod/substrate/releases/tags/${kubectl_ate_release_tag}" "${release_json}"
+    github_api_to_file \
+      "repos/pilprod/substrate/git/ref/tags/${kubectl_ate_release_tag}" "${ref_json}"
+    github_api_to_file \
+      "repos/pilprod/substrate/git/tags/${kubectl_ate_release_tag_object}" "${tag_json}"
+    github_api_to_file \
+      "repos/pilprod/substrate/commits/${kubectl_ate_release_commit}" "${commit_json}"
+    verify_release_asset_metadata \
+      "${release_json}" "${archive_name}" "${expected_archive_sha256}" "${expected_archive_size}"
+    verify_release_asset_metadata \
+      "${release_json}" "${kubectl_ate_checksums_name}" \
+      "${kubectl_ate_checksums_sha256}" "${kubectl_ate_checksums_size}"
+    verify_release_source_identity "${ref_json}" "${tag_json}" "${commit_json}"
+
+    download_github_release_asset "${archive_name}" "${staged_archive}"
+    download_github_release_asset "${kubectl_ate_checksums_name}" "${checksums_file}"
+    chmod 0600 "${staged_archive}" "${checksums_file}"
+    [[ "$(sha256_file "${staged_archive}")" == "${expected_archive_sha256}" ]] ||
+      fail "downloaded kubectl-ate archive digest does not match GitHub release metadata"
+    [[ "$(sha256_file "${checksums_file}")" == "${kubectl_ate_checksums_sha256}" ]] ||
+      fail "downloaded kubectl-ate checksums digest does not match GitHub release metadata"
+    downloaded_archive_size="$(portable_stat "${staged_archive}" | awk '{print $3}')"
+    downloaded_checksums_size="$(portable_stat "${checksums_file}" | awk '{print $3}')"
+    [[ "${downloaded_archive_size}" == "${expected_archive_size}" ]] ||
+      fail "downloaded kubectl-ate archive size does not match GitHub release metadata"
+    [[ "${downloaded_checksums_size}" == "${kubectl_ate_checksums_size}" ]] ||
+      fail "downloaded kubectl-ate checksums size does not match GitHub release metadata"
+    awk -v digest="${expected_archive_sha256}" -v asset="${archive_name}" '
+      $1 == digest && $2 == asset { matches++ }
+      END { exit(matches == 1 ? 0 : 1) }
+    ' "${checksums_file}" ||
+      fail "published kubectl-ate checksums do not contain the exact selected archive"
+    verify_release_attestation_if_available \
+      "${staged_archive}" "${archive_name}" "${expected_archive_sha256}" "${attestation_json}"
+  fi
+
+  archive_members="${scratch_dir}/archive-members"
+  if ! LC_ALL=C tar -tzf "${staged_archive}" > "${archive_members}" 2>/dev/null; then
+    fail "pinned kubectl-ate archive is not a valid gzip-compressed tar archive"
+  fi
+  [[ "$(awk 'END { print NR }' "${archive_members}")" == "1" ]] &&
+    grep -qx 'kubectl-ate' "${archive_members}" ||
+    fail "pinned kubectl-ate archive must contain only the root kubectl-ate binary"
+  if ! tar -xOzf "${staged_archive}" kubectl-ate > "${runtime_binary}"; then
+    fail "could not extract kubectl-ate from the pinned release archive"
+  fi
+  chmod 0700 "${runtime_binary}"
+  runtime_uid=""
+  runtime_mode=""
+  runtime_size=""
+  if ! IFS=' ' read -r runtime_uid runtime_mode runtime_size < <(portable_stat "${runtime_binary}"); then
+    fail "could not inspect the extracted kubectl-ate binary"
+  fi
+  [[ "${runtime_uid}" == "${current_uid}" && "${runtime_mode}" == "700" ]] ||
+    fail "the extracted kubectl-ate binary must have exact owner-only ownership and mode"
+  [[ "${runtime_size}" == "${expected_binary_size}" ]] ||
+    fail "the extracted kubectl-ate binary size does not match the pinned release"
+  [[ "$(sha256_file "${runtime_binary}")" == "${expected_binary_sha256}" ]] ||
+    fail "the extracted kubectl-ate binary digest does not match the pinned release"
+fi
 
 kubectl config get-contexts "${kube_context}" --no-headers | grep -q '[^[:space:]]' ||
   fail "--context does not identify an available kubectl context"
@@ -611,13 +1005,14 @@ spec:
 EOF
 
 # The API server can accept the Pod while the client sees an ambiguous create
-# failure, and the enrollment RPC can issue a credential before any later
-# local failure. From this point every non-zero exit carries an explicit
-# no-automatic-retry warning from cleanup.
+# failure. The image mode starts issuance as part of Pod startup, so its
+# no-automatic-retry fence begins before create. Native mode starts only a
+# transfer sleeper and delays that fence until the explicit exec below.
 pod_may_exist=1
-issuance_may_have_happened=1
-kubectl --context="${kube_context}" --namespace="${namespace}" --request-timeout=30s \
-  create -f - >/dev/null <<EOF
+if [[ "${kubectl_ate_mode}" == "image" ]]; then
+  issuance_may_have_happened=1
+  kubectl --context="${kube_context}" --namespace="${namespace}" --request-timeout=30s \
+    create -f - >/dev/null <<EOF
 apiVersion: v1
 kind: Pod
 metadata:
@@ -794,23 +1189,180 @@ spec:
           readOnly: true
 EOF
 
-status_file="${scratch_dir}/main-exit-code"
-deadline=$((SECONDS + wait_timeout_seconds))
-main_exit=""
-while (( SECONDS < deadline )); do
-  : > "${status_file}"
-  if kubectl --context="${kube_context}" --namespace="${namespace}" --request-timeout=30s \
-    get "pod/${pod_name}" \
-    --output='jsonpath={range .status.containerStatuses[?(@.name=="issue-enrollment")]}{.state.terminated.exitCode}{end}' \
-    > "${status_file}"; then
-    IFS= read -r main_exit < "${status_file}" || [[ -n "${main_exit}" ]]
-    [[ -z "${main_exit}" ]] || break
+  status_file="${scratch_dir}/main-exit-code"
+  deadline=$((SECONDS + wait_timeout_seconds))
+  main_exit=""
+  while (( SECONDS < deadline )); do
+    : > "${status_file}"
+    if kubectl --context="${kube_context}" --namespace="${namespace}" --request-timeout=30s \
+      get "pod/${pod_name}" \
+      --output='jsonpath={range .status.containerStatuses[?(@.name=="issue-enrollment")]}{.state.terminated.exitCode}{end}' \
+      > "${status_file}"; then
+      IFS= read -r main_exit < "${status_file}" || [[ -n "${main_exit}" ]]
+      [[ -z "${main_exit}" ]] || break
+    fi
+    sleep 1
+  done
+  [[ -n "${main_exit}" ]] || fail "timed out waiting for the in-cluster enrollment command"
+  [[ "${main_exit}" == "0" ]] ||
+    fail "the in-cluster enrollment command exited unsuccessfully; credential output was not read"
+else
+  kubectl --context="${kube_context}" --namespace="${namespace}" --request-timeout=30s \
+    create -f - >/dev/null <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ${pod_name}
+  namespace: ${namespace}
+  labels:
+    app.kubernetes.io/name: substrate-enrollment-admin
+    app.kubernetes.io/component: enrollment-admin
+    app.kubernetes.io/part-of: kagent-substrate-testbed
+    yourown.chat/enrollment-run: ${run_suffix}
+spec:
+  restartPolicy: Never
+  activeDeadlineSeconds: 900
+  automountServiceAccountToken: false
+  enableServiceLinks: false
+  terminationGracePeriodSeconds: 5
+  serviceAccountName: ${service_account}
+  nodeSelector:
+    kubernetes.io/os: linux
+    kubernetes.io/arch: ${runtime_arch}
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    fsGroup: 65532
+    fsGroupChangePolicy: OnRootMismatch
+    seccompProfile:
+      type: RuntimeDefault
+  volumes:
+    - name: handoff
+      emptyDir:
+        medium: Memory
+        sizeLimit: 16Ki
+    - name: runtime
+      emptyDir:
+        medium: Memory
+        sizeLimit: 64Mi
+    - name: policy
+      configMap:
+        name: ${configmap_name}
+        defaultMode: 0444
+        items:
+          - key: slot-policy.yaml
+            path: slot-policy.yaml
+    - name: substrate-token
+      projected:
+        defaultMode: 0440
+        sources:
+          - serviceAccountToken:
+              path: token
+              audience: ${expected_server_name}
+              expirationSeconds: 600
+    - name: substrate-server-ca
+      secret:
+        secretName: ${ca_secret}
+        defaultMode: 0444
+        items:
+          - key: server-ca.pem
+            path: server-ca.pem
+  containers:
+    - name: transfer
+      image: ${transfer_image}
+      imagePullPolicy: IfNotPresent
+      command:
+        - /bin/sh
+        - -ceu
+        - |
+          umask 077
+          mkdir -p /var/run/substrate-enrollment/private /var/run/substrate-runtime/bin
+          chmod 0700 /var/run/substrate-enrollment/private /var/run/substrate-runtime/bin
+          trap 'exit 0' TERM INT
+          while :; do
+            sleep 3600
+          done
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        capabilities:
+          drop:
+            - ALL
+      resources:
+        requests:
+          cpu: 10m
+          memory: 64Mi
+        limits:
+          cpu: 250m
+          memory: 256Mi
+      volumeMounts:
+        - name: handoff
+          mountPath: /var/run/substrate-enrollment
+        - name: runtime
+          mountPath: /var/run/substrate-runtime
+        - name: policy
+          mountPath: /var/run/substrate-policy
+          readOnly: true
+        - name: substrate-token
+          mountPath: /var/run/secrets/substrate
+          readOnly: true
+        - name: substrate-server-ca
+          mountPath: /var/run/secrets/substrate-ca
+          readOnly: true
+EOF
+
+  if ! kubectl --context="${kube_context}" --namespace="${namespace}" --request-timeout="${wait_timeout_seconds}s" \
+    wait --for=condition=Ready "pod/${pod_name}" --timeout="${wait_timeout_seconds}s" >/dev/null; then
+    fail "native kubectl-ate transfer Pod did not become ready"
   fi
-  sleep 1
-done
-[[ -n "${main_exit}" ]] || fail "timed out waiting for the in-cluster enrollment command"
-[[ "${main_exit}" == "0" ]] ||
-  fail "the in-cluster enrollment command exited unsuccessfully; credential output was not read"
+
+  # Stream only the already-verified executable. kubectl cp is deliberately not
+  # used because it requires tar in the Pod and creates a less explicit transfer
+  # surface. The fixed remote shell receives no credential or caller input.
+  if ! kubectl --context="${kube_context}" --namespace="${namespace}" --request-timeout=120s \
+    exec -i "pod/${pod_name}" -c transfer -- /bin/sh -ceu \
+      'umask 077; mkdir -p /var/run/substrate-runtime/bin; chmod 0700 /var/run/substrate-runtime/bin; cat > /var/run/substrate-runtime/bin/kubectl-ate; chmod 0700 /var/run/substrate-runtime/bin/kubectl-ate; test -x /var/run/substrate-runtime/bin/kubectl-ate' \
+      < "${runtime_binary}" >/dev/null; then
+    fail "verified kubectl-ate binary transfer into the restricted Pod failed"
+  fi
+
+  remote_binary_digest_file="${scratch_dir}/remote-binary-digest"
+  if ! kubectl --context="${kube_context}" --namespace="${namespace}" --request-timeout=30s \
+    exec "pod/${pod_name}" -c transfer -- sha256sum "${kubectl_ate_binary_path}" \
+      > "${remote_binary_digest_file}"; then
+    fail "could not verify the transferred kubectl-ate binary inside the restricted Pod"
+  fi
+  remote_binary_digest="$(awk 'NR == 1 { print $1 } END { if (NR != 1) exit 1 }' \
+    "${remote_binary_digest_file}")" ||
+    fail "the in-cluster kubectl-ate digest response was malformed"
+  [[ "${remote_binary_digest}" == "${expected_binary_sha256}" ]] ||
+    fail "the transferred in-cluster kubectl-ate binary digest does not match the pinned release"
+
+  # The exec request may reach the Pod even if the local kubectl process reports
+  # a transport error, so all failures from this point are issuance-ambiguous.
+  issuance_may_have_happened=1
+  if ! kubectl --context="${kube_context}" --namespace="${namespace}" --request-timeout=120s \
+    exec "pod/${pod_name}" -c transfer -- "${kubectl_ate_binary_path}" \
+      --endpoint "${api_endpoint}" \
+      --token-file "${token_path}" \
+      --server-ca-file "${server_ca_path}" \
+      --server-name "${server_name}" \
+      admin create external-provider-enrollment \
+      --owner-atespace "${owner_atespace}" \
+      --worker-namespace "${worker_namespace}" \
+      --worker-pool "${worker_pool}" \
+      --max-slots "${max_slots}" \
+      --slot-policy "${policy_mount_path}" \
+      --ttl "${ttl}" \
+      --credential-file "${credential_path}" >/dev/null 2>&1; then
+    fail "the native in-cluster enrollment command exited unsuccessfully; credential output was not read"
+  fi
+  deadline=$((SECONDS + wait_timeout_seconds))
+fi
 
 credential_ready=0
 while (( SECONDS < deadline )); do
