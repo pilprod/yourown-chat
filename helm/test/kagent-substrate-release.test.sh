@@ -70,7 +70,7 @@ jq -n \
           ateapi: ("ghcr.io/pilprod/substrate/ateapi@" + $d3),
           atecontroller: ("ghcr.io/pilprod/substrate/atecontroller@" + $d4),
           atenet: ("ghcr.io/pilprod/substrate/atenet@" + $d8),
-          agentgateway: ("ghcr.io/pilprod/substrate/agentgateway@" + $d9),
+          agentgateway: ("ghcr.io/kagent-dev/substrate/agentgateway@" + $d9),
           releaseVerifier: ("ghcr.io/pilprod/substrate/substrate-release-verify@" + $d10)
         }
       }
@@ -99,7 +99,7 @@ jq -n \
         "image.digests.ateapi": $d3,
         "image.digests.atecontroller": $d4,
         "image.digests.atenet": $d8,
-        "images.agentgateway": ("ghcr.io/pilprod/substrate/agentgateway@" + $d9)
+        "images.agentgateway": ("ghcr.io/kagent-dev/substrate/agentgateway@" + $d9)
       }
     },
     values_sha256: {

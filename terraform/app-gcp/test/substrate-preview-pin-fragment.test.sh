@@ -77,7 +77,7 @@ printf '%s\n' \
   "    atecontroller: ${digest_b}" \
   "    atenet: ${digest_f}" \
   'images:' \
-  "  agentgateway: ghcr.io/pilprod/substrate/agentgateway@${digest_g}" > "${application_values}"
+  "  agentgateway: ghcr.io/kagent-dev/substrate/agentgateway@${digest_g}" > "${application_values}"
 
 write_manifest() {
   jq -n --sort-keys \
@@ -120,7 +120,7 @@ write_manifest() {
           }
         },
         images: {
-          agentgateway: ("ghcr.io/pilprod/substrate/agentgateway@" + $digest_g)
+          agentgateway: ("ghcr.io/kagent-dev/substrate/agentgateway@" + $digest_g)
         }
       },
       images: {
@@ -128,7 +128,7 @@ write_manifest() {
         atecontroller: {ref: ("ghcr.io/pilprod/substrate/atecontroller@" + $digest_b)},
         "ateom-gvisor": {ref: ("ghcr.io/pilprod/substrate/ateom-gvisor@" + $digest_c)},
         atenet: {ref: ("ghcr.io/pilprod/substrate/atenet@" + $digest_f)},
-        agentgateway: {ref: ("ghcr.io/pilprod/substrate/agentgateway@" + $digest_g)},
+        agentgateway: {ref: ("ghcr.io/kagent-dev/substrate/agentgateway@" + $digest_g)},
         releaseVerifier: {ref: ("ghcr.io/pilprod/substrate/substrate-release-verify@" + $digest_h)}
       },
       charts: {
@@ -190,7 +190,7 @@ require_literal "${output}" "# manifest_sha256: $(sha256_file "${manifest}")"
 require_literal "${output}" '# source_repository: pilprod/substrate'
 require_literal "${output}" "# preview_image_tag: sha-${sha}"
 require_literal "${output}" "# external_worker_image_ref: ghcr.io/pilprod/substrate/ateom-gvisor@${digest_c}"
-require_literal "${output}" "# agentgateway_image_ref: ghcr.io/pilprod/substrate/agentgateway@${digest_g}"
+require_literal "${output}" "# agentgateway_image_ref: ghcr.io/kagent-dev/substrate/agentgateway@${digest_g}"
 require_literal "${output}" "# release_verifier_image_ref: ghcr.io/pilprod/substrate/substrate-release-verify@${digest_h}"
 require_literal "${output}" "source_commit       = \"${sha}\""
 require_literal "${output}" "ateapi          = \"${digest_a}\""
@@ -255,7 +255,7 @@ mutate_manifest 'del(.helm_values.images.agentgateway, .images.agentgateway)'
 expect_failure missing-agentgateway 'manifest violates the closed Substrate preview v1 contract'
 
 write_manifest
-mutate_manifest '.helm_values.images.agentgateway = "ghcr.io/pilprod/substrate/agentgateway@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"'
+mutate_manifest '.helm_values.images.agentgateway = "ghcr.io/kagent-dev/substrate/agentgateway@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"'
 expect_failure mismatched-agentgateway 'manifest violates the closed Substrate preview v1 contract'
 
 write_manifest
@@ -295,7 +295,7 @@ printf '%s\n' \
   "    atecontroller: ${digest_c}" \
   "    atenet: ${digest_f}" \
   'images:' \
-  "  agentgateway: ghcr.io/pilprod/substrate/agentgateway@${digest_g}" > "${application_values}"
+  "  agentgateway: ghcr.io/kagent-dev/substrate/agentgateway@${digest_g}" > "${application_values}"
 expect_failure values-digest 'application values image pins must exactly match manifest.helm_values.image'
 
 printf '%s\n' \
@@ -307,7 +307,7 @@ printf '%s\n' \
   "    atecontroller: ${digest_b}" \
   "    atenet: ${digest_f}" \
   'images:' \
-  "  agentgateway: ghcr.io/pilprod/substrate/agentgateway@${digest_g}" > "${application_values}"
+  "  agentgateway: ghcr.io/kagent-dev/substrate/agentgateway@${digest_g}" > "${application_values}"
 expect_failure duplicate-yaml 'application values image pins must exactly match manifest.helm_values.image'
 
 printf '%s\n' \
@@ -318,7 +318,7 @@ printf '%s\n' \
   "    atecontroller: ${digest_b}" \
   "    atenet: ${digest_f}" \
   'images:' \
-  "  agentgateway: ghcr.io/pilprod/substrate/agentgateway@${digest_g}" > "${application_values}"
+  "  agentgateway: ghcr.io/kagent-dev/substrate/agentgateway@${digest_g}" > "${application_values}"
 outside_values="${temporary_dir}/application.values.yaml"
 cp "${application_values}" "${outside_values}"
 if "${fixture_generator}" "${manifest}" "${crds_values}" "${outside_values}" >/dev/null 2>&1; then
