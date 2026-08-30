@@ -258,6 +258,61 @@ resource "kubernetes_network_policy_v1" "substrate_controller_api_egress" {
   depends_on = [kubernetes_namespace_v1.substrate]
 }
 
+# The API resolves the in-cluster OIDC discovery/JWKS endpoints, while the
+# controller and egress authorizer resolve the private ate-api Service. GKE
+# Dataplane V2 may evaluate the translated DNS Pod destination rather than the
+# Service IP, so admit both exact representations and both DNS transports.
+resource "kubernetes_network_policy_v1" "substrate_dns_egress" {
+  count = var.bootstrap_enabled ? 1 : 0
+
+  metadata {
+    name      = "substrate-control-plane-dns-egress"
+    namespace = local.substrate_namespace
+    labels    = local.common_labels
+  }
+
+  spec {
+    pod_selector {
+      match_expressions {
+        key      = "app"
+        operator = "In"
+        values   = ["ate-api-server", "ate-controller", "atenet-egress"]
+      }
+    }
+    policy_types = ["Egress"]
+
+    egress {
+      to {
+        ip_block { cidr = "${var.cluster_dns_ip}/32" }
+      }
+      to {
+        namespace_selector {
+          match_labels = {
+            "kubernetes.io/metadata.name" = "kube-system"
+          }
+        }
+        pod_selector {
+          match_expressions {
+            key      = "k8s-app"
+            operator = "In"
+            values   = ["kube-dns", "node-local-dns"]
+          }
+        }
+      }
+      ports {
+        port     = "53"
+        protocol = "TCP"
+      }
+      ports {
+        port     = "53"
+        protocol = "UDP"
+      }
+    }
+  }
+
+  depends_on = [kubernetes_namespace_v1.substrate]
+}
+
 resource "kubernetes_network_policy_v1" "kagent_substrate_egress" {
   count = var.bootstrap_enabled ? 1 : 0
 
