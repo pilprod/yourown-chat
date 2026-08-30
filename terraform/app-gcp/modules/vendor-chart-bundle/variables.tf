@@ -1,6 +1,6 @@
 variable "bundle_key" {
   type        = string
-  description = "Stable catalog key used only for generic ownership labels and output correlation."
+  description = "Stable bundle key used only for generic ownership labels and output correlation."
 
   validation {
     condition     = can(regex("^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$", var.bundle_key)) && length(var.bundle_key) <= 63
@@ -24,14 +24,14 @@ variable "bundle" {
         release_name  = string
         ref           = string
         version       = string
-        values_base64 = string
+        values_path   = string
         values_sha256 = string
       })
       application = object({
         release_name  = string
         ref           = string
         version       = string
-        values_base64 = string
+        values_path   = string
         values_sha256 = string
       })
     })
@@ -78,19 +78,16 @@ variable "bundle" {
       length(var.bundle.supported_agent_runtimes) > 0 &&
       length(var.bundle.image_digests) > 0 &&
       alltrue([for digest in values(var.bundle.image_digests) : can(regex("^sha256:[0-9a-f]{64}$", digest))]) &&
-      try(alltrue([
-        for digest in values(var.bundle.image_digests) :
-        strcontains(base64decode(var.bundle.charts.application.values_base64), digest)
-      ]), false) &&
       alltrue([
         for chart in [var.bundle.charts.crds, var.bundle.charts.application] :
         can(regex("^oci://[^@]+@sha256:[0-9a-f]{64}$", chart.ref)) &&
         can(regex("^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$", chart.release_name)) &&
         can(regex("^[0-9]+\\.[0-9]+\\.[0-9]+$", chart.version)) &&
-        can(regex("^[0-9a-f]{64}$", chart.values_sha256)) &&
-        can(base64decode(chart.values_base64)) &&
-        try(sha256(base64decode(chart.values_base64)) == chart.values_sha256, false)
+        can(regex("^helm/vendor/[a-z0-9](?:[-a-z0-9]*[a-z0-9])?/[a-z0-9](?:[-a-z0-9]*[a-z0-9])?\\.values\\.yaml$", chart.values_path)) &&
+        startswith(chart.values_path, "helm/vendor/${var.bundle_key}/") &&
+        can(regex("^[0-9a-f]{64}$", chart.values_sha256))
       ]) &&
+      var.bundle.charts.crds.values_path != var.bundle.charts.application.values_path &&
       length([for namespace in values(var.bundle.namespaces) : namespace if namespace.quota_profile == "testbed-control"]) == 1 &&
       alltrue([
         for namespace in values(var.bundle.namespaces) :
@@ -130,7 +127,7 @@ variable "bundle" {
         can(regex("^[A-Za-z0-9._-]+$", binding.secret_file))
       ])
     )
-    error_message = "The bundle must be a closed immutable testbed contract with exact chart/value/image pins and valid typed placement, flow, API and database bindings."
+    error_message = "The bundle must be a closed immutable testbed contract with exact chart/value/image pins, distinct repository-owned Helm values paths, and valid typed placement, flow, API and database bindings."
   }
 }
 
