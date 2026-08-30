@@ -236,15 +236,17 @@ variable "kagent_substrate_delivery" {
       image_refs = map(string)
     })), {})
     compatibility = optional(object({
-      kagent_rbac_create_false    = bool
-      substrate_rbac_create_false = bool
-      substrate_gateway_api_v1    = bool
-      substrate_go_module_commit  = string
+      kagent_rbac_create_false            = bool
+      kagent_obsolete_skills_init_removed = bool
+      substrate_rbac_create_false         = bool
+      substrate_gateway_api_v1            = bool
+      substrate_go_module_commit          = string
       }), {
-      kagent_rbac_create_false    = false
-      substrate_rbac_create_false = false
-      substrate_gateway_api_v1    = false
-      substrate_go_module_commit  = ""
+      kagent_rbac_create_false            = false
+      kagent_obsolete_skills_init_removed = false
+      substrate_rbac_create_false         = false
+      substrate_gateway_api_v1            = false
+      substrate_go_module_commit          = ""
     })
     helm_set_values     = optional(map(map(string)), {})
     values_sha256       = optional(map(string), {})
@@ -269,7 +271,7 @@ variable "kagent_substrate_delivery" {
       !var.kagent_substrate_delivery.production_eligible &&
       toset(keys(var.kagent_substrate_delivery.artifacts)) == toset(["kagent", "substrate"]) &&
       var.kagent_substrate_delivery.artifacts["kagent"].source_repository == "https://github.com/pilprod/kagent" &&
-      var.kagent_substrate_delivery.artifacts["substrate"].source_repository == "https://github.com/kagent-dev/substrate" &&
+      var.kagent_substrate_delivery.artifacts["substrate"].source_repository == "https://github.com/pilprod/substrate" &&
       alltrue([
         for artifact in values(var.kagent_substrate_delivery.artifacts) :
         can(regex("^[0-9a-f]{40}$", artifact.source_commit)) &&
@@ -288,9 +290,10 @@ variable "kagent_substrate_delivery" {
       ]) &&
       toset(keys(var.kagent_substrate_delivery.artifacts["kagent"].image_refs)) == toset(["controller", "ui", "agent"]) &&
       toset(keys(var.kagent_substrate_delivery.artifacts["substrate"].image_refs)) == toset(["ateapi", "atecontroller", "atenet", "agentgateway", "releaseVerifier"]) &&
-      can(regex("^ghcr\\.io/kagent-dev/substrate/substrate-release-verify@sha256:[0-9a-f]{64}$", var.kagent_substrate_delivery.artifacts["substrate"].image_refs.releaseVerifier)) &&
+      can(regex("^ghcr\\.io/pilprod/substrate/substrate-release-verify@sha256:[0-9a-f]{64}$", var.kagent_substrate_delivery.artifacts["substrate"].image_refs.releaseVerifier)) &&
       toset(keys(var.kagent_substrate_delivery.helm_set_values)) == toset(["kagent", "substrate"]) &&
       var.kagent_substrate_delivery.compatibility.kagent_rbac_create_false &&
+      var.kagent_substrate_delivery.compatibility.kagent_obsolete_skills_init_removed &&
       var.kagent_substrate_delivery.compatibility.substrate_rbac_create_false &&
       var.kagent_substrate_delivery.compatibility.substrate_gateway_api_v1 &&
       var.kagent_substrate_delivery.compatibility.substrate_go_module_commit == var.kagent_substrate_delivery.artifacts["substrate"].source_commit &&
@@ -309,7 +312,7 @@ variable "kagent_substrate_delivery" {
         destination.port <= 65535
       ])
     )
-    error_message = "Enabled bootstrap or release requires separate pilprod/kagent and kagent-dev/substrate manifests, digest-qualified app+CRD charts/images, an exact Substrate dependency commit, RBAC/Gateway API capabilities, a verifier and testbed-only endpoints. External Broker smoke is a post-bootstrap local-agent-ready gate."
+    error_message = "Enabled bootstrap or release requires separate pilprod/kagent and pilprod/substrate manifests, digest-qualified app+CRD charts/images, an exact Substrate dependency commit, RBAC/Gateway API capabilities, a verifier and testbed-only endpoints. External Broker smoke is a post-bootstrap local-agent-ready gate."
   }
 
   validation {

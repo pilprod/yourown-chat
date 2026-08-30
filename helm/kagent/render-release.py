@@ -26,7 +26,7 @@ EXPECTED_VALUES = {
 }
 EXPECTED_REPOSITORIES = {
     "kagent": "https://github.com/pilprod/kagent",
-    "substrate": "https://github.com/kagent-dev/substrate",
+    "substrate": "https://github.com/pilprod/substrate",
 }
 KAGENT_IMAGE_PATHS = {
     "controller": "controller.image",
@@ -217,6 +217,8 @@ def validate_tracked_kagent_shape(source_root: Path) -> None:
     ):
         if required not in source:
             fail(f"tracked kagent values must preserve the live testbed setting: {required}")
+    if "skillsInitImage:" in source:
+        fail("tracked kagent values must not restore the obsolete skills-init image")
 
 
 def validate_contract(contract: dict, source_root: Path) -> None:
@@ -235,6 +237,8 @@ def validate_contract(contract: dict, source_root: Path) -> None:
         fail("compatibility contract is required")
     if compatibility.get("kagent_rbac_create_false") is not True:
         fail("kagent artifact must prove rbac.create=false support")
+    if compatibility.get("kagent_obsolete_skills_init_removed") is not True:
+        fail("kagent artifact must prove the obsolete skills-init image is removed")
     if compatibility.get("substrate_rbac_create_false") is not True:
         fail("substrate artifact must prove rbac.create=false support")
     if compatibility.get("substrate_gateway_api_v1") is not True:

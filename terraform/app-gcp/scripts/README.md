@@ -18,7 +18,7 @@ terraform/app-gcp/scripts/render-substrate-preview-pin-fragment.sh \
 The downloaded `substrate-gke-preview.json.sha256` must be beside the manifest.
 The helper verifies that producer checksum, the closed
 `yourown.chat/substrate-gke-preview/v1` schema, the closed source allowlist
-(`kagent-dev/substrate` only), the
+(`pilprod/substrate` only), the
 source/image-registry/image-tag relationship, every image
 and chart digest/reference/version relationship, and the application values'
 exact `image.registry`, `image.digests` and dependency

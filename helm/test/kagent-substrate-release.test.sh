@@ -58,25 +58,26 @@ jq -n \
         }
       },
       substrate: {
-        source_repository: "https://github.com/kagent-dev/substrate",
+        source_repository: "https://github.com/pilprod/substrate",
         source_commit: $sc,
         artifact_manifest_sha256: ($sc + $sc[0:24]),
         artifact_schema_version: "yourown.chat/substrate-release/v1",
         charts: {
-          application: {ref: ("oci://ghcr.io/kagent-dev/substrate/helm/substrate@" + $d5), version: "0.1.0"},
-          crds: {ref: ("oci://ghcr.io/kagent-dev/substrate/helm/substrate-crds@" + $d6), version: "0.1.0"}
+          application: {ref: ("oci://ghcr.io/pilprod/substrate/helm/substrate@" + $d5), version: "0.1.0"},
+          crds: {ref: ("oci://ghcr.io/pilprod/substrate/helm/substrate-crds@" + $d6), version: "0.1.0"}
         },
         image_refs: {
-          ateapi: ("ghcr.io/kagent-dev/substrate/ateapi@" + $d3),
-          atecontroller: ("ghcr.io/kagent-dev/substrate/atecontroller@" + $d4),
-          atenet: ("ghcr.io/kagent-dev/substrate/atenet@" + $d8),
-          agentgateway: ("ghcr.io/kagent-dev/substrate/agentgateway@" + $d9),
-          releaseVerifier: ("ghcr.io/kagent-dev/substrate/substrate-release-verify@" + $d10)
+          ateapi: ("ghcr.io/pilprod/substrate/ateapi@" + $d3),
+          atecontroller: ("ghcr.io/pilprod/substrate/atecontroller@" + $d4),
+          atenet: ("ghcr.io/pilprod/substrate/atenet@" + $d8),
+          agentgateway: ("ghcr.io/pilprod/substrate/agentgateway@" + $d9),
+          releaseVerifier: ("ghcr.io/pilprod/substrate/substrate-release-verify@" + $d10)
         }
       }
     },
     compatibility: {
       kagent_rbac_create_false: true,
+      kagent_obsolete_skills_init_removed: true,
       substrate_rbac_create_false: true,
       substrate_gateway_api_v1: true,
       substrate_go_module_commit: $sc
@@ -94,11 +95,11 @@ jq -n \
         "controller.agentImage.tag": ("0.10.0@" + $d7)
       },
       substrate: {
-        "image.registry": "ghcr.io/kagent-dev/substrate",
+        "image.registry": "ghcr.io/pilprod/substrate",
         "image.digests.ateapi": $d3,
         "image.digests.atecontroller": $d4,
         "image.digests.atenet": $d8,
-        "images.agentgateway": ("ghcr.io/kagent-dev/substrate/agentgateway@" + $d9)
+        "images.agentgateway": ("ghcr.io/pilprod/substrate/agentgateway@" + $d9)
       }
     },
     values_sha256: {
@@ -125,7 +126,7 @@ grep -Fq 'name: kagent' "${output}"
 grep -Fq 'namespace: kagent-system' "${output}"
 grep -Fq 'production_eligible=false' "${output}"
 grep -Fq 'external_broker_smoke_ready=false; required for local-agent-ready, not bootstrap' "${output}"
-grep -Fq "image: \"ghcr.io/kagent-dev/substrate/substrate-release-verify@${d10}\"" "${output}"
+grep -Fq "image: \"ghcr.io/pilprod/substrate/substrate-release-verify@${d10}\"" "${output}"
 grep -Fq 'command: ["/ko-app/substrate-release-verify"]' "${output}"
 grep -Fq -- '--require-gateway-programmed' "${output}"
 grep -Fq -- '--kubernetes-token-file' "${output}"
@@ -208,6 +209,14 @@ if KAGENT_SUBSTRATE_RELEASE_JSON="$(<"${work}/gateway-api-beta.json")" \
   exit 1
 fi
 grep -Fq 'Gateway and TLSRoute gateway.networking.k8s.io/v1' "${work}/gateway-api-beta.err"
+
+jq '.compatibility.kagent_obsolete_skills_init_removed = false' "${contract}" > "${work}/legacy-skills-init.json"
+if KAGENT_SUBSTRATE_RELEASE_JSON="$(<"${work}/legacy-skills-init.json")" \
+  python3 "${renderer}" --source-root "${repo_root}/helm" --output "${work}/legacy-skills-init.yaml" 2>"${work}/legacy-skills-init.err"; then
+  echo "release with the obsolete skills-init image unexpectedly rendered" >&2
+  exit 1
+fi
+grep -Fq 'obsolete skills-init image is removed' "${work}/legacy-skills-init.err"
 
 jq '.helm_set_values.kagent["rbac.create"] = "true"' "${contract}" > "${work}/structural-override.json"
 if KAGENT_SUBSTRATE_RELEASE_JSON="$(<"${work}/structural-override.json")" \

@@ -70,14 +70,14 @@ printf '{}\n' > "${crds_values}"
 printf '%s\n' \
   'profile: external-control-plane-only' \
   'image:' \
-  '  registry: ghcr.io/kagent-dev/substrate' \
+  '  registry: ghcr.io/pilprod/substrate' \
   '  tag: ""' \
   '  digests:' \
   "    ateapi: ${digest_a}" \
   "    atecontroller: ${digest_b}" \
   "    atenet: ${digest_f}" \
   'images:' \
-  "  agentgateway: ghcr.io/kagent-dev/substrate/agentgateway@${digest_g}" > "${application_values}"
+  "  agentgateway: ghcr.io/pilprod/substrate/agentgateway@${digest_g}" > "${application_values}"
 
 write_manifest() {
   jq -n --sort-keys \
@@ -95,13 +95,13 @@ write_manifest() {
       deployment_class: "testbed",
       production_eligible: false,
       source: {
-        repository: "kagent-dev/substrate",
+        repository: "pilprod/substrate",
         commit: $sha
       },
       candidate: {
         image_tag: ("sha-" + $sha),
         chart_version: "0.42.1",
-        image_registry: "ghcr.io/kagent-dev/substrate"
+        image_registry: "ghcr.io/pilprod/substrate"
       },
       image_digests: {
         ateapi: $digest_a,
@@ -112,7 +112,7 @@ write_manifest() {
       },
       helm_values: {
         image: {
-          registry: "ghcr.io/kagent-dev/substrate",
+          registry: "ghcr.io/pilprod/substrate",
           digests: {
             ateapi: $digest_a,
             atecontroller: $digest_b,
@@ -120,27 +120,27 @@ write_manifest() {
           }
         },
         images: {
-          agentgateway: ("ghcr.io/kagent-dev/substrate/agentgateway@" + $digest_g)
+          agentgateway: ("ghcr.io/pilprod/substrate/agentgateway@" + $digest_g)
         }
       },
       images: {
-        ateapi: {ref: ("ghcr.io/kagent-dev/substrate/ateapi@" + $digest_a)},
-        atecontroller: {ref: ("ghcr.io/kagent-dev/substrate/atecontroller@" + $digest_b)},
-        "ateom-gvisor": {ref: ("ghcr.io/kagent-dev/substrate/ateom-gvisor@" + $digest_c)},
-        atenet: {ref: ("ghcr.io/kagent-dev/substrate/atenet@" + $digest_f)},
-        agentgateway: {ref: ("ghcr.io/kagent-dev/substrate/agentgateway@" + $digest_g)},
-        releaseVerifier: {ref: ("ghcr.io/kagent-dev/substrate/substrate-release-verify@" + $digest_h)}
+        ateapi: {ref: ("ghcr.io/pilprod/substrate/ateapi@" + $digest_a)},
+        atecontroller: {ref: ("ghcr.io/pilprod/substrate/atecontroller@" + $digest_b)},
+        "ateom-gvisor": {ref: ("ghcr.io/pilprod/substrate/ateom-gvisor@" + $digest_c)},
+        atenet: {ref: ("ghcr.io/pilprod/substrate/atenet@" + $digest_f)},
+        agentgateway: {ref: ("ghcr.io/pilprod/substrate/agentgateway@" + $digest_g)},
+        releaseVerifier: {ref: ("ghcr.io/pilprod/substrate/substrate-release-verify@" + $digest_h)}
       },
       charts: {
         crds: {
           release_name: "substrate-crds",
-          ref: ("oci://ghcr.io/kagent-dev/substrate/helm/substrate-crds@" + $digest_d),
+          ref: ("oci://ghcr.io/pilprod/substrate/helm/substrate-crds@" + $digest_d),
           version: "0.42.1",
           digest: $digest_d
         },
         application: {
           release_name: "substrate",
-          ref: ("oci://ghcr.io/kagent-dev/substrate/helm/substrate@" + $digest_e),
+          ref: ("oci://ghcr.io/pilprod/substrate/helm/substrate@" + $digest_e),
           version: "0.42.1",
           digest: $digest_e
         }
@@ -187,11 +187,11 @@ fi
 
 require_literal "${output}" '# INCOMPLETE immutable-pin fragment; this is not a vendor_chart_bundles entry.'
 require_literal "${output}" "# manifest_sha256: $(sha256_file "${manifest}")"
-require_literal "${output}" '# source_repository: kagent-dev/substrate'
+require_literal "${output}" '# source_repository: pilprod/substrate'
 require_literal "${output}" "# preview_image_tag: sha-${sha}"
-require_literal "${output}" "# external_worker_image_ref: ghcr.io/kagent-dev/substrate/ateom-gvisor@${digest_c}"
-require_literal "${output}" "# agentgateway_image_ref: ghcr.io/kagent-dev/substrate/agentgateway@${digest_g}"
-require_literal "${output}" "# release_verifier_image_ref: ghcr.io/kagent-dev/substrate/substrate-release-verify@${digest_h}"
+require_literal "${output}" "# external_worker_image_ref: ghcr.io/pilprod/substrate/ateom-gvisor@${digest_c}"
+require_literal "${output}" "# agentgateway_image_ref: ghcr.io/pilprod/substrate/agentgateway@${digest_g}"
+require_literal "${output}" "# release_verifier_image_ref: ghcr.io/pilprod/substrate/substrate-release-verify@${digest_h}"
 require_literal "${output}" "source_commit       = \"${sha}\""
 require_literal "${output}" "ateapi          = \"${digest_a}\""
 require_literal "${output}" "atecontroller   = \"${digest_b}\""
@@ -220,8 +220,8 @@ wrapper="${temporary_dir}/wrapper.tf"
 terraform fmt -check "${wrapper}" >/dev/null || fail "generated fragment is not terraform-fmt clean"
 
 write_manifest
-mutate_manifest '.source.repository = "pilprod/substrate" | .candidate.image_registry = "ghcr.io/pilprod/substrate"'
-expect_failure pilprod-source 'manifest violates the closed Substrate preview v1 contract'
+mutate_manifest '.source.repository = "kagent-dev/substrate" | .candidate.image_registry = "ghcr.io/kagent-dev/substrate"'
+expect_failure upstream-source 'manifest violates the closed Substrate preview v1 contract'
 
 printf 'bad checksum\n' > "${manifest}.sha256"
 expect_failure checksum 'manifest does not match its producer checksum'
@@ -255,7 +255,7 @@ mutate_manifest 'del(.helm_values.images.agentgateway, .images.agentgateway)'
 expect_failure missing-agentgateway 'manifest violates the closed Substrate preview v1 contract'
 
 write_manifest
-mutate_manifest '.helm_values.images.agentgateway = "ghcr.io/kagent-dev/substrate/agentgateway@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"'
+mutate_manifest '.helm_values.images.agentgateway = "ghcr.io/pilprod/substrate/agentgateway@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"'
 expect_failure mismatched-agentgateway 'manifest violates the closed Substrate preview v1 contract'
 
 write_manifest
@@ -263,7 +263,7 @@ mutate_manifest 'del(.images.releaseVerifier)'
 expect_failure missing-release-verifier 'manifest violates the closed Substrate preview v1 contract'
 
 write_manifest
-mutate_manifest '.images.releaseVerifier.ref = "ghcr.io/kagent-dev/substrate/not-the-release-verifier@sha256:7777777777777777777777777777777777777777777777777777777777777777"'
+mutate_manifest '.images.releaseVerifier.ref = "ghcr.io/pilprod/substrate/not-the-release-verifier@sha256:7777777777777777777777777777777777777777777777777777777777777777"'
 expect_failure mismatched-release-verifier 'manifest violates the closed Substrate preview v1 contract'
 
 write_manifest
@@ -279,7 +279,7 @@ mutate_manifest '.candidate.image_tag = "latest"'
 expect_failure image-tag 'manifest violates the closed Substrate preview v1 contract'
 
 write_manifest
-mutate_manifest '.images.ateapi.ref = "ghcr.io/kagent-dev/substrate/ateapi@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"'
+mutate_manifest '.images.ateapi.ref = "ghcr.io/pilprod/substrate/ateapi@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"'
 expect_failure image-ref 'manifest violates the closed Substrate preview v1 contract'
 
 write_manifest
@@ -289,36 +289,36 @@ expect_failure chart-version 'manifest violates the closed Substrate preview v1 
 write_manifest
 printf '%s\n' \
   'image:' \
-  '  registry: ghcr.io/kagent-dev/substrate' \
+  '  registry: ghcr.io/pilprod/substrate' \
   '  digests:' \
   "    ateapi: ${digest_a}" \
   "    atecontroller: ${digest_c}" \
   "    atenet: ${digest_f}" \
   'images:' \
-  "  agentgateway: ghcr.io/kagent-dev/substrate/agentgateway@${digest_g}" > "${application_values}"
+  "  agentgateway: ghcr.io/pilprod/substrate/agentgateway@${digest_g}" > "${application_values}"
 expect_failure values-digest 'application values image pins must exactly match manifest.helm_values.image'
 
 printf '%s\n' \
   'image:' \
-  '  registry: ghcr.io/kagent-dev/substrate' \
-  '  registry: ghcr.io/kagent-dev/substrate' \
+  '  registry: ghcr.io/pilprod/substrate' \
+  '  registry: ghcr.io/pilprod/substrate' \
   '  digests:' \
   "    ateapi: ${digest_a}" \
   "    atecontroller: ${digest_b}" \
   "    atenet: ${digest_f}" \
   'images:' \
-  "  agentgateway: ghcr.io/kagent-dev/substrate/agentgateway@${digest_g}" > "${application_values}"
+  "  agentgateway: ghcr.io/pilprod/substrate/agentgateway@${digest_g}" > "${application_values}"
 expect_failure duplicate-yaml 'application values image pins must exactly match manifest.helm_values.image'
 
 printf '%s\n' \
   'image:' \
-  '  registry: ghcr.io/kagent-dev/substrate' \
+  '  registry: ghcr.io/pilprod/substrate' \
   '  digests:' \
   "    ateapi: ${digest_a}" \
   "    atecontroller: ${digest_b}" \
   "    atenet: ${digest_f}" \
   'images:' \
-  "  agentgateway: ghcr.io/kagent-dev/substrate/agentgateway@${digest_g}" > "${application_values}"
+  "  agentgateway: ghcr.io/pilprod/substrate/agentgateway@${digest_g}" > "${application_values}"
 outside_values="${temporary_dir}/application.values.yaml"
 cp "${application_values}" "${outside_values}"
 if "${fixture_generator}" "${manifest}" "${crds_values}" "${outside_values}" >/dev/null 2>&1; then

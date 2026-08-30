@@ -180,7 +180,7 @@ if ! jq -e '
   .production_eligible == false and
 
   (.source | exact_keys(["repository", "commit"])) and
-  .source.repository == "kagent-dev/substrate" and
+  .source.repository == "pilprod/substrate" and
   (.source.commit | type == "string" and test("^[0-9a-f]{40}$")) and
 
   (.candidate | exact_keys(["image_tag", "chart_version", "image_registry"])) and
