@@ -24,13 +24,14 @@ d7="sha256:$(hex 0 64)"
 d8="sha256:$(hex 8 64)"
 d9="sha256:$(hex 9 64)"
 d10="sha256:$(hex 7 64)"
+d11="sha256:$(hex 6 64)"
 
 contract="${work}/contract.json"
 jq -n \
   --arg kc "${kagent_commit}" --arg sc "${substrate_commit}" \
   --arg d1 "${d1}" --arg d2 "${d2}" --arg d3 "${d3}" \
   --arg d4 "${d4}" --arg d5 "${d5}" --arg d6 "${d6}" \
-  --arg d7 "${d7}" --arg d8 "${d8}" --arg d9 "${d9}" --arg d10 "${d10}" \
+  --arg d7 "${d7}" --arg d8 "${d8}" --arg d9 "${d9}" --arg d10 "${d10}" --arg d11 "${d11}" \
   --arg kbase "$(sha256_file "${repo_root}/helm/kagent/kagent.values.yaml")" \
   --arg ktest "$(sha256_file "${repo_root}/helm/kagent/kagent-testbed.values.yaml")" \
   --arg sbase "$(sha256_file "${repo_root}/helm/kagent/substrate.values.yaml")" \
@@ -46,15 +47,18 @@ jq -n \
         source_repository: "https://github.com/pilprod/kagent",
         source_commit: $kc,
         artifact_manifest_sha256: ($kc + $kc[0:24]),
-        artifact_schema_version: "yourown.chat/kagent-release/v1",
+        artifact_schema_version: "3",
         charts: {
           application: {ref: ("oci://ghcr.io/pilprod/kagent/helm/kagent@" + $d5), version: "0.10.0"},
           crds: {ref: ("oci://ghcr.io/pilprod/kagent/helm/kagent-crds@" + $d6), version: "0.10.0"}
         },
         image_refs: {
           controller: ("ghcr.io/pilprod/kagent/controller@" + $d1),
-          ui: ("ghcr.io/pilprod/kagent/ui@" + $d2),
-          agent: ("ghcr.io/pilprod/kagent/golang-adk@" + $d7)
+          ui: ("ghcr.io/pilprod/kagent/ui@" + $d2)
+        },
+        runtime_images: {
+          kagentHarness: ("ghcr.io/pilprod/kagent/golang-adk@" + $d7),
+          codexHarness: ("ghcr.io/pilprod/kagent/codex-harness@" + $d11)
         }
       },
       substrate: {
@@ -89,10 +93,7 @@ jq -n \
         "controller.image.tag": ("0.10.0@" + $d1),
         "ui.image.registry": "ghcr.io/pilprod/kagent",
         "ui.image.repository": "ui",
-        "ui.image.tag": ("0.10.0@" + $d2),
-        "controller.agentImage.registry": "ghcr.io/pilprod/kagent",
-        "controller.agentImage.repository": "golang-adk",
-        "controller.agentImage.tag": ("0.10.0@" + $d7)
+        "ui.image.tag": ("0.10.0@" + $d2)
       },
       substrate: {
         "image.registry": "ghcr.io/pilprod/substrate",
@@ -126,6 +127,9 @@ grep -Fq 'name: kagent' "${output}"
 grep -Fq 'namespace: kagent-system' "${output}"
 grep -Fq 'production_eligible=false' "${output}"
 grep -Fq 'external_broker_smoke_ready=false; required for local-agent-ready, not bootstrap' "${output}"
+grep -Fq "runtime_images.kagentHarness=ghcr.io/pilprod/kagent/golang-adk@${d7}" "${output}"
+grep -Fq "runtime_images.codexHarness=ghcr.io/pilprod/kagent/codex-harness@${d11}" "${output}"
+! grep -Fq 'controller.agentImage' "${output}"
 grep -Fq "image: \"ghcr.io/pilprod/substrate/substrate-release-verify@${d10}\"" "${output}"
 grep -Fq 'command: ["/ko-app/substrate-release-verify"]' "${output}"
 grep -Fq -- '--require-gateway-programmed' "${output}"
@@ -237,6 +241,52 @@ if KAGENT_SUBSTRATE_RELEASE_JSON="$(<"${work}/ignored-digest-key.json")" \
   exit 1
 fi
 grep -Fq 'may contain only the exact immutable image' "${work}/ignored-digest-key.err"
+
+jq '.artifacts.kagent.artifact_schema_version = "2"' "${contract}" > "${work}/legacy-kagent-schema.json"
+if KAGENT_SUBSTRATE_RELEASE_JSON="$(<"${work}/legacy-kagent-schema.json")" \
+  python3 "${renderer}" --source-root "${repo_root}/helm" --output "${work}/legacy-kagent-schema.yaml" 2>"${work}/legacy-kagent-schema.err"; then
+  echo "legacy kagent evidence schema unexpectedly rendered" >&2
+  exit 1
+fi
+grep -Fq 'kagent artifact must use release evidence schema 3' "${work}/legacy-kagent-schema.err"
+
+jq 'del(.artifacts.kagent.runtime_images.codexHarness)' "${contract}" > "${work}/missing-codex-runtime.json"
+if KAGENT_SUBSTRATE_RELEASE_JSON="$(<"${work}/missing-codex-runtime.json")" \
+  python3 "${renderer}" --source-root "${repo_root}/helm" --output "${work}/missing-codex-runtime.yaml" 2>"${work}/missing-codex-runtime.err"; then
+  echo "kagent evidence without Codex runtime unexpectedly rendered" >&2
+  exit 1
+fi
+grep -Fq 'runtime_images must contain exactly kagentHarness and codexHarness' "${work}/missing-codex-runtime.err"
+
+jq --arg digest "${d11}" \
+  '.artifacts.kagent.runtime_images.claudeHarness = ("ghcr.io/pilprod/kagent/claude-harness@" + $digest)' \
+  "${contract}" > "${work}/extra-runtime.json"
+if KAGENT_SUBSTRATE_RELEASE_JSON="$(<"${work}/extra-runtime.json")" \
+  python3 "${renderer}" --source-root "${repo_root}/helm" --output "${work}/extra-runtime.yaml" 2>"${work}/extra-runtime.err"; then
+  echo "unexpected extra kagent runtime image unexpectedly rendered" >&2
+  exit 1
+fi
+grep -Fq 'runtime_images must contain exactly kagentHarness and codexHarness' "${work}/extra-runtime.err"
+
+jq --arg digest "${d7}" \
+  '.artifacts.kagent.image_refs.agent = ("ghcr.io/pilprod/kagent/golang-adk@" + $digest)' \
+  "${contract}" > "${work}/legacy-agent-image.json"
+if KAGENT_SUBSTRATE_RELEASE_JSON="$(<"${work}/legacy-agent-image.json")" \
+  python3 "${renderer}" --source-root "${repo_root}/helm" --output "${work}/legacy-agent-image.yaml" 2>"${work}/legacy-agent-image.err"; then
+  echo "legacy image_refs.agent unexpectedly rendered" >&2
+  exit 1
+fi
+grep -Fq 'image_refs must contain exactly controller and ui' "${work}/legacy-agent-image.err"
+
+jq --arg digest "${d7}" \
+  '.helm_set_values.kagent["controller.agentImage.tag"] = ("0.10.0@" + $digest)' \
+  "${contract}" > "${work}/legacy-agent-override.json"
+if KAGENT_SUBSTRATE_RELEASE_JSON="$(<"${work}/legacy-agent-override.json")" \
+  python3 "${renderer}" --source-root "${repo_root}/helm" --output "${work}/legacy-agent-override.yaml" 2>"${work}/legacy-agent-override.err"; then
+  echo "legacy controller.agentImage override unexpectedly rendered" >&2
+  exit 1
+fi
+grep -Fq 'may contain only the exact immutable image' "${work}/legacy-agent-override.err"
 
 jq --arg digest "${d10}" \
   '.artifacts.substrate.image_refs.releaseVerifier = ("ghcr.io/elsewhere/substrate-release-verify@" + $digest)' \

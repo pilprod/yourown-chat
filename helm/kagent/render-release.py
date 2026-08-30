@@ -31,8 +31,8 @@ EXPECTED_REPOSITORIES = {
 KAGENT_IMAGE_PATHS = {
     "controller": "controller.image",
     "ui": "ui.image",
-    "agent": "controller.agentImage",
 }
+KAGENT_RUNTIME_IMAGES = {"kagentHarness", "codexHarness"}
 SUBSTRATE_COMPONENT_IMAGES = {"ateapi", "atecontroller", "atenet"}
 SUBSTRATE_ARTIFACT_IMAGES = SUBSTRATE_COMPONENT_IMAGES | {"agentgateway", "releaseVerifier"}
 KAGENT_SET_KEYS = {
@@ -97,6 +97,8 @@ def validate_artifact(name: str, artifact: object) -> None:
         fail(f"artifact {name} manifest checksum must be a lowercase SHA-256")
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]*", str(artifact.get("artifact_schema_version", ""))):
         fail(f"artifact {name} schema version is invalid")
+    if name == "kagent" and artifact.get("artifact_schema_version") != "3":
+        fail("kagent artifact must use release evidence schema 3")
     charts = artifact.get("charts")
     if not isinstance(charts, dict) or set(charts) != {"application", "crds"}:
         fail(f"artifact {name} must pin application and CRD charts")
@@ -113,6 +115,12 @@ def validate_artifact(name: str, artifact: object) -> None:
     for image_name, ref in images.items():
         if not IMAGE_REF.fullmatch(str(ref)):
             fail(f"image {name}/{image_name} must be registry/repository@sha256")
+    runtime_images = artifact.get("runtime_images", {})
+    if not isinstance(runtime_images, dict):
+        fail(f"artifact {name} runtime_images must be an object")
+    for image_name, ref in runtime_images.items():
+        if not IMAGE_REF.fullmatch(str(ref)):
+            fail(f"runtime image {name}/{image_name} must be registry/repository@sha256")
 
 
 def split_image_ref(ref: str) -> tuple[str, str, str]:
@@ -125,9 +133,14 @@ def validate_image_overrides(contract: dict) -> None:
     artifacts = contract["artifacts"]
     helm_values = contract["helm_set_values"]
     kagent_images = artifacts["kagent"]["image_refs"]
+    kagent_runtime_images = artifacts["kagent"]["runtime_images"]
     substrate_images = artifacts["substrate"]["image_refs"]
     if set(kagent_images) != set(KAGENT_IMAGE_PATHS):
-        fail("kagent image_refs must contain exactly controller, ui and agent")
+        fail("kagent image_refs must contain exactly controller and ui")
+    if set(kagent_runtime_images) != KAGENT_RUNTIME_IMAGES:
+        fail("kagent runtime_images must contain exactly kagentHarness and codexHarness")
+    if artifacts["substrate"].get("runtime_images", {}):
+        fail("substrate artifact must not declare kagent runtime_images")
     if set(substrate_images) != SUBSTRATE_ARTIFACT_IMAGES:
         fail("substrate image_refs must contain exactly ateapi, atecontroller, atenet, agentgateway and releaseVerifier")
 
@@ -292,6 +305,9 @@ def render(contract: dict) -> str:
         "# Generated from two reviewed immutable artifact manifests.",
         "# production_eligible=false: this config has one testbed target only.",
         f"# external_broker_smoke_ready={str(contract['external_broker_smoke_ready']).lower()}; required for local-agent-ready, not bootstrap.",
+        "# Runtime images are evidence only; installing this release does not create a Harness.",
+        f"# runtime_images.kagentHarness={contract['artifacts']['kagent']['runtime_images']['kagentHarness']}",
+        f"# runtime_images.codexHarness={contract['artifacts']['kagent']['runtime_images']['codexHarness']}",
         "apiVersion: skaffold/v4beta11",
         "kind: Config",
         "metadata:",
