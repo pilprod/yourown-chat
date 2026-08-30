@@ -341,6 +341,7 @@ networkpolicy_name=""
 pod_may_exist=0
 configmap_may_exist=0
 networkpolicy_may_exist=0
+issuance_may_have_happened=0
 
 cleanup() {
   local status=$?
@@ -391,6 +392,9 @@ cleanup() {
   fi
   if [[ "${cleanup_failed}" -eq 1 && "${status}" -eq 0 ]]; then
     status=1
+  fi
+  if [[ "${issuance_may_have_happened}" -eq 1 && "${status}" -ne 0 ]]; then
+    printf 'Substrate enrollment issuance may already have occurred; DO NOT RETRY automatically; operator review is required\n' >&2
   fi
   exit "${status}"
 }
@@ -496,7 +500,12 @@ spec:
           port: 443
 EOF
 
+# The API server can accept the Pod while the client sees an ambiguous create
+# failure, and the enrollment RPC can issue a credential before any later
+# local failure. From this point every non-zero exit carries an explicit
+# no-automatic-retry warning from cleanup.
 pod_may_exist=1
+issuance_may_have_happened=1
 kubectl --context="${kube_context}" --namespace="${namespace}" --request-timeout=30s \
   create -f - >/dev/null <<EOF
 apiVersion: v1
@@ -672,6 +681,7 @@ spec:
       volumeMounts:
         - name: handoff
           mountPath: /var/run/substrate-enrollment
+          readOnly: true
 EOF
 
 status_file="${scratch_dir}/main-exit-code"
@@ -706,8 +716,10 @@ done
 local_partial="$(mktemp "${output_file}.partial.XXXXXXXX")"
 chmod 0600 "${local_partial}"
 # Keep the credential stream out of command substitution and every diagnostic.
-kubectl --context="${kube_context}" --namespace="${namespace}" --request-timeout=30s \
-  exec "pod/${pod_name}" -c transfer -- cat "${credential_path}" > "${local_partial}"
+if ! kubectl --context="${kube_context}" --namespace="${namespace}" --request-timeout=30s \
+  exec "pod/${pod_name}" -c transfer -- cat "${credential_path}" > "${local_partial}"; then
+  fail "credential transfer failed or was ambiguous after enrollment issuance"
+fi
 
 partial_uid=""
 partial_mode=""

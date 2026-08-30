@@ -109,6 +109,7 @@ if [[ "${all_args}" == *' exec pod/'* && "${all_args}" == *' -- test -s '* ]]; t
   exit
 fi
 if [[ "${all_args}" == *' exec pod/'* && "${all_args}" == *' -- cat '* ]]; then
+  [[ "${FAKE_CAT_FAIL:-0}" != 1 ]] || exit 76
   printf '%s' "${FAKE_CREDENTIAL:-enrollment_A1-b2}"
   exit 0
 fi
@@ -130,6 +131,7 @@ invoke_subject() {
   FAKE_CREDENTIAL_READY="${FAKE_CREDENTIAL_READY:-1}" \
   FAKE_CREDENTIAL="${FAKE_CREDENTIAL:-enrollment_A1-b2}" \
   FAKE_POD_DELETE_FAIL="${FAKE_POD_DELETE_FAIL:-0}" \
+  FAKE_CAT_FAIL="${FAKE_CAT_FAIL:-0}" \
     "${subject}" \
     --kubectl-ate-image "${KUBECTL_IMAGE:-${valid_kubectl_image}}" \
     --transfer-image "${TRANSFER_IMAGE:-${valid_transfer_image}}" \
@@ -208,6 +210,13 @@ require_literal "${pod_manifest}" '    seccompProfile:'
   fail "all three container roles must use read-only root filesystems"
 [[ "$(grep -Fc '        runAsNonRoot: true' "${pod_manifest}")" -eq 3 ]] ||
   fail "all three container roles must run non-root"
+awk '
+  $0 == "    - name: transfer" { in_transfer = 1 }
+  in_transfer && $0 == "      volumeMounts:" { in_mounts = 1 }
+  in_mounts && $0 == "        - name: handoff" { in_handoff = 1 }
+  in_handoff && $0 == "          readOnly: true" { found = 1 }
+  END { exit(found ? 0 : 1) }
+' "${pod_manifest}" || fail "transfer sidecar must mount the credential handoff read-only"
 forbid_pattern "${pod_manifest}" '^kind: Secret$'
 forbid_pattern "${pod_manifest}" 'enrollment_A1-b2'
 
@@ -245,6 +254,13 @@ FAKE_KUBECTL_LOG_DIR="${failure_log}" FAKE_MAIN_EXIT_CODE=7 \
 require_literal "${failure_log}/calls.log" 'delete> <pod/substrate-enrollment-'
 require_literal "${failure_log}/calls.log" 'delete> <configmap/substrate-enrollment-policy-'
 require_literal "${failure_log}/calls.log" 'delete> <networkpolicy/substrate-enrollment-egress-'
+require_literal "${temporary_dir}/main-exit.stderr" 'DO NOT RETRY automatically; operator review is required'
+
+transfer_failure_log="${temporary_dir}/transfer-failure-log"
+mkdir -p "${transfer_failure_log}"
+FAKE_KUBECTL_LOG_DIR="${transfer_failure_log}" FAKE_CAT_FAIL=1 \
+  expect_failure transfer-failure 'credential transfer failed or was ambiguous after enrollment issuance' "${private_dir}/transfer-failure-token"
+require_literal "${temporary_dir}/transfer-failure.stderr" 'DO NOT RETRY automatically; operator review is required'
 
 cleanup_failure_log="${temporary_dir}/cleanup-failure-log"
 mkdir -p "${cleanup_failure_log}"
@@ -258,6 +274,7 @@ fi
 [[ -f "${cleanup_failure_output}" ]] ||
   fail "successfully transferred credential was lost when cleanup failed"
 require_literal "${temporary_dir}/cleanup-failure.stderr" 'could not confirm Pod deletion; retaining NetworkPolicy and ConfigMap'
+require_literal "${temporary_dir}/cleanup-failure.stderr" 'DO NOT RETRY automatically; operator review is required'
 require_literal "${cleanup_failure_log}/calls.log" 'delete> <pod/substrate-enrollment-'
 forbid_pattern "${cleanup_failure_log}/calls.log" 'delete> <configmap/substrate-enrollment-policy-'
 forbid_pattern "${cleanup_failure_log}/calls.log" 'delete> <networkpolicy/substrate-enrollment-egress-'
