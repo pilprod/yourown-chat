@@ -91,6 +91,6 @@ requires release-supplied digest pins; this repository does not invent a
 The current service input intentionally sets every activation attestation to
 false. Remaining prerequisites include publishable immutable fork artifacts
 containing the verifier image pin, populated and natively synchronized TLS
-material, explicit Actor/MCP destinations, the two-step kagent ownership
-handoff, and external Broker smoke evidence. Do not flip the rail until all of
-them are reviewed.
+material, the explicit local-provider-only network posture, the two-step kagent
+ownership handoff, and external Broker smoke evidence. Do not flip the rail
+until all of them are reviewed.

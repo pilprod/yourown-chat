@@ -142,6 +142,12 @@ jq '.secrets.api_tls.data.extra="eA=="' "${work}/bundle.json" > "${work}/extra-k
 chmod 0600 "${work}/extra-key.json"
 expect_fail "extra data key" "${bootstrap}" validate --project test-project --bundle "${work}/extra-key.json"
 
+# /x== decodes successfully, but its non-zero pad bits make it a non-canonical
+# spelling of /w==. The operator envelope must reject ambiguous encodings.
+jq '.secrets.api_tls.data["client-ca.pem"]="/x=="' "${work}/bundle.json" > "${work}/noncanonical-base64.json"
+chmod 0600 "${work}/noncanonical-base64.json"
+expect_fail "non-canonical base64" "${bootstrap}" validate --project test-project --bundle "${work}/noncanonical-base64.json"
+
 jq --rawfile wrong "${work}/controller-client.bundle.pem.b64" \
   '.secrets.kagent_client_tls.data["client-credential-bundle.pem"]=$wrong' \
   "${work}/bundle.json" > "${work}/wrong-san.json"
@@ -193,7 +199,7 @@ store="${MOCK_KUBE_STORE:?}"
 joined=" $* "
 if [[ "${joined}" == *' get namespace '* ]]; then
   printf 'namespace/mock\n'
-elif [[ "${joined}" == *' auth can-i patch secrets '* ]]; then
+elif [[ "${joined}" == *' auth can-i get secrets '* || "${joined}" == *' auth can-i patch secrets '* ]]; then
   printf 'yes\n'
 elif [[ "${joined}" == *' apply '* ]]; then
   input="$(mktemp "${TMPDIR:-/tmp}/mock-kube.XXXXXX")"

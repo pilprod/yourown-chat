@@ -82,10 +82,11 @@ state. The script uses a private temporary directory and deletes it on exit.
 
 ## Validate, bootstrap and rotate
 
-Required local commands are Bash, Python 3, `jq`, OpenSSL, `gcloud` and
-`kubectl`. The operator needs `get`, `versions.access` and `versions.add` on the
-eight fixed Secret Manager containers, and `get`/`patch` for Secrets in only
-`ate-system` and `kagent-system`.
+Required local commands are Bash, Python 3, `jq`, OpenSSL, ripgrep, the standard
+POSIX command-line tools, `gcloud` and `kubectl`. The operator needs `get`,
+`versions.access` and `versions.add` on the eight fixed Secret Manager
+containers, and `get`/`patch` for Secrets in only `ate-system` and
+`kagent-system`.
 
 Validate without external writes:
 

@@ -191,6 +191,8 @@ for logical, (secret_id, namespace, name, source, keys) in expected.items():
             decoded = base64.b64decode(value, validate=True)
         except (ValueError, base64.binascii.Error):
             raise SystemExit(f"{logical}/{key} is not canonical base64")
+        if base64.b64encode(decoded).decode("ascii") != value:
+            raise SystemExit(f"{logical}/{key} is not canonical base64")
         if not decoded:
             raise SystemExit(f"{logical}/{key} must not be empty")
     payload = json.dumps({"schema": payload_schema, "data": data}, separators=(",", ":"), sort_keys=True).encode()
@@ -248,6 +250,8 @@ for key in keys[logical]:
     try:
         decoded = base64.b64decode(value, validate=True)
     except (ValueError, base64.binascii.Error):
+        raise SystemExit(f"{logical}/{key} is not canonical base64")
+    if base64.b64encode(decoded).decode("ascii") != value:
         raise SystemExit(f"{logical}/{key} is not canonical base64")
     if not decoded:
         raise SystemExit(f"{logical}/{key} must not be empty")
@@ -632,6 +636,8 @@ check_cluster_access() {
   for namespace in ate-system kagent-system; do
     kubectl --context="${context}" get namespace "${namespace}" -o name >/dev/null || \
       fail "namespace ${namespace} is unavailable in context ${context}"
+    [[ "$(kubectl --context="${context}" auth can-i get secrets -n "${namespace}")" == "yes" ]] || \
+      fail "context ${context} cannot get Secrets in ${namespace}"
     [[ "$(kubectl --context="${context}" auth can-i patch secrets -n "${namespace}")" == "yes" ]] || \
       fail "context ${context} cannot patch Secrets in ${namespace}"
   done
