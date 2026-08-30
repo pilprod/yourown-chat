@@ -865,6 +865,7 @@ component "substrate_prerequisites" {
     gke_cluster_id             = var.gke_cluster_id
     native_secret_sync_ready   = var.kagent_substrate_delivery.native_secret_sync_ready
     cloudsql_private_ip        = var.cloudsql_private_ip
+    cluster_dns_ip             = var.cluster_dns_ip
     atenet_egress_destinations = var.kagent_substrate_delivery.atenet_egress_destinations
     substrate_crd_chart        = try(var.kagent_substrate_delivery.artifacts["substrate"].charts.crds, { ref = "", version = "" })
     secret_contract = {

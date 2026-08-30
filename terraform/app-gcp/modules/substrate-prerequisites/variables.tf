@@ -55,6 +55,16 @@ variable "cloudsql_private_ip" {
   }
 }
 
+variable "cluster_dns_ip" {
+  type        = string
+  description = "Exact kube-dns Service ClusterIP allowed by the Substrate control-plane NetworkPolicies."
+
+  validation {
+    condition     = can(cidrhost("${var.cluster_dns_ip}/32", 0))
+    error_message = "cluster_dns_ip must be an IPv4 address."
+  }
+}
+
 variable "substrate_crd_chart" {
   type = object({
     ref     = string
