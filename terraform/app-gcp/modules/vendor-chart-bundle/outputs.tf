@@ -12,8 +12,8 @@ output "release" {
     namespace                = local.control_namespace
     crd_release_name         = local.provisioned ? helm_release.crds[0].name : null
     crd_status               = try(helm_release.crds[0].status, null)
-    application_release_name = local.application_ready ? helm_release.application[0].name : null
-    application_status       = try(helm_release.application[0].status, null)
+    application_release_name = local.application_ready ? helm_release.application_handoff_source[0].name : null
+    application_status       = try(helm_release.application_handoff_source[0].status, null)
   }
 
   # Validate immutable repository inputs even while a bundle is disabled or

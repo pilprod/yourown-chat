@@ -491,7 +491,14 @@ resource "helm_release" "crds" {
   ]
 }
 
-resource "helm_release" "application" {
+# Phase A of the ownership handoff. Apply this address-only move before a later
+# configuration forgets the handoff source with destroy=false.
+moved {
+  from = helm_release.application
+  to   = helm_release.application_handoff_source
+}
+
+resource "helm_release" "application_handoff_source" {
   count = local.application_ready ? 1 : 0
 
   name      = var.bundle.charts.application.release_name
