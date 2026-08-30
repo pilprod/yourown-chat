@@ -45,6 +45,7 @@ grep -Fq 'yourown_chat_activity_worker_image=' "${repo_root}/helm/agent-pilot.sh
 ! grep -Fq 'yourown_chat_server_image=' "${repo_root}/helm/agent-pilot.sh"
 grep -Fq 'agents-start=agents-start-pilot' "${repo_root}/helm/mcp/values.yaml"
 grep -Fq 'agents-pause=agents-pause-pilot' "${repo_root}/helm/mcp/values.yaml"
+grep -Fq 'kagent-substrate=kagent-substrate-testbed' "${repo_root}/helm/mcp/values.yaml"
 
 # Temporal is Terraform-owned composition over project-wide generic modules;
 # it must never re-enter the application Cloud Deploy release.
