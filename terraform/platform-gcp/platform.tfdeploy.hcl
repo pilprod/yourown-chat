@@ -84,7 +84,7 @@ deployment "eu" {
     # been drained in a separate retirement change.
     yourown_chat_server_enabled             = true
     yourown_chat_identity_password_rotation = "1"
-    additional_database_users = local.additional_database_users
+    additional_database_users               = local.additional_database_users
 
     # Temporal is a platform-gcp service. Keep the launch gate closed until the
     # prerequisite MCP image has passed production verification.
@@ -95,6 +95,12 @@ deployment "eu" {
 
     public_ingress_enabled   = true
     mattermost_calls_enabled = true
+
+    # Explicit opt-in: a later reviewed platform apply installs the official
+    # control plane and reserves a dedicated direct-Broker endpoint. This is
+    # independent from the Cloudflare origin and RTCD media addresses.
+    agentgateway_enabled           = true
+    agentgateway_public_ip_enabled = true
 
     # One shared HSM CMEK key for Cloud SQL, GCS, Secret Manager, GKE etcd,
     # sensitive PVCs and the replacement GKE node-pool boot disks (~$1/mo).
@@ -216,6 +222,21 @@ publish_output "yourown_chat_server_enabled" {
 publish_output "temporal_results_bucket_name" {
   description = "Platform-owned agent result bucket consumed by application delivery parameters."
   value       = deployment.eu.temporal_results_bucket_name
+}
+
+publish_output "agentgateway" {
+  description = "Official platform agentgateway contract consumed by app-gcp workload delivery."
+  value       = deployment.eu.agentgateway
+}
+
+publish_output "agentgateway_public_ip_address" {
+  description = "Dedicated regional public address for direct Broker TLS passthrough; null while the opt-in gate is closed."
+  value       = deployment.eu.agentgateway_public_ip_address
+}
+
+publish_output "agentgateway_public_ip_name" {
+  description = "GCP regional address resource name for the agentgateway data-plane LoadBalancer."
+  value       = deployment.eu.agentgateway_public_ip_name
 }
 
 # Platform Helm chart registry (helm/platform workload profiles as immutable

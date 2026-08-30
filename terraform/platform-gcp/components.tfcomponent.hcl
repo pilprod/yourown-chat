@@ -459,8 +459,9 @@ component "network" {
     labels     = local.common_labels
 
     # Reserve the Cloudflare-facing static IP only where a public ingress exists.
-    ingress_static_ip = var.public_ingress_enabled
-    calls_static_ip   = var.mattermost_calls_enabled
+    ingress_static_ip      = var.public_ingress_enabled
+    calls_static_ip        = var.mattermost_calls_enabled
+    agentgateway_static_ip = var.agentgateway_public_ip_enabled
   }
 
   providers = {
@@ -722,6 +723,25 @@ component "temporal" {
   }
 
   depends_on = [component.cloudsql, component.storage]
+}
+
+# Cluster-wide Gateway API and the official agentgateway control plane are
+# platform services. Workload Gateways, routes and proxy parameters remain in
+# app-gcp so application releases can promote them with their backends.
+component "agentgateway" {
+  source = "./modules/agentgateway"
+
+  inputs = {
+    enabled = var.agentgateway_enabled
+    labels  = local.common_labels
+  }
+
+  providers = {
+    helm       = provider.helm.this
+    kubernetes = provider.kubernetes.this
+  }
+
+  depends_on = [component.gke]
 }
 
 component "artifact_registry" {

@@ -13,6 +13,7 @@ locals {
   internal_firewall_name = "allow-internal"
   ingress_ip_name        = "ingress-${var.region}"
   calls_ip_name          = "calls-${var.region}"
+  agentgateway_ip_name   = "agentgateway-${var.region}"
 }
 
 # Custom-mode VPC: no auto subnets so ranges are explicit and predictable.
@@ -156,4 +157,22 @@ resource "google_compute_address" "calls" {
   address_type = "EXTERNAL"
   network_tier = "PREMIUM"
   labels       = var.labels
+}
+
+# Direct agent-host/Broker traffic must not share the Cloudflare HTTP origin
+# address or the RTCD media address. The app-owned AgentgatewayParameters uses
+# the GKE L4 RBS address-name annotation for the generated Service.
+resource "google_compute_address" "agentgateway" {
+  count = var.agentgateway_static_ip ? 1 : 0
+
+  project      = var.project_id
+  name         = local.agentgateway_ip_name
+  region       = var.region
+  address_type = "EXTERNAL"
+  network_tier = "PREMIUM"
+  labels       = var.labels
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
