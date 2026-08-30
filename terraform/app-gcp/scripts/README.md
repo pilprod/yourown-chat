@@ -1,5 +1,15 @@
 # app-gcp input helpers
 
+`bootstrap-kagent-substrate-secrets.sh` is the fail-closed operator path for
+the external-local-provider testbed's native Kubernetes Secrets. It validates
+an owner-only bundle outside every Git worktree and Git metadata directory,
+writes seven structured Secret Manager
+versions without exposing bytes in arguments, reads the existing Cloud SQL URI,
+and synchronizes the exact eight source Secrets plus the Kubernetes-only
+`actor-id-ca-certs/ca.crt` derived from the actor CA pool. It never invokes
+Terraform or changes the readiness attestation. See
+[`docs/KAGENT_SUBSTRATE_RELEASE.md`](../../../docs/KAGENT_SUBSTRATE_RELEASE.md).
+
 `render-substrate-preview-pin-fragment.sh` is a read-only bridge from the
 Substrate `substrate-gke-preview.json` release artifact to the immutable fields
 of an app-gcp vendor chart bundle. It writes HCL only to standard output and

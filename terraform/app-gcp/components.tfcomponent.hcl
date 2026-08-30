@@ -917,6 +917,7 @@ component "substrate_prerequisites" {
     native_secret_sync_ready   = var.kagent_substrate_delivery.native_secret_sync_ready
     cloudsql_private_ip        = var.cloudsql_private_ip
     cluster_dns_ip             = var.cluster_dns_ip
+    local_provider_only        = var.kagent_substrate_delivery.local_provider_only
     atenet_egress_destinations = var.kagent_substrate_delivery.atenet_egress_destinations
     substrate_crd_chart        = try(var.kagent_substrate_delivery.artifacts["substrate"].charts.crds, { ref = "", version = "" })
     secret_contract = {
@@ -967,6 +968,14 @@ component "substrate_prerequisites" {
         namespace         = "kagent-system"
         kubernetes_name   = "kagent-ate-client-tls"
         keys              = ["client-credential-bundle.pem", "server-ca.pem"]
+      }
+    }
+    derived_secret_contract = {
+      actor_id_ca_certs = {
+        source_secret_key = "actor_id_ca_pool"
+        namespace         = "ate-system"
+        kubernetes_name   = "actor-id-ca-certs"
+        keys              = ["ca.crt"]
       }
     }
     agentgateway = {

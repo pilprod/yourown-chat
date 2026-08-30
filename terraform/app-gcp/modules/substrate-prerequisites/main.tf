@@ -46,13 +46,33 @@ locals {
     }
   }
 
-  secret_contract_valid = toset(keys(var.secret_contract)) == toset(keys(local.expected_secret_contract)) && alltrue([
-    for key, expected in local.expected_secret_contract :
-    try(var.secret_contract[key].secret_manager_id != "", false) &&
-    try(var.secret_contract[key].namespace == expected.namespace, false) &&
-    try(var.secret_contract[key].kubernetes_name == expected.kubernetes_name, false) &&
-    try(var.secret_contract[key].keys == expected.keys, false)
-  ])
+  expected_derived_secret_contract = {
+    actor_id_ca_certs = {
+      source_secret_key = "actor_id_ca_pool"
+      namespace         = local.substrate_namespace
+      kubernetes_name   = "actor-id-ca-certs"
+      keys              = toset(["ca.crt"])
+    }
+  }
+
+  secret_contract_valid = (
+    toset(keys(var.secret_contract)) == toset(keys(local.expected_secret_contract)) &&
+    alltrue([
+      for key, expected in local.expected_secret_contract :
+      try(var.secret_contract[key].secret_manager_id != "", false) &&
+      try(var.secret_contract[key].namespace == expected.namespace, false) &&
+      try(var.secret_contract[key].kubernetes_name == expected.kubernetes_name, false) &&
+      try(var.secret_contract[key].keys == expected.keys, false)
+    ]) &&
+    toset(keys(var.derived_secret_contract)) == toset(keys(local.expected_derived_secret_contract)) &&
+    alltrue([
+      for key, expected in local.expected_derived_secret_contract :
+      try(var.derived_secret_contract[key].source_secret_key == expected.source_secret_key, false) &&
+      try(var.derived_secret_contract[key].namespace == expected.namespace, false) &&
+      try(var.derived_secret_contract[key].kubernetes_name == expected.kubernetes_name, false) &&
+      try(var.derived_secret_contract[key].keys == expected.keys, false)
+    ])
+  )
 
   authentication = yamlencode({
     actorIdentityJWTProvider = "kubernetes"
@@ -95,8 +115,11 @@ resource "kubernetes_namespace_v1" "substrate" {
 
   lifecycle {
     precondition {
-      condition     = length(var.atenet_egress_destinations) > 0
-      error_message = "Substrate delivery remains closed until reviewed Actor/MCP CIDRs and ports are provided for atenet-egress."
+      condition = (
+        var.local_provider_only ||
+        length(var.atenet_egress_destinations) > 0
+      )
+      error_message = "Substrate delivery remains closed until reviewed Actor/MCP CIDRs and ports are provided or local_provider_only explicitly disables Actor/MCP egress."
     }
   }
 }
@@ -380,7 +403,7 @@ resource "kubernetes_network_policy_v1" "kagent_substrate_egress" {
 }
 
 resource "kubernetes_network_policy_v1" "atenet_reviewed_egress" {
-  for_each = var.bootstrap_enabled ? var.atenet_egress_destinations : {}
+  for_each = var.bootstrap_enabled && !var.local_provider_only ? var.atenet_egress_destinations : {}
 
   metadata {
     name      = "atenet-egress-${each.key}"
@@ -423,7 +446,7 @@ resource "kubernetes_config_map_v1" "authentication" {
   lifecycle {
     precondition {
       condition     = local.secret_contract_valid
-      error_message = "Substrate/kagent require the exact DB, API/controller/egress TLS, identity-pool and kagent client TLS Secret names, namespaces and keys."
+      error_message = "Substrate/kagent require the exact eight source Secrets plus derived actor-id-ca-certs name, namespace, source and keys."
     }
   }
 }

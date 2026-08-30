@@ -34,8 +34,11 @@ output "issuer" {
 }
 
 output "secret_contract" {
-  description = "Non-sensitive Secret Manager IDs and exact native Kubernetes names/namespaces/keys."
-  value       = var.secret_contract
+  description = "Non-sensitive Secret Manager IDs and exact native Kubernetes names/namespaces/keys, including Kubernetes-only derived values."
+  value = {
+    sources = var.secret_contract
+    derived = var.derived_secret_contract
+  }
 }
 
 output "enrollment_admin_service_account" {

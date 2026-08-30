@@ -34,6 +34,20 @@ variable "native_secret_sync_ready" {
   default     = false
 }
 
+variable "local_provider_only" {
+  type        = bool
+  description = "Explicit testbed mode that admits only externally connected local providers and keeps Actor/MCP egress closed."
+  default     = false
+
+  validation {
+    condition = !var.bootstrap_enabled || (
+      (var.local_provider_only && length(var.atenet_egress_destinations) == 0) ||
+      (!var.local_provider_only && length(var.atenet_egress_destinations) > 0)
+    )
+    error_message = "Enabled bootstrap requires either local_provider_only=true with no atenet destinations or local_provider_only=false with at least one reviewed destination."
+  }
+}
+
 variable "secret_contract" {
   type = map(object({
     secret_manager_id = string
@@ -42,6 +56,17 @@ variable "secret_contract" {
     keys              = set(string)
   }))
   description = "Non-secret identifiers for the external-control-plane native Kubernetes Secret contract."
+  default     = {}
+}
+
+variable "derived_secret_contract" {
+  type = map(object({
+    source_secret_key = string
+    namespace         = string
+    kubernetes_name   = string
+    keys              = set(string)
+  }))
+  description = "Non-secret contract for Kubernetes-only values derived from one of the eight Secret Manager-backed sources."
   default     = {}
 }
 

@@ -256,6 +256,7 @@ variable "kagent_substrate_delivery" {
     broker_server_name  = optional(string, "")
     broker_service_name = optional(string, "api")
     broker_service_port = optional(number, 8443)
+    local_provider_only = optional(bool, false)
     atenet_egress_destinations = optional(map(object({
       cidr = string
       port = number
@@ -310,7 +311,15 @@ variable "kagent_substrate_delivery" {
       can(regex("^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$", var.kagent_substrate_delivery.broker_server_name)) &&
       var.kagent_substrate_delivery.broker_service_port >= 1 &&
       var.kagent_substrate_delivery.broker_service_port <= 65535 &&
-      length(var.kagent_substrate_delivery.atenet_egress_destinations) > 0 &&
+      (
+        (
+          var.kagent_substrate_delivery.local_provider_only &&
+          length(var.kagent_substrate_delivery.atenet_egress_destinations) == 0
+          ) || (
+          !var.kagent_substrate_delivery.local_provider_only &&
+          length(var.kagent_substrate_delivery.atenet_egress_destinations) > 0
+        )
+      ) &&
       alltrue([
         for destination in values(var.kagent_substrate_delivery.atenet_egress_destinations) :
         can(cidrhost(destination.cidr, 0)) &&
@@ -320,7 +329,7 @@ variable "kagent_substrate_delivery" {
         destination.port <= 65535
       ])
     )
-    error_message = "Enabled bootstrap or release requires kagent evidence schema 3 with controller/UI image refs and exact kagentHarness/codexHarness runtime refs, a separate Substrate manifest, digest-qualified app+CRD charts/images, an exact Substrate dependency commit, RBAC/Gateway API capabilities, a verifier and testbed-only endpoints. External Broker smoke is a post-bootstrap local-agent-ready gate."
+    error_message = "Enabled bootstrap or release requires kagent evidence schema 3 with controller/UI image refs and exact kagentHarness/codexHarness runtime refs, a separate Substrate manifest, digest-qualified app+CRD charts/images, an exact Substrate dependency commit, RBAC/Gateway API capabilities, a verifier and testbed-only endpoints. Use either explicit atenet destinations or local_provider_only=true with no Actor/MCP egress; External Broker smoke is a post-bootstrap local-agent-ready gate."
   }
 
   validation {
