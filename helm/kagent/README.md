@@ -64,6 +64,14 @@ Gateway; it keeps `external_broker_smoke_required=true` and
 `kagent_local_agent_ready=false` afterward. The boolean is an explicit
 attestation input, not an automated smoke implementation.
 
+External-provider enrollment is issued separately by
+`terraform/app-gcp/scripts/issue-substrate-external-provider-enrollment.sh`.
+The helper uses the fixed `substrate-enrollment-admin` Pod label set admitted by
+`substrate.values.yaml`, talks only to `api.ate-system.svc:443`, and transfers
+the one-time credential to an owner-only local file without a port-forward or
+a Kubernetes Secret. It requires release-supplied digest pins; this repository
+does not invent a `kubectl-ate` image digest.
+
 The current service input intentionally sets every activation attestation to
 false. Remaining prerequisites include publishable immutable fork artifacts
 containing the verifier image pin, populated and natively synchronized TLS

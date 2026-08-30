@@ -47,3 +47,63 @@ manifest's digest-qualified `ateom-gvisor` image also belongs in a separately
 reviewed WorkerPool resource; the Substrate chart does not create that
 environment resource. The helper reports these omissions on standard error and
 never fills them with placeholders or defaults.
+
+## External-provider enrollment without port-forwarding
+
+`issue-substrate-external-provider-enrollment.sh` issues the single-use local
+Agent Host enrollment through the in-cluster ate-api service. It creates one
+unique restricted Pod, one policy ConfigMap and one deny-by-default
+NetworkPolicy in the Substrate namespace, then removes all three on success or
+failure. It never creates a Kubernetes Secret for the credential, opens a
+port-forward, writes credential bytes to logs, or routes them through
+Terraform state. The only allowed Pod egress is exact cluster DNS peers on
+TCP/UDP 53 and `app=ate-api-server` on TCP 443; there is no CIDR rule.
+
+The tracked Substrate Helm values admit the fixed enrollment Pod labels to the
+ate-api NetworkPolicy. The script requires the internal endpoint, TLS SNI and
+projected ServiceAccount audience to agree exactly as
+`api.<substrate-namespace>.svc[:443]`. In the current release those values are
+`api.ate-system.svc:443` and `api.ate-system.svc`. The selected ServiceAccount
+must already be listed in `externalProviderEnrollmentAdmins`; app-gcp creates
+`ate-system/ate-enrollment-admin` for this purpose.
+
+Before running it:
+
+1. obtain the reviewed release's exact digest-qualified `kubectl-ate` image;
+2. choose a reviewed minimal transfer image which supplies POSIX `sh`, `sleep`,
+   `test`, `mkdir`, `chmod`, and `cat` and runs as uid/gid 65532;
+3. save the reviewed slot policy in a real, current-user-owned regular file
+   with mode `0400` or `0600`; and
+4. create a real current-user-owned output directory with no group/other
+   permissions. The destination file must not exist.
+
+No placeholder digest is checked in. After the Substrate release supplies the
+real pins, invoke the helper with environment variables that came from that
+reviewed handoff:
+
+```sh
+terraform/app-gcp/scripts/issue-substrate-external-provider-enrollment.sh \
+  --kubectl-ate-image "${KUBECTL_ATE_IMAGE}" \
+  --transfer-image "${TRANSFER_IMAGE}" \
+  --context gke_yourown-chat_europe-west3-b_europe-west3-b \
+  --namespace ate-system \
+  --service-account ate-enrollment-admin \
+  --api-endpoint api.ate-system.svc:443 \
+  --server-name api.ate-system.svc \
+  --ca-secret substrate-ate-controller-tls \
+  --owner-atespace tenant-a \
+  --worker-namespace external-workers \
+  --worker-pool local-agents \
+  --max-slots 2 \
+  --policy-file /absolute/private/slot-policy.yaml \
+  --ttl 1h \
+  --output-file /absolute/private/enrollment-token
+```
+
+The main container writes an atomic `0600` credential into a memory-backed
+shared volume. A non-logging transfer sidecar waits for that file. Only after
+the main container terminates successfully and the file is present does the
+local script stream it directly into a same-directory `0600` temporary file.
+It publishes the final path with a hard link, so a concurrent file creation is
+never overwritten. The credential file itself must remain the sole handoff to
+the Agent Host.
