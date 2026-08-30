@@ -246,7 +246,7 @@ variable "additional_database_users" {
       service_account = string
     })), [])
   }))
-  description = "Service-owned requests for additional logical database roles on the shared protected Cloud SQL instance."
+  description = "Service-owned requests for additional logical database roles on the shared protected Cloud SQL instance. Set adopt_existing_database_names only for a reviewed one-shot import, then clear it after success; the imported resources remain managed in state."
   default     = {}
 
   validation {

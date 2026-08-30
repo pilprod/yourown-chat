@@ -20,7 +20,9 @@ require_literal "${module}" 'id = "projects/${var.project_id}/instances/${local.
 require_pattern "${module_variables}" 'adopt_existing_database_names[[:space:]]*=[[:space:]]*optional\(set\(string\), \[\]\)'
 require_literal "${module_variables}" 'length(setsubtract(settings.adopt_existing_database_names, settings.database_names)) == 0'
 require_literal "${module_variables}" '(settings.manage_databases || length(settings.adopt_existing_database_names) == 0)'
+require_literal "${module_variables}" 'Set adopt_existing_database_names only for a reviewed one-shot import, then clear it after success; the imported resources remain managed in state.'
 require_pattern "${variables}" 'adopt_existing_database_names[[:space:]]*=[[:space:]]*optional\(set\(string\), \[\]\)'
+require_literal "${variables}" 'Set adopt_existing_database_names only for a reviewed one-shot import, then clear it after success; the imported resources remain managed in state.'
 require_literal "${components}" 'adopt_existing_database_names = settings.adopt_existing_database_names'
 
 kagent_block="$(awk '
@@ -36,11 +38,12 @@ substrate_block="$(awk '
 
 [[ -n "${kagent_block}" ]] || fail "kagent service block was not found"
 [[ -n "${substrate_block}" ]] || fail "substrate service block was not found"
-[[ "${substrate_block}" == *'adopt_existing_database_names = ["substrate"]'* ]] \
-  || fail "substrate must explicitly adopt only its same-named database"
 [[ "${kagent_block}" != *'adopt_existing_database_names'* ]] \
   || fail "kagent must remain on the normal database create path"
-[[ "$(grep -Ec '^[[:space:]]+adopt_existing_database_names[[:space:]]*=' "${services}")" -eq 1 ]] \
-  || fail "only the reviewed substrate database may opt into adoption"
+[[ "${substrate_block}" != *'adopt_existing_database_names'* ]] \
+  || fail "substrate adoption must be disabled after the successful import"
+if grep -Eq '^[[:space:]]+adopt_existing_database_names[[:space:]]*=' "${services}"; then
+  fail "no service may retain a completed one-shot database adoption opt-in"
+fi
 
 printf 'Cloud SQL database adoption tests passed\n'
