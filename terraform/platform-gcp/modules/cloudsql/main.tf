@@ -211,8 +211,9 @@ locals {
   additional_databases = merge([
     for user_name, settings in var.additional_database_users : {
       for database_name in settings.database_names : "${user_name}/${database_name}" => {
-        user_name     = user_name
-        database_name = database_name
+        user_name      = user_name
+        database_name  = database_name
+        adopt_existing = contains(settings.adopt_existing_database_names, database_name)
       } if settings.manage_databases
     }
   ]...)
@@ -274,6 +275,19 @@ resource "random_password" "additional" {
   special          = true
   override_special = "-_.~"
   keepers          = { rotation = each.value.password_rotation }
+}
+
+# Adopt only databases named explicitly by their owning service. The canonical
+# ID is derived from the same project, instance and database values as the
+# managed resource, so the opt-in cannot redirect ownership to another object.
+import {
+  for_each = {
+    for key, database in local.additional_databases : key => database
+    if database.adopt_existing
+  }
+
+  to = google_sql_database.additional[each.key]
+  id = "projects/${var.project_id}/instances/${local.instance_name}/databases/${each.value.database_name}"
 }
 
 resource "google_sql_database" "additional" {

@@ -234,12 +234,13 @@ variable "yourown_chat_identity_password_rotation" {
 
 variable "additional_database_users" {
   type = map(object({
-    database_names              = set(string)
-    password_secret_id          = string
-    connection_secret_id        = optional(string)
-    password_rotation           = optional(string, "1")
-    manage_databases            = optional(bool, true)
-    connection_secret_accessors = optional(set(string), [])
+    database_names                = set(string)
+    adopt_existing_database_names = optional(set(string), [])
+    password_secret_id            = string
+    connection_secret_id          = optional(string)
+    password_rotation             = optional(string, "1")
+    manage_databases              = optional(bool, true)
+    connection_secret_accessors   = optional(set(string), [])
     kubernetes_connection_secret_accessors = optional(set(object({
       namespace       = string
       service_account = string
@@ -258,6 +259,15 @@ variable "additional_database_users" {
       (settings.connection_secret_id == null || length(settings.database_names) == 1)
     ])
     error_message = "Additional Cloud SQL users require non-reserved PostgreSQL-safe names and connection URI secrets may target exactly one database."
+  }
+
+  validation {
+    condition = alltrue([
+      for settings in values(var.additional_database_users) :
+      length(setsubtract(settings.adopt_existing_database_names, settings.database_names)) == 0 &&
+      (settings.manage_databases || length(settings.adopt_existing_database_names) == 0)
+    ])
+    error_message = "Only explicitly named databases managed by platform-gcp may be adopted."
   }
 }
 

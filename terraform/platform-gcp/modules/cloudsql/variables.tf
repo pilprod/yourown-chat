@@ -200,13 +200,14 @@ variable "password_rotation" {
 
 variable "additional_database_users" {
   type = map(object({
-    database_names              = set(string)
-    password_secret_id          = string
-    password_secret_accessors   = optional(set(string), [])
-    connection_secret_id        = optional(string)
-    connection_secret_accessors = optional(set(string), [])
-    password_rotation           = optional(string, "1")
-    manage_databases            = optional(bool, true)
+    database_names                = set(string)
+    adopt_existing_database_names = optional(set(string), [])
+    password_secret_id            = string
+    password_secret_accessors     = optional(set(string), [])
+    connection_secret_id          = optional(string)
+    connection_secret_accessors   = optional(set(string), [])
+    password_rotation             = optional(string, "1")
+    manage_databases              = optional(bool, true)
   }))
   description = "Additional logical database groups and users hosted by this shared Cloud SQL instance. The map key is the PostgreSQL user name."
   default     = {}
@@ -217,5 +218,14 @@ variable "additional_database_users" {
       settings.connection_secret_id == null || length(settings.database_names) == 1
     ])
     error_message = "An additional user with connection_secret_id must own exactly one database."
+  }
+
+  validation {
+    condition = alltrue([
+      for settings in values(var.additional_database_users) :
+      length(setsubtract(settings.adopt_existing_database_names, settings.database_names)) == 0 &&
+      (settings.manage_databases || length(settings.adopt_existing_database_names) == 0)
+    ])
+    error_message = "Only explicitly named databases managed by this module may be adopted."
   }
 }
