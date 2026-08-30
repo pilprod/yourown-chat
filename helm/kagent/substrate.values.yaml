@@ -63,6 +63,11 @@ externalControlPlane:
             app.kubernetes.io/component: controller
       - podSelector:
           matchLabels:
+            app.kubernetes.io/name: substrate-enrollment-admin
+            app.kubernetes.io/component: enrollment-admin
+            app.kubernetes.io/part-of: kagent-substrate-testbed
+      - podSelector:
+          matchLabels:
             app: ate-controller
       - podSelector:
           matchLabels:
