@@ -223,6 +223,7 @@ variable "kagent_substrate_delivery" {
       source_commit            = string
       artifact_manifest_sha256 = string
       artifact_schema_version  = string
+      artifact_manifest_path   = optional(string, "")
       charts = object({
         application = object({
           ref     = string
@@ -274,7 +275,34 @@ variable "kagent_substrate_delivery" {
       toset(keys(var.kagent_substrate_delivery.artifacts)) == toset(["kagent", "substrate"]) &&
       var.kagent_substrate_delivery.artifacts["kagent"].source_repository == "https://github.com/pilprod/kagent" &&
       var.kagent_substrate_delivery.artifacts["kagent"].artifact_schema_version == "3" &&
+      var.kagent_substrate_delivery.artifacts["kagent"].artifact_manifest_path == "" &&
       var.kagent_substrate_delivery.artifacts["substrate"].source_repository == "https://github.com/pilprod/substrate" &&
+      (
+        (
+          var.kagent_substrate_delivery.artifacts["substrate"].artifact_schema_version == "yourown.chat/substrate-semver-consumer-evidence/v1" &&
+          var.kagent_substrate_delivery.artifacts["substrate"].source_commit == "e9ed68e587b56df2aa2a7f0267a744598c4d48b4" &&
+          var.kagent_substrate_delivery.artifacts["substrate"].artifact_manifest_sha256 == "987d123a8105cbf791e4aa73be7bbe28e2cca0e99ad71b29e7b7f81a7038dd80" &&
+          var.kagent_substrate_delivery.artifacts["substrate"].artifact_manifest_path == "kagent/evidence/substrate/v0.0.22/substrate-v0.0.22.consumer-evidence.json" &&
+          var.kagent_substrate_delivery.artifacts["substrate"].charts.application.ref == "oci://ghcr.io/pilprod/substrate/helm/substrate@sha256:bb166a3170cfa5e9ea655497d2e255fc0fa68cf5476f46b9ec25332c9cd1a49a" &&
+          var.kagent_substrate_delivery.artifacts["substrate"].charts.application.version == "0.0.22" &&
+          var.kagent_substrate_delivery.artifacts["substrate"].charts.crds.ref == "oci://ghcr.io/pilprod/substrate/helm/substrate-crds@sha256:816f98e1b5f0b6ba4655f185ed984b7b4a09e7ab6cab16ba0d3ab05bfa313059" &&
+          var.kagent_substrate_delivery.artifacts["substrate"].charts.crds.version == "0.0.22" &&
+          var.kagent_substrate_delivery.artifacts["substrate"].image_refs.ateapi == "ghcr.io/pilprod/substrate/ateapi@sha256:8a4cf985f809cc768e32091e39d45bce5f2e95fe43cd67f01d5e60c7df2ea868" &&
+          var.kagent_substrate_delivery.artifacts["substrate"].image_refs.atecontroller == "ghcr.io/pilprod/substrate/atecontroller@sha256:0845893ae2ecfd15f580bc410db22c8daae0d6b0388eca67541154a6ec98f554" &&
+          var.kagent_substrate_delivery.artifacts["substrate"].image_refs.atenet == "ghcr.io/pilprod/substrate/atenet@sha256:01d96092c93fd623dbe051479a76573da551b56be29121b11b760d9067fc8c4c" &&
+          var.kagent_substrate_delivery.artifacts["substrate"].image_refs.agentgateway == "ghcr.io/kagent-dev/substrate/agentgateway@sha256:068028a256bd63c91fd6e85a471269c014747297b0ffa785feaef6967eb0c429" &&
+          var.kagent_substrate_delivery.artifacts["substrate"].image_refs.releaseVerifier == "ghcr.io/pilprod/substrate/substrate-release-verify@sha256:850d8d8ec018f49486b410a15dd38e965f1fbb4d02f8a8be36d5256f33eef74b" &&
+          toset(keys(var.kagent_substrate_delivery.helm_set_values["substrate"])) == toset(["image.registry", "image.digests.ateapi", "image.digests.atecontroller", "image.digests.atenet", "images.agentgateway"]) &&
+          var.kagent_substrate_delivery.helm_set_values["substrate"]["image.registry"] == "ghcr.io/pilprod/substrate" &&
+          var.kagent_substrate_delivery.helm_set_values["substrate"]["image.digests.ateapi"] == "sha256:8a4cf985f809cc768e32091e39d45bce5f2e95fe43cd67f01d5e60c7df2ea868" &&
+          var.kagent_substrate_delivery.helm_set_values["substrate"]["image.digests.atecontroller"] == "sha256:0845893ae2ecfd15f580bc410db22c8daae0d6b0388eca67541154a6ec98f554" &&
+          var.kagent_substrate_delivery.helm_set_values["substrate"]["image.digests.atenet"] == "sha256:01d96092c93fd623dbe051479a76573da551b56be29121b11b760d9067fc8c4c" &&
+          var.kagent_substrate_delivery.helm_set_values["substrate"]["images.agentgateway"] == "ghcr.io/kagent-dev/substrate/agentgateway@sha256:068028a256bd63c91fd6e85a471269c014747297b0ffa785feaef6967eb0c429"
+          ) || (
+          var.kagent_substrate_delivery.artifacts["substrate"].artifact_schema_version == "yourown.chat/substrate-release/v1" &&
+          var.kagent_substrate_delivery.artifacts["substrate"].artifact_manifest_path == ""
+        )
+      ) &&
       alltrue([
         for artifact in values(var.kagent_substrate_delivery.artifacts) :
         can(regex("^[0-9a-f]{40}$", artifact.source_commit)) &&
@@ -329,7 +357,7 @@ variable "kagent_substrate_delivery" {
         destination.port <= 65535
       ])
     )
-    error_message = "Enabled bootstrap or release requires kagent evidence schema 3 with controller/UI image refs and exact kagentHarness/codexHarness runtime refs, a separate Substrate manifest, digest-qualified app+CRD charts/images, an exact Substrate dependency commit, RBAC/Gateway API capabilities, a verifier and testbed-only endpoints. Use either explicit atenet destinations or local_provider_only=true with no Actor/MCP egress; External Broker smoke is a post-bootstrap local-agent-ready gate."
+    error_message = "Enabled bootstrap or release requires kagent evidence schema 3 with controller/UI image refs and exact kagentHarness/codexHarness runtime refs, plus either producer Substrate release schema v1 or the exact checked-in v0.0.22 semver consumer evidence contract (source, checksum/path/schema, charts, images and Helm values). Both artifacts require digest-qualified app+CRD charts/images, an exact Substrate dependency commit, RBAC/Gateway API capabilities, a verifier and testbed-only endpoints. Use either explicit atenet destinations or local_provider_only=true with no Actor/MCP egress; External Broker smoke is a post-bootstrap local-agent-ready gate."
   }
 
   validation {

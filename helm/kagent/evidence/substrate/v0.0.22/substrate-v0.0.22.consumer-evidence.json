@@ -1,0 +1,79 @@
+{
+  "schema_version": "yourown.chat/substrate-semver-consumer-evidence/v1",
+  "evidence": {
+    "owner_repository": "https://github.com/pilprod/yourown-chat",
+    "origin": "consumer-observed-public-release",
+    "producer_release_asset": false,
+    "visibility": "public"
+  },
+  "deployment_class": "testbed",
+  "production_eligible": false,
+  "source": {
+    "repository": "https://github.com/pilprod/substrate",
+    "commit": "e9ed68e587b56df2aa2a7f0267a744598c4d48b4",
+    "release_tag": "v0.0.22",
+    "release_url": "https://github.com/pilprod/substrate/releases/tag/v0.0.22"
+  },
+  "image_registry": "ghcr.io/pilprod/substrate",
+  "images": {
+    "ateapi": {
+      "ref": "ghcr.io/pilprod/substrate/ateapi@sha256:8a4cf985f809cc768e32091e39d45bce5f2e95fe43cd67f01d5e60c7df2ea868",
+      "digest": "sha256:8a4cf985f809cc768e32091e39d45bce5f2e95fe43cd67f01d5e60c7df2ea868"
+    },
+    "atecontroller": {
+      "ref": "ghcr.io/pilprod/substrate/atecontroller@sha256:0845893ae2ecfd15f580bc410db22c8daae0d6b0388eca67541154a6ec98f554",
+      "digest": "sha256:0845893ae2ecfd15f580bc410db22c8daae0d6b0388eca67541154a6ec98f554"
+    },
+    "atelet": {
+      "ref": "ghcr.io/pilprod/substrate/atelet@sha256:b81462d5bcf1eddfc2eff6124890df9f0cab8d38d5f74d28ec7774f8b1dc8ae0",
+      "digest": "sha256:b81462d5bcf1eddfc2eff6124890df9f0cab8d38d5f74d28ec7774f8b1dc8ae0"
+    },
+    "ateom-gvisor": {
+      "ref": "ghcr.io/pilprod/substrate/ateom-gvisor@sha256:7e70dce48f0d93c6bf9e7a9edce0c154ff4262aa3aac3b56bcb6bdc1c7931899",
+      "digest": "sha256:7e70dce48f0d93c6bf9e7a9edce0c154ff4262aa3aac3b56bcb6bdc1c7931899"
+    },
+    "ateom-microvm": {
+      "ref": "ghcr.io/pilprod/substrate/ateom-microvm@sha256:1e0566ceef05a632a97d3c3bbb8bf2a23f93b60ebeeee7a1262655c03eb05e88",
+      "digest": "sha256:1e0566ceef05a632a97d3c3bbb8bf2a23f93b60ebeeee7a1262655c03eb05e88"
+    },
+    "atenet": {
+      "ref": "ghcr.io/pilprod/substrate/atenet@sha256:01d96092c93fd623dbe051479a76573da551b56be29121b11b760d9067fc8c4c",
+      "digest": "sha256:01d96092c93fd623dbe051479a76573da551b56be29121b11b760d9067fc8c4c"
+    },
+    "podcertcontroller": {
+      "ref": "ghcr.io/pilprod/substrate/podcertcontroller@sha256:cbab23249412d6a48d848c52704436c3808dae468966807c0ed7007dd1f60be1",
+      "digest": "sha256:cbab23249412d6a48d848c52704436c3808dae468966807c0ed7007dd1f60be1"
+    },
+    "releaseVerifier": {
+      "ref": "ghcr.io/pilprod/substrate/substrate-release-verify@sha256:850d8d8ec018f49486b410a15dd38e965f1fbb4d02f8a8be36d5256f33eef74b",
+      "digest": "sha256:850d8d8ec018f49486b410a15dd38e965f1fbb4d02f8a8be36d5256f33eef74b"
+    }
+  },
+  "dependency_images": {
+    "agentgateway": {
+      "ref": "ghcr.io/kagent-dev/substrate/agentgateway@sha256:068028a256bd63c91fd6e85a471269c014747297b0ffa785feaef6967eb0c429",
+      "digest": "sha256:068028a256bd63c91fd6e85a471269c014747297b0ffa785feaef6967eb0c429"
+    }
+  },
+  "charts": {
+    "application": {
+      "release_name": "substrate",
+      "ref": "oci://ghcr.io/pilprod/substrate/helm/substrate@sha256:bb166a3170cfa5e9ea655497d2e255fc0fa68cf5476f46b9ec25332c9cd1a49a",
+      "version": "0.0.22",
+      "digest": "sha256:bb166a3170cfa5e9ea655497d2e255fc0fa68cf5476f46b9ec25332c9cd1a49a"
+    },
+    "crds": {
+      "release_name": "substrate-crds",
+      "ref": "oci://ghcr.io/pilprod/substrate/helm/substrate-crds@sha256:816f98e1b5f0b6ba4655f185ed984b7b4a09e7ab6cab16ba0d3ab05bfa313059",
+      "version": "0.0.22",
+      "digest": "sha256:816f98e1b5f0b6ba4655f185ed984b7b4a09e7ab6cab16ba0d3ab05bfa313059"
+    }
+  },
+  "helm_set_values": {
+    "image.registry": "ghcr.io/pilprod/substrate",
+    "image.digests.ateapi": "sha256:8a4cf985f809cc768e32091e39d45bce5f2e95fe43cd67f01d5e60c7df2ea868",
+    "image.digests.atecontroller": "sha256:0845893ae2ecfd15f580bc410db22c8daae0d6b0388eca67541154a6ec98f554",
+    "image.digests.atenet": "sha256:01d96092c93fd623dbe051479a76573da551b56be29121b11b760d9067fc8c4c",
+    "images.agentgateway": "ghcr.io/kagent-dev/substrate/agentgateway@sha256:068028a256bd63c91fd6e85a471269c014747297b0ffa785feaef6967eb0c429"
+  }
+}

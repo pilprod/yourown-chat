@@ -10,6 +10,37 @@ and synchronizes the exact eight source Secrets plus the Kubernetes-only
 Terraform or changes the readiness attestation. See
 [`docs/KAGENT_SUBSTRATE_RELEASE.md`](../../../docs/KAGENT_SUBSTRATE_RELEASE.md).
 
+## Public semver consumer evidence
+
+`render-substrate-semver-consumer-pin-fragment.py` validates the checked-in
+consumer record for a public Substrate semver release and writes an incomplete
+Substrate-only `kagent_substrate_delivery` fragment to standard output:
+
+```sh
+terraform/app-gcp/scripts/render-substrate-semver-consumer-pin-fragment.py \
+  helm/kagent/evidence/substrate/v0.0.22/substrate-v0.0.22.consumer-evidence.json \
+  > /tmp/substrate-v0.0.22-pins.hcl
+```
+
+The adjacent checksum is mandatory. The closed
+`yourown.chat/substrate-semver-consumer-evidence/v1` schema records source
+commit `e9ed68e587b56df2aa2a7f0267a744598c4d48b4`, every public release image,
+both OCI chart manifest digests, and the separately sourced immutable
+agentgateway dependency. It explicitly sets `producer_release_asset=false`:
+this app-gcp record was created from consumer-side verification because the
+`v0.0.22` publisher did not upload a handoff manifest. It must not be renamed
+to the old `yourown.chat/substrate-gke-preview/v1` producer schema.
+
+The validator rejects duplicate or additional JSON keys, path/tag drift,
+checksum drift, mutable references, mismatched ref/digest/version relationships,
+an altered source/owner/visibility claim, and Helm overrides that differ from
+the chart-consumed pins. `render-release.py` repeats the byte checksum and exact
+artifact-field comparison before Cloud Deploy rendering. The fragment remains
+incomplete by design: it contains no kagent evidence, compatibility assertion,
+bootstrap flag or readiness gate, and it never edits Terraform input or state.
+
+## Legacy GKE preview producer evidence
+
 `render-substrate-preview-pin-fragment.sh` is a read-only bridge from the
 Substrate `substrate-gke-preview.json` release artifact to the immutable fields
 of an app-gcp vendor chart bundle. It writes HCL only to standard output and

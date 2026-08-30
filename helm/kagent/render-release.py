@@ -12,6 +12,11 @@ import re
 import sys
 from typing import NoReturn
 
+from substrate_consumer_evidence import (
+    SCHEMA_VERSION as SUBSTRATE_CONSUMER_EVIDENCE_SCHEMA,
+    validate_artifact as validate_substrate_consumer_artifact,
+)
+
 
 CHART_REF = re.compile(r"^oci://[^\s@]+@sha256:[0-9a-f]{64}$")
 IMAGE_REF = re.compile(r"^[^\s@:]+(?:/[^\s@:]+)+@sha256:[0-9a-f]{64}$")
@@ -35,6 +40,7 @@ KAGENT_IMAGE_PATHS = {
 KAGENT_RUNTIME_IMAGES = {"kagentHarness", "codexHarness"}
 SUBSTRATE_COMPONENT_IMAGES = {"ateapi", "atecontroller", "atenet"}
 SUBSTRATE_ARTIFACT_IMAGES = SUBSTRATE_COMPONENT_IMAGES | {"agentgateway", "releaseVerifier"}
+SUBSTRATE_PRODUCER_EVIDENCE_SCHEMA = "yourown.chat/substrate-release/v1"
 KAGENT_SET_KEYS = {
     f"{path}.{field}"
     for path in KAGENT_IMAGE_PATHS.values()
@@ -86,7 +92,7 @@ def load_contract() -> dict:
     return contract
 
 
-def validate_artifact(name: str, artifact: object) -> None:
+def validate_artifact(name: str, artifact: object, source_root: Path) -> None:
     if not isinstance(artifact, dict):
         fail(f"artifact {name} must be an object")
     if artifact.get("source_repository") != EXPECTED_REPOSITORIES[name]:
@@ -99,6 +105,18 @@ def validate_artifact(name: str, artifact: object) -> None:
         fail(f"artifact {name} schema version is invalid")
     if name == "kagent" and artifact.get("artifact_schema_version") != "3":
         fail("kagent artifact must use release evidence schema 3")
+    if name == "kagent" and artifact.get("artifact_manifest_path", ""):
+        fail("kagent producer evidence must not use an app-gcp artifact_manifest_path")
+    if name == "substrate":
+        schema = artifact.get("artifact_schema_version")
+        manifest_path = artifact.get("artifact_manifest_path", "")
+        if schema == SUBSTRATE_CONSUMER_EVIDENCE_SCHEMA:
+            validate_substrate_consumer_artifact(artifact, source_root)
+        elif schema == SUBSTRATE_PRODUCER_EVIDENCE_SCHEMA:
+            if manifest_path:
+                fail("substrate producer evidence must not use an app-gcp artifact_manifest_path")
+        else:
+            fail("substrate artifact must use producer release schema v1 or checked-in semver consumer evidence")
     charts = artifact.get("charts")
     if not isinstance(charts, dict) or set(charts) != {"application", "crds"}:
         fail(f"artifact {name} must pin application and CRD charts")
@@ -245,7 +263,7 @@ def validate_contract(contract: dict, source_root: Path) -> None:
     if not isinstance(artifacts, dict) or set(artifacts) != EXPECTED_ARTIFACTS:
         fail("artifacts must contain exactly kagent and substrate")
     for name, artifact in artifacts.items():
-        validate_artifact(name, artifact)
+        validate_artifact(name, artifact, source_root)
 
     compatibility = contract.get("compatibility")
     if not isinstance(compatibility, dict):
@@ -303,8 +321,17 @@ def set_values_lines(values: dict[str, str], indent: str) -> list[str]:
 def render(contract: dict) -> str:
     kagent = contract["artifacts"]["kagent"]["charts"]["application"]
     substrate = contract["artifacts"]["substrate"]["charts"]["application"]
+    substrate_consumer_evidence = (
+        contract["artifacts"]["substrate"]["artifact_schema_version"]
+        == SUBSTRATE_CONSUMER_EVIDENCE_SCHEMA
+    )
     lines = [
-        "# Generated from two reviewed immutable artifact manifests.",
+        "# Generated from reviewed immutable artifact evidence.",
+        *(
+            ["# Substrate pins use app-gcp consumer evidence; this was not a producer release asset."]
+            if substrate_consumer_evidence
+            else []
+        ),
         "# production_eligible=false: this config has one testbed target only.",
         f"# external_broker_smoke_ready={str(contract['external_broker_smoke_ready']).lower()}; required for local-agent-ready, not bootstrap.",
         "# Runtime images are evidence only; installing this release does not create a Harness.",

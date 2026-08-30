@@ -5,6 +5,28 @@ the existing Terraform-managed `kagent` Helm release live while prerequisites
 are prepared, then gives Cloud Deploy ownership only through a later reviewed
 handoff. Do not combine the two ownership phases in one HCP Terraform run.
 
+## Immutable Substrate semver handoff
+
+The reviewed public `pilprod/substrate` `v0.0.22` release is recorded in
+`helm/kagent/evidence/substrate/v0.0.22/substrate-v0.0.22.consumer-evidence.json`
+with an adjacent SHA-256 checksum. Its source commit is
+`e9ed68e587b56df2aa2a7f0267a744598c4d48b4`; application and CRD charts plus
+all release images and the agentgateway dependency are digest-qualified. This
+is app-gcp consumer evidence, not a producer release asset, because that semver
+workflow published OCI artifacts without `substrate-gke-preview.json`.
+
+Validate and render only the Substrate portion with:
+
+```sh
+terraform/app-gcp/scripts/render-substrate-semver-consumer-pin-fragment.py \
+  helm/kagent/evidence/substrate/v0.0.22/substrate-v0.0.22.consumer-evidence.json
+```
+
+The output is intentionally incomplete. Do not set `bootstrap_enabled` or
+`release_enabled` from this record: independent kagent evidence, compatibility
+attestations, native Secret synchronization, ownership handoff and Broker smoke
+gates remain separate reviewed inputs.
+
 ## Phase A: apply before any ownership forget
 
 Phase A renames the Terraform address from
