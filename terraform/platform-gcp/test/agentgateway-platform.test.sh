@@ -28,6 +28,12 @@ awk '
 require_literal "${module}" 'gatewayNamespaces = [var.namespace]'
 require_literal "${module}" 'create = false'
 require_literal "${module}" 'if var.enabled'
+require_literal "${module}" 'kubernetes_cluster_role_binding_v1.controller_read,'
+require_literal "${module}" 'kubernetes_role_binding_v1.controller_local,'
+if grep -A35 -E '^resource "kubernetes_(cluster_)?role_binding_v1"' "${module}" \
+  | grep -Fq 'depends_on = [helm_release.controller]'; then
+  fail "controller RBAC bindings must exist before Helm waits for controller readiness"
+fi
 if grep -Fq 'var.enabled ? local.gateway_api_manifests : {}' "${module}"; then
   fail "Gateway API manifest for_each must not use an object-incompatible conditional"
 fi

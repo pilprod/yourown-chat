@@ -219,6 +219,8 @@ resource "helm_release" "controller" {
   depends_on = [
     helm_release.crds,
     kubernetes_service_account_v1.controller,
+    kubernetes_cluster_role_binding_v1.controller_read,
+    kubernetes_role_binding_v1.controller_local,
   ]
 }
 
@@ -245,7 +247,7 @@ resource "kubernetes_cluster_role_binding_v1" "controller_read" {
     namespace = var.namespace
   }
 
-  depends_on = [helm_release.controller]
+  depends_on = [kubernetes_service_account_v1.controller]
 }
 
 resource "kubernetes_role_binding_v1" "controller_local" {
@@ -269,5 +271,5 @@ resource "kubernetes_role_binding_v1" "controller_local" {
     namespace = var.namespace
   }
 
-  depends_on = [helm_release.controller]
+  depends_on = [kubernetes_service_account_v1.controller]
 }
