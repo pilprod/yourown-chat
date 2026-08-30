@@ -20,6 +20,7 @@ Usage:
     --kubectl-ate-image REGISTRY/REPOSITORY@sha256:DIGEST \
     --transfer-image REGISTRY/REPOSITORY@sha256:DIGEST \
     --context KUBERNETES_CONTEXT \
+    --cluster-dns-ip IPV4 \
     --namespace SUBSTRATE_NAMESPACE \
     --service-account ENROLLMENT_ADMIN_SERVICE_ACCOUNT \
     --api-endpoint api.SUBSTRATE_NAMESPACE.svc:443 \
@@ -90,6 +91,21 @@ validate_dns_subdomain() {
   done
 }
 
+validate_ipv4() {
+  local value="$1"
+  local description="$2"
+  local octet
+  local octets
+
+  IFS='.' read -r -a octets <<< "${value}"
+  [[ "${#octets[@]}" -eq 4 ]] || fail "${description} must be one canonical IPv4 address"
+  for octet in "${octets[@]}"; do
+    [[ "${octet}" =~ ^(0|[1-9][0-9]{0,2})$ ]] ||
+      fail "${description} must be one canonical IPv4 address"
+    (( 10#${octet} <= 255 )) || fail "${description} must be one canonical IPv4 address"
+  done
+}
+
 portable_stat() {
   local path="$1"
   local output
@@ -118,6 +134,7 @@ sha256_file() {
 kubectl_ate_image=""
 transfer_image=""
 kube_context=""
+cluster_dns_ip=""
 namespace=""
 service_account=""
 api_endpoint=""
@@ -149,6 +166,12 @@ while [[ $# -gt 0 ]]; do
       require_value "$1" "$#"
       require_once "${kube_context}" "$1"
       kube_context="$2"
+      shift 2
+      ;;
+    --cluster-dns-ip)
+      require_value "$1" "$#"
+      require_once "${cluster_dns_ip}" "$1"
+      cluster_dns_ip="$2"
       shift 2
       ;;
     --namespace)
@@ -235,7 +258,7 @@ done
 
 for required_value in \
   "${kubectl_ate_image}" "${transfer_image}" "${kube_context}" \
-  "${namespace}" "${service_account}" "${api_endpoint}" \
+  "${cluster_dns_ip}" "${namespace}" "${service_account}" "${api_endpoint}" \
   "${server_name}" "${ca_secret}" "${owner_atespace}" \
   "${worker_namespace}" "${worker_pool}" "${max_slots}" \
   "${policy_file}" "${ttl}" "${output_file_input}"; do
@@ -246,6 +269,7 @@ validate_digest_image "${kubectl_ate_image}" "--kubectl-ate-image"
 validate_digest_image "${transfer_image}" "--transfer-image"
 [[ ${#kube_context} -le 253 && "${kube_context}" =~ ^[A-Za-z0-9][A-Za-z0-9._:/@-]*$ ]] ||
   fail "--context contains unsupported characters or is too long"
+validate_ipv4 "${cluster_dns_ip}" "--cluster-dns-ip"
 validate_dns_label "${namespace}" "--namespace"
 validate_dns_subdomain "${service_account}" "--service-account"
 validate_dns_subdomain "${ca_secret}" "--ca-secret"
@@ -418,6 +442,12 @@ kubectl config get-contexts "${kube_context}" --no-headers | grep -q '[^[:space:
   fail "--context does not identify an available kubectl context"
 kubectl --context="${kube_context}" --request-timeout=30s \
   get namespace "${namespace}" --output=name >/dev/null
+live_cluster_dns_ip="$(
+  kubectl --context="${kube_context}" --namespace=kube-system --request-timeout=30s \
+    get service kube-dns --output='jsonpath={.spec.clusterIP}'
+)"
+[[ "${live_cluster_dns_ip}" == "${cluster_dns_ip}" ]] ||
+  fail "--cluster-dns-ip does not match kube-system/kube-dns ClusterIP"
 kubectl --context="${kube_context}" --namespace="${namespace}" --request-timeout=30s \
   get serviceaccount "${service_account}" --output=name >/dev/null
 kubectl --context="${kube_context}" --namespace="${namespace}" --request-timeout=30s \
@@ -476,6 +506,14 @@ spec:
           podSelector:
             matchLabels:
               k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - ipBlock:
+            cidr: ${cluster_dns_ip}/32
       ports:
         - protocol: UDP
           port: 53

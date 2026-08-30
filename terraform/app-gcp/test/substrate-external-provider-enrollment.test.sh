@@ -86,6 +86,10 @@ if [[ "${all_args}" == config\ get-contexts* ]]; then
   printf '%s\n' 'fixture-context'
   exit 0
 fi
+if [[ "${all_args}" == *'--namespace=kube-system'* && "${all_args}" == *' get service kube-dns '* ]]; then
+  printf '%s' '10.3.240.10'
+  exit 0
+fi
 if [[ "${all_args}" == *' get secret '* ]]; then
   printf '%s\n' 'present'
   exit 0
@@ -164,6 +168,7 @@ invoke_subject() {
     --kubectl-ate-image "${KUBECTL_IMAGE:-${valid_kubectl_image}}" \
     --transfer-image "${TRANSFER_IMAGE:-${valid_transfer_image}}" \
     --context "${KUBE_CONTEXT:-gke_fixture}" \
+    --cluster-dns-ip "${CLUSTER_DNS_IP:-10.3.240.10}" \
     --namespace "${NAMESPACE:-ate-system}" \
     --service-account "${SERVICE_ACCOUNT:-ate-enrollment-admin}" \
     --api-endpoint "${API_ENDPOINT:-api.ate-system.svc:443}" \
@@ -254,22 +259,27 @@ require_literal "${networkpolicy_manifest}" '  ingress: []'
 require_literal "${networkpolicy_manifest}" '              k8s-app: kube-dns'
 require_literal "${networkpolicy_manifest}" '              k8s-app: node-local-dns'
 require_literal "${networkpolicy_manifest}" '              app: ate-api-server'
-[[ "$(grep -Ec '^[[:space:]]+port: 53$' "${networkpolicy_manifest}")" -eq 4 ]] ||
+require_literal "${networkpolicy_manifest}" '            cidr: 10.3.240.10/32'
+[[ "$(grep -Ec '^[[:space:]]+port: 53$' "${networkpolicy_manifest}")" -eq 6 ]] ||
   fail "NetworkPolicy DNS ports changed"
 [[ "$(grep -Ec '^[[:space:]]+port: 443$' "${networkpolicy_manifest}")" -eq 1 ]] ||
   fail "NetworkPolicy ate-api port changed"
-forbid_pattern "${networkpolicy_manifest}" 'ipBlock:|cidr:|0\.0\.0\.0/0|::/0'
+[[ "$(grep -Fc '        - ipBlock:' "${networkpolicy_manifest}")" -eq 1 ]] ||
+  fail "NetworkPolicy must contain exactly one DNS ClusterIP rule"
+forbid_pattern "${networkpolicy_manifest}" 'except:|0\.0\.0\.0/0|::/0'
 
 require_literal "${success_log}/calls.log" 'delete> <pod/substrate-enrollment-'
 require_literal "${success_log}/calls.log" 'delete> <configmap/substrate-enrollment-policy-'
 require_literal "${success_log}/calls.log" 'delete> <networkpolicy/substrate-enrollment-egress-'
 require_literal "${success_log}/calls.log" 'exec> <pod/substrate-enrollment-'
 require_literal "${success_log}/calls.log" '--> <cat> </var/run/substrate-enrollment/private/enrollment-credential>'
+require_literal "${success_log}/calls.log" '<--namespace=kube-system> <--request-timeout=30s> <get> <service> <kube-dns>'
 
 require_literal "${substrate_values}" 'app.kubernetes.io/name: substrate-enrollment-admin'
 require_literal "${substrate_values}" 'app.kubernetes.io/component: enrollment-admin'
 require_literal "${substrate_values}" 'app.kubernetes.io/part-of: kagent-substrate-testbed'
-forbid_pattern "${subject}" 'kubectl[^\n]*port-forward|0\.0\.0\.0/0|::/0|ipBlock:'
+forbid_pattern "${subject}" 'kubectl[^\n]*port-forward|0\.0\.0\.0/0|::/0'
+require_literal "${subject}" 'cidr: ${cluster_dns_ip}/32'
 forbid_pattern "${subject}" '\$\(kubectl[^)]*cat'
 require_literal "${subject}" 'ln "${local_partial}" "${output_file}"'
 require_literal "${subject}" 'mode must be exactly 0400 or 0600'
@@ -324,6 +334,8 @@ API_ENDPOINT='10.0.0.1:443' \
   expect_failure wrong-endpoint '--api-endpoint must be exactly api.ate-system.svc:443' "${private_dir}/wrong-endpoint"
 SERVER_NAME='unexpected.example' \
   expect_failure wrong-sni '--server-name must be exactly api.ate-system.svc' "${private_dir}/wrong-sni"
+CLUSTER_DNS_IP='010.3.240.10' \
+  expect_failure invalid-cluster-dns '--cluster-dns-ip must be one canonical IPv4 address' "${private_dir}/invalid-cluster-dns"
 MAX_SLOTS=257 \
   expect_failure excessive-slots '--max-slots must be an integer between 1 and 256' "${private_dir}/excessive-slots"
 TTL=25h \
@@ -354,5 +366,12 @@ expect_failure open-parent 'parent must exclude all group and other permissions'
 
 [[ ! -s "${validation_log}/calls.log" ]] ||
   fail "local validation adversaries reached kubectl"
+
+dns_mismatch_log="${temporary_dir}/dns-mismatch-log"
+mkdir -p "${dns_mismatch_log}"
+FAKE_KUBECTL_LOG_DIR="${dns_mismatch_log}" CLUSTER_DNS_IP='10.3.240.11' \
+  expect_failure mismatched-cluster-dns '--cluster-dns-ip does not match kube-system/kube-dns ClusterIP' "${private_dir}/mismatched-cluster-dns"
+require_literal "${dns_mismatch_log}/calls.log" '<get> <service> <kube-dns>'
+forbid_pattern "${dns_mismatch_log}/calls.log" '<create>'
 
 printf 'substrate external-provider no-port-forward enrollment tests passed\n'

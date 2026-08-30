@@ -69,8 +69,10 @@ External-provider enrollment is issued separately by
 The helper uses the fixed `substrate-enrollment-admin` Pod label set admitted by
 `substrate.values.yaml`, talks only to `api.ate-system.svc:443`, and transfers
 the one-time credential to an owner-only local file without a port-forward or
-a Kubernetes Secret. It requires release-supplied digest pins; this repository
-does not invent a `kubectl-ate` image digest.
+a Kubernetes Secret. Its only CIDR egress is the caller-supplied exact
+`kube-system/kube-dns` ClusterIP `/32`, verified against the live Service. It
+requires release-supplied digest pins; this repository does not invent a
+`kubectl-ate` image digest.
 
 The current service input intentionally sets every activation attestation to
 false. Remaining prerequisites include publishable immutable fork artifacts
