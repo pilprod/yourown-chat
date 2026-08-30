@@ -48,11 +48,16 @@ additionally attest that its Gateway and TLSRoute use
 
 The native Secret gate covers Cloud SQL, ate-api/controller mTLS, atenet egress
 server and authorizer mTLS, actor identity pools, and the kagent client bundle.
+It also requires Kubernetes-only `actor-id-ca-certs/ca.crt`, derived exactly
+from `actor-id-ca-pool` `CAs[0].RootCertificateDER`; eight source Secrets alone
+are not ready. The owner-only bootstrap/sync procedure is documented in
+`docs/KAGENT_SUBSTRATE_RELEASE.md`.
 The authentication ConfigMap preserves the GKE cluster-specific issuer while
 using the paired in-cluster discovery/JWKS URLs. Terraform adds exact additive
 egress policies for the live Kubernetes Service/endpoints, private Cloud SQL,
-kagent-to-ate-api and reviewed Actor/MCP destinations; an empty Actor/MCP
-destination set keeps activation closed.
+kagent-to-ate-api and reviewed Actor/MCP destinations. The explicit
+`local_provider_only` testbed mode instead requires an empty Actor/MCP
+destination set and creates no external atenet route.
 
 The in-cluster verifier image is the immutable `images.releaseVerifier` pin
 from the same reviewed Substrate handoff as the control-plane images; it is

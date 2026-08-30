@@ -176,6 +176,7 @@ locals {
     bootstrap_enabled                  = false
     release_enabled                    = false
     production_eligible                = false
+    local_provider_only                = true
     native_secret_sync_ready           = false
     crd_ownership_ready                = false
     controller_namespace_handoff_ready = false

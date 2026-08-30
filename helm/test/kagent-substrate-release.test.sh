@@ -179,7 +179,10 @@ grep -Fq 'resource "kubernetes_network_policy_v1" "kagent_substrate_egress"' "${
 grep -Fq 'resource "kubernetes_network_policy_v1" "atenet_reviewed_egress"' "${prerequisites}"
 grep -Fq 'resource "kubernetes_role_v1" "testbed_verifier"' "${prerequisites}"
 grep -Fq 'cidr = "${var.cloudsql_private_ip}/32"' "${prerequisites}"
-grep -Fq 'condition     = length(var.atenet_egress_destinations) > 0' "${prerequisites}"
+grep -Fq 'var.local_provider_only ||' "${prerequisites}"
+grep -Fq 'for_each = var.bootstrap_enabled && !var.local_provider_only ? var.atenet_egress_destinations : {}' "${prerequisites}"
+grep -Fq 'expected_derived_secret_contract' "${prerequisites}"
+grep -Fq 'kubernetes_name   = "actor-id-ca-certs"' "${prerequisites}"
 
 kagent_fixture="${repo_root}/helm/test/fixtures/kagent-image-contract"
 rendered_images="${work}/kagent-images.yaml"
