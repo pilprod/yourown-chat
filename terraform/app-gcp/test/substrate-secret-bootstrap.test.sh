@@ -126,6 +126,13 @@ validation_output="$(${bootstrap} validate --project test-project --bundle "${wo
 [[ "${validation_output}" == *'validated eight-source contract and derived ate-system/actor-id-ca-certs'* ]] || fail "valid bundle did not pass"
 [[ "${validation_output}" != *'BEGIN PRIVATE KEY'* ]] || fail "validation output leaked private material"
 
+mkdir -p "${work}/sibling-git"
+git -C "${work}/sibling-git" init -q
+cp "${work}/bundle.json" "${work}/sibling-git/bundle.json"
+chmod 0600 "${work}/sibling-git/bundle.json"
+expect_fail "bundle inside another Git worktree" "${bootstrap}" validate --project test-project --bundle "${work}/sibling-git/bundle.json"
+grep -Fq 'outside every Git worktree' "${work}/expected.stderr" || fail "Git worktree rejection diagnostic is missing"
+
 chmod 0644 "${work}/bundle.json"
 expect_fail "permissive bundle mode" "${bootstrap}" validate --project test-project --bundle "${work}/bundle.json"
 chmod 0600 "${work}/bundle.json"
@@ -153,6 +160,16 @@ jq --rawfile wrong "${work}/controller-client.bundle.pem.b64" \
   "${work}/bundle.json" > "${work}/wrong-san.json"
 chmod 0600 "${work}/wrong-san.json"
 expect_fail "wrong kagent URI SAN" "${bootstrap}" validate --project test-project --bundle "${work}/wrong-san.json"
+
+jq '.CAs[0].IntermediateCertificatesDER=["bm90LXgteDUwOS1kZXI="]' \
+  "${work}/actor-ca.pool.json" > "${work}/actor-ca-intermediate.pool.json"
+encode_file "${work}/actor-ca-intermediate.pool.json" "${work}/actor-ca-intermediate.pool.json.b64"
+jq --rawfile pool "${work}/actor-ca-intermediate.pool.json.b64" \
+  '.secrets.actor_id_ca_pool.data.pool=$pool' \
+  "${work}/bundle.json" > "${work}/actor-ca-intermediate.json"
+chmod 0600 "${work}/actor-ca-intermediate.json"
+expect_fail "unsupported CA intermediate" "${bootstrap}" validate --project test-project --bundle "${work}/actor-ca-intermediate.json"
+grep -Fq 'intermediate certificates are not supported' "${work}/expected.stderr" || fail "CA intermediate rejection diagnostic is missing"
 
 mkdir -p "${work}/secret-store" "${work}/kube-store" "${work}/mock-bin"
 printf '%s' 'postgresql://substrate:private-test-value@10.0.0.2:5432/substrate?sslmode=require' > "${work}/secret-store/substrate-database-url"
@@ -186,6 +203,7 @@ elif [[ "$1 $2 $3" == "secrets versions add" ]]; then
     case "${arg}" in --data-file=*) input="${arg#--data-file=}" ;; esac
   done
   cp "${input}" "${store}/${secret}"
+  printf '%s\n' "${secret}" >> "${store}/versions-add.log"
   printf 'projects/test-project/secrets/%s/versions/2\n' "${secret}"
 else
   exit 2
@@ -199,6 +217,12 @@ store="${MOCK_KUBE_STORE:?}"
 joined=" $* "
 if [[ "${joined}" == *' get namespace '* ]]; then
   printf 'namespace/mock\n'
+elif [[ "${joined}" == *' auth can-i create secrets '* ]]; then
+  if [[ "${MOCK_DENY_CREATE:-0}" == 1 ]]; then
+    printf 'no\n'
+  else
+    printf 'yes\n'
+  fi
 elif [[ "${joined}" == *' auth can-i get secrets '* || "${joined}" == *' auth can-i patch secrets '* ]]; then
   printf 'yes\n'
 elif [[ "${joined}" == *' apply '* ]]; then
@@ -224,6 +248,15 @@ else
 fi
 MOCK
 chmod 0755 "${work}/mock-bin/gcloud" "${work}/mock-bin/kubectl"
+
+expect_fail "missing Kubernetes Secret create permission" \
+  env PATH="${work}/mock-bin:${PATH}" \
+  MOCK_SECRET_STORE="${work}/secret-store" \
+  MOCK_KUBE_STORE="${work}/kube-store" \
+  MOCK_DENY_CREATE=1 \
+  "${bootstrap}" bootstrap --project test-project --context test-context --bundle "${work}/bundle.json"
+grep -Fq 'cannot create Secrets' "${work}/expected.stderr" || fail "create permission preflight diagnostic is missing"
+[[ ! -e "${work}/secret-store/versions-add.log" ]] || fail "Secret Manager versions were uploaded before create permission preflight"
 
 bootstrap_output="$(
   PATH="${work}/mock-bin:${PATH}" \

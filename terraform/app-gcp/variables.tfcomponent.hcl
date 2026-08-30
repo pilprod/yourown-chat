@@ -315,7 +315,7 @@ variable "kagent_substrate_delivery" {
         (
           var.kagent_substrate_delivery.local_provider_only &&
           length(var.kagent_substrate_delivery.atenet_egress_destinations) == 0
-        ) || (
+          ) || (
           !var.kagent_substrate_delivery.local_provider_only &&
           length(var.kagent_substrate_delivery.atenet_egress_destinations) > 0
         )

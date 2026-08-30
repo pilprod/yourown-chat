@@ -2,7 +2,8 @@
 
 `bootstrap-kagent-substrate-secrets.sh` is the fail-closed operator path for
 the external-local-provider testbed's native Kubernetes Secrets. It validates
-an owner-only, out-of-repository bundle, writes seven structured Secret Manager
+an owner-only bundle outside every Git worktree and Git metadata directory,
+writes seven structured Secret Manager
 versions without exposing bytes in arguments, reads the existing Cloud SQL URI,
 and synchronizes the exact eight source Secrets plus the Kubernetes-only
 `actor-id-ca-certs/ca.crt` derived from the actor CA pool. It never invokes

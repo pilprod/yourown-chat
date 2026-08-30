@@ -24,7 +24,8 @@ existing Cloud SQL URI, then synchronizes the exact native Secret contract.
 sync reconstructs that contract from Secret Manager without an operator bundle.
 
 The bundle must be a regular, non-symlink file owned by the current user, have
-no group/other permission bits, and live outside this Git worktree.
+no group/other permission bits, and live outside every Git worktree and Git
+metadata directory.
 USAGE
 }
 
@@ -105,6 +106,9 @@ portable_owner() {
 validate_bundle_permissions() {
   local bundle_path="$1"
   local canonical=""
+  local canonical_parent=""
+  local inside_worktree=""
+  local inside_git_dir=""
   local mode=""
 
   [[ -f "${bundle_path}" ]] || fail "bundle must be a regular file"
@@ -122,6 +126,12 @@ validate_bundle_permissions() {
       fail "bundle must live outside the Git worktree"
       ;;
   esac
+  canonical_parent="$(dirname -- "${canonical}")"
+  inside_worktree="$(git -C "${canonical_parent}" rev-parse --is-inside-work-tree 2>/dev/null || true)"
+  inside_git_dir="$(git -C "${canonical_parent}" rev-parse --is-inside-git-dir 2>/dev/null || true)"
+  if [[ "${inside_worktree}" == "true" || "${inside_git_dir}" == "true" ]]; then
+    fail "bundle must live outside every Git worktree and Git metadata directory"
+  fi
 }
 
 validate_bundle_schema() {
@@ -430,18 +440,14 @@ elif kind == "ca":
             item["IntermediateCertificatesDER"] = []
         if not isinstance(item["IntermediateCertificatesDER"], list):
             raise SystemExit("CA intermediate chain must be null or an array")
+        if item["IntermediateCertificatesDER"]:
+            raise SystemExit("CA intermediate certificates are not supported by the root-only MVP contract")
         for field in ("SigningKeyPKCS8", "RootCertificateDER"):
             try:
                 if not base64.b64decode(item[field], validate=True):
                     raise ValueError()
             except (TypeError, ValueError, base64.binascii.Error):
                 raise SystemExit(f"CA entry {field} is invalid")
-        for value in item["IntermediateCertificatesDER"]:
-            try:
-                if not base64.b64decode(value, validate=True):
-                    raise ValueError()
-            except (TypeError, ValueError, base64.binascii.Error):
-                raise SystemExit("CA intermediate certificate is invalid")
 else:
     raise SystemExit("unknown pool kind")
 PY
@@ -638,6 +644,8 @@ check_cluster_access() {
       fail "namespace ${namespace} is unavailable in context ${context}"
     [[ "$(kubectl --context="${context}" auth can-i get secrets -n "${namespace}")" == "yes" ]] || \
       fail "context ${context} cannot get Secrets in ${namespace}"
+    [[ "$(kubectl --context="${context}" auth can-i create secrets -n "${namespace}")" == "yes" ]] || \
+      fail "context ${context} cannot create Secrets in ${namespace}"
     [[ "$(kubectl --context="${context}" auth can-i patch secrets -n "${namespace}")" == "yes" ]] || \
       fail "context ${context} cannot patch Secrets in ${namespace}"
   done
@@ -739,7 +747,7 @@ if [[ "${action}" == "bootstrap" || "${action}" == "sync" ]]; then
   [[ -n "${context}" && ! "${context}" =~ [[:cntrl:]] ]] || fail "--context is required"
 fi
 
-for command_name in python3 jq openssl stat id mktemp find awk sed grep rg cmp; do
+for command_name in python3 jq openssl stat id mktemp find awk sed grep rg cmp git dirname; do
   need_command "${command_name}"
 done
 if [[ "${action}" == "bootstrap" || "${action}" == "sync" ]]; then

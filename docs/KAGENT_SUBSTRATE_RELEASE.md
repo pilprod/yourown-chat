@@ -75,7 +75,9 @@ table):
 Create the bundle outside every Git worktree, set mode `0600`, and keep it on
 an owner-controlled encrypted volume. The script rejects symlinks, a different
 owner, any group/other permission bit, duplicate or additional JSON keys,
-wrong IDs, and any bundle path inside this repository. Secret bytes are passed
+wrong IDs, and any bundle path inside any Git worktree or Git metadata
+directory. The MVP actor CA pool is root-only and rejects non-empty
+`IntermediateCertificatesDER`. Secret bytes are passed
 to Google Secret Manager through `--data-file` and to Kubernetes through
 server-side apply on stdin; they do not enter HCL, Terraform plans or Terraform
 state. The script uses a private temporary directory and deletes it on exit.
@@ -86,7 +88,10 @@ Required local commands are Bash, Python 3, `jq`, OpenSSL, ripgrep, the standard
 POSIX command-line tools, `gcloud` and `kubectl`. The operator needs `get`,
 `versions.access` and `versions.add` on the eight fixed Secret Manager
 containers, and `get`/`patch` for Secrets in only `ate-system` and
-`kagent-system`.
+`kagent-system`, plus `create` for the initial materialization. Because the
+preflight verifies both namespaces, the kube identity also needs cluster-scoped
+`get` on `namespaces`. All permissions are checked before any new Secret
+Manager version is uploaded.
 
 Validate without external writes:
 
@@ -142,10 +147,17 @@ external atenet NetworkPolicy route. The default remains `false`: with that
 default an enabled bootstrap requires at least one explicit reviewed CIDR and
 port, while `0.0.0.0/0` and `::/0` remain forbidden.
 
-## Remaining no-port-forward gate
+## No-port-forward enrollment rail
 
-The long-lived local Agent Host can use the public Broker without a port
-forward. Initial external-provider enrollment still needs a separately
-reviewed, digest-pinned in-cluster `kubectl-ate` Job rail; the current CLI
-defaults to reaching private ate-api through a port-forward. That Job is not
-part of Phase A and remains a blocker for a completely port-forward-free E2E.
+The long-lived local Agent Host uses the public Broker without a port-forward.
+Initial external-provider enrollment is issued separately with
+`terraform/app-gcp/scripts/issue-substrate-external-provider-enrollment.sh`.
+That helper verifies the Terraform-managed persistent default-deny policy,
+runs digest-pinned `kubectl-ate` and transfer images in a restricted in-cluster
+Pod, talks only to `api.ate-system.svc:443`, and publishes the single-use
+credential into an owner-only local file. It does not pass credential bytes
+through Terraform state, a Kubernetes Secret, Pod logs, or a port-forward.
+
+The enrollment helper is not part of the native Secret bootstrap and does not
+change any activation attestation. Run it only after the app-gcp bootstrap
+prerequisites and reviewed immutable image digests exist.
