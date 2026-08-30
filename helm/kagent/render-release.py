@@ -203,6 +203,8 @@ def yaml_scalar(source: str, path: tuple[str, ...]) -> str | None:
 def validate_tracked_kagent_shape(source_root: Path) -> None:
     path = source_root / "kagent/kagent.values.yaml"
     source = path.read_text(encoding="utf-8")
+    if yaml_scalar(source, ("controller", "agentImage")) is not None:
+        fail("tracked kagent values must not define removed controller.agentImage")
     for subchart in KAGENT_DISABLED_SUBCHARTS:
         if yaml_scalar(source, (subchart, "enabled")) != "false":
             fail(f"tracked kagent values must keep optional subchart {subchart}.enabled=false")

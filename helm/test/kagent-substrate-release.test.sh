@@ -147,6 +147,7 @@ grep -Fq 'runAsUser: 65532' "${repo_root}/helm/kagent/verify/testbed-job.yaml"
 grep -Fq 'runAsGroup: 65532' "${repo_root}/helm/kagent/verify/testbed-job.yaml"
 grep -Fq "\"controller.image.tag\": \"0.10.0@${d1}\"" "${output}"
 grep -Fq "\"ui.image.tag\": \"0.10.0@${d2}\"" "${output}"
+! grep -Fq '  agentImage:' "${repo_root}/helm/kagent/kagent.values.yaml"
 ! grep -Fq 'controller.image.digest' "${output}"
 ! grep -Fq 'ui.image.digest' "${output}"
 [[ "$(grep -c '^  - name: kagent-substrate-' "${output}")" -eq 1 ]]
@@ -287,6 +288,34 @@ if KAGENT_SUBSTRATE_RELEASE_JSON="$(<"${work}/legacy-agent-override.json")" \
   exit 1
 fi
 grep -Fq 'may contain only the exact immutable image' "${work}/legacy-agent-override.err"
+
+mkdir -p "${work}/legacy-helm"
+cp -R "${repo_root}/helm/kagent" "${work}/legacy-helm/kagent"
+python3 - "${work}/legacy-helm/kagent/kagent.values.yaml" <<'PY'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+source = path.read_text(encoding="utf-8")
+path.write_text(
+    source.replace(
+        "controller:\n",
+        'controller:\n  agentImage:\n    tag: ""\n',
+        1,
+    ),
+    encoding="utf-8",
+)
+PY
+legacy_values_sha="$(sha256_file "${work}/legacy-helm/kagent/kagent.values.yaml")"
+jq --arg checksum "${legacy_values_sha}" \
+  '.values_sha256["kagent/kagent.values.yaml"] = $checksum' \
+  "${contract}" > "${work}/legacy-tracked-values.json"
+if KAGENT_SUBSTRATE_RELEASE_JSON="$(<"${work}/legacy-tracked-values.json")" \
+  python3 "${renderer}" --source-root "${work}/legacy-helm" --output "${work}/legacy-tracked-values.yaml" 2>"${work}/legacy-tracked-values.err"; then
+  echo "tracked legacy controller.agentImage unexpectedly rendered" >&2
+  exit 1
+fi
+grep -Fq 'tracked kagent values must not define removed controller.agentImage' "${work}/legacy-tracked-values.err"
 
 jq --arg digest "${d10}" \
   '.artifacts.substrate.image_refs.releaseVerifier = ("ghcr.io/elsewhere/substrate-release-verify@" + $digest)' \

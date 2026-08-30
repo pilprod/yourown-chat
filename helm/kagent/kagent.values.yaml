@@ -25,8 +25,6 @@ controller:
   image:
     # registry/repository/digest are injected from the immutable manifest.
     tag: ""
-  agentImage:
-    tag: ""
   volumes:
     - name: database-url
       csi:
