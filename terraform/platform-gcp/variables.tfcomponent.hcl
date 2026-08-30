@@ -319,13 +319,8 @@ variable "agentgateway_enabled" {
 
 variable "agentgateway_public_ip_enabled" {
   type        = bool
-  description = "Reserve a dedicated regional public IP for the application-owned agentgateway data plane."
+  description = "Request a dedicated regional public IP for the application-owned agentgateway data plane. The component gates this request on agentgateway_enabled so a disabled control plane can never reserve the address."
   default     = false
-
-  validation {
-    condition     = !var.agentgateway_public_ip_enabled || var.agentgateway_enabled
-    error_message = "agentgateway_public_ip_enabled requires agentgateway_enabled."
-  }
 }
 
 # --- Labels -----------------------------------------------------------------
