@@ -39,8 +39,9 @@ reads their bytes. The operator rail synchronizes the following exact sources:
 The chart also always mounts `ate-system/actor-id-ca-certs` key `ca.crt`.
 There is deliberately no ninth Secret Manager container: the operator derives
 that cert-only Secret from `actor_id_ca_pool.pool` at
-`CAs[0].RootCertificateDER`, verifies it is a live CA certificate whose public
-key matches the pool signing key, and verifies the applied bytes exactly.
+`CAs[0].RootCertificateDER`, verifies it is currently valid, permits certificate
+signing, has `CA:TRUE`, and has a public key matching the pool signing key, then
+verifies the applied bytes exactly.
 
 `native_secret_sync_ready` means all eight source Secrets and this derived
 ninth Kubernetes Secret are valid. Leave it `false` after any partial or failed

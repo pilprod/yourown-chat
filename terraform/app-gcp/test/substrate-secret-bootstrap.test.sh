@@ -62,6 +62,26 @@ encode_file() {
   openssl base64 -A -in "$1" -out "$2"
 }
 
+make_actor_ca_bundle_variant() {
+  local variant="$1"
+  local key_pem="$2"
+  local cert_pem="$3"
+  local output="$4"
+
+  openssl pkcs8 -topk8 -nocrypt -in "${key_pem}" -outform DER -out "${work}/${variant}.key.der" >/dev/null 2>&1
+  openssl x509 -in "${cert_pem}" -outform DER -out "${work}/${variant}.cert.der" >/dev/null 2>&1
+  encode_file "${work}/${variant}.key.der" "${work}/${variant}.key.b64"
+  encode_file "${work}/${variant}.cert.der" "${work}/${variant}.cert.b64"
+  jq -n --rawfile key "${work}/${variant}.key.b64" --rawfile cert "${work}/${variant}.cert.b64" \
+    '{CAs:[{ID:"1",SigningKeyPKCS8:$key,SigningKeyPEM:"",RootCertificateDER:$cert,RootCertificatePEM:"",IntermediateCertificatesDER:null}]}' \
+    > "${work}/${variant}.pool.json"
+  encode_file "${work}/${variant}.pool.json" "${work}/${variant}.pool.json.b64"
+  jq --rawfile pool "${work}/${variant}.pool.json.b64" \
+    '.secrets.actor_id_ca_pool.data.pool=$pool' \
+    "${work}/bundle.json" > "${output}"
+  chmod 0600 "${output}"
+}
+
 make_ca api-server-ca
 make_ca api-client-ca
 make_ca egress-server-ca
@@ -170,6 +190,77 @@ jq --rawfile pool "${work}/actor-ca-intermediate.pool.json.b64" \
 chmod 0600 "${work}/actor-ca-intermediate.json"
 expect_fail "unsupported CA intermediate" "${bootstrap}" validate --project test-project --bundle "${work}/actor-ca-intermediate.json"
 grep -Fq 'intermediate certificates are not supported' "${work}/expected.stderr" || fail "CA intermediate rejection diagnostic is missing"
+
+openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "${work}/actor-ca-no-sign.key.pem" >/dev/null 2>&1
+openssl req -new -x509 -key "${work}/actor-ca-no-sign.key.pem" -sha256 -days 2 \
+  -subj '/CN=actor-ca-no-sign' \
+  -addext 'basicConstraints=critical,CA:TRUE' \
+  -addext 'keyUsage=critical,digitalSignature' \
+  -out "${work}/actor-ca-no-sign.cert.pem" >/dev/null 2>&1
+make_actor_ca_bundle_variant \
+  actor-ca-no-sign \
+  "${work}/actor-ca-no-sign.key.pem" \
+  "${work}/actor-ca-no-sign.cert.pem" \
+  "${work}/actor-ca-no-sign.json"
+expect_fail "actor CA without keyCertSign" "${bootstrap}" validate --project test-project --bundle "${work}/actor-ca-no-sign.json"
+grep -Fq 'does not permit certificate signing' "${work}/expected.stderr" || fail "CA keyCertSign rejection diagnostic is missing"
+
+openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "${work}/actor-ca-future.key.pem" >/dev/null 2>&1
+openssl req -new -key "${work}/actor-ca-future.key.pem" -sha256 \
+  -subj '/CN=actor-ca-future' \
+  -out "${work}/actor-ca-future.csr.pem" >/dev/null 2>&1
+mkdir -p "${work}/actor-ca-future-newcerts"
+: > "${work}/actor-ca-future.index"
+printf '1000\n' > "${work}/actor-ca-future.serial"
+cat > "${work}/actor-ca-future.openssl.cnf" <<EOF
+[ ca ]
+default_ca = actor_ca
+
+[ actor_ca ]
+database = ${work}/actor-ca-future.index
+new_certs_dir = ${work}/actor-ca-future-newcerts
+serial = ${work}/actor-ca-future.serial
+private_key = ${work}/actor-identity-ca.key.pem
+certificate = ${work}/actor-identity-ca.cert.pem
+default_md = sha256
+policy = actor_ca_policy
+x509_extensions = actor_ca_extensions
+
+[ actor_ca_policy ]
+commonName = supplied
+
+[ actor_ca_extensions ]
+basicConstraints = critical,CA:TRUE
+keyUsage = critical,keyCertSign,cRLSign
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid:always
+EOF
+read -r future_start future_end < <(python3 - <<'PY'
+from datetime import datetime, timedelta, timezone
+
+now = datetime.now(timezone.utc)
+print(
+    (now + timedelta(days=1)).strftime("%Y%m%d%H%M%SZ"),
+    (now + timedelta(days=3)).strftime("%Y%m%d%H%M%SZ"),
+)
+PY
+)
+openssl ca -batch -selfsign \
+  -keyfile "${work}/actor-ca-future.key.pem" \
+  -config "${work}/actor-ca-future.openssl.cnf" \
+  -in "${work}/actor-ca-future.csr.pem" \
+  -out "${work}/actor-ca-future.cert.pem" \
+  -startdate "${future_start}" \
+  -enddate "${future_end}" \
+  -extensions actor_ca_extensions \
+  -notext >/dev/null 2>&1
+make_actor_ca_bundle_variant \
+  actor-ca-future \
+  "${work}/actor-ca-future.key.pem" \
+  "${work}/actor-ca-future.cert.pem" \
+  "${work}/actor-ca-future.json"
+expect_fail "future-dated actor CA" "${bootstrap}" validate --project test-project --bundle "${work}/actor-ca-future.json"
+grep -Fq 'certificate is not yet valid' "${work}/expected.stderr" || fail "future-dated CA rejection diagnostic is missing"
 
 mkdir -p "${work}/secret-store" "${work}/kube-store" "${work}/mock-bin"
 printf '%s' 'postgresql://substrate:private-test-value@10.0.0.2:5432/substrate?sslmode=require' > "${work}/secret-store/substrate-database-url"

@@ -485,6 +485,8 @@ validate_ca_pool_and_derive() {
   local index=0
   local key_file=""
   local cert_file=""
+  local not_before=""
+  local key_usage=""
   local key_hash=""
   local cert_hash=""
 
@@ -499,7 +501,24 @@ validate_ca_pool_and_derive() {
     decode_json_base64_field "${pool}" ".CAs[${index}].RootCertificateDER" "${cert_file}"
     openssl pkey -inform DER -in "${key_file}" -noout >/dev/null 2>&1 || fail "actor CA ${index} private key is invalid"
     openssl x509 -inform DER -in "${cert_file}" -noout -checkend 0 >/dev/null 2>&1 || fail "actor CA ${index} certificate is invalid or expired"
+    not_before="$(LC_ALL=C openssl x509 -inform DER -in "${cert_file}" -noout -startdate 2>/dev/null)" || \
+      fail "actor CA ${index} certificate validity start is unreadable"
+    python3 - "${not_before}" <<'PY' >/dev/null 2>&1 || fail "actor CA ${index} certificate is not yet valid"
+from datetime import datetime, timezone
+import sys
+
+prefix = "notBefore="
+value = sys.argv[1]
+if not value.startswith(prefix):
+    raise SystemExit(1)
+not_before = datetime.strptime(value[len(prefix):], "%b %d %H:%M:%S %Y GMT").replace(tzinfo=timezone.utc)
+if not_before > datetime.now(timezone.utc):
+    raise SystemExit(1)
+PY
     openssl x509 -inform DER -in "${cert_file}" -text -noout 2>/dev/null | grep -Fq 'CA:TRUE' || fail "actor CA ${index} certificate is not a CA"
+    key_usage="$(openssl x509 -inform DER -in "${cert_file}" -noout -ext keyUsage 2>/dev/null)" || \
+      fail "actor CA ${index} key usage is unreadable"
+    grep -Fq 'Certificate Sign' <<<"${key_usage}" || fail "actor CA ${index} certificate does not permit certificate signing"
     openssl pkey -inform DER -in "${key_file}" -pubout -outform DER 2>/dev/null | openssl dgst -sha256 -binary > "${key_hash}"
     openssl x509 -inform DER -in "${cert_file}" -pubkey -noout 2>/dev/null | openssl pkey -pubin -outform DER 2>/dev/null | openssl dgst -sha256 -binary > "${cert_hash}"
     cmp -s "${key_hash}" "${cert_hash}" || fail "actor CA ${index} private key does not match its root certificate"
