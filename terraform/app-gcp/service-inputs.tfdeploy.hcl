@@ -181,4 +181,16 @@ locals {
     controller_namespace_handoff_ready = false
     external_broker_smoke_ready        = false
   }
+
+  # Creates only infrastructure and an empty Secret Manager container. The
+  # dedicated write:packages token is added as an exact external version after
+  # an action-time GitHub confirmation; no token byte enters this repository or
+  # Terraform state.
+  kagent_preview_publisher = {
+    enabled                    = true
+    evidence_bucket_name       = "yourown-chat-kagent-preview-evidence-europe-west3"
+    evidence_retention_seconds = 31536000
+    ghcr_secret_id             = "kagent-ghcr-write"
+    submitter_members          = []
+  }
 }

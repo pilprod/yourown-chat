@@ -125,6 +125,7 @@ deployment "eu" {
     source_repositories       = local.source_repositories
     vendor_chart_bundles      = local.vendor_chart_bundles
     kagent_substrate_delivery = local.kagent_substrate_delivery
+    kagent_preview_publisher  = local.kagent_preview_publisher
     image_name                = "mattermost"
     # Stable assembly tags use dev -> smoke -> approval -> prod. Prerelease
     # tags and version branches are structurally limited to dev preview.

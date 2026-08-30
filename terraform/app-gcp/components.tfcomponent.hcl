@@ -1009,3 +1009,26 @@ component "chart_publish" {
     google = provider.google.this
   }
 }
+
+component "kagent_preview_publisher" {
+  source = "./modules/kagent-preview-publisher"
+
+  inputs = {
+    enabled = var.kagent_preview_publisher.enabled
+
+    project_id                  = var.project_id
+    region                      = var.region
+    apply_service_account_email = var.service_account_email
+    submitter_members           = var.kagent_preview_publisher.submitter_members
+
+    evidence_bucket_name       = var.kagent_preview_publisher.evidence_bucket_name
+    evidence_retention_seconds = var.kagent_preview_publisher.evidence_retention_seconds
+    ghcr_secret_id             = var.kagent_preview_publisher.ghcr_secret_id
+    kms_key_name               = var.cmek_key_id
+    labels                     = local.common_labels
+  }
+
+  providers = {
+    google = provider.google.this
+  }
+}

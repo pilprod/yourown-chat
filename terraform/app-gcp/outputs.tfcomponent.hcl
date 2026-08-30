@@ -138,6 +138,22 @@ output "application_source_trigger_ids" {
   value       = component.deploy_release.application_source_trigger_ids
 }
 
+output "kagent_preview_publisher" {
+  type = object({
+    enabled               = bool
+    service_account_email = string
+    evidence_bucket_name  = string
+    ghcr_secret_id        = string
+  })
+  description = "Non-sensitive coordinates of the dedicated kagent fork preview publication infrastructure."
+  value = {
+    enabled               = component.kagent_preview_publisher.enabled
+    service_account_email = component.kagent_preview_publisher.service_account_email
+    evidence_bucket_name  = component.kagent_preview_publisher.evidence_bucket_name
+    ghcr_secret_id        = component.kagent_preview_publisher.ghcr_secret_id
+  }
+}
+
 output "temporal_enabled" {
   type        = bool
   description = "Whether the explicit Terraform launch gate currently permits the Temporal component."
