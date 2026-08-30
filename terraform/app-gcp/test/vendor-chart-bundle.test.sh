@@ -11,6 +11,7 @@ outputs="$module_dir/outputs.tf"
 components="$app_dir/components.tfcomponent.hcl"
 deployment="$app_dir/app.tfdeploy.hcl"
 service_inputs="$app_dir/service-inputs.tfdeploy.hcl"
+kagent_readme="$repo_dir/helm/kagent/README.md"
 platform_dir="$(cd "$app_dir/../platform-gcp" && pwd)"
 edge_deployment="$app_dir/../cloudflare/cloudflare.tfdeploy.hcl"
 platform_service_inputs="$platform_dir/service-inputs.tfdeploy.hcl"
@@ -253,6 +254,7 @@ require_literal "$main" 'to   = helm_release.application_handoff_source'
 require_literal "$main" 'resource "helm_release" "application_handoff_source"'
 require_literal "$outputs" 'helm_release.application_handoff_source[0].name'
 require_literal "$outputs" 'helm_release.application_handoff_source[0].status'
+require_literal "$kagent_readme" 'helm_release.application_handoff_source[0]'
 if rg -n -- 'resource "helm_release" "application"|helm_release\.application\[0\]' "$main" "$outputs"; then
   fail "the legacy application address must exist only as the moved-block source"
 fi

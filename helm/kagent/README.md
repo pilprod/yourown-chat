@@ -14,8 +14,10 @@ RBAC, `ate-api-authentication`, Secret Manager containers and the
 platform-level official agentgateway installation. The existing kagent
 application release remains Terraform-managed while this rail is disabled. A
 separate, reviewed handoff must first retain the release in-cluster with
-`destroy=false` and remove only its Terraform state ownership; Cloud Deploy
-must never race the existing `helm_release.application`. After that handoff,
+`destroy=false` and remove only its Terraform state ownership. Phase A moved
+the live object to `helm_release.application_handoff_source[0]`; Phase B must
+target exactly that address in its `removed` block. Cloud Deploy must never
+race the handoff-source release. After that handoff,
 Cloud Deploy owns only the kagent and Substrate application Helm releases.
 
 Substrate's application chart owns the one `Gateway` and `TLSRoute` by setting
