@@ -461,7 +461,11 @@ component "network" {
     # Reserve the Cloudflare-facing static IP only where a public ingress exists.
     ingress_static_ip      = var.public_ingress_enabled
     calls_static_ip        = var.mattermost_calls_enabled
-    agentgateway_static_ip = var.agentgateway_public_ip_enabled
+    # Terraform Stack input-variable validation can only reference the variable
+    # being validated. Enforce the cross-input safety invariant at the resource
+    # boundary instead: a disabled control plane can never reserve this IP even
+    # if the public-IP request flag is accidentally left on.
+    agentgateway_static_ip = var.agentgateway_enabled && var.agentgateway_public_ip_enabled
   }
 
   providers = {

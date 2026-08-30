@@ -5,6 +5,8 @@ platform_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 module="${platform_dir}/modules/agentgateway/main.tf"
 asset="${platform_dir}/modules/agentgateway/files/gateway-api-v1.6.0-standard-install.yaml"
 network="${platform_dir}/modules/network/main.tf"
+components="${platform_dir}/components.tfcomponent.hcl"
+variables="${platform_dir}/variables.tfcomponent.hcl"
 expected_sha="a557172e8348f758479e9ee4000bbbb4b4aa48302a6b73461823ea5349bad56d"
 
 fail() { printf 'agentgateway platform test failed: %s\n' "$*" >&2; exit 1; }
@@ -48,5 +50,10 @@ fi
 
 require_literal "${network}" 'resource "google_compute_address" "agentgateway"'
 require_literal "${network}" 'prevent_destroy = true'
+require_literal "${components}" 'agentgateway_static_ip = var.agentgateway_enabled && var.agentgateway_public_ip_enabled'
+if grep -A10 -F 'variable "agentgateway_public_ip_enabled"' "${variables}" \
+  | grep -Fq 'var.agentgateway_enabled'; then
+  fail "Stack variable validation must not reference agentgateway_enabled; gate the network input instead"
+fi
 
 printf 'agentgateway platform ownership tests passed\n'
