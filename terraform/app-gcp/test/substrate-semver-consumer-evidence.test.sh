@@ -7,6 +7,7 @@ source_manifest="${repo_root}/helm/kagent/evidence/substrate/v0.0.22/substrate-v
 source_checksum="${source_manifest}.sha256"
 source_module="${repo_root}/helm/kagent/substrate_consumer_evidence.py"
 source_renderer="${repo_root}/terraform/app-gcp/scripts/render-substrate-semver-consumer-pin-fragment.py"
+stack_variables="${repo_root}/terraform/app-gcp/variables.tfcomponent.hcl"
 
 fail() {
   printf 'Substrate semver consumer evidence test failed: %s\n' "$*" >&2
@@ -144,5 +145,137 @@ if "${fixture_renderer}" "${outside}" >"${work}/outside.out" 2>"${work}/outside.
 fi
 [[ ! -s "${work}/outside.out" ]] || fail "outside-path failure emitted a partial fragment"
 require_literal "${work}/outside.err" 'consumer evidence must be below the Helm source root'
+
+# Exercise the exact Stack variable validation independently of HCP Terraform.
+# Bootstrap installs the cluster-wide CRD chart before the Cloud Deploy renderer
+# ever runs, so the Stack input itself must reject every drift from the
+# checked-in consumer record.
+gate_module="${work}/bootstrap-gate"
+mkdir -p "${gate_module}"
+sed -n \
+  '/^variable "kagent_substrate_delivery" {/,/^variable "additional_cloudsql_connection_secret_ids" {/p' \
+  "${stack_variables}" | sed '$d' >"${gate_module}/main.tf"
+cat >>"${gate_module}/main.tf" <<'HCL'
+
+output "bootstrap_enabled" {
+  value = var.kagent_substrate_delivery.bootstrap_enabled
+}
+HCL
+
+valid_contract="${work}/valid-bootstrap-contract.json"
+jq -n \
+  --arg manifest_sha "${expected_sha}" \
+  --arg manifest_path 'kagent/evidence/substrate/v0.0.22/substrate-v0.0.22.consumer-evidence.json' \
+  --slurpfile evidence "${source_manifest}" \
+  '{
+    bootstrap_enabled: true,
+    release_enabled: false,
+    production_eligible: false,
+    local_provider_only: true,
+    native_secret_sync_ready: false,
+    crd_ownership_ready: false,
+    controller_namespace_handoff_ready: false,
+    external_broker_smoke_ready: false,
+    artifacts: {
+      kagent: {
+        source_repository: "https://github.com/pilprod/kagent",
+        source_commit: "1111111111111111111111111111111111111111",
+        artifact_manifest_sha256: "1111111111111111111111111111111111111111111111111111111111111111",
+        artifact_schema_version: "3",
+        charts: {
+          application: {ref: "oci://ghcr.io/pilprod/kagent/helm/kagent@sha256:1111111111111111111111111111111111111111111111111111111111111111", version: "0.10.0"},
+          crds: {ref: "oci://ghcr.io/pilprod/kagent/helm/kagent-crds@sha256:2222222222222222222222222222222222222222222222222222222222222222", version: "0.10.0"}
+        },
+        image_refs: {
+          controller: "ghcr.io/pilprod/kagent/controller@sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          ui: "ghcr.io/pilprod/kagent/ui@sha256:4444444444444444444444444444444444444444444444444444444444444444"
+        },
+        runtime_images: {
+          kagentHarness: "ghcr.io/pilprod/kagent/golang-adk@sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          codexHarness: "ghcr.io/pilprod/kagent/codex-harness@sha256:6666666666666666666666666666666666666666666666666666666666666666"
+        }
+      },
+      substrate: {
+        source_repository: $evidence[0].source.repository,
+        source_commit: $evidence[0].source.commit,
+        artifact_manifest_sha256: $manifest_sha,
+        artifact_schema_version: $evidence[0].schema_version,
+        artifact_manifest_path: $manifest_path,
+        charts: {
+          application: {ref: $evidence[0].charts.application.ref, version: $evidence[0].charts.application.version},
+          crds: {ref: $evidence[0].charts.crds.ref, version: $evidence[0].charts.crds.version}
+        },
+        image_refs: {
+          ateapi: $evidence[0].images.ateapi.ref,
+          atecontroller: $evidence[0].images.atecontroller.ref,
+          atenet: $evidence[0].images.atenet.ref,
+          agentgateway: $evidence[0].dependency_images.agentgateway.ref,
+          releaseVerifier: $evidence[0].images.releaseVerifier.ref
+        }
+      }
+    },
+    compatibility: {
+      kagent_rbac_create_false: true,
+      kagent_obsolete_skills_init_removed: true,
+      substrate_rbac_create_false: true,
+      substrate_gateway_api_v1: true,
+      substrate_go_module_commit: $evidence[0].source.commit
+    },
+    helm_set_values: {
+      kagent: {"controller.image.tag": "0.10.0@sha256:3333333333333333333333333333333333333333333333333333333333333333"},
+      substrate: $evidence[0].helm_set_values
+    },
+    values_sha256: {
+      "kagent/kagent.values.yaml": "1111111111111111111111111111111111111111111111111111111111111111",
+      "kagent/kagent-testbed.values.yaml": "2222222222222222222222222222222222222222222222222222222222222222",
+      "kagent/substrate.values.yaml": "3333333333333333333333333333333333333333333333333333333333333333",
+      "kagent/substrate-testbed.values.yaml": "4444444444444444444444444444444444444444444444444444444444444444"
+    },
+    kagent_health_url: "http://kagent-controller.kagent-system.svc.cluster.local:8083/health",
+    substrate_endpoint: "api.ate-system.svc.cluster.local:443",
+    broker_server_name: "api.ate-system.svc",
+    broker_service_name: "api",
+    broker_service_port: 8443,
+    atenet_egress_destinations: {}
+  }' >"${valid_contract}"
+
+valid_tfvars="${work}/valid-bootstrap.tfvars.json"
+jq '{kagent_substrate_delivery: .}' "${valid_contract}" >"${valid_tfvars}"
+terraform -chdir="${gate_module}" init -backend=false -input=false -no-color >/dev/null
+terraform -chdir="${gate_module}" plan -refresh=false -input=false -lock=false -no-color \
+  -var-file="${valid_tfvars}" >/dev/null || fail "canonical v0.0.22 bootstrap contract was rejected"
+
+expect_bootstrap_failure() {
+  local label="$1"
+  local filter="$2"
+  local tfvars="${work}/${label}.tfvars.json"
+  local output="${work}/${label}.plan"
+  jq "{kagent_substrate_delivery: (. ${filter})}" "${valid_contract}" >"${tfvars}"
+  if terraform -chdir="${gate_module}" plan -refresh=false -input=false -lock=false -no-color \
+    -var-file="${tfvars}" >"${output}" 2>&1; then
+    fail "${label} bootstrap contract unexpectedly passed Stack validation"
+  fi
+  if ! grep -Fq -- 'v0.0.22 semver consumer evidence contract' "${output}"; then
+    sed -n '1,160p' "${output}" >&2
+    fail "${label} did not fail through the canonical consumer evidence gate"
+  fi
+}
+
+expect_bootstrap_failure changed-crd \
+  '| .artifacts.substrate.charts.crds.ref = "oci://ghcr.io/pilprod/substrate/helm/substrate-crds@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"'
+expect_bootstrap_failure changed-application \
+  '| .artifacts.substrate.charts.application.ref = "oci://ghcr.io/pilprod/substrate/helm/substrate@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"'
+expect_bootstrap_failure changed-image \
+  '| .artifacts.substrate.image_refs.ateapi = "ghcr.io/pilprod/substrate/ateapi@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"'
+expect_bootstrap_failure changed-helm-value \
+  '| .helm_set_values.substrate["image.digests.ateapi"] = "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"'
+expect_bootstrap_failure changed-source \
+  '| .artifacts.substrate.source_commit = "ffffffffffffffffffffffffffffffffffffffff" | .compatibility.substrate_go_module_commit = "ffffffffffffffffffffffffffffffffffffffff"'
+expect_bootstrap_failure changed-evidence-hash \
+  '| .artifacts.substrate.artifact_manifest_sha256 = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"'
+expect_bootstrap_failure changed-evidence-path \
+  '| .artifacts.substrate.artifact_manifest_path = "kagent/evidence/substrate/v0.0.23/substrate-v0.0.23.consumer-evidence.json"'
+expect_bootstrap_failure changed-evidence-schema \
+  '| .artifacts.substrate.artifact_schema_version = "yourown.chat/substrate-semver-consumer-evidence/v2"'
 
 printf 'Substrate semver consumer evidence tests passed\n'
