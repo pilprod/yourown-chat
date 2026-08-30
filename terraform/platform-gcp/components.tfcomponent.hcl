@@ -459,8 +459,8 @@ component "network" {
     labels     = local.common_labels
 
     # Reserve the Cloudflare-facing static IP only where a public ingress exists.
-    ingress_static_ip      = var.public_ingress_enabled
-    calls_static_ip        = var.mattermost_calls_enabled
+    ingress_static_ip = var.public_ingress_enabled
+    calls_static_ip   = var.mattermost_calls_enabled
     # Terraform Stack input-variable validation can only reference the variable
     # being validated. Enforce the cross-input safety invariant at the resource
     # boundary instead: a disabled control plane can never reserve this IP even
@@ -669,11 +669,12 @@ component "cloudsql" {
       },
       {
         for user_name, settings in var.additional_database_users : user_name => {
-          database_names            = settings.database_names
-          manage_databases          = settings.manage_databases
-          password_secret_id        = settings.password_secret_id
-          password_secret_accessors = []
-          connection_secret_id      = settings.connection_secret_id
+          database_names                = settings.database_names
+          adopt_existing_database_names = settings.adopt_existing_database_names
+          manage_databases              = settings.manage_databases
+          password_secret_id            = settings.password_secret_id
+          password_secret_accessors     = []
+          connection_secret_id          = settings.connection_secret_id
           connection_secret_accessors = setunion(
             settings.connection_secret_accessors,
             toset([
