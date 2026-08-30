@@ -8,6 +8,7 @@ readonly policy_mount_path="/var/run/substrate-policy/slot-policy.yaml"
 readonly token_path="/var/run/secrets/substrate/token"
 readonly server_ca_path="/var/run/secrets/substrate-ca/server-ca.pem"
 readonly wait_timeout_seconds=600
+readonly persistent_networkpolicy_name="substrate-enrollment-admin-default-deny"
 
 usage() {
   cat <<'EOF'
@@ -302,23 +303,36 @@ esac
 [[ "${policy_file}" == /* ]] || fail "--policy-file must be an absolute path"
 [[ "${policy_file}" != *$'\n'* && "${policy_file}" != *$'\r'* ]] ||
   fail "--policy-file must not contain control characters"
-[[ -f "${policy_file}" && ! -L "${policy_file}" ]] ||
-  fail "--policy-file must be a regular file, not a symlink"
-
-policy_uid=""
-policy_mode=""
-policy_size=""
-if ! IFS=' ' read -r policy_uid policy_mode policy_size < <(portable_stat "${policy_file}"); then
-  fail "could not inspect --policy-file"
-fi
 current_uid="$(id -u)"
-[[ "${policy_uid}" == "${current_uid}" ]] ||
-  fail "--policy-file must be owned by the invoking user"
-[[ "${policy_mode}" == "400" || "${policy_mode}" == "600" ]] ||
-  fail "--policy-file mode must be exactly 0400 or 0600"
-[[ "${policy_size}" =~ ^[0-9]+$ ]] || fail "could not determine --policy-file size"
-(( policy_size > 0 && policy_size <= 524288 )) ||
-  fail "--policy-file must be between 1 byte and 512 KiB"
+policy_basename="${policy_file##*/}"
+[[ -n "${policy_basename}" && "${policy_basename}" != "." && "${policy_basename}" != ".." ]] ||
+  fail "--policy-file must name a file"
+policy_parent_input="${policy_file%/*}"
+[[ -n "${policy_parent_input}" ]] || policy_parent_input="/"
+[[ -d "${policy_parent_input}" && ! -L "${policy_parent_input}" ]] ||
+  fail "--policy-file parent must be a real directory, not a symlink"
+policy_parent="$(cd -- "${policy_parent_input}" && pwd -P)"
+if [[ "${policy_parent}" == "/" ]]; then
+  policy_file="/${policy_basename}"
+else
+  policy_file="${policy_parent}/${policy_basename}"
+fi
+
+policy_parent_uid=""
+policy_parent_mode=""
+policy_parent_size=""
+if ! IFS=' ' read -r policy_parent_uid policy_parent_mode policy_parent_size < <(portable_stat "${policy_parent}"); then
+  fail "could not inspect --policy-file parent"
+fi
+[[ "${policy_parent_uid}" == "${current_uid}" ]] ||
+  fail "--policy-file parent must be owned by the invoking user"
+[[ "${policy_parent_mode}" =~ ^[0-7]{3,4}$ ]] ||
+  fail "could not determine --policy-file parent mode"
+policy_parent_mode_value=$((8#${policy_parent_mode}))
+(( (policy_parent_mode_value & 077) == 0 )) ||
+  fail "--policy-file parent must exclude all group and other permissions"
+(( (policy_parent_mode_value & 0300) == 0300 )) ||
+  fail "--policy-file parent must be owner-writable and owner-searchable"
 
 [[ "${output_file_input}" == /* ]] || fail "--output-file must be an absolute path"
 [[ "${output_file_input}" != *$'\n'* && "${output_file_input}" != *$'\r'* ]] ||
@@ -360,6 +374,8 @@ command -v mktemp >/dev/null 2>&1 || fail "mktemp is required"
 command -v awk >/dev/null 2>&1 || fail "awk is required"
 
 scratch_dir=""
+policy_stage_dir=""
+policy_anchor=""
 local_partial=""
 pod_name=""
 configmap_name=""
@@ -416,6 +432,18 @@ cleanup() {
       printf 'Substrate enrollment cleanup could not delete its local scratch directory\n' >&2
     fi
   fi
+  if [[ -n "${policy_anchor}" && -e "${policy_anchor}" ]]; then
+    if ! rm -f -- "${policy_anchor}"; then
+      cleanup_failed=1
+      printf 'Substrate enrollment cleanup could not delete its pinned policy link\n' >&2
+    fi
+  fi
+  if [[ -n "${policy_stage_dir}" && "${policy_stage_dir}" == "${policy_parent}"/.yourown-chat-policy-stage.* && -d "${policy_stage_dir}" ]]; then
+    if ! rmdir -- "${policy_stage_dir}"; then
+      cleanup_failed=1
+      printf 'Substrate enrollment cleanup could not delete its policy staging directory\n' >&2
+    fi
+  fi
   if [[ "${cleanup_failed}" -eq 1 && "${status}" -eq 0 ]]; then
     status=1
   fi
@@ -430,13 +458,44 @@ trap 'exit 130' INT TERM HUP
 scratch_dir="$(mktemp -d /tmp/yourown-chat-enrollment.XXXXXXXX)"
 chmod 0700 "${scratch_dir}"
 staged_policy="${scratch_dir}/slot-policy.yaml"
-policy_sha_before="$(sha256_file "${policy_file}")"
-cp -- "${policy_file}" "${staged_policy}"
+
+# Resolve the caller-supplied pathname exactly once by hard-linking it into a
+# freshly-created owner-only directory on the same filesystem. Validation and
+# copying happen only through that pinned link, eliminating pathname replacement
+# between validation and staging on both macOS and Linux.
+policy_stage_dir="$(mktemp -d "${policy_parent}/.yourown-chat-policy-stage.XXXXXXXX")"
+chmod 0700 "${policy_stage_dir}"
+policy_anchor="${policy_stage_dir}/source"
+ln -P "${policy_file}" "${policy_anchor}" ||
+  fail "could not securely pin --policy-file for staging"
+[[ -f "${policy_anchor}" && ! -L "${policy_anchor}" ]] ||
+  fail "--policy-file must be a regular file, not a symlink"
+
+policy_uid=""
+policy_mode=""
+policy_size=""
+if ! IFS=' ' read -r policy_uid policy_mode policy_size < <(portable_stat "${policy_anchor}"); then
+  fail "could not inspect --policy-file"
+fi
+[[ "${policy_uid}" == "${current_uid}" ]] ||
+  fail "--policy-file must be owned by the invoking user"
+[[ "${policy_mode}" == "400" || "${policy_mode}" == "600" ]] ||
+  fail "--policy-file mode must be exactly 0400 or 0600"
+[[ "${policy_size}" =~ ^[0-9]+$ ]] || fail "could not determine --policy-file size"
+(( policy_size > 0 && policy_size <= 524288 )) ||
+  fail "--policy-file must be between 1 byte and 512 KiB"
+
+policy_sha_before="$(sha256_file "${policy_anchor}")"
+cp -- "${policy_anchor}" "${staged_policy}"
 chmod 0600 "${staged_policy}"
 policy_sha_staged="$(sha256_file "${staged_policy}")"
-policy_sha_after="$(sha256_file "${policy_file}")"
+policy_sha_after="$(sha256_file "${policy_anchor}")"
 [[ "${policy_sha_before}" == "${policy_sha_staged}" && "${policy_sha_before}" == "${policy_sha_after}" ]] ||
   fail "--policy-file changed while it was being staged"
+rm -f -- "${policy_anchor}"
+policy_anchor=""
+rmdir -- "${policy_stage_dir}"
+policy_stage_dir=""
 
 kubectl config get-contexts "${kube_context}" --no-headers | grep -q '[^[:space:]]' ||
   fail "--context does not identify an available kubectl context"
@@ -454,6 +513,17 @@ kubectl --context="${kube_context}" --namespace="${namespace}" --request-timeout
   get secret "${ca_secret}" \
   --output='go-template={{if index .data "server-ca.pem"}}present{{end}}{{"\n"}}' |
   grep -qx 'present' || fail "--ca-secret is missing server-ca.pem"
+persistent_policy_contract=""
+if ! persistent_policy_contract="$(
+  kubectl --context="${kube_context}" --namespace="${namespace}" --request-timeout=30s \
+    get networkpolicy "${persistent_networkpolicy_name}" \
+    --output='go-template={{index .spec.podSelector.matchLabels "app.kubernetes.io/name"}}|{{index .spec.podSelector.matchLabels "app.kubernetes.io/component"}}|{{index .spec.podSelector.matchLabels "app.kubernetes.io/part-of"}}|{{len .spec.podSelector.matchLabels}}|{{len .spec.podSelector.matchExpressions}}|{{range .spec.policyTypes}}{{.}},{{end}}|{{len .spec.ingress}}|{{len .spec.egress}}{{"\n"}}'
+)"; then
+  fail "persistent enrollment default-deny NetworkPolicy is missing"
+fi
+[[ "${persistent_policy_contract}" == "substrate-enrollment-admin|enrollment-admin|kagent-substrate-testbed|3|0|Ingress,Egress,|0|0" ||
+  "${persistent_policy_contract}" == "substrate-enrollment-admin|enrollment-admin|kagent-substrate-testbed|3|0|Egress,Ingress,|0|0" ]] ||
+  fail "persistent enrollment default-deny NetworkPolicy does not match the required fail-closed contract"
 
 run_suffix="r$$-${RANDOM}-${RANDOM}"
 pod_name="substrate-enrollment-${run_suffix}"
@@ -772,9 +842,9 @@ fi
 [[ "${partial_size}" =~ ^[0-9]+$ ]] || fail "could not determine transferred credential size"
 (( partial_size > 0 && partial_size <= 4096 )) ||
   fail "the transferred enrollment credential has an invalid size"
-if LC_ALL=C tr -d 'A-Za-z0-9_-' < "${local_partial}" | grep -q .; then
+allowed_credential_size="$(LC_ALL=C tr -cd 'A-Za-z0-9_-' < "${local_partial}" | wc -c | awk '{print $1}')"
+[[ "${allowed_credential_size}" =~ ^[0-9]+$ && "${allowed_credential_size}" == "${partial_size}" ]] ||
   fail "the transferred enrollment credential has invalid characters"
-fi
 
 # A same-directory hard link atomically publishes a new name and cannot replace
 # a destination created after the initial preflight check.

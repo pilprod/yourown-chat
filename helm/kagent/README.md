@@ -67,9 +67,11 @@ attestation input, not an automated smoke implementation.
 External-provider enrollment is issued separately by
 `terraform/app-gcp/scripts/issue-substrate-external-provider-enrollment.sh`.
 The helper uses the fixed `substrate-enrollment-admin` Pod label set admitted by
-`substrate.values.yaml`, talks only to `api.ate-system.svc:443`, and transfers
-the one-time credential to an owner-only local file without a port-forward or
-a Kubernetes Secret. Its only CIDR egress is the caller-supplied exact
+`substrate.values.yaml`; Terraform installs a persistent fixed-label default
+deny and the helper verifies it before creating a Pod. It talks only to
+`api.ate-system.svc:443` and transfers the one-time credential to an owner-only
+local file without a port-forward or a Kubernetes Secret. Its only CIDR egress
+is the caller-supplied exact
 `kube-system/kube-dns` ClusterIP `/32`, verified against the live Service. It
 requires release-supplied digest pins; this repository does not invent a
 `kubectl-ate` image digest.

@@ -7,6 +7,7 @@ app_dir="$(cd "${script_dir}/.." && pwd -P)"
 repo_root="$(cd "${app_dir}/../.." && pwd -P)"
 subject="${app_dir}/scripts/issue-substrate-external-provider-enrollment.sh"
 substrate_values="${repo_root}/helm/kagent/substrate.values.yaml"
+substrate_prerequisites="${app_dir}/modules/substrate-prerequisites/main.tf"
 
 fail() {
   printf 'substrate external-provider enrollment test failed: %s\n' "$*" >&2
@@ -94,6 +95,20 @@ if [[ "${all_args}" == *' get secret '* ]]; then
   printf '%s\n' 'present'
   exit 0
 fi
+if [[ "${all_args}" == *' get networkpolicy substrate-enrollment-admin-default-deny '* ]]; then
+  printf '%s\n' "${FAKE_PERSISTENT_POLICY_CONTRACT:-substrate-enrollment-admin|enrollment-admin|kagent-substrate-testbed|3|0|Ingress,Egress,|0|0}"
+  exit 0
+fi
+if [[ "${all_args}" == *' create configmap '* ]]; then
+  for argument in "$@"; do
+    case "${argument}" in
+      --from-file=slot-policy.yaml=*)
+        cp "${argument#--from-file=slot-policy.yaml=}" "${log_dir}/configmap-policy.yaml"
+        ;;
+    esac
+  done
+  exit 0
+fi
 if [[ "${all_args}" == *' create -f -'* ]]; then
   manifest="${log_dir}/incoming.$$.yaml"
   while IFS= read -r line; do
@@ -117,7 +132,13 @@ if [[ "${all_args}" == *' exec pod/'* && "${all_args}" == *' -- test -s '* ]]; t
 fi
 if [[ "${all_args}" == *' exec pod/'* && "${all_args}" == *' -- cat '* ]]; then
   [[ "${FAKE_CAT_FAIL:-0}" != 1 ]] || exit 76
-  printf '%s' "${FAKE_CREDENTIAL:-enrollment_A1-b2}"
+  case "${FAKE_CREDENTIAL_MODE:-valid}" in
+    valid) printf '%s' "${FAKE_CREDENTIAL:-enrollment_A1-b2}" ;;
+    newline) printf '\n' ;;
+    carriage-return) printf 'enrollment\rA1' ;;
+    nul) printf 'enrollment\000A1' ;;
+    *) exit 92 ;;
+  esac
   exit 0
 fi
 exit 0
@@ -136,13 +157,22 @@ if [[ "$1" == -c ]]; then
   format="$2"
   path="$3"
   if output="$("${REAL_STAT:?}" -c "${format}" "${path}" 2>/dev/null)"; then
-    printf '%s\n' "${output}"
-    exit 0
+    :
+  else
+    case "${format}" in
+      '%u %a %s') output="$("${REAL_STAT}" -f '%u %Lp %z' "${path}")" ;;
+      '%a') output="$("${REAL_STAT}" -f '%Lp' "${path}")" ;;
+      *) exit 93 ;;
+    esac
   fi
-  case "${format}" in
-    '%u %a %s') exec "${REAL_STAT}" -f '%u %Lp %z' "${path}" ;;
-    '%a') exec "${REAL_STAT}" -f '%Lp' "${path}" ;;
-  esac
+  printf '%s\n' "${output}"
+  if [[ "${FAKE_POLICY_SWAP_ON_PIN_STAT:-0}" == 1 &&
+    "${path}" == *'/.yourown-chat-policy-stage.'*'/source' &&
+    ! -e "${FAKE_POLICY_SWAP_MARKER:?}" ]]; then
+    mv "${FAKE_POLICY_REPLACEMENT:?}" "${FAKE_POLICY_FILE:?}"
+    : > "${FAKE_POLICY_SWAP_MARKER}"
+  fi
+  exit 0
 fi
 exec "${REAL_STAT:?}" "$@"
 EOF
@@ -162,8 +192,14 @@ invoke_subject() {
   FAKE_MAIN_EXIT_CODE="${FAKE_MAIN_EXIT_CODE:-0}" \
   FAKE_CREDENTIAL_READY="${FAKE_CREDENTIAL_READY:-1}" \
   FAKE_CREDENTIAL="${FAKE_CREDENTIAL:-enrollment_A1-b2}" \
+  FAKE_CREDENTIAL_MODE="${FAKE_CREDENTIAL_MODE:-valid}" \
+  FAKE_PERSISTENT_POLICY_CONTRACT="${FAKE_PERSISTENT_POLICY_CONTRACT:-substrate-enrollment-admin|enrollment-admin|kagent-substrate-testbed|3|0|Ingress,Egress,|0|0}" \
   FAKE_POD_DELETE_FAIL="${FAKE_POD_DELETE_FAIL:-0}" \
   FAKE_CAT_FAIL="${FAKE_CAT_FAIL:-0}" \
+  FAKE_POLICY_SWAP_ON_PIN_STAT="${FAKE_POLICY_SWAP_ON_PIN_STAT:-0}" \
+  FAKE_POLICY_SWAP_MARKER="${FAKE_POLICY_SWAP_MARKER:-${temporary_dir}/unused-policy-swap-marker}" \
+  FAKE_POLICY_REPLACEMENT="${FAKE_POLICY_REPLACEMENT:-${temporary_dir}/unused-policy-replacement}" \
+  FAKE_POLICY_FILE="${FAKE_POLICY_FILE:-${policy_file}}" \
     "${subject}" \
     --kubectl-ate-image "${KUBECTL_IMAGE:-${valid_kubectl_image}}" \
     --transfer-image "${TRANSFER_IMAGE:-${valid_transfer_image}}" \
@@ -274,6 +310,12 @@ require_literal "${success_log}/calls.log" 'delete> <networkpolicy/substrate-enr
 require_literal "${success_log}/calls.log" 'exec> <pod/substrate-enrollment-'
 require_literal "${success_log}/calls.log" '--> <cat> </var/run/substrate-enrollment/private/enrollment-credential>'
 require_literal "${success_log}/calls.log" '<--namespace=kube-system> <--request-timeout=30s> <get> <service> <kube-dns>'
+require_literal "${success_log}/calls.log" '<get> <networkpolicy> <substrate-enrollment-admin-default-deny>'
+awk '
+  /<get> <networkpolicy> <substrate-enrollment-admin-default-deny>/ { preflight = NR }
+  /<create> <configmap>/ { create = NR }
+  END { exit(preflight > 0 && create > preflight ? 0 : 1) }
+' "${success_log}/calls.log" || fail "persistent default-deny preflight must precede ephemeral resource creation"
 
 require_literal "${substrate_values}" 'app.kubernetes.io/name: substrate-enrollment-admin'
 require_literal "${substrate_values}" 'app.kubernetes.io/component: enrollment-admin'
@@ -284,6 +326,11 @@ forbid_pattern "${subject}" '\$\(kubectl[^)]*cat'
 require_literal "${subject}" 'ln "${local_partial}" "${output_file}"'
 require_literal "${subject}" 'mode must be exactly 0400 or 0600'
 require_literal "${subject}" 'must be owned by the invoking user'
+require_literal "${subject}" 'ln -P "${policy_file}" "${policy_anchor}"'
+forbid_pattern "${subject}" 'sha256_file "\$\{policy_file\}"|cp -- "\$\{policy_file\}"'
+require_literal "${substrate_prerequisites}" 'resource "kubernetes_network_policy_v1" "enrollment_admin_default_deny"'
+require_literal "${substrate_prerequisites}" 'name      = "substrate-enrollment-admin-default-deny"'
+require_literal "${substrate_prerequisites}" 'policy_types = ["Ingress", "Egress"]'
 
 failure_log="${temporary_dir}/main-failure-log"
 mkdir -p "${failure_log}"
@@ -320,6 +367,22 @@ forbid_pattern "${cleanup_failure_log}/calls.log" 'delete> <networkpolicy/substr
 forbid_pattern "${temporary_dir}/cleanup-failure.stdout" 'enrollment_A1-b2'
 forbid_pattern "${temporary_dir}/cleanup-failure.stderr" 'enrollment_A1-b2'
 
+newline_log="${temporary_dir}/newline-credential-log"
+mkdir -p "${newline_log}"
+FAKE_KUBECTL_LOG_DIR="${newline_log}" FAKE_CREDENTIAL_MODE=newline \
+  expect_failure newline-credential 'transferred enrollment credential has invalid characters' "${private_dir}/newline-credential"
+require_literal "${temporary_dir}/newline-credential.stderr" 'DO NOT RETRY automatically; operator review is required'
+
+carriage_return_log="${temporary_dir}/carriage-return-credential-log"
+mkdir -p "${carriage_return_log}"
+FAKE_KUBECTL_LOG_DIR="${carriage_return_log}" FAKE_CREDENTIAL_MODE=carriage-return \
+  expect_failure carriage-return-credential 'transferred enrollment credential has invalid characters' "${private_dir}/carriage-return-credential"
+
+nul_log="${temporary_dir}/nul-credential-log"
+mkdir -p "${nul_log}"
+FAKE_KUBECTL_LOG_DIR="${nul_log}" FAKE_CREDENTIAL_MODE=nul \
+  expect_failure nul-credential 'transferred enrollment credential has invalid characters' "${private_dir}/nul-credential"
+
 validation_log="${temporary_dir}/validation-log"
 mkdir -p "${validation_log}"
 export FAKE_KUBECTL_LOG_DIR="${validation_log}"
@@ -350,6 +413,15 @@ ln -s "${policy_file}" "${policy_link}"
 POLICY_FILE="${policy_link}" \
   expect_failure symlink-policy '--policy-file must be a regular file, not a symlink' "${private_dir}/symlink-policy"
 
+open_policy_parent="${temporary_dir}/open-policy-parent"
+mkdir "${open_policy_parent}"
+chmod 0750 "${open_policy_parent}"
+open_parent_policy="${open_policy_parent}/slot-policy.yaml"
+printf '%s\n' 'version: 1' > "${open_parent_policy}"
+chmod 0600 "${open_parent_policy}"
+POLICY_FILE="${open_parent_policy}" \
+  expect_failure open-policy-parent '--policy-file parent must exclude all group and other permissions' "${private_dir}/open-policy-parent"
+
 existing_output="${private_dir}/existing-token"
 printf '%s' 'do-not-overwrite' > "${existing_output}"
 if FAKE_KUBECTL_LOG_DIR="${validation_log}" invoke_subject "${existing_output}" \
@@ -373,5 +445,29 @@ FAKE_KUBECTL_LOG_DIR="${dns_mismatch_log}" CLUSTER_DNS_IP='10.3.240.11' \
   expect_failure mismatched-cluster-dns '--cluster-dns-ip does not match kube-system/kube-dns ClusterIP' "${private_dir}/mismatched-cluster-dns"
 require_literal "${dns_mismatch_log}/calls.log" '<get> <service> <kube-dns>'
 forbid_pattern "${dns_mismatch_log}/calls.log" '<create>'
+
+persistent_policy_mismatch_log="${temporary_dir}/persistent-policy-mismatch-log"
+mkdir -p "${persistent_policy_mismatch_log}"
+FAKE_KUBECTL_LOG_DIR="${persistent_policy_mismatch_log}" FAKE_PERSISTENT_POLICY_CONTRACT='wrong' \
+  expect_failure persistent-policy-mismatch 'persistent enrollment default-deny NetworkPolicy does not match' "${private_dir}/persistent-policy-mismatch"
+require_literal "${persistent_policy_mismatch_log}/calls.log" '<get> <networkpolicy> <substrate-enrollment-admin-default-deny>'
+forbid_pattern "${persistent_policy_mismatch_log}/calls.log" '<create>'
+
+replacement_policy="${private_dir}/replacement-policy.yaml"
+printf '%s\n' 'version: attacker-controlled-replacement' > "${replacement_policy}"
+chmod 0600 "${replacement_policy}"
+swap_marker="${temporary_dir}/policy-swap.marker"
+swap_log="${temporary_dir}/policy-swap-log"
+mkdir -p "${swap_log}"
+FAKE_KUBECTL_LOG_DIR="${swap_log}" \
+FAKE_POLICY_SWAP_ON_PIN_STAT=1 \
+FAKE_POLICY_SWAP_MARKER="${swap_marker}" \
+FAKE_POLICY_REPLACEMENT="${replacement_policy}" \
+FAKE_POLICY_FILE="${policy_file}" \
+  invoke_subject "${private_dir}/policy-swap-token" \
+  > "${temporary_dir}/policy-swap.stdout" 2> "${temporary_dir}/policy-swap.stderr"
+[[ -e "${swap_marker}" ]] || fail "policy replacement adversary did not run"
+require_literal "${swap_log}/configmap-policy.yaml" 'profileId: codex-native'
+forbid_pattern "${swap_log}/configmap-policy.yaml" 'attacker-controlled-replacement'
 
 printf 'substrate external-provider no-port-forward enrollment tests passed\n'

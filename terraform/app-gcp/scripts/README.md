@@ -52,13 +52,16 @@ never fills them with placeholders or defaults.
 
 `issue-substrate-external-provider-enrollment.sh` issues the single-use local
 Agent Host enrollment through the in-cluster ate-api service. It creates one
-unique restricted Pod, one policy ConfigMap and one deny-by-default
+unique restricted Pod, one policy ConfigMap and one run-scoped allow
 NetworkPolicy in the Substrate namespace, then removes all three on success or
-failure. It never creates a Kubernetes Secret for the credential, opens a
-port-forward, writes credential bytes to logs, or routes them through
-Terraform state. The only allowed Pod egress is exact cluster DNS peers plus
-the verified `kube-system/kube-dns` Service ClusterIP `/32` on TCP/UDP 53, and
-`app=ate-api-server` on TCP 443. No broad CIDR is admitted.
+failure. Terraform installs the persistent
+`substrate-enrollment-admin-default-deny` NetworkPolicy during bootstrap; the
+script verifies its exact fixed-label, empty ingress/egress contract before it
+creates any ephemeral resource. It never creates a Kubernetes Secret for the
+credential, opens a port-forward, writes credential bytes to logs, or routes
+them through Terraform state. The only allowed Pod egress is exact cluster DNS
+peers plus the verified `kube-system/kube-dns` Service ClusterIP `/32` on
+TCP/UDP 53, and `app=ate-api-server` on TCP 443. No broad CIDR is admitted.
 
 The tracked Substrate Helm values admit the fixed enrollment Pod labels to the
 ate-api NetworkPolicy. The script requires the internal endpoint, TLS SNI and
@@ -73,9 +76,12 @@ Before running it:
 1. obtain the reviewed release's exact digest-qualified `kubectl-ate` image;
 2. choose a reviewed minimal transfer image which supplies POSIX `sh`, `sleep`,
    `test`, `mkdir`, `chmod`, and `cat` and runs as uid/gid 65532;
-3. save the reviewed slot policy in a real, current-user-owned regular file
-   with mode `0400` or `0600`; and
-4. create a real current-user-owned output directory with no group/other
+3. apply the app-gcp bootstrap prerequisites, including the persistent
+   enrollment default-deny NetworkPolicy;
+4. save the reviewed slot policy in a real, current-user-owned regular file
+   with mode `0400` or `0600`, inside a real owner-writable/searchable directory
+   owned by the current user with no group/other permissions; and
+5. create a real current-user-owned output directory with no group/other
    permissions. The destination file must not exist.
 
 No placeholder digest is checked in. After the Substrate release supplies the
@@ -108,4 +114,6 @@ the main container terminates successfully and the file is present does the
 local script stream it directly into a same-directory `0600` temporary file.
 It publishes the final path with a hard link, so a concurrent file creation is
 never overwritten. The credential file itself must remain the sole handoff to
-the Agent Host.
+the Agent Host. The transferred bytes are accepted only when every byte is in
+the credential alphabet `A-Za-z0-9_-`; line terminators and other raw bytes are
+rejected.

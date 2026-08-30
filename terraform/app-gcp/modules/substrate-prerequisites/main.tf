@@ -313,6 +313,33 @@ resource "kubernetes_network_policy_v1" "substrate_dns_egress" {
   depends_on = [kubernetes_namespace_v1.substrate]
 }
 
+# This policy is deliberately persistent and selects the fixed enrollment Pod
+# identity before any one-shot issuer is created. The bootstrap script verifies
+# this exact contract before adding its run-scoped allow policy, so an ambiguous
+# client-side create can never leave a credential-bearing Pod unisolated.
+resource "kubernetes_network_policy_v1" "enrollment_admin_default_deny" {
+  count = var.bootstrap_enabled ? 1 : 0
+
+  metadata {
+    name      = "substrate-enrollment-admin-default-deny"
+    namespace = local.substrate_namespace
+    labels    = local.common_labels
+  }
+
+  spec {
+    pod_selector {
+      match_labels = {
+        "app.kubernetes.io/name"      = "substrate-enrollment-admin"
+        "app.kubernetes.io/component" = "enrollment-admin"
+        "app.kubernetes.io/part-of"   = "kagent-substrate-testbed"
+      }
+    }
+    policy_types = ["Ingress", "Egress"]
+  }
+
+  depends_on = [kubernetes_namespace_v1.substrate]
+}
+
 resource "kubernetes_network_policy_v1" "kagent_substrate_egress" {
   count = var.bootstrap_enabled ? 1 : 0
 
