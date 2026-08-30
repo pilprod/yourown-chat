@@ -338,32 +338,59 @@ local_partial=""
 pod_name=""
 configmap_name=""
 networkpolicy_name=""
-pod_created=0
-configmap_created=0
-networkpolicy_created=0
+pod_may_exist=0
+configmap_may_exist=0
+networkpolicy_may_exist=0
 
 cleanup() {
   local status=$?
+  local cleanup_failed=0
+  local pod_absent=1
   trap - EXIT INT TERM HUP
   set +o errexit
 
-  if [[ "${pod_created}" -eq 1 ]]; then
-    kubectl --context="${kube_context}" --namespace="${namespace}" --request-timeout=30s \
-      delete "pod/${pod_name}" --ignore-not-found --wait=true --timeout=60s >/dev/null 2>&1
+  # A create request can be accepted by the API server even when the client
+  # receives an ambiguous failure, so *_may_exist is set before every create.
+  # Never remove the isolation policy or policy ConfigMap unless Pod deletion
+  # is confirmed successful. A failed deletion leaves the Pod restricted and
+  # forces a non-zero exit for operator cleanup.
+  if [[ "${pod_may_exist}" -eq 1 ]]; then
+    if ! kubectl --context="${kube_context}" --namespace="${namespace}" --request-timeout=30s \
+      delete "pod/${pod_name}" --ignore-not-found --wait=true --timeout=60s >/dev/null 2>&1; then
+      pod_absent=0
+      cleanup_failed=1
+      printf 'Substrate enrollment cleanup could not confirm Pod deletion; retaining NetworkPolicy and ConfigMap for safe operator cleanup\n' >&2
+    fi
   fi
-  if [[ "${configmap_created}" -eq 1 ]]; then
-    kubectl --context="${kube_context}" --namespace="${namespace}" --request-timeout=30s \
-      delete "configmap/${configmap_name}" --ignore-not-found --wait=true --timeout=60s >/dev/null 2>&1
-  fi
-  if [[ "${networkpolicy_created}" -eq 1 ]]; then
-    kubectl --context="${kube_context}" --namespace="${namespace}" --request-timeout=30s \
-      delete "networkpolicy/${networkpolicy_name}" --ignore-not-found --wait=true --timeout=60s >/dev/null 2>&1
+
+  if [[ "${pod_absent}" -eq 1 ]]; then
+    if [[ "${configmap_may_exist}" -eq 1 ]] &&
+      ! kubectl --context="${kube_context}" --namespace="${namespace}" --request-timeout=30s \
+        delete "configmap/${configmap_name}" --ignore-not-found --wait=true --timeout=60s >/dev/null 2>&1; then
+      cleanup_failed=1
+      printf 'Substrate enrollment cleanup could not delete the policy ConfigMap\n' >&2
+    fi
+    if [[ "${networkpolicy_may_exist}" -eq 1 ]] &&
+      ! kubectl --context="${kube_context}" --namespace="${namespace}" --request-timeout=30s \
+        delete "networkpolicy/${networkpolicy_name}" --ignore-not-found --wait=true --timeout=60s >/dev/null 2>&1; then
+      cleanup_failed=1
+      printf 'Substrate enrollment cleanup could not delete the NetworkPolicy\n' >&2
+    fi
   fi
   if [[ -n "${local_partial}" && -f "${local_partial}" ]]; then
-    rm -f -- "${local_partial}"
+    if ! rm -f -- "${local_partial}"; then
+      cleanup_failed=1
+      printf 'Substrate enrollment cleanup could not delete the local partial credential file\n' >&2
+    fi
   fi
   if [[ -n "${scratch_dir}" && "${scratch_dir}" == /tmp/yourown-chat-enrollment.* && -d "${scratch_dir}" ]]; then
-    rm -rf -- "${scratch_dir}"
+    if ! rm -rf -- "${scratch_dir}"; then
+      cleanup_failed=1
+      printf 'Substrate enrollment cleanup could not delete its local scratch directory\n' >&2
+    fi
+  fi
+  if [[ "${cleanup_failed}" -eq 1 && "${status}" -eq 0 ]]; then
+    status=1
   fi
   exit "${status}"
 }
@@ -397,10 +424,10 @@ pod_name="substrate-enrollment-${run_suffix}"
 configmap_name="substrate-enrollment-policy-${run_suffix}"
 networkpolicy_name="substrate-enrollment-egress-${run_suffix}"
 
+configmap_may_exist=1
 kubectl --context="${kube_context}" --namespace="${namespace}" --request-timeout=30s \
   create configmap "${configmap_name}" \
   --from-file="slot-policy.yaml=${staged_policy}" >/dev/null
-configmap_created=1
 kubectl --context="${kube_context}" --namespace="${namespace}" --request-timeout=30s \
   label configmap "${configmap_name}" \
   app.kubernetes.io/name=substrate-enrollment-admin \
@@ -411,6 +438,7 @@ kubectl --context="${kube_context}" --namespace="${namespace}" --request-timeout
   annotate configmap "${configmap_name}" \
   "yourown.chat/slot-policy-sha256=${policy_sha_before}" >/dev/null
 
+networkpolicy_may_exist=1
 kubectl --context="${kube_context}" --namespace="${namespace}" --request-timeout=30s \
   create -f - >/dev/null <<EOF
 apiVersion: networking.k8s.io/v1
@@ -467,8 +495,8 @@ spec:
         - protocol: TCP
           port: 443
 EOF
-networkpolicy_created=1
 
+pod_may_exist=1
 kubectl --context="${kube_context}" --namespace="${namespace}" --request-timeout=30s \
   create -f - >/dev/null <<EOF
 apiVersion: v1
@@ -645,7 +673,6 @@ spec:
         - name: handoff
           mountPath: /var/run/substrate-enrollment
 EOF
-pod_created=1
 
 status_file="${scratch_dir}/main-exit-code"
 deadline=$((SECONDS + wait_timeout_seconds))

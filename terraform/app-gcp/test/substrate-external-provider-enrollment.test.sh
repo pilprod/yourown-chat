@@ -76,6 +76,9 @@ mkdir -p "${log_dir}"
 } >> "${log_dir}/calls.log"
 
 all_args="$*"
+if [[ "${all_args}" == *' delete pod/'* && "${FAKE_POD_DELETE_FAIL:-0}" == 1 ]]; then
+  exit 75
+fi
 if [[ "${all_args}" == config\ get-contexts* ]]; then
   printf '%s\n' 'fixture-context'
   exit 0
@@ -126,6 +129,7 @@ invoke_subject() {
   FAKE_MAIN_EXIT_CODE="${FAKE_MAIN_EXIT_CODE:-0}" \
   FAKE_CREDENTIAL_READY="${FAKE_CREDENTIAL_READY:-1}" \
   FAKE_CREDENTIAL="${FAKE_CREDENTIAL:-enrollment_A1-b2}" \
+  FAKE_POD_DELETE_FAIL="${FAKE_POD_DELETE_FAIL:-0}" \
     "${subject}" \
     --kubectl-ate-image "${KUBECTL_IMAGE:-${valid_kubectl_image}}" \
     --transfer-image "${TRANSFER_IMAGE:-${valid_transfer_image}}" \
@@ -241,6 +245,24 @@ FAKE_KUBECTL_LOG_DIR="${failure_log}" FAKE_MAIN_EXIT_CODE=7 \
 require_literal "${failure_log}/calls.log" 'delete> <pod/substrate-enrollment-'
 require_literal "${failure_log}/calls.log" 'delete> <configmap/substrate-enrollment-policy-'
 require_literal "${failure_log}/calls.log" 'delete> <networkpolicy/substrate-enrollment-egress-'
+
+cleanup_failure_log="${temporary_dir}/cleanup-failure-log"
+mkdir -p "${cleanup_failure_log}"
+cleanup_failure_output="${private_dir}/cleanup-failure-token"
+if FAKE_KUBECTL_LOG_DIR="${cleanup_failure_log}" FAKE_POD_DELETE_FAIL=1 \
+  invoke_subject "${cleanup_failure_output}" \
+  > "${temporary_dir}/cleanup-failure.stdout" \
+  2> "${temporary_dir}/cleanup-failure.stderr"; then
+  fail "Pod cleanup failure unexpectedly returned success"
+fi
+[[ -f "${cleanup_failure_output}" ]] ||
+  fail "successfully transferred credential was lost when cleanup failed"
+require_literal "${temporary_dir}/cleanup-failure.stderr" 'could not confirm Pod deletion; retaining NetworkPolicy and ConfigMap'
+require_literal "${cleanup_failure_log}/calls.log" 'delete> <pod/substrate-enrollment-'
+forbid_pattern "${cleanup_failure_log}/calls.log" 'delete> <configmap/substrate-enrollment-policy-'
+forbid_pattern "${cleanup_failure_log}/calls.log" 'delete> <networkpolicy/substrate-enrollment-egress-'
+forbid_pattern "${temporary_dir}/cleanup-failure.stdout" 'enrollment_A1-b2'
+forbid_pattern "${temporary_dir}/cleanup-failure.stderr" 'enrollment_A1-b2'
 
 validation_log="${temporary_dir}/validation-log"
 mkdir -p "${validation_log}"
