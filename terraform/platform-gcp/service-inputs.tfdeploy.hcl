@@ -12,6 +12,15 @@ locals {
         service_account = "kagent-controller"
       }]
     }
+    substrate = {
+      database_names       = ["substrate"]
+      password_secret_id   = "substrate-db-password"
+      connection_secret_id = "substrate-database-url"
+      password_rotation    = "1"
+      kubernetes_connection_secret_accessors = [{
+        namespace       = "ate-system"
+        service_account = "ate-api-server"
+      }]
+    }
   }
 }
-

@@ -311,6 +311,23 @@ variable "mattermost_calls_enabled" {
   default     = false
 }
 
+variable "agentgateway_enabled" {
+  type        = bool
+  description = "Install the official agentgateway control plane plus its pinned Gateway API/agentgateway CRDs."
+  default     = false
+}
+
+variable "agentgateway_public_ip_enabled" {
+  type        = bool
+  description = "Reserve a dedicated regional public IP for the application-owned agentgateway data plane."
+  default     = false
+
+  validation {
+    condition     = !var.agentgateway_public_ip_enabled || var.agentgateway_enabled
+    error_message = "agentgateway_public_ip_enabled requires agentgateway_enabled."
+  }
+}
+
 # --- Labels -----------------------------------------------------------------
 variable "extra_labels" {
   type        = map(string)
