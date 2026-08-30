@@ -38,8 +38,8 @@ locals {
     }
     # Product owner for the pinned Kagent integration and testbed profile.
     kagent = {
-      name       = "yourown-chat-kagent"
-      remote_uri = "https://github.com/pilprod/yourown-chat-kagent.git"
+      name       = "kagent"
+      remote_uri = "https://github.com/pilprod/kagent.git"
     }
     # Current (legacy) RTCD input kept verbatim so the first app-gcp plan is
     # a no-op. Switching to pilprod/rtcd is a catalog-only change owned by the
@@ -52,14 +52,16 @@ locals {
 
   vendor_chart_bundles = {
     kagent = {
-      provisioned         = true
+      provisioned = true
+      # Keep Terraform ownership until a reviewed two-step destroy=false state
+      # retention handoff and Cloud Deploy activation are executed together.
       application_enabled = true
       deployment_class    = "testbed"
       production_eligible = false
       candidate_tag       = "testbed-20260823-2"
       product_commit      = "46436057e55b39fa704d3cbd8fda571f6bb238d8"
       source_commit       = "b45990582595acea5f6e765b86a10b251c50d5c9"
-  
+
       supported_agent_runtimes = ["python"]
       image_digests = {
         controller  = "sha256:d1ea7b70bb8d97de9f0774d44b598971c944b3ab4e88294b0bb78e59d1a63c15"
@@ -67,7 +69,7 @@ locals {
         agent       = "sha256:5ee30b4584e8de3266eb3cc11f5c46e8627716339d04d14166c50bda5f0f4182"
         skills_init = "sha256:a1152800fbee8b9143877dcebb981b8a3b450c2c0c3904c8c61e8aa7ce87852a"
       }
-  
+
       charts = {
         crds = {
           release_name  = "kagent-crds"
@@ -84,12 +86,12 @@ locals {
           values_sha256 = "b5f09da13023cf3ff9d1a89025802539d5292ac5f93a194e10fed5d98a691807"
         }
       }
-  
+
       namespaces = {
         control  = { name = "kagent-system", quota_profile = "testbed-control" }
         workload = { name = "kagent-testbed", quota_profile = "testbed-workload" }
       }
-  
+
       endpoints = {
         controller = {
           namespace_key = "control"
@@ -116,14 +118,14 @@ locals {
           pod_selector  = { app = "model-fixture" }
         }
       }
-  
+
       external_sources = {
         edge_tunnel = {
           namespace    = "mcp-tunnel"
           pod_selector = { app = "mcp-tunnel" }
         }
       }
-  
+
       flows = {
         edge_ui = {
           source_kind     = "external"
@@ -150,7 +152,7 @@ locals {
           ports           = [{ port = 11434, protocol = "TCP" }]
         }
       }
-  
+
       kubernetes_api_egress_from = ["controller"]
       database_bindings = {
         primary = {
@@ -162,5 +164,21 @@ locals {
         }
       }
     }
+  }
+
+  # Both phases are intentionally closed. First, a reviewed artifact manifest
+  # may open bootstrap_enabled to create Secret Manager containers, namespaces,
+  # CRDs and RBAC while native_secret_sync_ready stays false. Only after values
+  # are populated and synchronized may a separate review open release_enabled;
+  # the retained controller handoff and other readiness attestations remain
+  # independent fail-closed gates.
+  kagent_substrate_delivery = {
+    bootstrap_enabled                  = false
+    release_enabled                    = false
+    production_eligible                = false
+    native_secret_sync_ready           = false
+    crd_ownership_ready                = false
+    controller_namespace_handoff_ready = false
+    external_broker_smoke_ready        = false
   }
 }

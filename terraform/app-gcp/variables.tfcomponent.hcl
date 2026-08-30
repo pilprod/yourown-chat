@@ -60,6 +60,44 @@ variable "gke_cluster_id" {
   description = "Full GKE cluster resource ID (projects/<p>/locations/<l>/clusters/<n>) shared by every Cloud Deploy target. Published by the platform stack (upstream_input.platform.gke_cluster_id)."
 }
 
+variable "agentgateway_platform" {
+  type = object({
+    enabled                    = bool
+    namespace                  = string
+    gateway_api_version        = string
+    gateway_class_name         = string
+    controller_name            = string
+    chart_version              = string
+    service_account_name       = string
+    read_cluster_role_name     = string
+    deployer_cluster_role_name = string
+  })
+  description = "Official agentgateway control-plane contract published by platform-gcp."
+  default = {
+    enabled                    = false
+    namespace                  = "agentgateway-system"
+    gateway_api_version        = "v1.6.0"
+    gateway_class_name         = "agentgateway"
+    controller_name            = "agentgateway.dev/agentgateway"
+    chart_version              = "v1.5.0"
+    service_account_name       = "agentgateway"
+    read_cluster_role_name     = "agentgateway-agentgateway-system"
+    deployer_cluster_role_name = "agentgateway-agentgateway-system-deployer"
+  }
+}
+
+variable "agentgateway_public_ip_address" {
+  type        = string
+  description = "Dedicated regional public address for the application-owned production-ineligible testbed Gateway."
+  default     = null
+}
+
+variable "agentgateway_public_ip_name" {
+  type        = string
+  description = "GCP address resource name used by the GKE L4 RBS annotation."
+  default     = null
+}
+
 variable "artifact_registry_location" {
   type        = string
   description = "Artifact Registry location the image CI pushes to. Published by the platform stack."
@@ -169,6 +207,134 @@ variable "vendor_chart_bundles" {
   }))
   description = "Service-owned vendor OCI chart bundles consumed by the reusable adapter."
   default     = {}
+}
+
+variable "kagent_substrate_delivery" {
+  type = object({
+    bootstrap_enabled                  = optional(bool, false)
+    release_enabled                    = optional(bool, false)
+    production_eligible                = optional(bool, false)
+    native_secret_sync_ready           = optional(bool, false)
+    crd_ownership_ready                = optional(bool, false)
+    controller_namespace_handoff_ready = optional(bool, false)
+    external_broker_smoke_ready        = optional(bool, false)
+    artifacts = optional(map(object({
+      source_repository        = string
+      source_commit            = string
+      artifact_manifest_sha256 = string
+      artifact_schema_version  = string
+      charts = object({
+        application = object({
+          ref     = string
+          version = string
+        })
+        crds = object({
+          ref     = string
+          version = string
+        })
+      })
+      image_refs = map(string)
+    })), {})
+    compatibility = optional(object({
+      kagent_rbac_create_false    = bool
+      substrate_rbac_create_false = bool
+      substrate_gateway_api_v1    = bool
+      substrate_go_module_commit  = string
+      }), {
+      kagent_rbac_create_false    = false
+      substrate_rbac_create_false = false
+      substrate_gateway_api_v1    = false
+      substrate_go_module_commit  = ""
+    })
+    helm_set_values     = optional(map(map(string)), {})
+    values_sha256       = optional(map(string), {})
+    kagent_health_url   = optional(string, "")
+    substrate_endpoint  = optional(string, "")
+    broker_server_name  = optional(string, "")
+    broker_service_name = optional(string, "api")
+    broker_service_port = optional(number, 8443)
+    atenet_egress_destinations = optional(map(object({
+      cidr = string
+      port = number
+    })), {})
+  })
+  description = "Fail-closed two-phase contract: bootstrap owns pre-sync infrastructure, while release admits the production-ineligible kagent/Substrate Helm workload only after native Secret synchronization."
+  default     = {}
+
+  validation {
+    condition = !(
+      var.kagent_substrate_delivery.bootstrap_enabled ||
+      var.kagent_substrate_delivery.release_enabled
+      ) || (
+      !var.kagent_substrate_delivery.production_eligible &&
+      toset(keys(var.kagent_substrate_delivery.artifacts)) == toset(["kagent", "substrate"]) &&
+      var.kagent_substrate_delivery.artifacts["kagent"].source_repository == "https://github.com/pilprod/kagent" &&
+      var.kagent_substrate_delivery.artifacts["substrate"].source_repository == "https://github.com/kagent-dev/substrate" &&
+      alltrue([
+        for artifact in values(var.kagent_substrate_delivery.artifacts) :
+        can(regex("^[0-9a-f]{40}$", artifact.source_commit)) &&
+        can(regex("^[0-9a-f]{64}$", artifact.artifact_manifest_sha256)) &&
+        can(regex("^[A-Za-z0-9][A-Za-z0-9._/-]*$", artifact.artifact_schema_version)) &&
+        alltrue([
+          for chart in values(artifact.charts) :
+          can(regex("^oci://[^@[:space:]]+@sha256:[0-9a-f]{64}$", chart.ref)) &&
+          can(regex("^v?[0-9]+\\.[0-9]+\\.[0-9]+", chart.version))
+        ]) &&
+        length(artifact.image_refs) > 0 &&
+        alltrue([
+          for ref in values(artifact.image_refs) :
+          can(regex("^[^@[:space:]]+/[^@[:space:]]+@sha256:[0-9a-f]{64}$", ref))
+        ])
+      ]) &&
+      toset(keys(var.kagent_substrate_delivery.artifacts["kagent"].image_refs)) == toset(["controller", "ui", "agent"]) &&
+      toset(keys(var.kagent_substrate_delivery.artifacts["substrate"].image_refs)) == toset(["ateapi", "atecontroller", "atenet", "agentgateway", "releaseVerifier"]) &&
+      can(regex("^ghcr\\.io/kagent-dev/substrate/substrate-release-verify@sha256:[0-9a-f]{64}$", var.kagent_substrate_delivery.artifacts["substrate"].image_refs.releaseVerifier)) &&
+      toset(keys(var.kagent_substrate_delivery.helm_set_values)) == toset(["kagent", "substrate"]) &&
+      var.kagent_substrate_delivery.compatibility.kagent_rbac_create_false &&
+      var.kagent_substrate_delivery.compatibility.substrate_rbac_create_false &&
+      var.kagent_substrate_delivery.compatibility.substrate_gateway_api_v1 &&
+      var.kagent_substrate_delivery.compatibility.substrate_go_module_commit == var.kagent_substrate_delivery.artifacts["substrate"].source_commit &&
+      var.kagent_substrate_delivery.kagent_health_url == "http://kagent-controller.kagent-system.svc.cluster.local:8083/health" &&
+      can(regex("^api\\.ate-system\\.svc\\.cluster\\.local:[0-9]+$", var.kagent_substrate_delivery.substrate_endpoint)) &&
+      can(regex("^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$", var.kagent_substrate_delivery.broker_server_name)) &&
+      var.kagent_substrate_delivery.broker_service_port >= 1 &&
+      var.kagent_substrate_delivery.broker_service_port <= 65535 &&
+      length(var.kagent_substrate_delivery.atenet_egress_destinations) > 0 &&
+      alltrue([
+        for destination in values(var.kagent_substrate_delivery.atenet_egress_destinations) :
+        can(cidrhost(destination.cidr, 0)) &&
+        destination.cidr != "0.0.0.0/0" &&
+        destination.cidr != "::/0" &&
+        destination.port >= 1 &&
+        destination.port <= 65535
+      ])
+    )
+    error_message = "Enabled bootstrap or release requires separate pilprod/kagent and kagent-dev/substrate manifests, digest-qualified app+CRD charts/images, an exact Substrate dependency commit, RBAC/Gateway API capabilities, a verifier and testbed-only endpoints. External Broker smoke is a post-bootstrap local-agent-ready gate."
+  }
+
+  validation {
+    condition = !(
+      var.kagent_substrate_delivery.bootstrap_enabled ||
+      var.kagent_substrate_delivery.release_enabled
+      ) || (
+      toset(keys(var.kagent_substrate_delivery.values_sha256)) == toset([
+        "kagent/kagent.values.yaml",
+        "kagent/kagent-testbed.values.yaml",
+        "kagent/substrate.values.yaml",
+        "kagent/substrate-testbed.values.yaml",
+      ]) &&
+      alltrue([for checksum in values(var.kagent_substrate_delivery.values_sha256) : can(regex("^[0-9a-f]{64}$", checksum))])
+    )
+    error_message = "Enabled testbed bootstrap or release must checksum exactly the four tracked kagent/Substrate values files."
+  }
+
+  validation {
+    condition = !var.kagent_substrate_delivery.release_enabled || (
+      var.kagent_substrate_delivery.bootstrap_enabled &&
+      var.kagent_substrate_delivery.native_secret_sync_ready
+    )
+    error_message = "release_enabled requires bootstrap_enabled=true and native_secret_sync_ready=true; bootstrap resources must exist before the Helm workload is admitted."
+  }
 }
 
 variable "additional_cloudsql_connection_secret_ids" {

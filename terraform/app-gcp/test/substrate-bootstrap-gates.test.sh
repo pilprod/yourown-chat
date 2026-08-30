@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+app_dir="$(cd "${script_dir}/.." && pwd -P)"
+components="${app_dir}/components.tfcomponent.hcl"
+variables="${app_dir}/variables.tfcomponent.hcl"
+outputs="${app_dir}/outputs.tfcomponent.hcl"
+service_inputs="${app_dir}/service-inputs.tfdeploy.hcl"
+prerequisites_dir="${app_dir}/modules/substrate-prerequisites"
+
+fail() {
+  printf 'substrate bootstrap gate test failed: %s\n' "$*" >&2
+  exit 1
+}
+
+require_literal() {
+  local file="$1"
+  local literal="$2"
+  rg -Fq -- "${literal}" "${file}" || fail "${file} is missing: ${literal}"
+}
+
+forbidden_literal() {
+  local file="$1"
+  local literal="$2"
+  if rg -Fq -- "${literal}" "${file}"; then
+    fail "${file} still contains forbidden legacy gate: ${literal}"
+  fi
+}
+
+# The checked-in service input opens neither phase and never fabricates an
+# operational attestation. Bootstrap is enabled only by a reviewed Stack input.
+require_literal "${service_inputs}" 'bootstrap_enabled                  = false'
+require_literal "${service_inputs}" 'release_enabled                    = false'
+require_literal "${service_inputs}" 'native_secret_sync_ready           = false'
+require_literal "${service_inputs}" 'crd_ownership_ready                = false'
+require_literal "${service_inputs}" 'controller_namespace_handoff_ready = false'
+require_literal "${service_inputs}" 'external_broker_smoke_ready        = false'
+forbidden_literal "${service_inputs}" 'enabled                            = false'
+
+# Bootstrap owns only prerequisites that must exist before native Secret sync.
+require_literal "${variables}" 'bootstrap_enabled                  = optional(bool, false)'
+require_literal "${variables}" 'release_enabled                    = optional(bool, false)'
+require_literal "${variables}" 'var.kagent_substrate_delivery.bootstrap_enabled &&'
+require_literal "${variables}" 'var.kagent_substrate_delivery.native_secret_sync_ready'
+require_literal "${components}" 'var.kagent_substrate_delivery.bootstrap_enabled ? {'
+require_literal "${components}" 'bootstrap_enabled          = var.kagent_substrate_delivery.bootstrap_enabled'
+require_literal "${components}" 'release_enabled            = var.kagent_substrate_delivery.release_enabled'
+require_literal "${components}" 'native_secret_sync_ready   = var.kagent_substrate_delivery.native_secret_sync_ready'
+require_literal "${prerequisites_dir}/main.tf" 'count = var.bootstrap_enabled ? 1 : 0'
+require_literal "${prerequisites_dir}/main.tf" 'for_each = var.bootstrap_enabled ? var.atenet_egress_destinations : {}'
+require_literal "${prerequisites_dir}/outputs.tf" 'output "bootstrap_ready"'
+forbidden_literal "${prerequisites_dir}/main.tf" 'var.enabled'
+forbidden_literal "${prerequisites_dir}/main.tf" 'condition     = var.native_secret_sync_ready'
+
+# The contract itself makes the second phase structurally dependent on the
+# bootstrap phase and an explicit native Secret synchronization attestation.
+require_literal "${variables}" '!var.kagent_substrate_delivery.release_enabled || ('
+require_literal "${variables}" 'var.kagent_substrate_delivery.bootstrap_enabled &&'
+require_literal "${outputs}" 'output "kagent_substrate_bootstrap_ready"'
+require_literal "${outputs}" 'component.substrate_prerequisites.bootstrap_ready'
+require_literal "${outputs}" 'component.substrate_prerequisites.release_ready'
+
+printf 'substrate bootstrap/release gate tests passed\n'

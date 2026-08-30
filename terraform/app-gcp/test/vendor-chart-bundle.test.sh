@@ -27,23 +27,29 @@ require_literal() {
   rg -Fq -- "$value" "$file" || fail "$file is missing: $value"
 }
 
+require_pattern() {
+  local file="$1"
+  local pattern="$2"
+  rg -q -- "$pattern" "$file" || fail "$file is missing pattern: $pattern"
+}
+
 for file in main.tf variables.tf outputs.tf versions.tf README.md; do
   [[ -f "$module_dir/$file" ]] || fail "missing module file: $file"
 done
 
 forbidden_vendor="$(printf '%s%s' 'ka' 'gent')"
-if rg -ni -- "$forbidden_vendor" "$module_dir" "$0" "$components" "$deployment"; then
-  fail "the public adapter contains a vendor-specific name"
+if rg -ni -- "$forbidden_vendor" "$module_dir"; then
+  fail "the generic vendor chart bundle adapter contains a vendor-specific name"
 fi
 
-require_literal "$deployment" 'vendor_chart_bundles   = local.vendor_chart_bundles'
+require_pattern "$deployment" '^[[:space:]]*vendor_chart_bundles[[:space:]]*=[[:space:]]*local\.vendor_chart_bundles$'
 require_literal "$service_inputs" 'vendor_chart_bundles = {'
 require_literal "$components" 'component "vendor_chart_bundle"'
 require_literal "$components" 'source = "./modules/vendor-chart-bundle"'
 require_literal "$components" 'for_each = var.vendor_chart_bundles'
 require_literal "$components" 'bundle_key          = each.key'
 require_literal "$components" 'database_secret_ids = var.additional_cloudsql_connection_secret_ids'
-require_literal "$platform_dir/platform.tfdeploy.hcl" 'additional_database_users = local.additional_database_users'
+require_pattern "$platform_dir/platform.tfdeploy.hcl" '^[[:space:]]*additional_database_users[[:space:]]*=[[:space:]]*local\.additional_database_users$'
 require_literal "$platform_service_inputs" 'additional_database_users = {'
 require_literal "$platform_dir/outputs.tfcomponent.hcl" 'output "additional_cloudsql_connection_secret_ids"'
 require_literal "$edge_deployment" 'for hostname, route in local.private_http_routes :'

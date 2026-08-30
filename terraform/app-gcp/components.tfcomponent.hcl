@@ -8,6 +8,21 @@ locals {
     managed-by  = "terraform"
     stack       = "yourown-chat-app-gcp"
   }, var.extra_labels)
+
+  # Cloud Deploy may upgrade the existing `kagent` release only after the
+  # Terraform application resource has been retained in-cluster and removed
+  # from state, the controller namespace handoff is complete, and both fork
+  # CRD charts are owned by Terraform. None of these are inferred from a live
+  # Helm status.
+  kagent_substrate_crd_prerequisites_ready = alltrue([
+    contains(keys(var.vendor_chart_bundles), "kagent"),
+    try(var.vendor_chart_bundles["kagent"].provisioned, false),
+    !try(var.vendor_chart_bundles["kagent"].application_enabled, true),
+    try(var.vendor_chart_bundles["kagent"].charts.crds.ref, null) == try(var.kagent_substrate_delivery.artifacts["kagent"].charts.crds.ref, null),
+    try(var.vendor_chart_bundles["kagent"].charts.crds.version, null) == try(var.kagent_substrate_delivery.artifacts["kagent"].charts.crds.version, null),
+    var.kagent_substrate_delivery.crd_ownership_ready,
+    var.kagent_substrate_delivery.controller_namespace_handoff_ready,
+  ])
 }
 
 component "clouddeploy" {
@@ -276,19 +291,20 @@ component "secrets" {
     labels            = local.common_labels
     kms_key_name      = var.cmek_key_id
 
-    secrets = {
-      # special = false: the value is embedded in a postgres:// DSN, where
-      # @ : / would corrupt the URL.
-      "dev-postgres-password" = {
-        generate  = true
-        special   = false
-        accessors = [var.workload_identity_members.dev]
-      }
-      # Seeded default so the CSI mount has >=1 version and the pod starts;
-      # gateway ships disabled. Go live by adding a new version out-of-band:
-      #   gcloud secrets versions add matterbridge-tokens --data-file=matterbridge.toml
-      "matterbridge-tokens" = {
-        value     = <<-TOML
+    secrets = merge(
+      {
+        # special = false: the value is embedded in a postgres:// DSN, where
+        # @ : / would corrupt the URL.
+        "dev-postgres-password" = {
+          generate  = true
+          special   = false
+          accessors = [var.workload_identity_members.dev]
+        }
+        # Seeded default so the CSI mount has >=1 version and the pod starts;
+        # gateway ships disabled. Go live by adding a new version out-of-band:
+        #   gcloud secrets versions add matterbridge-tokens --data-file=matterbridge.toml
+        "matterbridge-tokens" = {
+          value     = <<-TOML
           # Default seeded by Terraform so the matterbridge pod starts on init.
           # Replace Token/Team and set enable=true (add a new Secret Manager
           # version) to bridge the prod Mattermost.
@@ -310,59 +326,86 @@ component "secrets" {
           account="mattermost.prod"
           channel="off-topic"
         TOML
-        accessors = [var.workload_identity_members.matterbridge]
-      }
-      # Seed placeholders so app-gcp can safely materialize the Kubernetes
-      # Secret while Google login remains disabled. Add real Secret Manager
-      # versions before setting mattermost_google_auth_enabled=true.
-      "mattermost-google-client-id" = {
-        value     = "REPLACE_ME_GOOGLE_CLIENT_ID"
-        accessors = []
-      }
-      "mattermost-google-client-secret" = {
-        value     = "REPLACE_ME_GOOGLE_CLIENT_SECRET"
-        accessors = []
-      }
-      # Use a separate OAuth client for dev so its redirect URI and credential
-      # can be tested and rotated without expanding the production client's
-      # trust boundary.
-      "dev-mattermost-google-client-id" = {
-        value     = "REPLACE_ME_DEV_GOOGLE_CLIENT_ID"
-        accessors = []
-      }
-      "dev-mattermost-google-client-secret" = {
-        value     = "REPLACE_ME_DEV_GOOGLE_CLIENT_SECRET"
-        accessors = []
-      }
-      # MCP credentials are read directly by GKE's Secret Manager CSI add-on.
-      # Terraform manages only containers/IAM and never reads current values.
-      "mcp-terraform-hcp-token" = {
-        value     = "REPLACE_ME_HCP_TEAM_TOKEN"
-        accessors = [var.workload_identity_members["mcp-terraform-stacks"]]
-      }
-      "backend-control-api-token" = {
-        generate  = true
-        special   = false
-        accessors = [var.workload_identity_members["backend-control-api"]]
-      }
-      "yourown-chat-identity-admin-token" = {
-        generate  = true
-        special   = false
-        accessors = [var.workload_identity_members["identity-admin"]]
-      }
-      "yourown-chat-passkey-record-key" = {
-        generate  = true
-        length    = 64
-        special   = false
-        accessors = [var.workload_identity_members["auth-api"]]
-      }
-      # The hybrid X-Wing private key is generated out-of-band after review.
-      # Terraform owns only the empty container and least-privilege IAM so the
-      # private value never enters HCL, plan output or Terraform state.
-      "yourown-chat-transport-private-key" = {
-        accessors = [var.workload_identity_members["transport-api"]]
-      }
-    }
+          accessors = [var.workload_identity_members.matterbridge]
+        }
+        # Seed placeholders so app-gcp can safely materialize the Kubernetes
+        # Secret while Google login remains disabled. Add real Secret Manager
+        # versions before setting mattermost_google_auth_enabled=true.
+        "mattermost-google-client-id" = {
+          value     = "REPLACE_ME_GOOGLE_CLIENT_ID"
+          accessors = []
+        }
+        "mattermost-google-client-secret" = {
+          value     = "REPLACE_ME_GOOGLE_CLIENT_SECRET"
+          accessors = []
+        }
+        # Use a separate OAuth client for dev so its redirect URI and credential
+        # can be tested and rotated without expanding the production client's
+        # trust boundary.
+        "dev-mattermost-google-client-id" = {
+          value     = "REPLACE_ME_DEV_GOOGLE_CLIENT_ID"
+          accessors = []
+        }
+        "dev-mattermost-google-client-secret" = {
+          value     = "REPLACE_ME_DEV_GOOGLE_CLIENT_SECRET"
+          accessors = []
+        }
+        # MCP credentials are read directly by GKE's Secret Manager CSI add-on.
+        # Terraform manages only containers/IAM and never reads current values.
+        "mcp-terraform-hcp-token" = {
+          value     = "REPLACE_ME_HCP_TEAM_TOKEN"
+          accessors = [var.workload_identity_members["mcp-terraform-stacks"]]
+        }
+        "backend-control-api-token" = {
+          generate  = true
+          special   = false
+          accessors = [var.workload_identity_members["backend-control-api"]]
+        }
+        "yourown-chat-identity-admin-token" = {
+          generate  = true
+          special   = false
+          accessors = [var.workload_identity_members["identity-admin"]]
+        }
+        "yourown-chat-passkey-record-key" = {
+          generate  = true
+          length    = 64
+          special   = false
+          accessors = [var.workload_identity_members["auth-api"]]
+        }
+        # The hybrid X-Wing private key is generated out-of-band after review.
+        # Terraform owns only the empty container and least-privilege IAM so the
+        # private value never enters HCL, plan output or Terraform state.
+        "yourown-chat-transport-private-key" = {
+          accessors = [var.workload_identity_members["transport-api"]]
+        }
+      },
+      var.kagent_substrate_delivery.bootstrap_enabled ? {
+        # External Substrate control-plane credential containers. Values are
+        # populated and synchronized to native Kubernetes Secrets only through a
+        # separately reviewed bootstrap; Terraform never reads PEM or pool JSON.
+        "substrate-ate-api-tls" = {
+          accessors = []
+        }
+        "substrate-ate-controller-tls" = {
+          accessors = []
+        }
+        "substrate-atenet-egress-server-tls" = {
+          accessors = []
+        }
+        "substrate-atenet-egress-client-tls" = {
+          accessors = []
+        }
+        "substrate-actor-id-jwt-pool" = {
+          accessors = []
+        }
+        "substrate-actor-id-ca-pool" = {
+          accessors = []
+        }
+        "kagent-ate-client-tls" = {
+          accessors = []
+        }
+      } : {},
+    )
   }
 
   providers = {
@@ -813,6 +856,83 @@ component "vendor_chart_bundle" {
 # unmaterialized until platform-gcp publishes the repository; it reuses the
 # deploy repository link owned by deploy_release and keeps its own durable
 # evidence bucket. It creates no Cloud Deploy release and deploys nothing.
+component "substrate_prerequisites" {
+  source = "./modules/substrate-prerequisites"
+
+  inputs = {
+    bootstrap_enabled          = var.kagent_substrate_delivery.bootstrap_enabled
+    release_enabled            = var.kagent_substrate_delivery.release_enabled
+    gke_cluster_id             = var.gke_cluster_id
+    native_secret_sync_ready   = var.kagent_substrate_delivery.native_secret_sync_ready
+    cloudsql_private_ip        = var.cloudsql_private_ip
+    atenet_egress_destinations = var.kagent_substrate_delivery.atenet_egress_destinations
+    substrate_crd_chart        = try(var.kagent_substrate_delivery.artifacts["substrate"].charts.crds, { ref = "", version = "" })
+    secret_contract = {
+      postgres = {
+        secret_manager_id = lookup(var.additional_cloudsql_connection_secret_ids, "substrate", "")
+        namespace         = "ate-system"
+        kubernetes_name   = "substrate-cloud-sql"
+        keys              = ["connection-string"]
+      }
+      api_tls = {
+        secret_manager_id = try(component.secrets.secret_ids["substrate-ate-api-tls"], "")
+        namespace         = "ate-system"
+        kubernetes_name   = "substrate-ate-api-tls"
+        keys              = ["server-credential-bundle.pem", "client-ca.pem"]
+      }
+      controller_tls = {
+        secret_manager_id = try(component.secrets.secret_ids["substrate-ate-controller-tls"], "")
+        namespace         = "ate-system"
+        kubernetes_name   = "substrate-ate-controller-tls"
+        keys              = ["client-credential-bundle.pem", "server-ca.pem"]
+      }
+      egress_gateway_tls = {
+        secret_manager_id = try(component.secrets.secret_ids["substrate-atenet-egress-server-tls"], "")
+        namespace         = "ate-system"
+        kubernetes_name   = "substrate-atenet-egress-server-tls"
+        keys              = ["server-credential-bundle.pem", "server-ca.pem"]
+      }
+      egress_authorizer_tls = {
+        secret_manager_id = try(component.secrets.secret_ids["substrate-atenet-egress-client-tls"], "")
+        namespace         = "ate-system"
+        kubernetes_name   = "substrate-atenet-egress-client-tls"
+        keys              = ["client-credential-bundle.pem", "server-ca.pem"]
+      }
+      actor_id_jwt_pool = {
+        secret_manager_id = try(component.secrets.secret_ids["substrate-actor-id-jwt-pool"], "")
+        namespace         = "ate-system"
+        kubernetes_name   = "actor-id-jwt-pool"
+        keys              = ["pool"]
+      }
+      actor_id_ca_pool = {
+        secret_manager_id = try(component.secrets.secret_ids["substrate-actor-id-ca-pool"], "")
+        namespace         = "ate-system"
+        kubernetes_name   = "actor-id-ca-pool"
+        keys              = ["pool"]
+      }
+      kagent_client_tls = {
+        secret_manager_id = try(component.secrets.secret_ids["kagent-ate-client-tls"], "")
+        namespace         = "kagent-system"
+        kubernetes_name   = "kagent-ate-client-tls"
+        keys              = ["client-credential-bundle.pem", "server-ca.pem"]
+      }
+    }
+    agentgateway = {
+      namespace                  = var.agentgateway_platform.namespace
+      service_account_name       = var.agentgateway_platform.service_account_name
+      deployer_cluster_role_name = var.agentgateway_platform.deployer_cluster_role_name
+    }
+    labels = local.common_labels
+  }
+
+  providers = {
+    helm       = provider.helm.this
+    kubernetes = provider.kubernetes.this
+  }
+
+  depends_on = [component.vendor_chart_bundle]
+}
+
 component "chart_publish" {
   source = "./modules/chart-publish"
 
