@@ -795,3 +795,57 @@ component "artifact_registry_helm" {
     google = provider.google.this
   }
 }
+
+# Dedicated private immutable release mirror for the reviewed kagent fork. The
+# app-gcp Cloud Build rail writes only passing final images and charts here;
+# Artifact Registry prevents their version tags from ever being moved. Public
+# distribution is promoted separately to GHCR because the project deliberately
+# enforces Domain Restricted Sharing and cannot grant access to allUsers.
+component "artifact_registry_kagent" {
+  source = "./modules/artifact-registry"
+
+  inputs = {
+    project_id    = component.project_services.project_id
+    location      = var.region
+    repository_id = var.kagent_registry_repository_id
+    description   = "Private immutable mirror of reviewed kagent fork preview images and OCI charts, published by app-gcp and consumed by digest."
+    kms_key_name  = var.artifact_registry_kms_key_name
+    labels        = local.common_labels
+
+    immutable_tags         = true
+    keep_untagged_days     = 0
+    keep_recent_versions   = 0
+    vulnerability_scanning = false
+  }
+
+  providers = {
+    google = provider.google.this
+  }
+}
+
+# Private candidate repository. Cloud Build pushes only build-ID-qualified
+# images here, scans their digests, then promotes passing digests into the
+# private immutable repository above. Old candidates are disposable and are
+# automatically removed.
+component "artifact_registry_kagent_staging" {
+  source = "./modules/artifact-registry"
+
+  inputs = {
+    project_id    = component.project_services.project_id
+    location      = var.region
+    repository_id = var.kagent_staging_registry_repository_id
+    description   = "Private disposable kagent candidate images scanned before promotion into the immutable release mirror."
+    kms_key_name  = var.artifact_registry_kms_key_name
+    labels        = local.common_labels
+
+    immutable_tags         = false
+    keep_untagged_days     = 1
+    keep_recent_versions   = 0
+    delete_tagged_days     = 1
+    vulnerability_scanning = false
+  }
+
+  providers = {
+    google = provider.google.this
+  }
+}

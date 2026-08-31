@@ -12,6 +12,13 @@ resource "google_artifact_registry_repository" "this" {
   kms_key_name  = var.kms_key_name
   labels        = var.labels
 
+  lifecycle {
+    precondition {
+      condition     = !var.immutable_tags || var.delete_tagged_days == 0
+      error_message = "delete_tagged_days cannot be enabled for an immutable release repository."
+    }
+  }
+
   docker_config {
     immutable_tags = var.immutable_tags
   }
@@ -45,6 +52,18 @@ resource "google_artifact_registry_repository" "this" {
       action = "KEEP"
       most_recent_versions {
         keep_count = var.keep_recent_versions
+      }
+    }
+  }
+
+  dynamic "cleanup_policies" {
+    for_each = var.delete_tagged_days > 0 ? [1] : []
+    content {
+      id     = "delete-old-tagged"
+      action = "DELETE"
+      condition {
+        tag_state  = "TAGGED"
+        older_than = "${var.delete_tagged_days * 24}h"
       }
     }
   }
