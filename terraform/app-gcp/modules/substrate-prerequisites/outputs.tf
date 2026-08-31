@@ -75,3 +75,13 @@ output "enrollment_admin_service_account" {
   description = "Exact KSA subject allowed to create external-provider enrollments."
   value       = "system:serviceaccount:${local.substrate_namespace}:ate-enrollment-admin"
 }
+
+output "rbac_names" {
+  description = "Stable Terraform-owned RBAC names created in parallel with, and deliberately distinct from, Helm-owned RBAC."
+  value       = local.rbac_names
+}
+
+output "kagent_rbac_targets" {
+  description = "Exact controller, declarative agent, and migration-only namespaces receiving the parallel kagent RBAC set."
+  value       = local.kagent_targets
+}

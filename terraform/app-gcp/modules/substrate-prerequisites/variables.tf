@@ -6,7 +6,7 @@ variable "bootstrap_enabled" {
 
 variable "adopt_existing" {
   type        = bool
-  description = "One-shot import of the exact existing ate-system namespace, authentication ConfigMap, Substrate RBAC and substrate/substrate-crds Helm releases; clear after the staged bootstrap/application handoff is complete."
+  description = "One-shot import of the exact existing ate-system namespace, authentication ConfigMap and substrate/substrate-crds Helm releases; bootstrap creates parallel Terraform RBAC instead of importing Helm-owned names. Clear after the staged bootstrap/application handoff is complete."
   default     = false
 
   validation {
@@ -114,11 +114,12 @@ variable "local_provider_only" {
 
 variable "kagent_control_planes" {
   type = map(object({
-    namespace        = string
-    release_name     = string
-    agent_namespaces = map(string)
+    namespace                  = string
+    release_name               = string
+    agent_namespaces           = map(string)
+    migration_agent_namespaces = optional(map(string), {})
   }))
-  description = "Exact dev/prod kagent controllers and their disjoint declarative per-agent namespaces."
+  description = "Exact dev/prod kagent controllers, disjoint declarative per-agent namespaces, and the explicit prod-only RBAC bridge for the live legacy namespace."
 
   validation {
     condition = (
@@ -127,6 +128,8 @@ variable "kagent_control_planes" {
       try(var.kagent_control_planes.prod.release_name == "kagent", false) &&
       try(var.kagent_control_planes.dev.namespace == "kagent-dev", false) &&
       try(var.kagent_control_planes.dev.release_name == "kagent-dev", false) &&
+      try(var.kagent_control_planes.prod.migration_agent_namespaces == tomap({ legacy = "kagent-testbed" }), false) &&
+      try(length(var.kagent_control_planes.dev.migration_agent_namespaces) == 0, false) &&
       alltrue(flatten([
         for control_key, control in var.kagent_control_planes : concat(
           [
@@ -140,17 +143,23 @@ variable "kagent_control_planes" {
             can(regex("^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$", namespace)) &&
             !contains(["ate-system", "kagent-system", "kagent-dev"], namespace)
           ],
+          [
+            for migration_id, namespace in control.migration_agent_namespaces :
+            can(regex("^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$", migration_id)) &&
+            can(regex("^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$", namespace)) &&
+            !contains(["ate-system", "kagent-system", "kagent-dev"], namespace)
+          ],
         )
       ])) &&
       length(flatten([
         for control in values(var.kagent_control_planes) :
-        concat([control.namespace], values(control.agent_namespaces))
+        concat([control.namespace], values(control.agent_namespaces), values(control.migration_agent_namespaces))
         ])) == length(distinct(flatten([
           for control in values(var.kagent_control_planes) :
-          concat([control.namespace], values(control.agent_namespaces))
+          concat([control.namespace], values(control.agent_namespaces), values(control.migration_agent_namespaces))
       ])))
     )
-    error_message = "kagent_control_planes must define exact dev/prod controllers with unique DNS-safe, non-overlapping per-agent namespaces."
+    error_message = "kagent_control_planes must define exact dev/prod controllers with unique DNS-safe namespaces, including only the prod legacy=kagent-testbed migration RBAC bridge."
   }
 }
 

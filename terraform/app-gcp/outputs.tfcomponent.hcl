@@ -22,6 +22,40 @@ output "kagent_substrate_bootstrap_ready" {
   )
 }
 
+output "kagent_substrate_rbac_names" {
+  type = object({
+    kagent = object({
+      getter_role              = string
+      getter_role_binding      = string
+      writer_role              = string
+      writer_role_binding      = string
+      leader_role              = string
+      leader_role_binding      = string
+      env_sources_role         = string
+      env_sources_role_binding = string
+    })
+    substrate = object({
+      api_role                = string
+      api_role_binding        = string
+      controller_role         = string
+      controller_role_binding = string
+    })
+  })
+  description = "Stable additive RBAC names used to hand kagent and Substrate from Helm to Terraform without an authorization gap."
+  value       = component.substrate_prerequisites.rbac_names
+}
+
+output "kagent_rbac_targets" {
+  type = map(object({
+    namespace            = string
+    controller_namespace = string
+    release_name         = string
+    migration_only       = bool
+  }))
+  description = "Exact namespaces receiving additive kagent RBAC, including the temporary prod legacy bridge."
+  value       = component.substrate_prerequisites.kagent_rbac_targets
+}
+
 output "kagent_substrate_delivery_ready" {
   type        = bool
   description = "Whether immutable application pins, Terraform CRD ownership and native Substrate secret synchronization are all enabled."

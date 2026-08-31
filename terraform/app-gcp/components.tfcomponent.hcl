@@ -887,6 +887,9 @@ component "substrate_prerequisites" {
         agent_namespaces = {
           codex = var.vendor_chart_bundles["kagent"].namespaces["codex"].name
         }
+        migration_agent_namespaces = {
+          legacy = var.vendor_chart_bundles["kagent"].namespaces["workload"].name
+        }
       }
       dev = {
         namespace    = var.vendor_chart_bundles["kagent"].namespaces["dev_control"].name
@@ -894,6 +897,7 @@ component "substrate_prerequisites" {
         agent_namespaces = {
           codex = var.vendor_chart_bundles["kagent"].namespaces["dev_codex"].name
         }
+        migration_agent_namespaces = {}
       }
     }
     secret_contract = {
