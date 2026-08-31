@@ -6,7 +6,7 @@ variable "bootstrap_enabled" {
 
 variable "adopt_existing" {
   type        = bool
-  description = "One-shot import of the exact existing ate-system namespace, authentication ConfigMap, Substrate RBAC and substrate/substrate-crds Helm releases; clear after the staged bootstrap/application handoff is complete."
+  description = "One-shot import of the exact existing ate-system namespace, authentication ConfigMap and substrate/substrate-crds Helm releases; bootstrap creates parallel Terraform RBAC instead of importing Helm-owned names. Clear after the staged bootstrap/application handoff is complete."
   default     = false
 
   validation {

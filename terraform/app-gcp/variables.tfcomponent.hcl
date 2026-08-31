@@ -532,7 +532,7 @@ variable "adopt_existing_cluster_bootstrap_releases" {
 
 variable "adopt_existing_substrate" {
   type        = bool
-  description = "One-shot import of the exact pre-existing ate-system namespace, authentication ConfigMap, Substrate RBAC and substrate/substrate-crds Helm releases. Keep true through the staged bootstrap/application imports, then clear it."
+  description = "One-shot import of the exact pre-existing ate-system namespace, authentication ConfigMap and substrate/substrate-crds Helm releases. Parallel Terraform RBAC is created under non-Helm names and is never imported from the releases. Keep true through the staged bootstrap/application imports, then clear it."
   default     = false
 }
 

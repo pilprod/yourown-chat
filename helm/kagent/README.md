@@ -41,30 +41,33 @@ Substrate.
 
 `adopt_existing_substrate=true` is intentionally specific to the current full
 cluster prestate. It expects the `ate-system` namespace,
-`ate-api-authentication` ConfigMap, `substrate-crds` and `substrate` releases,
-ClusterRoles `ate-api-server-role` and `ate-controller`, and ClusterRoleBindings
-`ate-api-server-binding` and `ate-controller` all to exist. It is not an
-import-if-present mode: a missing object makes the corresponding declarative
-import fail.
+`ate-api-authentication` ConfigMap, and `substrate-crds` and `substrate` releases
+to exist. It is not an import-if-present mode: a missing object makes the
+corresponding declarative import fail. Existing Helm-owned RBAC is never
+imported. Bootstrap first creates additive Terraform-owned RBAC under stable,
+non-Helm names for the same service accounts and with the same permissions.
 
 Before each adoption apply, confirm the recorded compatibility inventory still
 matches the cluster. Then enable bootstrap only with both
 `adopt_existing_substrate=true` and
 `adopt_existing_substrate_compatibility_confirmed=true`; adoption fails closed
 without that explicit attestation. That apply imports the namespace, CRD
-release, ConfigMap and four RBAC objects, and adds
-`helm.sh/resource-policy=keep` to the RBAC objects while the existing application
-release still renders them. Keep both adoption inputs enabled for the later
-application stage. The reviewed audit traced dirty live commit `aa5e123` to
+release and ConfigMap, and creates the parallel kagent and Substrate RBAC while
+the existing application release still renders its old objects. Keep both
+adoption inputs enabled for the later application stage. The reviewed audit
+traced dirty live commit `aa5e123` to
 clean merge-successor `e9ed68` / `v0.0.22` (parents: upstream `0118c301` and
 external-provider `fbdc766`), confirmed `aa5e123` is an ancestor, found the
 live-to-target CRD server diff description-only, and identified the Gateway as
 a target addition absent from the live chart. The boolean remains an explicit
 per-apply acknowledgment so this evidence cannot silently authorize a drifted
 prestate. After bootstrap and Secret synchronization, `release_enabled=true`
-imports the application release before the `rbac.create=false` upgrade. Clear
-both adoption inputs only after all eight addresses are state-owned and the
-rollout succeeds. The checked-in application release remains disabled.
+imports the application release before the `rbac.create=false` upgrade. That
+upgrade may prune only the old Helm-owned RBAC; the parallel Terraform-owned
+objects remain outside the Helm stored manifest. Clear both adoption inputs
+only after all four imported addresses are state-owned, the parallel bindings
+are verified and the rollout succeeds. The checked-in application release
+remains disabled.
 
 Substrate's Terraform-managed application chart owns the one `Gateway` and
 `TLSRoute`. There is no duplicate Gateway/TLSRoute owner in either kagent

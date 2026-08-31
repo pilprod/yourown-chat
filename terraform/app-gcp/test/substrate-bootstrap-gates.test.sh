@@ -117,13 +117,6 @@ require_literal "${prerequisites_dir}/main.tf" 'for_each = var.adopt_existing &&
 require_literal "${prerequisites_dir}/main.tf" 'to       = helm_release.substrate_crds[0]'
 require_literal "${prerequisites_dir}/main.tf" 'for_each = var.adopt_existing && var.bootstrap_enabled ? toset(["${local.substrate_namespace}/ate-api-authentication"]) : toset([])'
 require_literal "${prerequisites_dir}/main.tf" 'to       = kubernetes_config_map_v1.authentication[0]'
-require_literal "${prerequisites_dir}/main.tf" 'for_each = var.adopt_existing && var.bootstrap_enabled ? toset(["ate-api-server-role"]) : toset([])'
-require_literal "${prerequisites_dir}/main.tf" 'to       = kubernetes_cluster_role_v1.substrate_api[0]'
-require_literal "${prerequisites_dir}/main.tf" 'for_each = var.adopt_existing && var.bootstrap_enabled ? toset(["ate-api-server-binding"]) : toset([])'
-require_literal "${prerequisites_dir}/main.tf" 'to       = kubernetes_cluster_role_binding_v1.substrate_api[0]'
-require_literal "${prerequisites_dir}/main.tf" 'for_each = var.adopt_existing && var.bootstrap_enabled ? toset(["ate-controller"]) : toset([])'
-require_literal "${prerequisites_dir}/main.tf" 'to       = kubernetes_cluster_role_v1.substrate_controller[0]'
-require_literal "${prerequisites_dir}/main.tf" 'to       = kubernetes_cluster_role_binding_v1.substrate_controller[0]'
 require_literal "${prerequisites_dir}/main.tf" 'for_each = var.adopt_existing && var.release_enabled ? toset(["${local.substrate_namespace}/substrate"]) : toset([])'
 require_literal "${prerequisites_dir}/main.tf" 'to       = helm_release.substrate_application[0]'
 require_literal "${prerequisites_dir}/variables.tf" 'variable "adopt_existing_substrate_compatibility_confirmed"'
@@ -171,7 +164,6 @@ authentication_block="$(sed -n '/resource "kubernetes_config_map_v1" "authentica
 
 while read -r resource_type resource_name; do
   rbac_block="$(sed -n "/resource \"${resource_type}\" \"${resource_name}\" {/,/^}/p" "${prerequisites_dir}/main.tf")"
-  [[ "${rbac_block}" == *'annotations = { "helm.sh/resource-policy" = "keep" }'* ]] || fail "${resource_type}.${resource_name} is missing the Helm keep annotation"
   [[ "${rbac_block}" == *'prevent_destroy = true'* ]] || fail "${resource_type}.${resource_name} is missing prevent_destroy"
 done <<'EOF'
 kubernetes_cluster_role_v1 substrate_api
@@ -179,12 +171,19 @@ kubernetes_cluster_role_binding_v1 substrate_api
 kubernetes_cluster_role_v1 substrate_controller
 kubernetes_cluster_role_binding_v1 substrate_controller
 EOF
-require_literal_count "${prerequisites_dir}/main.tf" '"helm.sh/resource-policy" = "keep"' 4
+forbidden_literal "${prerequisites_dir}/main.tf" '"helm.sh/resource-policy" = "keep"'
+forbidden_literal "${prerequisites_dir}/main.tf" 'to       = kubernetes_cluster_role_v1.substrate_api[0]'
+forbidden_literal "${prerequisites_dir}/main.tf" 'to       = kubernetes_cluster_role_binding_v1.substrate_api[0]'
+forbidden_literal "${prerequisites_dir}/main.tf" 'to       = kubernetes_cluster_role_v1.substrate_controller[0]'
+forbidden_literal "${prerequisites_dir}/main.tf" 'to       = kubernetes_cluster_role_binding_v1.substrate_controller[0]'
+require_literal "${prerequisites_dir}/outputs.tf" 'output "rbac_names"'
+require_literal "${outputs}" 'output "kagent_substrate_rbac_names"'
 
 require_literal "${app_dir}/../../docs/KAGENT_SUBSTRATE_RELEASE.md" '`adopt_existing_substrate_compatibility_confirmed=true`'
 require_literal "${app_dir}/../../docs/KAGENT_SUBSTRATE_RELEASE.md" '`substrate-crds-0.1.0-preview.20260830.1`'
 require_literal "${app_dir}/../../helm/kagent/README.md" '`adopt_existing_substrate_compatibility_confirmed=true`'
-require_literal "${app_dir}/../../helm/kagent/README.md" 'The checked-in application release remains disabled.'
+require_literal "${app_dir}/../../helm/kagent/README.md" 'The checked-in application release'
+require_literal "${app_dir}/../../helm/kagent/README.md" 'remains disabled.'
 
 verifier_egress_block="$(sed -n '/resource "kubernetes_network_policy_v1" "substrate_verifier_controller_egress" {/,/^}/p' "${prerequisites_dir}/main.tf")"
 controller_ingress_block="$(sed -n '/resource "kubernetes_network_policy_v1" "kagent_controller_verifier_ingress" {/,/^}/p' "${prerequisites_dir}/main.tf")"

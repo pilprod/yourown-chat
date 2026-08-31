@@ -188,13 +188,15 @@ Substrate release and never installs or upgrades it.
 `adopt_existing_substrate=true` is a cluster-specific recovery input, not a
 generic import-if-present switch. It is valid only for the exact current full
 prestate: namespace `ate-system`, ConfigMap
-`ate-system/ate-api-authentication`, ClusterRoles `ate-api-server-role` and
-`ate-controller`, ClusterRoleBindings `ate-api-server-binding` and
-`ate-controller`, plus Helm releases `ate-system/substrate-crds` and
-`ate-system/substrate`. The current releases were installed as
-`substrate-crds-0.1.0-preview.20260830.1` and `substrate-0.1.0`. If any expected
-object is absent, its declarative import fails closed; do not use this input for
-a fresh cluster or a partial prestate.
+`ate-system/ate-api-authentication`, plus Helm releases
+`ate-system/substrate-crds` and `ate-system/substrate`. The current releases
+were installed as `substrate-crds-0.1.0-preview.20260830.1` and
+`substrate-0.1.0`. If any expected object is absent, its declarative import
+fails closed; do not use this input for a fresh cluster or a partial prestate.
+Existing Helm-owned RBAC is deliberately not an import target. Bootstrap
+creates additive Terraform-owned Roles, RoleBindings, ClusterRoles and
+ClusterRoleBindings under stable, non-Helm names for the same service accounts
+and with the same permissions.
 
 The handoff is deliberately staged. Before each adoption apply, confirm the
 recorded live inventory and compatibility evidence below still match the
@@ -204,18 +206,20 @@ enabled fails closed without that explicit attestation.
 
 1. Set `bootstrap_enabled=true`, keep `release_enabled=false`, and set both
    adoption inputs true. Terraform imports the namespace, CRD Helm release,
-   authentication ConfigMap and all four RBAC objects. The RBAC apply adds
-   `helm.sh/resource-policy=keep` while the existing application release still
-   renders those objects. Review the intentional authentication principal
-   migration together with creation of `ate-enrollment-admin`, and verify the
-   four RBAC UIDs are unchanged.
+   and authentication ConfigMap. In the same apply it creates the parallel
+   kagent and Substrate RBAC names before either Helm release changes. Review
+   the intentional authentication principal migration together with creation
+   of `ate-enrollment-admin`, and verify every existing service account has its
+   unchanged permissions through the new bindings.
 2. Leave both adoption inputs enabled for the later application stage. Set
    `release_enabled=true` only after bootstrap reconciliation and native Secret
    synchronization are complete. Terraform imports `ate-system/substrate`
-   before the pinned application plan is applied; the retained RBAC objects
-   survive the chart's `rbac.create=false` upgrade and remain Terraform-owned.
-3. After all eight objects are present at their Terraform addresses and the
-   reviewed application rollout succeeds, clear both adoption inputs.
+   before the pinned application plan is applied. The chart's
+   `rbac.create=false` upgrade may then prune its old RBAC names; the additive
+   Terraform RBAC remains present and is outside the Helm stored manifest.
+3. After all four imported objects are present at their Terraform addresses,
+   the parallel RBAC is verified and the reviewed application rollout
+   succeeds, clear both adoption inputs.
 
 The reviewed compatibility audit found that the live binaries report dirty
 commit `aa5e123`, while clean release commit `e9ed68` / `v0.0.22` is its merge

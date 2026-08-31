@@ -158,6 +158,30 @@ locals {
     "app.kubernetes.io/part-of"    = "kagent-substrate-testbed"
     "app.kubernetes.io/managed-by" = "terraform"
   })
+
+  # These names deliberately never overlap objects rendered by either the
+  # existing kagent or Substrate Helm releases. Bootstrap creates this
+  # parallel permission set first; a later rbac.create=false Helm upgrade can
+  # then prune only the old Helm-owned objects without interrupting either
+  # service account.
+  rbac_names = {
+    kagent = {
+      getter_role              = "kagent-control-plane-getter"
+      getter_role_binding      = "kagent-control-plane-getter-binding"
+      writer_role              = "kagent-control-plane-writer"
+      writer_role_binding      = "kagent-control-plane-writer-binding"
+      leader_role              = "kagent-control-plane-leader-election"
+      leader_role_binding      = "kagent-control-plane-leader-election-binding"
+      env_sources_role         = "kagent-substrate-env-source-reader"
+      env_sources_role_binding = "kagent-substrate-env-source-reader-binding"
+    }
+    substrate = {
+      api_role                = "substrate-api-server-reader"
+      api_role_binding        = "substrate-api-server-reader-binding"
+      controller_role         = "substrate-controller-actortemplate"
+      controller_role_binding = "substrate-controller-actortemplate-binding"
+    }
+  }
 }
 
 import {
@@ -933,11 +957,13 @@ resource "kubernetes_role_binding_v1" "agentgateway_deployer" {
 }
 
 # kagent fork artifacts admitted to this rail must support rbac.create=false.
-# Terraform owns the controller's two namespace-scoped roles and bindings.
+# Terraform creates a parallel permission set under non-Helm names before the
+# chart ownership handoff. The controller service account and permissions stay
+# identical while the old Helm-owned RBAC is later pruned.
 resource "kubernetes_role_v1" "kagent_getter" {
   for_each = var.bootstrap_enabled ? local.kagent_targets : {}
   metadata {
-    name      = "kagent-getter-role"
+    name      = local.rbac_names.kagent.getter_role
     namespace = each.value.namespace
     labels    = local.common_labels
   }
@@ -983,7 +1009,7 @@ resource "kubernetes_role_v1" "kagent_getter" {
 resource "kubernetes_role_v1" "kagent_writer" {
   for_each = var.bootstrap_enabled ? local.kagent_targets : {}
   metadata {
-    name      = "kagent-writer-role"
+    name      = local.rbac_names.kagent.writer_role
     namespace = each.value.namespace
     labels    = local.common_labels
   }
@@ -1017,7 +1043,7 @@ resource "kubernetes_role_v1" "kagent_writer" {
 resource "kubernetes_role_binding_v1" "kagent_getter" {
   for_each = kubernetes_role_v1.kagent_getter
   metadata {
-    name      = "kagent-getter-rolebinding"
+    name      = local.rbac_names.kagent.getter_role_binding
     namespace = each.value.metadata[0].namespace
     labels    = local.common_labels
   }
@@ -1036,7 +1062,7 @@ resource "kubernetes_role_binding_v1" "kagent_getter" {
 resource "kubernetes_role_binding_v1" "kagent_writer" {
   for_each = kubernetes_role_v1.kagent_writer
   metadata {
-    name      = "kagent-writer-rolebinding"
+    name      = local.rbac_names.kagent.writer_role_binding
     namespace = each.value.metadata[0].namespace
     labels    = local.common_labels
   }
@@ -1055,7 +1081,7 @@ resource "kubernetes_role_binding_v1" "kagent_writer" {
 resource "kubernetes_role_v1" "kagent_leader_election" {
   for_each = var.bootstrap_enabled ? var.kagent_control_planes : {}
   metadata {
-    name      = "kagent-leader-election-role"
+    name      = local.rbac_names.kagent.leader_role
     namespace = each.value.namespace
     labels    = local.common_labels
   }
@@ -1074,7 +1100,7 @@ resource "kubernetes_role_v1" "kagent_leader_election" {
 resource "kubernetes_role_binding_v1" "kagent_leader_election" {
   for_each = kubernetes_role_v1.kagent_leader_election
   metadata {
-    name      = "kagent-leader-election-rolebinding"
+    name      = local.rbac_names.kagent.leader_role_binding
     namespace = each.value.metadata[0].namespace
     labels    = local.common_labels
   }
@@ -1093,7 +1119,7 @@ resource "kubernetes_role_binding_v1" "kagent_leader_election" {
 resource "kubernetes_role_v1" "kagent_env_sources" {
   for_each = var.bootstrap_enabled ? local.kagent_targets : {}
   metadata {
-    name      = "kagent-ate-api-env-sources"
+    name      = local.rbac_names.kagent.env_sources_role
     namespace = each.value.namespace
     labels    = local.common_labels
   }
@@ -1107,7 +1133,7 @@ resource "kubernetes_role_v1" "kagent_env_sources" {
 resource "kubernetes_role_binding_v1" "kagent_env_sources" {
   for_each = kubernetes_role_v1.kagent_env_sources
   metadata {
-    name      = "kagent-ate-api-env-sources"
+    name      = local.rbac_names.kagent.env_sources_role_binding
     namespace = each.value.metadata[0].namespace
     labels    = local.common_labels
   }
@@ -1123,23 +1149,15 @@ resource "kubernetes_role_binding_v1" "kagent_env_sources" {
   }
 }
 
-# The existing Helm release owns these four objects before the one-shot
-# adoption. Terraform first imports them and adds resource-policy=keep while
-# the old release still renders RBAC. A separately reviewed application
-# adoption can then upgrade the Helm release with rbac.create=false without
-# deleting the now Terraform-owned objects.
-import {
-  for_each = var.adopt_existing && var.bootstrap_enabled ? toset(["ate-api-server-role"]) : toset([])
-  to       = kubernetes_cluster_role_v1.substrate_api[0]
-  id       = each.value
-}
-
+# This parallel permission set deliberately does not import the existing
+# Helm-owned ClusterRoles or ClusterRoleBindings. It is created before the
+# application release is adopted, so the subsequent rbac.create=false upgrade
+# can remove Helm's old names without creating a permission gap.
 resource "kubernetes_cluster_role_v1" "substrate_api" {
   count = var.bootstrap_enabled ? 1 : 0
   metadata {
-    name        = "ate-api-server-role"
-    labels      = local.common_labels
-    annotations = { "helm.sh/resource-policy" = "keep" }
+    name   = local.rbac_names.substrate.api_role
+    labels = local.common_labels
   }
   rule {
     api_groups = [""]
@@ -1162,18 +1180,11 @@ resource "kubernetes_cluster_role_v1" "substrate_api" {
   }
 }
 
-import {
-  for_each = var.adopt_existing && var.bootstrap_enabled ? toset(["ate-api-server-binding"]) : toset([])
-  to       = kubernetes_cluster_role_binding_v1.substrate_api[0]
-  id       = each.value
-}
-
 resource "kubernetes_cluster_role_binding_v1" "substrate_api" {
   count = var.bootstrap_enabled ? 1 : 0
   metadata {
-    name        = "ate-api-server-binding"
-    labels      = local.common_labels
-    annotations = { "helm.sh/resource-policy" = "keep" }
+    name   = local.rbac_names.substrate.api_role_binding
+    labels = local.common_labels
   }
   role_ref {
     api_group = "rbac.authorization.k8s.io"
@@ -1191,18 +1202,11 @@ resource "kubernetes_cluster_role_binding_v1" "substrate_api" {
   }
 }
 
-import {
-  for_each = var.adopt_existing && var.bootstrap_enabled ? toset(["ate-controller"]) : toset([])
-  to       = kubernetes_cluster_role_v1.substrate_controller[0]
-  id       = each.value
-}
-
 resource "kubernetes_cluster_role_v1" "substrate_controller" {
   count = var.bootstrap_enabled ? 1 : 0
   metadata {
-    name        = "ate-controller"
-    labels      = local.common_labels
-    annotations = { "helm.sh/resource-policy" = "keep" }
+    name   = local.rbac_names.substrate.controller_role
+    labels = local.common_labels
   }
   rule {
     api_groups = ["ate.dev"]
@@ -1220,18 +1224,11 @@ resource "kubernetes_cluster_role_v1" "substrate_controller" {
   }
 }
 
-import {
-  for_each = var.adopt_existing && var.bootstrap_enabled ? toset(["ate-controller"]) : toset([])
-  to       = kubernetes_cluster_role_binding_v1.substrate_controller[0]
-  id       = each.value
-}
-
 resource "kubernetes_cluster_role_binding_v1" "substrate_controller" {
   count = var.bootstrap_enabled ? 1 : 0
   metadata {
-    name        = "ate-controller"
-    labels      = local.common_labels
-    annotations = { "helm.sh/resource-policy" = "keep" }
+    name   = local.rbac_names.substrate.controller_role_binding
+    labels = local.common_labels
   }
   role_ref {
     api_group = "rbac.authorization.k8s.io"
