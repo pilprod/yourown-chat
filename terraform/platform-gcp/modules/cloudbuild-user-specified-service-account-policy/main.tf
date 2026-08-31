@@ -6,29 +6,12 @@ locals {
   ])
 }
 
-# The Stack apply identity already owns project IAM and custom-role management,
-# but intentionally has no broad Organization Policy role. Give it only the
-# project-level permissions this module needs, then order policy writes after
-# the binding so the first apply can bootstrap itself without an Owner grant.
-resource "google_project_iam_custom_role" "policy_manager" {
-  project     = var.project_id
-  role_id     = "cloudBuildPolicyManager"
-  title       = "Cloud Build policy manager"
-  description = "Manage project Cloud Build service-account constraints only through reviewed Terraform."
-  permissions = [
-    "orgpolicy.constraints.list",
-    "orgpolicy.policies.create",
-    "orgpolicy.policies.delete",
-    "orgpolicy.policies.list",
-    "orgpolicy.policies.update",
-    "orgpolicy.policy.get",
-    "orgpolicy.policy.set",
-  ]
-}
-
+# GCP does not allow orgpolicy.policies.create in a custom role. Bind the
+# supported predefined role at this project only, then order policy writes
+# after the binding so the first apply can bootstrap itself without Owner.
 resource "google_project_iam_member" "policy_manager" {
   project = var.project_id
-  role    = google_project_iam_custom_role.policy_manager.name
+  role    = "roles/orgpolicy.policyAdmin"
   member  = var.policy_admin_member
 }
 

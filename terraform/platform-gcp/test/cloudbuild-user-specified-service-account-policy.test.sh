@@ -30,12 +30,13 @@ require_literal "${module}" 'name   = "${local.project_parent}/policies/${trimpr
 require_literal "${module}" 'parent = local.project_parent'
 require_literal "${module}" 'inherit_from_parent = false'
 require_literal "${module}" 'enforce = "FALSE"'
-require_literal "${module}" 'resource "google_project_iam_custom_role" "policy_manager"'
-require_literal "${module}" 'role_id     = "cloudBuildPolicyManager"'
-require_literal "${module}" '"orgpolicy.policies.create"'
-require_literal "${module}" '"orgpolicy.policies.update"'
 require_literal "${module}" 'resource "google_project_iam_member" "policy_manager"'
+require_literal "${module}" 'role    = "roles/orgpolicy.policyAdmin"'
 require_literal "${module}" 'depends_on = [google_project_iam_member.policy_manager]'
+
+if grep -Fq 'google_project_iam_custom_role' "${module}"; then
+  fail "Organization Policy create cannot be bootstrapped through a custom role"
+fi
 
 if grep -Fq 'enforce = "TRUE"' "${module}"; then
   fail "Cloud Build default service-account constraints must not be enforced"
