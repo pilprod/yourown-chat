@@ -65,12 +65,27 @@ for required in \
   'versioning {' \
   'retention_policy {' \
   'roles/storage.objectCreator' \
+  'resource "google_storage_bucket_iam_member" "evidence_viewer"' \
+  'roles/storage.objectViewer' \
+  'resource.name.startsWith(\"projects/_/buckets/${google_storage_bucket.evidence[0].name}/objects/substrate/0.0.22-private.1/\")' \
   'resource "google_secret_manager_secret" "ghcr_write"' \
   'resource "google_service_account_iam_member" "submitter"' \
   'for_each = var.enabled ? toset(["serviceAccount:${var.apply_service_account_email}"]) : toset([])' \
   'resource "google_service_account_iam_member" "publisher_acts_as_self"' \
   'roles/iam.serviceAccountUser'; do
   grep -Fq "${required}" <<<"${main}" || fail "missing least-privilege contract: ${required}"
+done
+
+for required in \
+  'id         = "materialize-private-substrate-verification-inputs"' \
+  'gcloud storage cp "$$receipt_uri"' \
+  'gcloud auth print-access-token' \
+  'trap cleanup EXIT' \
+  'rm -f \' \
+  '--env SUBSTRATE_RELEASE_RECEIPT=/workspace/private-substrate/release-evidence.json' \
+  '--env HELM_REGISTRY_CONFIG=/workspace/private-substrate/registry-config.json'; do
+  grep -Fq -- "${required}" <<<"${main}" ||
+    fail "missing private Substrate verification input: ${required}"
 done
 
 grep -Eq '^[[:space:]]*service_account[[:space:]]*=[[:space:]]*google_service_account\.publisher\[0\]\.id[[:space:]]*$' <<<"${main}" ||
@@ -140,7 +155,7 @@ grep -Fq 'source_commit              = "2f4d7ab2840f63bd4d4fa8a926aead653ab82335
   fail 'reviewed kagent source commit is not pinned'
 grep -Fq 'release_tag_regex          = "^gcp-v0\\.0\\.0-external-slot\\.kap\\.[0-9]+$"' "${inputs}" ||
   fail 'release tags must remain in the gcp-v namespace that cannot dispatch the fork v*.kap.* workflow'
-grep -Fq 'submitter_members          = []' "${inputs}" ||
+grep -Fq 'submitter_members              = []' "${inputs}" ||
   fail 'unexpected persistent human submitter grant'
 grep -Fq 'toset([var.workload_identity_members.mcp])' "${components}" ||
   fail 'Google Cloud MCP identity must be the default release-topic publisher'

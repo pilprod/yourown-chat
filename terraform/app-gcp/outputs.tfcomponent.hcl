@@ -197,6 +197,28 @@ output "kagent_preview_publisher" {
   }
 }
 
+output "substrate_preview_publisher" {
+  type = object({
+    enabled                    = bool
+    service_account_email      = string
+    trigger_id                 = string
+    release_request_topic      = string
+    artifact_repository_prefix = string
+    staging_repository_prefix  = string
+    evidence_bucket_name       = string
+  })
+  description = "Non-sensitive coordinates of the private Substrate v0.0.22 publication rail."
+  value = {
+    enabled                    = component.substrate_preview_publisher.enabled
+    service_account_email      = component.substrate_preview_publisher.service_account_email
+    trigger_id                 = component.substrate_preview_publisher.trigger_id
+    release_request_topic      = component.substrate_preview_publisher.release_request_topic
+    artifact_repository_prefix = component.substrate_preview_publisher.artifact_repository_prefix
+    staging_repository_prefix  = component.substrate_preview_publisher.staging_repository_prefix
+    evidence_bucket_name       = component.substrate_preview_publisher.evidence_bucket_name
+  }
+}
+
 output "temporal_enabled" {
   type        = bool
   description = "Whether the explicit Terraform launch gate currently permits the Temporal component."

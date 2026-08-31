@@ -160,7 +160,7 @@ variable "source_repositories" {
     name       = string
     remote_uri = string
   }))
-  description = "Source repositories keyed by role. Required roles: deploy (this platform repository, the Skaffold render root), mattermost (product assembly), web, server_source (patched server source, provenance only), backend, mcp, rtcd. `name` is the Cloud Build 2nd-gen repository resource name; `remote_uri` is the HTTPS clone URL."
+  description = "Source repositories keyed by role. Required roles: deploy (this platform repository, the Skaffold render root), mattermost (product assembly), web, server_source (patched server source, provenance only), backend, mcp, kagent, substrate and rtcd. `name` is the Cloud Build 2nd-gen repository resource name; `remote_uri` is the HTTPS clone URL."
 }
 
 variable "vendor_chart_bundles" {
@@ -635,23 +635,25 @@ variable "dev_team_rbac_subjects" {
 
 variable "kagent_preview_publisher" {
   type = object({
-    enabled                    = bool
-    source_commit              = string
-    release_tag_regex          = string
-    evidence_bucket_name       = string
-    evidence_retention_seconds = number
-    ghcr_secret_id             = string
-    submitter_members          = set(string)
+    enabled                        = bool
+    source_commit                  = string
+    release_tag_regex              = string
+    evidence_bucket_name           = string
+    evidence_retention_seconds     = number
+    ghcr_secret_id                 = string
+    substrate_release_evidence_uri = string
+    submitter_members              = set(string)
   })
   description = "Terraform-owned Cloud Build publication rail for immutable kagent fork previews in the platform Artifact Registry. The legacy empty GHCR container is retained but not consumed."
   default = {
-    enabled                    = false
-    source_commit              = ""
-    release_tag_regex          = "^gcp-v[0-9]+\\.[0-9]+\\.[0-9]+-external-slot\\.kap\\.[0-9]+$"
-    evidence_bucket_name       = "disabled-kagent-preview-evidence"
-    evidence_retention_seconds = 31536000
-    ghcr_secret_id             = "kagent-ghcr-write"
-    submitter_members          = []
+    enabled                        = false
+    source_commit                  = ""
+    release_tag_regex              = "^gcp-v[0-9]+\\.[0-9]+\\.[0-9]+-external-slot\\.kap\\.[0-9]+$"
+    evidence_bucket_name           = "disabled-kagent-preview-evidence"
+    evidence_retention_seconds     = 31536000
+    ghcr_secret_id                 = "kagent-ghcr-write"
+    substrate_release_evidence_uri = ""
+    submitter_members              = []
   }
 
   validation {
@@ -662,5 +664,43 @@ variable "kagent_preview_publisher" {
   validation {
     condition     = !var.kagent_preview_publisher.enabled || can(regex("^[0-9a-f]{40}$", var.kagent_preview_publisher.source_commit))
     error_message = "An enabled kagent_preview_publisher requires an exact reviewed source_commit."
+  }
+}
+
+variable "substrate_preview_publisher" {
+  type = object({
+    enabled           = bool
+    source_tag        = string
+    source_tag_object = string
+    source_commit     = string
+    release_version   = string
+    submitter_members = set(string)
+  })
+  description = "Terraform-owned publication rail that copies one reviewed Substrate release into the existing private staging and immutable kagent Artifact Registry repositories."
+  default = {
+    enabled           = false
+    source_tag        = "v0.0.22"
+    source_tag_object = "00a6a684cea3b3feea67461cf79347332ec759ef"
+    source_commit     = "e9ed68e587b56df2aa2a7f0267a744598c4d48b4"
+    release_version   = "0.0.22-private.1"
+    submitter_members = []
+  }
+
+  validation {
+    condition = !var.substrate_preview_publisher.enabled || (
+      var.substrate_preview_publisher.source_tag == "v0.0.22" &&
+      var.substrate_preview_publisher.source_tag_object == "00a6a684cea3b3feea67461cf79347332ec759ef" &&
+      var.substrate_preview_publisher.source_commit == "e9ed68e587b56df2aa2a7f0267a744598c4d48b4" &&
+      var.substrate_preview_publisher.release_version == "0.0.22-private.1"
+    )
+    error_message = "The initial private Substrate publisher must remain pinned to v0.0.22, tag object 00a6a684cea3b3feea67461cf79347332ec759ef, commit e9ed68e587b56df2aa2a7f0267a744598c4d48b4 and coordinate 0.0.22-private.1."
+  }
+
+  validation {
+    condition = !var.substrate_preview_publisher.enabled || (
+      var.kagent_preview_publisher.enabled &&
+      var.kagent_preview_publisher.evidence_bucket_name != "disabled-kagent-preview-evidence"
+    )
+    error_message = "The private Substrate publisher reuses the enabled kagent publisher evidence bucket; it cannot own a second bucket."
   }
 }
