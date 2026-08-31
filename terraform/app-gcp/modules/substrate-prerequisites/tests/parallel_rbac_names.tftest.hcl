@@ -174,9 +174,9 @@ run "bootstrap_creates_parallel_rbac_names" {
       length(kubernetes_role_v1.kagent_getter) == 5 &&
       length(kubernetes_role_v1.kagent_writer) == 5 &&
       length(kubernetes_role_v1.kagent_leader_election) == 2 &&
-      length(kubernetes_role_v1.kagent_env_sources) == 5
+      length(kubernetes_role_v1.kagent_env_sources) == 4
     )
-    error_message = "Bootstrap must create additive kagent permissions for both control planes, both declarative agent namespaces, and the prod migration namespace."
+    error_message = "Bootstrap must create getter/writer RBAC for all five targets and env-source RBAC for only the four non-migration targets."
   }
 
   assert {
@@ -186,10 +186,17 @@ run "bootstrap_creates_parallel_rbac_names" {
       output.kagent_rbac_targets["prod/migration-legacy"].migration_only &&
       !contains(keys(output.kagent_rbac_targets), "dev/migration-legacy") &&
       kubernetes_role_v1.kagent_getter["prod/migration-legacy"].metadata[0].namespace == "kagent-testbed" &&
-      kubernetes_role_v1.kagent_writer["prod/migration-legacy"].metadata[0].namespace == "kagent-testbed" &&
-      kubernetes_role_v1.kagent_env_sources["prod/migration-legacy"].metadata[0].namespace == "kagent-testbed"
+      kubernetes_role_v1.kagent_writer["prod/migration-legacy"].metadata[0].namespace == "kagent-testbed"
     )
-    error_message = "The live kagent-testbed namespace must receive an explicit prod-only migration RBAC bridge."
+    error_message = "The live kagent-testbed namespace must receive an explicit prod-only migration getter/writer bridge."
+  }
+
+  assert {
+    condition = (
+      !contains(keys(kubernetes_role_v1.kagent_env_sources), "prod/migration-legacy") &&
+      !contains(keys(kubernetes_role_binding_v1.kagent_env_sources), "prod/migration-legacy")
+    )
+    error_message = "The migration-only kagent-testbed target must not grant ate-api-server access to Secrets or ConfigMaps."
   }
 
   assert {
@@ -201,7 +208,7 @@ run "bootstrap_creates_parallel_rbac_names" {
       kubernetes_role_v1.kagent_leader_election["prod"].metadata[0].name == "kagent-control-plane-leader-election" &&
       kubernetes_role_binding_v1.kagent_leader_election["dev"].metadata[0].name == "kagent-control-plane-leader-election-binding" &&
       kubernetes_role_v1.kagent_env_sources["prod/codex"].metadata[0].name == "kagent-substrate-env-source-reader" &&
-      kubernetes_role_binding_v1.kagent_env_sources["prod/migration-legacy"].metadata[0].name == "kagent-substrate-env-source-reader-binding"
+      kubernetes_role_binding_v1.kagent_env_sources["dev/control"].metadata[0].name == "kagent-substrate-env-source-reader-binding"
     )
     error_message = "kagent RBAC must use only the stable parallel names."
   }
@@ -222,7 +229,7 @@ run "bootstrap_creates_parallel_rbac_names" {
       kubernetes_role_binding_v1.kagent_writer["dev/codex"].subject[0].name == "kagent-controller" &&
       kubernetes_role_binding_v1.kagent_leader_election["dev"].subject[0].name == "kagent-controller" &&
       kubernetes_role_binding_v1.kagent_getter["prod/migration-legacy"].subject[0].namespace == "kagent-system" &&
-      kubernetes_role_binding_v1.kagent_env_sources["prod/migration-legacy"].subject[0].name == "ate-api-server" &&
+      kubernetes_role_binding_v1.kagent_env_sources["prod/codex"].subject[0].name == "ate-api-server" &&
       kubernetes_cluster_role_binding_v1.substrate_api[0].subject[0].name == "ate-api-server" &&
       kubernetes_cluster_role_binding_v1.substrate_controller[0].subject[0].name == "ate-controller"
     )
@@ -273,10 +280,10 @@ run "bootstrap_creates_parallel_rbac_names" {
       ]) &&
       alltrue([
         for role in values(kubernetes_role_v1.kagent_env_sources) :
-        role.rule == kubernetes_role_v1.kagent_env_sources["prod/migration-legacy"].rule
+        role.rule == kubernetes_role_v1.kagent_env_sources["prod/control"].rule
       ])
     )
-    error_message = "Every control, declarative agent, and migration namespace must receive identical getter, writer, and env-source permissions."
+    error_message = "Getter/writer rules must match across all targets, while env-source rules match only across non-migration targets."
   }
 
   assert {

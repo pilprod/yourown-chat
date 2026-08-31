@@ -203,10 +203,12 @@ live `0.9.12` `kagent.dev` permissions for `agents`, `agents/finalizers` and
 `agents/status`, and add the `.kap.2` `harnesses` and `agenttemplates` families
 without removing the other common resources. The prod controller receives an
 explicit migration-only RBAC target for `kagent-testbed`; dev does not. This
-bridge must remain until the old controller Pod no longer runs or watches that
-namespace, all legacy agents and workloads have been migrated, and
-`kagent-testbed` is drained. Only a separate reviewed retirement change may
-remove the migration target, followed by namespace retirement.
+bridge grants only the controller getter/writer union: `ate-api-server` receives
+no Secrets or ConfigMaps access in the legacy namespace. The bridge must remain
+until the old controller Pod no longer runs or watches that namespace, all
+legacy agents and workloads have been migrated, and `kagent-testbed` is
+drained. Only a separate reviewed retirement change may remove the migration
+target, followed by namespace retirement.
 
 The handoff is deliberately staged. Before each adoption apply, confirm the
 recorded live inventory and compatibility evidence below still match the

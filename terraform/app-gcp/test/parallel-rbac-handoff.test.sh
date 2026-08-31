@@ -120,7 +120,7 @@ kubernetes_role_binding_v1 kagent_getter local.rbac_names.kagent.getter_role_bin
 kubernetes_role_binding_v1 kagent_writer local.rbac_names.kagent.writer_role_binding for_each = kubernetes_role_v1.kagent_writer
 kubernetes_role_v1 kagent_leader_election local.rbac_names.kagent.leader_role for_each = var.bootstrap_enabled
 kubernetes_role_binding_v1 kagent_leader_election local.rbac_names.kagent.leader_role_binding for_each = kubernetes_role_v1.kagent_leader_election
-kubernetes_role_v1 kagent_env_sources local.rbac_names.kagent.env_sources_role for_each = var.bootstrap_enabled
+kubernetes_role_v1 kagent_env_sources local.rbac_names.kagent.env_sources_role if !target.migration_only
 kubernetes_role_binding_v1 kagent_env_sources local.rbac_names.kagent.env_sources_role_binding for_each = kubernetes_role_v1.kagent_env_sources
 kubernetes_cluster_role_v1 substrate_api local.rbac_names.substrate.api_role count = var.bootstrap_enabled
 kubernetes_cluster_role_binding_v1 substrate_api local.rbac_names.substrate.api_role_binding count = var.bootstrap_enabled
@@ -153,6 +153,8 @@ require_literal_count "${main}" "${union_resources}" 2
 require_literal_count "${main}" "${union_finalizers}" 2
 require_literal_count "${main}" "${union_status}" 1
 require_literal "${module_test}" 'output.kagent_rbac_targets["prod/migration-legacy"].namespace == "kagent-testbed"'
+require_literal "${module_test}" '!contains(keys(kubernetes_role_v1.kagent_env_sources), "prod/migration-legacy")'
+require_literal "${module_test}" '!contains(keys(kubernetes_role_binding_v1.kagent_env_sources), "prod/migration-legacy")'
 require_literal "${module_test}" 'role.rule == kubernetes_role_v1.kagent_getter["prod/migration-legacy"].rule'
 require_literal "${module_test}" 'role.rule == kubernetes_role_v1.kagent_writer["prod/migration-legacy"].rule'
 

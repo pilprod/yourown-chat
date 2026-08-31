@@ -49,7 +49,9 @@ non-Helm names for the same service accounts and with the same permissions.
 The kagent rules are the exact migration union of live `0.9.12` `agents`,
 `agents/finalizers` and `agents/status` permissions with the `.kap.2`
 `harnesses` and `agenttemplates` families. A prod-only migration target keeps
-that union bound in `kagent-testbed`; dev has no legacy target.
+that getter/writer union bound in `kagent-testbed`; dev has no legacy target.
+The bridge does not grant `ate-api-server` access to Secrets or ConfigMaps in
+the legacy namespace.
 
 Do not remove the `kagent-testbed` bridge merely because the new chart is
 deployed. Removal requires the old controller Pod to be stopped and no longer

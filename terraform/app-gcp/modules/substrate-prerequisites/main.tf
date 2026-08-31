@@ -1138,8 +1138,14 @@ resource "kubernetes_role_binding_v1" "kagent_leader_election" {
   }
 }
 
+# ate-api-server needs env-source reads only for the target control and
+# declarative agent namespaces. Neither live 0.9.12 nor kap2 grants this access
+# in the legacy migration namespace, so fail closed by filtering it out.
 resource "kubernetes_role_v1" "kagent_env_sources" {
-  for_each = var.bootstrap_enabled ? local.kagent_targets : {}
+  for_each = var.bootstrap_enabled ? {
+    for target_key, target in local.kagent_targets : target_key => target
+    if !target.migration_only
+  } : {}
   metadata {
     name      = local.rbac_names.kagent.env_sources_role
     namespace = each.value.namespace

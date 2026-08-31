@@ -107,10 +107,13 @@ require_literal "${prerequisites}/variables.tf" 'length(distinct(flatten(['
 require_literal "${prerequisites}/main.tf" 'for control_key, control in var.kagent_control_planes'
 require_literal "${prerequisites}/main.tf" 'for migration_key, namespace in control.migration_agent_namespaces : "migration-${migration_key}" => {'
 
-# Getter/writer controller permissions and the existing ate-api environment
-# source permission must follow the same per-agent namespace map.
-[[ "$(rg -Fc 'for_each = var.bootstrap_enabled ? local.kagent_targets : {}' "${prerequisites}/main.tf")" -eq 3 ]] ||
-  fail "all three namespace-scoped RBAC families must iterate kagent_targets"
+# Getter/writer controller permissions cover every target, including the
+# migration bridge. The ate-api environment-source permission filters that
+# bridge because the legacy namespace never granted it.
+[[ "$(rg -Fc 'for_each = var.bootstrap_enabled ? local.kagent_targets : {}' "${prerequisites}/main.tf")" -eq 2 ]] ||
+  fail "getter and writer RBAC families must iterate every kagent target"
+require_literal "${prerequisites}/main.tf" 'for target_key, target in local.kagent_targets : target_key => target'
+require_literal "${prerequisites}/main.tf" 'if !target.migration_only'
 require_literal "${prerequisites}/main.tf" 'namespace = each.value.metadata[0].namespace'
 require_literal "${prerequisites}/main.tf" 'namespace = local.kagent_targets[each.key].controller_namespace'
 
