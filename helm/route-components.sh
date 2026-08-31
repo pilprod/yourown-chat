@@ -18,10 +18,6 @@ case "${component}" in
     workload_regex='^helm/mcp/'
     config_path='helm/skaffold-mcp.yaml'
     ;;
-  agents)
-    workload_regex='^helm/agent-platform/'
-    config_path='helm/skaffold-agents.yaml'
-    ;;
   yourown-chat)
     workload_regex='^helm/yourown-chat/'
     config_path='helm/skaffold-yourown-chat.yaml'

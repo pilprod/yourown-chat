@@ -130,17 +130,6 @@ resource "kubernetes_network_policy_v1" "this" {
         }
       }
     }
-    ingress {
-      from {
-        namespace_selector {
-          match_labels = { "kubernetes.io/metadata.name" = "yourown-agents" }
-        }
-      }
-      ports {
-        port     = "7233"
-        protocol = "TCP"
-      }
-    }
     egress {
       to {
         namespace_selector {

@@ -145,7 +145,7 @@ variable "source_repositories" {
     name       = string
     remote_uri = string
   }))
-  description = "Source repositories keyed by role. Required roles: deploy (this platform repository, the Skaffold render root), mattermost (product assembly), web, server_source (patched server source, provenance only), backend, agents, mcp, rtcd. `name` is the Cloud Build 2nd-gen repository resource name; `remote_uri` is the HTTPS clone URL."
+  description = "Source repositories keyed by role. Required roles: deploy (this platform repository, the Skaffold render root), mattermost (product assembly), web, server_source (patched server source, provenance only), backend, mcp, rtcd. `name` is the Cloud Build 2nd-gen repository resource name; `remote_uri` is the HTTPS clone URL."
 }
 
 variable "vendor_chart_bundles" {
@@ -425,7 +425,7 @@ variable "builds" {
 }
 
 # --- Automated release cutting (Cloud Deploy on a git tag) ------------------
-# The deploy, backend, agents, mcp and rtcd repository links come from
+# The deploy, backend, mcp and rtcd repository links come from
 # var.source_repositories; see service-inputs.tfdeploy.hcl and components.
 variable "mcp_release_tag_regex" {
   type        = string
@@ -436,12 +436,6 @@ variable "mcp_release_tag_regex" {
 variable "backend_release_tag_regex" {
   type        = string
   description = "Immutable server tags that build the client-facing control API image."
-  default     = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
-}
-
-variable "agents_release_tag_regex" {
-  type        = string
-  description = "Immutable agent tags that build the workflow and activity worker images."
   default     = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
 }
 
@@ -537,12 +531,6 @@ variable "mcp_servers_enabled" {
   default     = false
 }
 
-variable "agent_platform_enabled" {
-  type        = bool
-  description = "Create the agent pilot delivery path and allow semver tags to route agent changes. Persistent storage is owned separately by platform-gcp."
-  default     = false
-}
-
 variable "yourown_chat_server_enabled" {
   type        = bool
   description = "Create and deliver the independent client-facing YourOwn.Chat server plane."
@@ -576,18 +564,6 @@ variable "yourown_chat_registration_enabled" {
 variable "temporal_enabled" {
   type        = bool
   description = "Explicit launch gate for Terraform-owned Temporal infrastructure. Keep false until the prerequisite MCP production release has passed verification."
-  default     = false
-}
-
-variable "agent_results_bucket" {
-  type        = string
-  description = "Platform-owned result bucket passed to agent workload delivery. Empty while Temporal is disabled."
-  default     = ""
-}
-
-variable "agent_platform_runtime_enabled" {
-  type        = bool
-  description = "Default semver release mode for the agent pilot. false routes the release through the static pause profile; true uses the static running profile. Both preserve Cloud SQL and GCS state."
   default     = false
 }
 

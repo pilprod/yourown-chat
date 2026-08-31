@@ -246,7 +246,7 @@ def validate_tracked_kagent_shape(source_root: Path) -> None:
         "driver: secrets-store-gke.csi.k8s.io",
         "secretProviderClass: kagent-database-gcp",
         "failureThreshold: 20",
-        "host: http://model-fixture.kagent-testbed.svc.cluster.local:11434",
+        "host: http://model-fixture.agent-codex.svc.cluster.local:11434",
     ):
         if required not in source:
             fail(f"tracked kagent values must preserve the live testbed setting: {required}")

@@ -5,7 +5,8 @@ is deliberately `production_eligible=false`; it has no production profile or
 promotion stage. Existing coordinates stay stable:
 
 - Helm release `kagent` in `kagent-system`;
-- kagent workload namespace `kagent-testbed`;
+- declarative per-agent workload namespaces, initially `codex` ->
+  `agent-codex`;
 - Helm release `substrate` in `ate-system`; and
 - Broker TLS SNI `api.ate-system.svc`.
 
@@ -19,6 +20,9 @@ the live object to `helm_release.application_handoff_source[0]`; Phase B must
 target exactly that address in its `removed` block. Cloud Deploy must never
 race the handoff-source release. After that handoff,
 Cloud Deploy owns only the kagent and Substrate application Helm releases.
+Every per-agent namespace has Restricted Pod Security labels, a namespace-wide
+ingress/egress default deny, DNS-only baseline egress and the controller RBAC
+bindings generated from the same namespace map.
 
 Substrate's application chart owns the one `Gateway` and `TLSRoute` by setting
 `externalProviderBroker.gateway.enabled=true`. The only raw resource here is

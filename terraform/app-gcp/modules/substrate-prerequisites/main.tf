@@ -1,7 +1,10 @@
 locals {
   substrate_namespace = "ate-system"
   kagent_namespace    = "kagent-system"
-  workload_namespace  = "kagent-testbed"
+  kagent_namespaces = merge(
+    { control = local.kagent_namespace },
+    var.agent_namespaces,
+  )
 
   expected_secret_contract = {
     postgres = {
@@ -526,7 +529,7 @@ resource "kubernetes_role_binding_v1" "agentgateway_deployer" {
 # kagent fork artifacts admitted to this rail must support rbac.create=false.
 # Terraform owns the controller's two namespace-scoped roles and bindings.
 resource "kubernetes_role_v1" "kagent_getter" {
-  for_each = var.bootstrap_enabled ? toset([local.kagent_namespace, local.workload_namespace]) : toset([])
+  for_each = var.bootstrap_enabled ? local.kagent_namespaces : {}
   metadata {
     name      = "kagent-getter-role"
     namespace = each.value
@@ -572,7 +575,7 @@ resource "kubernetes_role_v1" "kagent_getter" {
 }
 
 resource "kubernetes_role_v1" "kagent_writer" {
-  for_each = var.bootstrap_enabled ? toset([local.kagent_namespace, local.workload_namespace]) : toset([])
+  for_each = var.bootstrap_enabled ? local.kagent_namespaces : {}
   metadata {
     name      = "kagent-writer-role"
     namespace = each.value
@@ -609,7 +612,7 @@ resource "kubernetes_role_binding_v1" "kagent_getter" {
   for_each = kubernetes_role_v1.kagent_getter
   metadata {
     name      = "kagent-getter-rolebinding"
-    namespace = each.key
+    namespace = each.value.metadata[0].namespace
     labels    = local.common_labels
   }
   role_ref {
@@ -628,7 +631,7 @@ resource "kubernetes_role_binding_v1" "kagent_writer" {
   for_each = kubernetes_role_v1.kagent_writer
   metadata {
     name      = "kagent-writer-rolebinding"
-    namespace = each.key
+    namespace = each.value.metadata[0].namespace
     labels    = local.common_labels
   }
   role_ref {
@@ -682,7 +685,7 @@ resource "kubernetes_role_binding_v1" "kagent_leader_election" {
 }
 
 resource "kubernetes_role_v1" "kagent_env_sources" {
-  for_each = var.bootstrap_enabled ? toset([local.kagent_namespace, local.workload_namespace]) : toset([])
+  for_each = var.bootstrap_enabled ? local.kagent_namespaces : {}
   metadata {
     name      = "kagent-ate-api-env-sources"
     namespace = each.value
@@ -699,7 +702,7 @@ resource "kubernetes_role_binding_v1" "kagent_env_sources" {
   for_each = kubernetes_role_v1.kagent_env_sources
   metadata {
     name      = "kagent-ate-api-env-sources"
-    namespace = each.key
+    namespace = each.value.metadata[0].namespace
     labels    = local.common_labels
   }
   role_ref {

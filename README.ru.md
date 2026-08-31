@@ -20,12 +20,12 @@ Self-hosted чат-платформа Mattermost в Google Cloud за Cloudflare
 |---|---|---|---|
 | **platform-gcp** | `terraform/platform-gcp` | Stateful-фундамент: API, сеть + статический ingress-IP, CMEK-ключ, GKE-кластер, Cloud SQL, собственная база пользователей, хранилище, реестр образов, Workload Identity SA | Редко |
 | **cloudflare** | `terraform/cloudflare` | Публичный edge `yourown.chat`: DNS, TLS/security-настройки, DNSSEC, WAF, Origin CA cert + origin-TLS секреты | Иногда |
-| **app-gcp** | `terraform/app-gcp` | Секреты, отдельные пайплайны Mattermost, MCP и пилота агентов, постоянный dev PostgreSQL, CI образа, роутинг тегов и бутстрап кластера | Часто |
+| **app-gcp** | `terraform/app-gcp` | Секреты, пайплайны Mattermost, MCP, YourOwn.Chat и kagent/Substrate, отдельные namespace агентов, постоянный dev PostgreSQL, CI образа, роутинг тегов и бутстрап кластера | Часто |
 | **agent-registry-gcp** | `terraform/agent-registry-gcp` | Каталог Google Cloud Agent Registry для внешних API и vendor-hosted MCP; GKE и Google MCP регистрируются автоматически | Редко |
 
 Архитектура агентов и границы репозиториев описаны в
-[каноническом документе](docs/AGENT_PLATFORM.md), а порядок tag-driven выпуска
-и защищённого запуска Temporal — в
+[каноническом документе](docs/AGENT_PLATFORM.md), а выпуск kagent/Substrate и
+передача владения релизом — в
 [релизном руководстве](docs/AGENT_PLATFORM_BUILD_RELEASE.md).
 
 Платформенный стек **публикует** ключевые значения (ingress-IP, ID кластера,
@@ -116,25 +116,23 @@ terraform/
                          #   бутстрап кластера: operator + ingress-nginx Helm-релизы)
   agent-registry-gcp/    # стек 4: GCP-каталог внешних endpoint/MCP (Google provider 7.x)
                          # в каждом: *.tfcomponent.hcl + *.tfdeploy.hcl + modules/ + свой lock
-  components/
-    temporal/            # официальный Temporal, schema lifecycle и private SQL wiring
-  modules/               # общие PostgreSQL/GCS-примитивы для компонентов проекта
 helm/                    # Kubernetes-workloads, доставляются Cloud Deploy
   skaffold-mattermost.yaml # рендер и cleanup только для Mattermost
   skaffold-mcp.yaml        # рендер, smoke и cleanup только для MCP
-  skaffold-agents.yaml     # независимый подтверждаемый запуск/пауза пилота
-  agent-platform/          # управляющий интерфейс и два исполнителя
+  skaffold-yourown-chat.yaml # клиентское приложение
+  kagent/                   # пины, рендер и evidence kagent/Substrate
   matterbridge/          # изолированный деплой моста
   mattermost/            # единый chart Mattermost с values для dev и prod
   mcp/                   # chart MCP, smoke-тесты и cleanup
   ingress-nginx/         # values только-для-Cloudflare + ранбук
 docs/BUILD.md            # процесс сборки Mattermost и фабрики образов
 docs/AGENT_PLATFORM.md               # границы репозиториев и runtime
-docs/AGENT_PLATFORM_BUILD_RELEASE.md # теги, выпуски и запуск Temporal
+docs/AGENT_PLATFORM_BUILD_RELEASE.md # выпуск и handoff kagent/Substrate
 ```
 
-Исходный код исполнителей процессов и операций уже находится в
-[`pilprod/yourown-chat-agents`](https://github.com/pilprod/yourown-chat-agents),
+Декларативные описания агентов и код локальных адаптеров находятся в
+[`pilprod/yourown-chat-agents`](https://github.com/pilprod/yourown-chat-agents);
+код Temporal workflow вынесен в отдельный `pilprod/yourown-chat-workflows`,
 а управляющий API — в
 [`pilprod/yourown-chat-server`](https://github.com/pilprod/yourown-chat-server).
 Go-код собственных MCP находится в `pilprod/yourown-chat-mcp`. В этом публичном
@@ -142,17 +140,17 @@ Go-код собственных MCP находится в `pilprod/yourown-chat
 архитектура и маршрутизация релизов.
 
 Точная граница закреплена в [`docs/AGENT_PLATFORM.md`](docs/AGENT_PLATFORM.md),
-а согласованный выпуск по тегам — в
+а выпуск и handoff kagent/Substrate — в
 [`docs/AGENT_PLATFORM_BUILD_RELEASE.md`](docs/AGENT_PLATFORM_BUILD_RELEASE.md).
 
 Важные структурные детали:
 
 - **Один стек = одна директория.** HCP читает по стеку на working directory —
   четыре HCP-стека смотрят на четыре директории.
-- **Переиспользуемые примитивы универсальны.** Новые общие модули PostgreSQL и
-  GCS лежат в `terraform/modules/`, а Temporal-specific композиция — в
-  `terraform/components/temporal`. Старые stack-local модули остаются на месте
-  до отдельной безопасной миграции.
+- **У каждого ресурса один владелец.** `platform-gcp` владеет Cloud SQL,
+  GCS, Workload Identity и Temporal; `app-gcp` владеет доставкой и
+  namespace-политикой агентов. Новая фича расширяет модуль текущего
+  владельца, а не создаёт параллельный Stack.
 - **У каждого стека свой lock** (`.terraform.lock.hcl`) и пин версии
   Terraform (`.terraform-version`, сейчас 1.15.8).
 

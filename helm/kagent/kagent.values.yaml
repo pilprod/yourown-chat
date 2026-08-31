@@ -17,7 +17,7 @@ rbac:
   create: false
   namespaces:
     - kagent-system
-    - kagent-testbed
+    - agent-codex
 
 controller:
   replicas: 1
@@ -38,7 +38,7 @@ controller:
       readOnly: true
   watchNamespaces:
     - kagent-system
-    - kagent-testbed
+    - agent-codex
   # This remains an explicitly isolated single-user testbed. Human access is
   # protected by the existing Cloudflare Access route.
   auth:
@@ -91,7 +91,7 @@ providers:
     provider: Ollama
     model: fixture-model
     config:
-      host: http://model-fixture.kagent-testbed.svc.cluster.local:11434
+      host: http://model-fixture.agent-codex.svc.cluster.local:11434
 
 kmcp:
   enabled: false
