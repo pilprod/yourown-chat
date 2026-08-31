@@ -297,7 +297,7 @@ locals {
     source_tag        = "v0.0.22"
     source_tag_object = "00a6a684cea3b3feea67461cf79347332ec759ef"
     source_commit     = "e9ed68e587b56df2aa2a7f0267a744598c4d48b4"
-    release_version   = "0.0.22-private.2"
+    release_version   = "0.0.22-private.3"
     submitter_members = []
   }
 }

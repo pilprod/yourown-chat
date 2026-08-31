@@ -40,7 +40,19 @@ KAGENT_IMAGE_PATHS = {
 KAGENT_RUNTIME_IMAGES = {"kagentHarness", "codexHarness"}
 SUBSTRATE_COMPONENT_IMAGES = {"ateapi", "atecontroller", "atenet"}
 SUBSTRATE_ARTIFACT_IMAGES = SUBSTRATE_COMPONENT_IMAGES | {"agentgateway", "releaseVerifier"}
-SUBSTRATE_PRODUCER_EVIDENCE_SCHEMA = "yourown.chat/substrate-release/v1"
+SUBSTRATE_PRIVATE_PRODUCER_EVIDENCE_SCHEMA = "yourown.chat/substrate-private-gar-release/v2"
+SUBSTRATE_PRIVATE_REGISTRY = "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate"
+SUBSTRATE_PRIVATE_IMAGE_REPOSITORIES = {
+    "agentgateway": "agentgateway",
+    "ateapi": "ateapi",
+    "atecontroller": "atecontroller",
+    "atenet": "atenet",
+    "releaseVerifier": "substrate-release-verify",
+}
+SUBSTRATE_PRIVATE_CHART_REPOSITORIES = {
+    "application": "substrate",
+    "crds": "substrate-crds",
+}
 KAGENT_SET_KEYS = {
     f"{path}.{field}"
     for path in KAGENT_IMAGE_PATHS.values()
@@ -112,11 +124,11 @@ def validate_artifact(name: str, artifact: object, source_root: Path) -> None:
         manifest_path = artifact.get("artifact_manifest_path", "")
         if schema == SUBSTRATE_CONSUMER_EVIDENCE_SCHEMA:
             validate_substrate_consumer_artifact(artifact, source_root)
-        elif schema == SUBSTRATE_PRODUCER_EVIDENCE_SCHEMA:
+        elif schema == SUBSTRATE_PRIVATE_PRODUCER_EVIDENCE_SCHEMA:
             if manifest_path:
-                fail("substrate producer evidence must not use an app-gcp artifact_manifest_path")
+                fail("private Substrate producer evidence must not use an app-gcp artifact_manifest_path")
         else:
-            fail("substrate artifact must use producer release schema v1 or checked-in semver consumer evidence")
+            fail("substrate artifact must use private GAR release schema v2 or checked-in semver consumer evidence")
     charts = artifact.get("charts")
     if not isinstance(charts, dict) or set(charts) != {"application", "crds"}:
         fail(f"artifact {name} must pin application and CRD charts")
@@ -133,6 +145,21 @@ def validate_artifact(name: str, artifact: object, source_root: Path) -> None:
     for image_name, ref in images.items():
         if not IMAGE_REF.fullmatch(str(ref)):
             fail(f"image {name}/{image_name} must be registry/repository@sha256")
+    if name == "substrate" and artifact.get("artifact_schema_version") == SUBSTRATE_PRIVATE_PRODUCER_EVIDENCE_SCHEMA:
+        application_version = str(charts["application"]["version"])
+        if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+-private\.[0-9]+", application_version):
+            fail("private Substrate charts must use a private immutable release version")
+        for chart_kind, repository in SUBSTRATE_PRIVATE_CHART_REPOSITORIES.items():
+            chart = charts[chart_kind]
+            if chart["version"] != application_version:
+                fail("private Substrate application and CRD charts must use the same release version")
+            expected_prefix = f"oci://{SUBSTRATE_PRIVATE_REGISTRY}/helm/{repository}@"
+            if not str(chart["ref"]).startswith(expected_prefix):
+                fail(f"private Substrate chart {chart_kind} must come from the reviewed private GAR registry")
+        for image_name, repository in SUBSTRATE_PRIVATE_IMAGE_REPOSITORIES.items():
+            expected_prefix = f"{SUBSTRATE_PRIVATE_REGISTRY}/{repository}@"
+            if not str(images.get(image_name, "")).startswith(expected_prefix):
+                fail(f"private Substrate image {image_name} must come from the reviewed private GAR registry")
     runtime_images = artifact.get("runtime_images", {})
     if not isinstance(runtime_images, dict):
         fail(f"artifact {name} runtime_images must be an object")

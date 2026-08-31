@@ -22,6 +22,7 @@ readonly build_id="$(< /workspace/substrate-build-id)"
 readonly candidate_tag="${release_version}-cloudbuild-${build_id}"
 readonly final_image_tag="v${release_version}"
 readonly source_agentgateway_ref="ghcr.io/kagent-dev/substrate/agentgateway@sha256:068028a256bd63c91fd6e85a471269c014747297b0ffa785feaef6967eb0c429"
+readonly source_release_verifier_ref="ghcr.io/pilprod/substrate/substrate-release-verify@sha256:850d8d8ec018f49486b410a15dd38e965f1fbb4d02f8a8be36d5256f33eef74b"
 
 : "${SUBSTRATE_RELEASE_PREFIX:?SUBSTRATE_RELEASE_PREFIX is required}"
 : "${SUBSTRATE_STAGING_PREFIX:?SUBSTRATE_STAGING_PREFIX is required}"
@@ -33,7 +34,7 @@ readonly expected_staging_prefix="europe-west3-docker.pkg.dev/yourown-chat/kagen
 [[ "${SUBSTRATE_RELEASE_PREFIX}" == "${expected_release_prefix}" ]]
 [[ "${SUBSTRATE_STAGING_PREFIX}" == "${expected_staging_prefix}" ]]
 [[ "${SUBSTRATE_REGISTRY_HOST}" == "europe-west3-docker.pkg.dev" ]]
-[[ "${release_version}" == "0.0.22-private.2" ]]
+[[ "${release_version}" == "0.0.22-private.3" ]]
 [[ "${source_tag}" == "v0.0.22" ]]
 [[ "${source_commit}" == "e9ed68e587b56df2aa2a7f0267a744598c4d48b4" ]]
 [[ "${source_tag_object}" == "00a6a684cea3b3feea67461cf79347332ec759ef" ]]
@@ -47,7 +48,10 @@ readonly required_components=(
   atecontroller
   atenet
 )
-readonly all_components=("${required_components[@]}")
+readonly auxiliary_components=(
+  releaseVerifier
+)
+readonly all_components=("${required_components[@]}" "${auxiliary_components[@]}")
 readonly charts=(substrate substrate-crds)
 
 source_image_ref() {
@@ -64,6 +68,9 @@ source_image_ref() {
     agentgateway)
       printf '%s' "${source_agentgateway_ref}"
       ;;
+    releaseVerifier)
+      printf '%s' "${source_release_verifier_ref}"
+      ;;
     *)
       printf 'unknown source image component: %s\n' "$1" >&2
       exit 2
@@ -71,12 +78,27 @@ source_image_ref() {
   esac
 }
 
+image_repository_name() {
+  case "$1" in
+    releaseVerifier)
+      printf '%s' 'substrate-release-verify'
+      ;;
+    agentgateway | ateapi | atecontroller | atenet)
+      printf '%s' "$1"
+      ;;
+    *)
+      printf 'unknown image repository component: %s\n' "$1" >&2
+      exit 2
+      ;;
+  esac
+}
+
 image_repository() {
-  printf '%s/%s' "${SUBSTRATE_RELEASE_PREFIX}" "$1"
+  printf '%s/%s' "${SUBSTRATE_RELEASE_PREFIX}" "$(image_repository_name "$1")"
 }
 
 staging_image_repository() {
-  printf '%s/%s' "${SUBSTRATE_STAGING_PREFIX}" "$1"
+  printf '%s/%s' "${SUBSTRATE_STAGING_PREFIX}" "$(image_repository_name "$1")"
 }
 
 chart_repository() {
@@ -227,7 +249,7 @@ case "${action}" in
     jq -S . <<<"${platform_digests}" \
       > "${release_inputs}/platform-image-digests.json"
     jq -e '
-      keys == ["agentgateway", "ateapi", "atecontroller", "atenet"] and
+      keys == ["agentgateway", "ateapi", "atecontroller", "atenet", "releaseVerifier"] and
       all(.[];
         keys == ["linux_amd64", "linux_arm64"] and
         all(.[]; test("^sha256:[0-9a-f]{64}$"))
@@ -457,6 +479,7 @@ PY
       --arg atecontroller "$(digest_file image atecontroller)" \
       --arg atenet "$(digest_file image atenet)" \
       --arg agentgateway "$(digest_file image agentgateway)" \
+      --arg release_verifier "$(digest_file image releaseVerifier)" \
       --arg application "${application}" \
       --arg crds "${crds}" \
       --arg application_package_sha "${application_package_sha}" \
@@ -464,11 +487,12 @@ PY
       --argjson platform_digests "${platform_digests}" \
       --argjson source_image_refs "${source_image_refs}" \
       '{
-        schema_version: "yourown.chat/substrate-private-gar-release/v1",
+        schema_version: "yourown.chat/substrate-private-gar-release/v2",
         deployment_class: "dev-to-approved-prod",
         production_eligible: true,
         supported_profiles: ["external-control-plane-only"],
         required_components: ["agentgateway", "ateapi", "atecontroller", "atenet"],
+        auxiliary_components: ["releaseVerifier"],
         source: {
           repository: "https://github.com/pilprod/substrate",
           commit: $source_commit,
@@ -492,7 +516,8 @@ PY
           agentgateway: {ref: ($prefix + "/agentgateway@" + $agentgateway), digest: $agentgateway},
           ateapi: {ref: ($prefix + "/ateapi@" + $ateapi), digest: $ateapi},
           atecontroller: {ref: ($prefix + "/atecontroller@" + $atecontroller), digest: $atecontroller},
-          atenet: {ref: ($prefix + "/atenet@" + $atenet), digest: $atenet}
+          atenet: {ref: ($prefix + "/atenet@" + $atenet), digest: $atenet},
+          releaseVerifier: {ref: ($prefix + "/substrate-release-verify@" + $release_verifier), digest: $release_verifier}
         },
         platform_image_digests: $platform_digests,
         charts: {
@@ -528,23 +553,30 @@ PY
     # RELEASE_EVIDENCE_GUARD_BEGIN
     jq -e \
       --arg release_prefix "${SUBSTRATE_RELEASE_PREFIX}" '
+      def repository_name($component):
+        if $component == "releaseVerifier" then "substrate-release-verify" else $component end;
       . as $evidence |
+      $evidence.schema_version == "yourown.chat/substrate-private-gar-release/v2" and
+      $evidence.publication.registry_visibility == "private" and
+      $evidence.publication.release_prefix == $release_prefix and
       $evidence.supported_profiles == ["external-control-plane-only"] and
       $evidence.required_components == ["agentgateway", "ateapi", "atecontroller", "atenet"] and
+      $evidence.auxiliary_components == ["releaseVerifier"] and
       $evidence.copy_provenance.source_image_refs == {
         agentgateway: "ghcr.io/kagent-dev/substrate/agentgateway@sha256:068028a256bd63c91fd6e85a471269c014747297b0ffa785feaef6967eb0c429",
         ateapi: "ghcr.io/pilprod/substrate/ateapi@sha256:8a4cf985f809cc768e32091e39d45bce5f2e95fe43cd67f01d5e60c7df2ea868",
         atecontroller: "ghcr.io/pilprod/substrate/atecontroller@sha256:0845893ae2ecfd15f580bc410db22c8daae0d6b0388eca67541154a6ec98f554",
-        atenet: "ghcr.io/pilprod/substrate/atenet@sha256:01d96092c93fd623dbe051479a76573da551b56be29121b11b760d9067fc8c4c"
+        atenet: "ghcr.io/pilprod/substrate/atenet@sha256:01d96092c93fd623dbe051479a76573da551b56be29121b11b760d9067fc8c4c",
+        releaseVerifier: "ghcr.io/pilprod/substrate/substrate-release-verify@sha256:850d8d8ec018f49486b410a15dd38e965f1fbb4d02f8a8be36d5256f33eef74b"
       } and
-      ($evidence.images | keys) == ["agentgateway", "ateapi", "atecontroller", "atenet"] and
-      ($evidence.platform_image_digests | keys) == ["agentgateway", "ateapi", "atecontroller", "atenet"] and
+      ($evidence.images | keys) == ["agentgateway", "ateapi", "atecontroller", "atenet", "releaseVerifier"] and
+      ($evidence.platform_image_digests | keys) == ["agentgateway", "ateapi", "atecontroller", "atenet", "releaseVerifier"] and
       all($evidence.images | to_entries[];
         (.value | keys) == ["digest", "ref"] and
         (.value.digest | test("^sha256:[0-9a-f]{64}$")) and
-        .value.ref == ($release_prefix + "/" + .key + "@" + .value.digest)
+        .value.ref == ($release_prefix + "/" + repository_name(.key) + "@" + .value.digest)
       ) and
-      all($evidence.required_components[];
+      all(($evidence.required_components + $evidence.auxiliary_components)[];
         . as $component |
         $evidence.images[$component].digest ==
           ($evidence.copy_provenance.source_image_refs[$component] |
