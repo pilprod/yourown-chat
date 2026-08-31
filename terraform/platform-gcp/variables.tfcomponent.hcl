@@ -98,6 +98,28 @@ variable "helm_registry_repository_id" {
   }
 }
 
+variable "kagent_registry_repository_id" {
+  type        = string
+  description = "ID of the dedicated immutable Artifact Registry repository for reviewed kagent fork preview images and OCI charts. app-gcp owns publication; platform-gcp owns the repository lifecycle."
+  default     = "kagent-preview"
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9-]{0,62}$", var.kagent_registry_repository_id))
+    error_message = "kagent_registry_repository_id must be lowercase alphanumeric/hyphen, starting with a letter."
+  }
+}
+
+variable "kagent_staging_registry_repository_id" {
+  type        = string
+  description = "ID of the dedicated private Artifact Registry staging repository used by app-gcp to build and scan kagent candidates before public immutable promotion."
+  default     = "kagent-staging"
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9-]{0,62}$", var.kagent_staging_registry_repository_id))
+    error_message = "kagent_staging_registry_repository_id must be lowercase alphanumeric/hyphen, starting with a letter."
+  }
+}
+
 variable "artifact_registry_vulnerability_scanning" {
   type        = bool
   description = "Default repository scanning gate. Keep false for routine builds; the production Google Cloud MCP opens bounded paid scan windows when explicitly approved."
