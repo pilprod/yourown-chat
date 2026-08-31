@@ -33,7 +33,7 @@ readonly expected_staging_prefix="europe-west3-docker.pkg.dev/yourown-chat/kagen
 [[ "${SUBSTRATE_RELEASE_PREFIX}" == "${expected_release_prefix}" ]]
 [[ "${SUBSTRATE_STAGING_PREFIX}" == "${expected_staging_prefix}" ]]
 [[ "${SUBSTRATE_REGISTRY_HOST}" == "europe-west3-docker.pkg.dev" ]]
-[[ "${release_version}" == "0.0.22-private.1" ]]
+[[ "${release_version}" == "0.0.22-private.2" ]]
 [[ "${source_tag}" == "v0.0.22" ]]
 [[ "${source_commit}" == "e9ed68e587b56df2aa2a7f0267a744598c4d48b4" ]]
 [[ "${source_tag_object}" == "00a6a684cea3b3feea67461cf79347332ec759ef" ]]
@@ -401,7 +401,7 @@ PY
     for chart in "${charts[@]}"; do
       archive="${chart_dist}/${chart}-${release_version}.tgz"
       [[ -f "${archive}" ]]
-      output="$("${HELM_BIN}" push "${archive}" "oci://${SUBSTRATE_RELEASE_PREFIX}/helm")"
+      output="$("${HELM_BIN}" push "${archive}" "oci://${SUBSTRATE_RELEASE_PREFIX}/helm" 2>&1)"
       digest="$(awk '$1 == "Digest:" { print $2; exit }' <<<"${output}")"
       [[ "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]
       printf '%s=%s\n' "${chart}" "${digest}" \

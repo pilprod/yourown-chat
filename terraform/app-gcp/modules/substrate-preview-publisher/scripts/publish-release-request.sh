@@ -7,7 +7,7 @@ if [[ "$#" -ne 1 ]]; then
   exit 2
 fi
 
-readonly expected_release_version="0.0.22-private.1"
+readonly expected_release_version="0.0.22-private.2"
 release_version="$1"
 project_id="${GOOGLE_CLOUD_PROJECT:-yourown-chat}"
 
