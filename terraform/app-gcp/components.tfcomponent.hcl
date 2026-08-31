@@ -1046,7 +1046,8 @@ component "substrate_preview_publisher" {
   source = "./modules/substrate-preview-publisher"
 
   inputs = {
-    enabled = var.substrate_preview_publisher.enabled
+    enabled                       = var.substrate_preview_publisher.enabled
+    evidence_bucket_owner_enabled = var.kagent_preview_publisher.enabled
 
     project_id                  = var.project_id
     region                      = var.region

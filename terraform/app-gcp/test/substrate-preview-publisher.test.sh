@@ -5,7 +5,6 @@ set -euo pipefail
 root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
 module_dir="${root_dir}/terraform/app-gcp/modules/substrate-preview-publisher"
 components="${root_dir}/terraform/app-gcp/components.tfcomponent.hcl"
-variables="${root_dir}/terraform/app-gcp/variables.tfcomponent.hcl"
 inputs="${root_dir}/terraform/app-gcp/service-inputs.tfdeploy.hcl"
 app="${root_dir}/terraform/app-gcp/app.tfdeploy.hcl"
 outputs="${root_dir}/terraform/app-gcp/outputs.tfcomponent.hcl"
@@ -138,8 +137,10 @@ grep -Fq 'staging_registry_repository_id  = var.kagent_staging_registry_reposito
   fail 'private disposable platform repository is not wired'
 grep -Fq 'component.kagent_preview_publisher.evidence_bucket_name' "${components}" ||
   fail 'retained evidence bucket must be referenced through its owning component output'
-grep -Fq 'var.kagent_preview_publisher.enabled' "${variables}" ||
-  fail 'enabled Substrate publisher must require the evidence-bucket owner'
+grep -Fq 'evidence_bucket_owner_enabled = var.kagent_preview_publisher.enabled' "${components}" ||
+  fail 'enabled Substrate publisher must receive the evidence-bucket owner gate'
+grep -Fq 'condition     = var.evidence_bucket_owner_enabled' "${module_dir}/main.tf" ||
+  fail 'module must fail closed when the evidence-bucket owner is disabled'
 grep -Fq 'substrate_preview_publisher = local.substrate_preview_publisher' "${app}" ||
   fail 'deployment input is not wired'
 grep -Fq 'output "substrate_preview_publisher"' "${outputs}" ||

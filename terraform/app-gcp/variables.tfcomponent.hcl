@@ -696,11 +696,4 @@ variable "substrate_preview_publisher" {
     error_message = "The initial private Substrate publisher must remain pinned to v0.0.22, tag object 00a6a684cea3b3feea67461cf79347332ec759ef, commit e9ed68e587b56df2aa2a7f0267a744598c4d48b4 and coordinate 0.0.22-private.1."
   }
 
-  validation {
-    condition = !var.substrate_preview_publisher.enabled || (
-      var.kagent_preview_publisher.enabled &&
-      var.kagent_preview_publisher.evidence_bucket_name != "disabled-kagent-preview-evidence"
-    )
-    error_message = "The private Substrate publisher reuses the enabled kagent publisher evidence bucket; it cannot own a second bucket."
-  }
 }

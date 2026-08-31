@@ -403,7 +403,8 @@ resource "google_cloudbuild_trigger" "release" {
           docker run --rm \
             --volume /workspace:/workspace \
             --workdir /workspace/source \
-            --env SUBSTRATE_RELEASE_RECEIPT=/workspace/private-substrate/release-evidence.json \
+            --env SUBSTRATE_RELEASE_EVIDENCE=/workspace/private-substrate/release-evidence.json \
+            --env SUBSTRATE_RELEASE_EVIDENCE_URI='${var.substrate_release_evidence_uri}' \
             --env HELM_REGISTRY_CONFIG=/workspace/private-substrate/registry-config.json \
             "gcr.io/$PROJECT_ID/kagent-fork-preview-tools:$BUILD_ID" \
             /workspace/source/scripts/verify-cloud-build-fork-preview-source.sh \

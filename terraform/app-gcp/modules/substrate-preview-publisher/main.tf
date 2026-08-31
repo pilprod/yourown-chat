@@ -30,6 +30,13 @@ resource "google_service_account" "publisher" {
   account_id   = "substrate-publisher"
   display_name = "private Substrate publisher"
   description  = "Copies the reviewed Substrate release into private GAR, scans it and retains an immutable receipt."
+
+  lifecycle {
+    precondition {
+      condition     = var.evidence_bucket_owner_enabled
+      error_message = "The private Substrate publisher requires the enabled kagent publisher that owns the shared evidence bucket."
+    }
+  }
 }
 
 resource "google_project_iam_member" "log_writer" {
