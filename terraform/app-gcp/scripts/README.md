@@ -10,6 +10,17 @@ and synchronizes the exact nine source Secrets plus the Kubernetes-only
 Terraform or changes the readiness attestation. See
 [`docs/KAGENT_SUBSTRATE_RELEASE.md`](../../../docs/KAGENT_SUBSTRATE_RELEASE.md).
 
+For the reviewed cluster where those native Secrets already exist, its
+`adopt-existing` action invokes the fixed-contract Go helper
+`adopt-kagent-substrate-secrets.go`. That one-time path accepts no bundle or
+arbitrary Secret names. It validates the whole live contract in memory, requires
+the existing PostgreSQL Secret Manager value to match, uploads only empty
+targets over stdin with empty-or-one-exact retry semantics, reconciles the same
+ten Kubernetes Secrets over stdin, and removes legacy last-applied annotations
+only after exact whole-set readback. Secret payloads are never written to a
+file, command argument or diagnostic. Later reconciliation remains the `sync`
+action and flows from Secret Manager to Kubernetes.
+
 ## Public semver consumer evidence
 
 `render-substrate-semver-consumer-pin-fragment.py` validates the checked-in

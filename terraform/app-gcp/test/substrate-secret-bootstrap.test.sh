@@ -283,9 +283,17 @@ cat > "${work}/mock-bin/gcloud" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
 store="${MOCK_SECRET_STORE:?}"
+printf '%q ' "$@" >> "${store}/argv.log"
+printf '\n' >> "${store}/argv.log"
 if [[ "$1 $2" == "secrets describe" ]]; then
-  [[ -f "${store}/$3" ]]
   printf 'projects/test-project/secrets/%s\n' "$3"
+elif [[ "$1 $2 $3" == "secrets versions list" ]]; then
+  secret="$4"
+  if [[ -f "${store}/${secret}" ]]; then
+    printf '[{"name":"projects/test-project/secrets/%s/versions/1","state":"ENABLED"}]\n' "${secret}"
+  else
+    printf '[]\n'
+  fi
 elif [[ "$1 $2 $3" == "secrets versions access" ]]; then
   secret=""
   output=""
@@ -295,16 +303,27 @@ elif [[ "$1 $2 $3" == "secrets versions access" ]]; then
       --out-file=*) output="${arg#--out-file=}" ;;
     esac
   done
-  cp "${store}/${secret}" "${output}"
+  if [[ -n "${output}" ]]; then
+    cp "${store}/${secret}" "${output}"
+  else
+    cat "${store}/${secret}"
+  fi
 elif [[ "$1 $2 $3" == "secrets versions add" ]]; then
   secret="$4"
   input=""
   for arg in "$@"; do
     case "${arg}" in --data-file=*) input="${arg#--data-file=}" ;; esac
   done
-  cp "${input}" "${store}/${secret}"
+  if [[ "${MOCK_FAIL_ADD_SECRET:-}" == "${secret}" ]]; then
+    exit 9
+  fi
+  if [[ "${input}" == '-' ]]; then
+    tee "${store}/${secret}" >/dev/null
+  else
+    cp "${input}" "${store}/${secret}"
+  fi
   printf '%s\n' "${secret}" >> "${store}/versions-add.log"
-  printf 'projects/test-project/secrets/%s/versions/2\n' "${secret}"
+  printf 'projects/test-project/secrets/%s/versions/1\n' "${secret}"
 else
   exit 2
 fi
@@ -315,6 +334,8 @@ cat > "${work}/mock-bin/kubectl" <<'MOCK'
 set -euo pipefail
 store="${MOCK_KUBE_STORE:?}"
 joined=" $* "
+printf '%q ' "$@" >> "${store}/argv.log"
+printf '\n' >> "${store}/argv.log"
 if [[ "${joined}" == *' get namespace '* ]]; then
   printf 'namespace/mock\n'
 elif [[ "${joined}" == *' auth can-i create secrets '* ]]; then
@@ -323,7 +344,13 @@ elif [[ "${joined}" == *' auth can-i create secrets '* ]]; then
   else
     printf 'yes\n'
   fi
-elif [[ "${joined}" == *' auth can-i get secrets '* || "${joined}" == *' auth can-i patch secrets '* ]]; then
+elif [[ "${joined}" == *' auth can-i patch secrets '* ]]; then
+  if [[ "${MOCK_DENY_PATCH:-0}" == 1 ]]; then
+    printf 'no\n'
+  else
+    printf 'yes\n'
+  fi
+elif [[ "${joined}" == *' auth can-i get secrets '* ]]; then
   printf 'yes\n'
 elif [[ "${joined}" == *' apply '* ]]; then
   input="$(mktemp "${TMPDIR:-/tmp}/mock-kube.XXXXXX")"
@@ -331,7 +358,58 @@ elif [[ "${joined}" == *' apply '* ]]; then
   tee "${input}" >/dev/null
   namespace="$(jq -er '.metadata.namespace' "${input}")"
   name="$(jq -er '.metadata.name' "${input}")"
-  cp "${input}" "${store}/${namespace}__${name}.json"
+  if [[ "${MOCK_FAIL_APPLY_SECRET:-}" == "${name}" ]]; then
+    exit 10
+  fi
+  destination="${store}/${namespace}__${name}.json"
+  if [[ -f "${destination}" ]]; then
+    uid="$(jq -er '.metadata.uid' "${destination}")"
+    resource_version="$(jq -er '.metadata.resourceVersion' "${destination}")"
+    jq -e --arg uid "${uid}" --arg resource_version "${resource_version}" \
+      '.metadata.uid == $uid and .metadata.resourceVersion == $resource_version' \
+      "${input}" >/dev/null
+    next_resource_version="$((resource_version + 1))"
+    jq --slurpfile desired "${input}" --arg resource_version "${next_resource_version}" '
+      .metadata.labels = ((.metadata.labels // {}) + $desired[0].metadata.labels) |
+      .metadata.resourceVersion = $resource_version |
+      .type = $desired[0].type |
+      .data = $desired[0].data
+    ' "${destination}" > "${destination}.next"
+    mv -f -- "${destination}.next" "${destination}"
+  else
+    jq --arg uid "uid-${namespace}-${name}" '
+      .metadata.uid = $uid |
+      .metadata.resourceVersion = "1" |
+      .metadata.annotations = {
+        "kubectl.kubernetes.io/last-applied-configuration": "sensitive-last-applied-marker"
+      }
+    ' "${input}" > "${destination}"
+  fi
+  printf 'secret/%s\n' "${name}"
+elif [[ "${joined}" == *' patch secret '* ]]; then
+  input="$(mktemp "${TMPDIR:-/tmp}/mock-kube-patch.XXXXXX")"
+  trap 'rm -f -- "${input}"' EXIT
+  tee "${input}" >/dev/null
+  namespace=""
+  name=""
+  previous=""
+  for arg in "$@"; do
+    if [[ "${previous}" == '-n' ]]; then namespace="${arg}"; fi
+    if [[ "${previous}" == 'secret' ]]; then name="${arg}"; fi
+    previous="${arg}"
+  done
+  destination="${store}/${namespace}__${name}.json"
+  uid="$(jq -er '.[0].value' "${input}")"
+  resource_version="$(jq -er '.[1].value' "${input}")"
+  jq -e --arg uid "${uid}" --arg resource_version "${resource_version}" \
+    '.metadata.uid == $uid and .metadata.resourceVersion == $resource_version' \
+    "${destination}" >/dev/null
+  next_resource_version="$((resource_version + 1))"
+  jq --arg resource_version "${next_resource_version}" '
+    del(.metadata.annotations["kubectl.kubernetes.io/last-applied-configuration"]) |
+    .metadata.resourceVersion = $resource_version
+  ' "${destination}" > "${destination}.next"
+  mv -f -- "${destination}.next" "${destination}"
   printf 'secret/%s\n' "${name}"
 elif [[ "${joined}" == *' get secret '* ]]; then
   namespace=""
@@ -365,7 +443,7 @@ bootstrap_output="$(
   "${bootstrap}" bootstrap --project test-project --context test-context --bundle "${work}/bundle.json" 2>&1
 )"
 
-[[ "$(find "${work}/kube-store" -type f | wc -l | tr -d ' ')" == 10 ]] || fail "bootstrap did not materialize exactly ten Kubernetes Secrets"
+[[ "$(find "${work}/kube-store" -type f -name '*.json' | wc -l | tr -d ' ')" == 10 ]] || fail "bootstrap did not materialize exactly ten Kubernetes Secrets"
 [[ -f "${work}/kube-store/ate-system__actor-id-ca-certs.json" ]] || fail "derived actor-id-ca-certs Secret is missing"
 [[ -f "${work}/kube-store/kagent-dev__kagent-dev-ate-client-tls.json" ]] || fail "kagent dev client TLS Secret is missing"
 jq -er '.data | keys == ["client-credential-bundle.pem", "server-ca.pem"]' \
