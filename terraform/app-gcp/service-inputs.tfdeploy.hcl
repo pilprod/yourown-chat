@@ -37,6 +37,13 @@ locals {
       name       = "kagent"
       remote_uri = "https://github.com/pilprod/kagent.git"
     }
+    # Reviewed public source only. The dedicated publisher copies exact
+    # digest-qualified v0.0.22 assets into private Google Artifact Registry;
+    # GitHub and GHCR are never deployment repositories.
+    substrate = {
+      name       = "substrate"
+      remote_uri = "https://github.com/pilprod/substrate.git"
+    }
     # Current (legacy) RTCD input kept verbatim so the first app-gcp plan is
     # a no-op. Switching to pilprod/rtcd is a catalog-only change owned by the
     # RTCD consolidation task (it recreates the Cloud Build link/trigger).
@@ -276,6 +283,22 @@ locals {
     evidence_bucket_name       = "yourown-chat-kagent-preview-evidence-europe-west3"
     evidence_retention_seconds = 31536000
     ghcr_secret_id             = "kagent-ghcr-write"
-    submitter_members          = []
+    # Filled with the exact `evidence_uri` emitted by the successful private
+    # Substrate build before the reviewed .kap.3 kagent request is submitted.
+    # Empty deliberately makes every kagent release request fail closed.
+    substrate_release_evidence_uri = ""
+    submitter_members              = []
+  }
+
+  # One applied configuration authorizes one private release coordinate. If a
+  # build acquires its write-once lock and later fails, bump release_version in
+  # a reviewed change; never retry or overwrite the burned coordinate.
+  substrate_preview_publisher = {
+    enabled           = true
+    source_tag        = "v0.0.22"
+    source_tag_object = "00a6a684cea3b3feea67461cf79347332ec759ef"
+    source_commit     = "e9ed68e587b56df2aa2a7f0267a744598c4d48b4"
+    release_version   = "0.0.22-private.1"
+    submitter_members = []
   }
 }

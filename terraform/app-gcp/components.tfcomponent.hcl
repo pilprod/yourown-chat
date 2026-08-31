@@ -1028,15 +1028,54 @@ component "kagent_preview_publisher" {
     artifact_registry_repository_id = var.kagent_registry_repository_id
     staging_registry_repository_id  = var.kagent_staging_registry_repository_id
 
-    evidence_bucket_name       = var.kagent_preview_publisher.evidence_bucket_name
-    evidence_retention_seconds = var.kagent_preview_publisher.evidence_retention_seconds
-    ghcr_secret_id             = var.kagent_preview_publisher.ghcr_secret_id
-    kms_key_name               = var.cmek_key_id
-    labels                     = local.common_labels
+    evidence_bucket_name           = var.kagent_preview_publisher.evidence_bucket_name
+    evidence_retention_seconds     = var.kagent_preview_publisher.evidence_retention_seconds
+    ghcr_secret_id                 = var.kagent_preview_publisher.ghcr_secret_id
+    substrate_release_evidence_uri = var.kagent_preview_publisher.substrate_release_evidence_uri
+    kms_key_name                   = var.cmek_key_id
+    labels                         = local.common_labels
   }
 
   providers = {
     google = provider.google.this
     random = provider.random.this
+  }
+}
+
+component "substrate_preview_publisher" {
+  source = "./modules/substrate-preview-publisher"
+
+  inputs = {
+    enabled = var.substrate_preview_publisher.enabled
+
+    project_id                  = var.project_id
+    region                      = var.region
+    apply_service_account_email = var.service_account_email
+    submitter_members = setunion(
+      var.substrate_preview_publisher.submitter_members,
+      toset([var.workload_identity_members.mcp]),
+    )
+
+    github_remote_uri = var.source_repositories.substrate.remote_uri
+    source_tag        = var.substrate_preview_publisher.source_tag
+    source_tag_object = var.substrate_preview_publisher.source_tag_object
+    source_commit     = var.substrate_preview_publisher.source_commit
+    release_version   = var.substrate_preview_publisher.release_version
+
+    artifact_registry_location      = var.kagent_registry_location
+    artifact_registry_repository_id = var.kagent_registry_repository_id
+    staging_registry_repository_id  = var.kagent_staging_registry_repository_id
+
+    # Reference the owning component output instead of repeating only its
+    # literal bucket name. This preserves an explicit graph dependency and
+    # prevents the Substrate rail from introducing duplicate bucket ownership.
+    evidence_bucket_name = coalesce(
+      component.kagent_preview_publisher.evidence_bucket_name,
+      var.kagent_preview_publisher.evidence_bucket_name,
+    )
+  }
+
+  providers = {
+    google = provider.google.this
   }
 }

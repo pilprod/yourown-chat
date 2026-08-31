@@ -66,6 +66,20 @@ variable "staging_registry_repository_id" {
   description = "Dedicated private platform-owned Artifact Registry repository receiving disposable kagent candidate images before scan and promotion."
 }
 
+variable "substrate_release_evidence_uri" {
+  type        = string
+  description = "Exact generation-qualified GCS URI of the private Substrate release-evidence.json consumed by source verification. Empty keeps all kagent release requests fail-closed until the private handoff is complete."
+  default     = ""
+
+  validation {
+    condition = (
+      var.substrate_release_evidence_uri == "" ||
+      can(regex("^gs://[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]/substrate/0\\.0\\.22-private\\.1/release-evidence\\.json#[1-9][0-9]*$", var.substrate_release_evidence_uri))
+    )
+    error_message = "substrate_release_evidence_uri must be empty or the exact generation-qualified private 0.0.22-private.1 release-evidence.json URI."
+  }
+}
+
 variable "build_timeout" {
   type        = string
   description = "Maximum Cloud Build duration for multi-architecture images, chart verification and scanning."

@@ -129,6 +129,23 @@ resource "google_storage_bucket_iam_member" "evidence_creator" {
   member = "serviceAccount:${google_service_account.publisher[0].email}"
 }
 
+# Source verification reads the generation-qualified private Substrate receipt
+# from this same bucket. It cannot list, mutate or delete objects beyond the
+# read semantics of the bucket-scoped viewer role.
+resource "google_storage_bucket_iam_member" "evidence_viewer" {
+  count = local.count
+
+  bucket = google_storage_bucket.evidence[0].name
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${google_service_account.publisher[0].email}"
+
+  condition {
+    title       = "substrate-0.0.22-private.1-read"
+    description = "Read only the exact private Substrate evidence handoff consumed by this kagent rail."
+    expression  = "resource.name.startsWith(\"projects/_/buckets/${google_storage_bucket.evidence[0].name}/objects/substrate/0.0.22-private.1/\")"
+  }
+}
+
 # Legacy empty container retained only so adopting the Artifact Registry build
 # path does not mix a destructive secret deletion into the release change. The
 # trigger below has no secret injection and never reads this resource.
@@ -339,15 +356,55 @@ resource "google_cloudbuild_trigger" "release" {
     }
 
     step {
+      id         = "materialize-private-substrate-verification-inputs"
+      name       = "gcr.io/google.com/cloudsdktool/google-cloud-cli:573.0.0@sha256:f0b4abeb30773243f9ae95abe201ec01de07d5ed582b56ca52879eb3dbe209c3"
+      entrypoint = "bash"
+      args = [
+        "-ceu",
+        <<-EOT
+          receipt_uri='${var.substrate_release_evidence_uri}'
+          test -n "$$receipt_uri"
+          case "$$receipt_uri" in
+            'gs://${var.evidence_bucket_name}/substrate/0.0.22-private.1/release-evidence.json#'[1-9][0-9]*) ;;
+            *)
+              printf 'private Substrate evidence URI is not the applied generation-qualified coordinate\n' >&2
+              exit 1
+              ;;
+          esac
+
+          install -d -m 0700 /workspace/private-substrate
+          gcloud storage cp "$$receipt_uri" \
+            /workspace/private-substrate/release-evidence.json
+          chmod 0400 /workspace/private-substrate/release-evidence.json
+
+          registry_auth="$$(printf '%s' \
+            "oauth2accesstoken:$$(gcloud auth print-access-token)" | base64 | tr -d '\n')"
+          printf '{"auths":{"%s":{"auth":"%s"}}}\n' \
+            '${local.registry_host}' "$$registry_auth" \
+            > /workspace/private-substrate/registry-config.json
+          chmod 0400 /workspace/private-substrate/registry-config.json
+        EOT
+      ]
+    }
+
+    step {
       id         = "verify-release-source"
       name       = "gcr.io/cloud-builders/docker@sha256:d1797996867921778f1adbb7e493baaaf2f6b21e107599c0aab48c2ec06ff311"
       entrypoint = "bash"
       args = [
         "-ceu",
         <<-EOT
+          cleanup() {
+            rm -f \
+              /workspace/private-substrate/registry-config.json \
+              /workspace/private-substrate/release-evidence.json
+          }
+          trap cleanup EXIT
           docker run --rm \
             --volume /workspace:/workspace \
             --workdir /workspace/source \
+            --env SUBSTRATE_RELEASE_RECEIPT=/workspace/private-substrate/release-evidence.json \
+            --env HELM_REGISTRY_CONFIG=/workspace/private-substrate/registry-config.json \
             "gcr.io/$PROJECT_ID/kagent-fork-preview-tools:$BUILD_ID" \
             /workspace/source/scripts/verify-cloud-build-fork-preview-source.sh \
             "$$(< /workspace/kagent-release-version)" \
@@ -581,5 +638,6 @@ resource "google_cloudbuild_trigger" "release" {
     google_service_account_iam_member.submitter,
     google_service_account_iam_member.publisher_acts_as_self,
     google_storage_bucket_iam_member.evidence_creator,
+    google_storage_bucket_iam_member.evidence_viewer,
   ]
 }

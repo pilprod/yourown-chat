@@ -119,12 +119,13 @@ deployment "eu" {
     # Service-owned inputs live with the app-gcp Stack. Credentials remain in
     # the approved secret control plane; these values are names, URLs and
     # immutable release pins.
-    github_connection_name    = local.github_connection_name
-    source_repositories       = local.source_repositories
-    vendor_chart_bundles      = local.vendor_chart_bundles
-    kagent_substrate_delivery = local.kagent_substrate_delivery
-    kagent_preview_publisher  = local.kagent_preview_publisher
-    image_name                = "mattermost"
+    github_connection_name      = local.github_connection_name
+    source_repositories         = local.source_repositories
+    vendor_chart_bundles        = local.vendor_chart_bundles
+    kagent_substrate_delivery   = local.kagent_substrate_delivery
+    kagent_preview_publisher    = local.kagent_preview_publisher
+    substrate_preview_publisher = local.substrate_preview_publisher
+    image_name                  = "mattermost"
     # Stable assembly tags use dev -> smoke -> approval -> prod. Prerelease
     # tags and version branches are structurally limited to dev preview.
     builds = {
