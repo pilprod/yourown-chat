@@ -54,7 +54,8 @@ for required in \
   'retention_policy {' \
   'roles/storage.objectCreator' \
   'resource "google_secret_manager_secret" "ghcr_write"' \
-  'resource "google_service_account_iam_member" "apply_acts_as_publisher"' \
+  'resource "google_service_account_iam_member" "submitter"' \
+  'for_each = var.enabled ? toset(["serviceAccount:${var.apply_service_account_email}"]) : toset([])' \
   'resource "google_service_account_iam_member" "publisher_acts_as_self"' \
   'roles/iam.serviceAccountUser'; do
   grep -Fq "${required}" <<<"${main}" || fail "missing least-privilege contract: ${required}"

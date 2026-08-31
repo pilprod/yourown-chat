@@ -155,15 +155,17 @@ resource "google_secret_manager_secret" "ghcr_write" {
   }
 }
 
-# The Terraform apply identity needs actAs to create a trigger that names the
-# publisher. Release submitters do not: they can only publish to the dedicated
+# Preserve the pre-existing keyed state address for the Terraform apply
+# identity. Changing this identical IAM tuple to a count-based address would
+# plan create/delete and could revoke the grant after recording the new object.
+# Release submitters remain excluded: they can only publish to the dedicated
 # request topic below.
-resource "google_service_account_iam_member" "apply_acts_as_publisher" {
-  count = local.count
+resource "google_service_account_iam_member" "submitter" {
+  for_each = var.enabled ? toset(["serviceAccount:${var.apply_service_account_email}"]) : toset([])
 
   service_account_id = google_service_account.publisher[0].name
   role               = "roles/iam.serviceAccountUser"
-  member             = "serviceAccount:${var.apply_service_account_email}"
+  member             = each.value
 }
 
 # The trigger executes as the publisher and can act as no other service
@@ -541,7 +543,7 @@ resource "google_cloudbuild_trigger" "release" {
     google_project_iam_member.scanner,
     google_project_iam_member.build_invoker,
     google_pubsub_topic_iam_member.release_submitter,
-    google_service_account_iam_member.apply_acts_as_publisher,
+    google_service_account_iam_member.submitter,
     google_service_account_iam_member.publisher_acts_as_self,
     google_storage_bucket_iam_member.evidence_creator,
   ]
