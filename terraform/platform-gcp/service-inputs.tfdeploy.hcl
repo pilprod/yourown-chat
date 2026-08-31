@@ -12,6 +12,16 @@ locals {
         service_account = "kagent-controller"
       }]
     }
+    kagent_dev = {
+      database_names       = ["kagent_dev"]
+      password_secret_id   = "kagent-dev-db-password"
+      connection_secret_id = "kagent-dev-database-url"
+      password_rotation    = "1"
+      kubernetes_connection_secret_accessors = [{
+        namespace       = "kagent-dev"
+        service_account = "kagent-controller"
+      }]
+    }
     substrate = {
       database_names       = ["substrate"]
       password_secret_id   = "substrate-db-password"
