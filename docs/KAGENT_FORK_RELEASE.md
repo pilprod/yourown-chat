@@ -53,7 +53,9 @@ gs://yourown-chat-kagent-preview-evidence-europe-west3/kagent/<version>/<build-i
 ```
 
 The receipt contains schema-3 `release-evidence.json`, its checksum, both chart
-archives, scan results and a Cloud Build identity receipt. The deployment input
+archives, scan results and a schema-2 Cloud Build identity receipt. The release
+evidence keeps the canonical `v<version>` artifact tag, while the identity
+receipt records the reviewed `gcp-v<version>` source tag separately. The deployment input
 must copy only the immutable digest references and the verified manifest hash
 from this receipt. Cloud Deploy then renders the production-ineligible
 `kagent-substrate` testbed release from the reviewed `yourown-chat` repository.

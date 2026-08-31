@@ -95,8 +95,10 @@ for required in \
   grep -Fq -- "${required}" "${driver}" "${module_dir}/main.tf" ||
     fail "missing Artifact Registry publication contract: ${required}"
 done
-grep -Fq 'tag: $source_tag' "${driver}" ||
-  fail 'receipt must record the exact reviewed gcp-v source tag'
+grep -Fq 'tag: ("v" + $version)' "${driver}" ||
+  fail 'release evidence must retain the canonical artifact tag'
+grep -Fq '"$$(< /workspace/kagent-source-tag)" /workspace/release' "${module_dir}/main.tf" ||
+  fail 'receipt finalizer must receive the exact reviewed gcp-v source tag separately'
 
 grep -Fq 'source = "./modules/kagent-preview-publisher"' "${components}" ||
   fail 'stack component is not wired'
@@ -110,7 +112,7 @@ grep -Fq 'staging_registry_repository_id  = var.kagent_staging_registry_reposito
   fail 'platform-owned private kagent staging repository is not wired'
 grep -Fq 'enabled                    = true' "${inputs}" ||
   fail 'service input does not materialize the publisher infrastructure'
-grep -Fq 'source_commit              = "a23b96ec863315ea3ca0ccd2ea829197882bd509"' "${inputs}" ||
+grep -Fq 'source_commit              = "6c42060b74589f61b4b2bed44692e1f87247ef2d"' "${inputs}" ||
   fail 'reviewed kagent source commit is not pinned'
 grep -Fq 'release_tag_regex          = "^gcp-v0\\.0\\.0-external-slot\\.kap\\.[0-9]+$"' "${inputs}" ||
   fail 'release tags must remain in the gcp-v namespace that cannot dispatch the fork v*.kap.* workflow'

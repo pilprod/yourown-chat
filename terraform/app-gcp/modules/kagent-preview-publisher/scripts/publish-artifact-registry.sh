@@ -367,7 +367,7 @@ case "${action}" in
       '{
         schemaVersion: 3,
         channel: "preview",
-        tag: $source_tag,
+        tag: ("v" + $version),
         source_repository: "https://github.com/pilprod/kagent",
         source_commit: $source_commit,
         chart_source: {

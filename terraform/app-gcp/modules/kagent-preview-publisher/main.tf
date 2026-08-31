@@ -502,7 +502,8 @@ resource "google_cloudbuild_trigger" "release" {
             "gcr.io/$PROJECT_ID/kagent-fork-preview-tools:$BUILD_ID" \
             /workspace/source/scripts/finalize-cloud-build-fork-preview-receipt.py \
             "$BUILD_ID" "$PROJECT_ID" "${var.source_commit}" \
-            "$$(< /workspace/kagent-release-version)" /workspace/release
+            "$$(< /workspace/kagent-release-version)" \
+            "$$(< /workspace/kagent-source-tag)" /workspace/release
         EOT
       ]
     }
