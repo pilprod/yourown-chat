@@ -112,10 +112,18 @@ locals {
           }
         }
         agent_runtime = {
-          namespace_key = "codex"
+          namespace_key = "workload"
           pod_selector  = { app = "kagent" }
         }
         model_fixture = {
+          namespace_key = "workload"
+          pod_selector  = { app = "model-fixture" }
+        }
+        codex_agent_runtime = {
+          namespace_key = "codex"
+          pod_selector  = { app = "kagent" }
+        }
+        codex_model_fixture = {
           namespace_key = "codex"
           pod_selector  = { app = "model-fixture" }
         }
@@ -175,6 +183,18 @@ locals {
           source_kind     = "endpoint"
           source_key      = "agent_runtime"
           destination_key = "model_fixture"
+          ports           = [{ port = 11434, protocol = "TCP" }]
+        }
+        codex_controller_agent = {
+          source_kind     = "endpoint"
+          source_key      = "controller"
+          destination_key = "codex_agent_runtime"
+          ports           = [{ port = 8080, protocol = "TCP" }]
+        }
+        codex_agent_model = {
+          source_kind     = "endpoint"
+          source_key      = "codex_agent_runtime"
+          destination_key = "codex_model_fixture"
           ports           = [{ port = 11434, protocol = "TCP" }]
         }
         edge_dev_ui = {

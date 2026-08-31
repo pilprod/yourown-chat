@@ -80,13 +80,18 @@ test ! -e "${repo_root}/helm/agent-pilot.sh" || fail "legacy agent pilot helper 
 # product prefix.
 require_literal "${service_inputs}" 'codex       = { name = "agent-codex", quota_profile = "testbed-workload" }'
 require_literal "${service_inputs}" 'dev_codex   = { name = "agent-codex-dev", quota_profile = "dev-workload" }'
-# The populated pre-migration namespace remains managed so this base release
-# cannot cascade-delete its contents. It is deliberately absent from endpoints
-# and can be removed only in a later drained-retirement change.
+# The populated pre-migration namespace and its existing flow keys remain
+# managed so this base release cannot cascade-delete or replace their contents.
+# New Codex endpoints and flows are additive; legacy entries can be removed only
+# in a later drained-retirement change.
 require_literal "${service_inputs}" 'workload    = { name = "kagent-testbed", quota_profile = "testbed-workload" }'
+require_literal "${service_inputs}" 'namespace_key = "workload"'
 require_literal "${service_inputs}" 'namespace_key = "codex"'
 require_literal "${service_inputs}" 'namespace_key = "dev_codex"'
-forbidden_literal "${service_inputs}" 'namespace_key = "workload"'
+require_literal "${service_inputs}" 'codex_controller_agent = {'
+require_literal "${service_inputs}" 'destination_key = "codex_agent_runtime"'
+require_literal "${service_inputs}" 'codex_agent_model = {'
+require_literal "${service_inputs}" 'destination_key = "codex_model_fixture"'
 
 require_literal "${components}" 'kagent_control_planes = {'
 require_literal "${components}" 'dev = {'
