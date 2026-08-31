@@ -179,16 +179,33 @@ resource "google_service_account_iam_member" "publisher_acts_as_self" {
   member             = "serviceAccount:${google_service_account.publisher[0].email}"
 }
 
-# Terraform creates and owns the release topic, its IAM policy and the
-# Cloud Build-managed subscription behind the Pub/Sub trigger. Grant the apply
-# identity the service-scoped editor role before any of those resources are
-# reconciled. The apply identity already owns project IAM reconciliation; this
-# binding only supplies the Pub/Sub data-plane permissions that were missing.
-resource "google_project_iam_member" "apply_pubsub_editor" {
+# Terraform creates and owns the release topic and its IAM policy. A dedicated
+# role keeps that authority narrower than roles/pubsub.editor while including
+# the get/setIamPolicy permissions that the topic IAM member resource requires.
+resource "google_project_iam_custom_role" "apply_pubsub_manager" {
+  count = local.count
+
+  project     = var.project_id
+  role_id     = "kagentPreviewPubsubManager"
+  title       = "kagent preview Pub/Sub manager"
+  description = "Allows Terraform to manage only the kagent preview release topic and its IAM policy."
+  permissions = [
+    "pubsub.topics.create",
+    "pubsub.topics.delete",
+    "pubsub.topics.get",
+    "pubsub.topics.getIamPolicy",
+    "pubsub.topics.list",
+    "pubsub.topics.setIamPolicy",
+    "pubsub.topics.update",
+  ]
+  stage = "GA"
+}
+
+resource "google_project_iam_member" "apply_pubsub_manager" {
   count = local.count
 
   project = var.project_id
-  role    = "roles/pubsub.editor"
+  role    = google_project_iam_custom_role.apply_pubsub_manager[0].id
   member  = "serviceAccount:${var.apply_service_account_email}"
 }
 
@@ -203,7 +220,7 @@ resource "google_pubsub_topic" "release_request" {
   name    = "kagent-preview-release"
   labels  = var.labels
 
-  depends_on = [google_project_iam_member.apply_pubsub_editor]
+  depends_on = [google_project_iam_member.apply_pubsub_manager]
 }
 
 resource "google_pubsub_topic_iam_member" "release_submitter" {
