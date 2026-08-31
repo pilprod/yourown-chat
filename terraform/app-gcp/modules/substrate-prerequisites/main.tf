@@ -1,5 +1,55 @@
 locals {
   substrate_namespace = "ate-system"
+  repository_root     = abspath("${path.module}/../../../..")
+
+  substrate_values_path       = "${local.repository_root}/helm/kagent/substrate.values.yaml"
+  gateway_parameters_path     = "${local.repository_root}/helm/kagent/gateway/testbed-parameters.yaml"
+  substrate_values            = try(file(local.substrate_values_path), "")
+  gateway_parameters_source   = try(yamldecode(file(local.gateway_parameters_path)), {})
+  gateway_parameters_sha256   = "2c00283a193c875397a94e018dbf799071b82293cd04f8c5d61e18d93349905f"
+  expected_substrate_set_keys = toset(["image.registry", "image.digests.ateapi", "image.digests.atecontroller", "image.digests.atenet", "images.agentgateway"])
+  substrate_image_values_valid = (
+    toset(keys(var.substrate_helm_set_values)) == local.expected_substrate_set_keys &&
+    can(regex("^[^@[:space:]]+(?:/[^@[:space:]]+)*$", try(var.substrate_helm_set_values["image.registry"], ""))) &&
+    alltrue([
+      for key in ["image.digests.ateapi", "image.digests.atecontroller", "image.digests.atenet"] :
+      can(regex("^sha256:[0-9a-f]{64}$", try(var.substrate_helm_set_values[key], "")))
+    ]) &&
+    can(regex("^[^@[:space:]]+/[^@[:space:]]+@sha256:[0-9a-f]{64}$", try(var.substrate_helm_set_values["images.agentgateway"], "")))
+  )
+  substrate_image_values = {
+    image = {
+      registry = try(var.substrate_helm_set_values["image.registry"], "")
+      digests = {
+        ateapi        = try(var.substrate_helm_set_values["image.digests.ateapi"], "")
+        atecontroller = try(var.substrate_helm_set_values["image.digests.atecontroller"], "")
+        atenet        = try(var.substrate_helm_set_values["image.digests.atenet"], "")
+      }
+    }
+    images = {
+      agentgateway = try(var.substrate_helm_set_values["images.agentgateway"], "")
+    }
+  }
+
+  # The tracked object carries the hardened proxy Pod contract. Terraform
+  # replaces only the deployment-specific address name and adds ownership
+  # labels; Cloud Deploy never owns or reapplies this shared resource.
+  gateway_parameters_manifest = merge(local.gateway_parameters_source, {
+    metadata = merge(try(local.gateway_parameters_source.metadata, {}), {
+      namespace = local.substrate_namespace
+      labels    = local.common_labels
+    })
+    spec = merge(try(local.gateway_parameters_source.spec, {}), {
+      service = merge(try(local.gateway_parameters_source.spec.service, {}), {
+        metadata = merge(try(local.gateway_parameters_source.spec.service.metadata, {}), {
+          annotations = merge(try(local.gateway_parameters_source.spec.service.metadata.annotations, {}), {
+            "networking.gke.io/load-balancer-ip-addresses" = var.agentgateway.public_ip_name
+          })
+        })
+      })
+    })
+  })
+
   kagent_targets = merge([
     for control_key, control in var.kagent_control_planes : {
       for target_key, namespace in merge({ control = control.namespace }, control.agent_namespaces) :
@@ -110,6 +160,12 @@ locals {
   })
 }
 
+import {
+  for_each = var.adopt_existing && var.bootstrap_enabled ? toset([local.substrate_namespace]) : toset([])
+  to       = kubernetes_namespace_v1.substrate[0]
+  id       = each.value
+}
+
 resource "kubernetes_namespace_v1" "substrate" {
   count = var.bootstrap_enabled ? 1 : 0
 
@@ -135,6 +191,12 @@ resource "kubernetes_namespace_v1" "substrate" {
       error_message = "Substrate delivery remains closed until reviewed Actor/MCP CIDRs and ports are provided or local_provider_only explicitly disables Actor/MCP egress."
     }
   }
+}
+
+import {
+  for_each = var.adopt_existing && var.bootstrap_enabled ? toset(["${local.substrate_namespace}/substrate-crds"]) : toset([])
+  to       = helm_release.substrate_crds[0]
+  id       = each.value
 }
 
 resource "helm_release" "substrate_crds" {
@@ -166,6 +228,178 @@ resource "helm_release" "substrate_crds" {
   }
 
   depends_on = [kubernetes_namespace_v1.substrate]
+}
+
+# The application-specific agentgateway parameters are shared infrastructure,
+# not a kagent promotion artifact. They must exist before the Substrate chart
+# creates its Gateway with a parametersRef.
+resource "kubernetes_manifest" "agentgateway_parameters" {
+  count = var.release_enabled ? 1 : 0
+
+  manifest = local.gateway_parameters_manifest
+
+  field_manager {
+    force_conflicts = true
+    name            = "terraform-app-gcp"
+  }
+
+  lifecycle {
+    prevent_destroy = true
+
+    precondition {
+      condition     = filesha256(local.gateway_parameters_path) == local.gateway_parameters_sha256
+      error_message = "The tracked AgentgatewayParameters manifest does not match its reviewed SHA-256."
+    }
+
+    precondition {
+      condition = (
+        try(local.gateway_parameters_source.apiVersion == "agentgateway.dev/v1alpha1", false) &&
+        try(local.gateway_parameters_source.kind == "AgentgatewayParameters", false) &&
+        try(local.gateway_parameters_source.metadata.name == "substrate-broker", false) &&
+        var.agentgateway.public_ip_name != ""
+      )
+      error_message = "Substrate release requires the exact substrate-broker AgentgatewayParameters object and a dedicated GCP address resource name."
+    }
+  }
+
+  depends_on = [
+    helm_release.substrate_crds,
+    kubernetes_role_binding_v1.agentgateway_deployer,
+  ]
+}
+
+# Shared Substrate is installed once by app-gcp. Cloud Deploy promotes only
+# kagent and never redeploys this release. The external-control-plane chart
+# owns ate-api-server, ate-controller, atenet-egress, Gateway and TLSRoute.
+import {
+  for_each = var.adopt_existing && var.release_enabled ? toset(["${local.substrate_namespace}/substrate"]) : toset([])
+  to       = helm_release.substrate_application[0]
+  id       = each.value
+}
+
+resource "helm_release" "substrate_application" {
+  count = var.release_enabled ? 1 : 0
+
+  name             = "substrate"
+  chart            = var.substrate_application_chart.ref
+  version          = var.substrate_application_chart.version
+  namespace        = kubernetes_namespace_v1.substrate[0].metadata[0].name
+  create_namespace = false
+
+  values = [
+    local.substrate_values,
+    yamlencode(local.substrate_image_values),
+  ]
+
+  atomic            = true
+  cleanup_on_fail   = true
+  dependency_update = false
+  lint              = true
+  max_history       = 5
+  pass_credentials  = false
+  replace           = false
+  reset_values      = true
+  reuse_values      = false
+  skip_crds         = true
+  timeout           = 900
+  wait              = true
+  wait_for_jobs     = true
+
+  description = "Terraform-owned immutable Substrate external control plane"
+
+  lifecycle {
+    prevent_destroy = true
+
+    precondition {
+      condition     = fileexists(local.substrate_values_path) && sha256(local.substrate_values) == var.substrate_values_sha256
+      error_message = "The tracked Substrate application values file is missing or does not match the reviewed release checksum."
+    }
+
+    precondition {
+      condition     = local.substrate_image_values_valid
+      error_message = "The Substrate application must use only the exact immutable component image override keys."
+    }
+  }
+
+  depends_on = [
+    helm_release.substrate_crds,
+    kubernetes_manifest.agentgateway_parameters,
+    kubernetes_config_map_v1.authentication,
+    kubernetes_cluster_role_binding_v1.substrate_api,
+    kubernetes_cluster_role_binding_v1.substrate_controller,
+    kubernetes_network_policy_v1.enrollment_admin_default_deny,
+    kubernetes_network_policy_v1.substrate_api_external_egress,
+    kubernetes_network_policy_v1.substrate_controller_api_egress,
+    kubernetes_network_policy_v1.substrate_dns_egress,
+  ]
+}
+
+# Read back every resource whose absence previously allowed release_ready to
+# report a false positive on a fresh cluster. The data reads are deferred until
+# the atomic Helm install has completed.
+data "kubernetes_resource" "agentgateway_parameters" {
+  count = var.release_enabled ? 1 : 0
+
+  api_version = "agentgateway.dev/v1alpha1"
+  kind        = "AgentgatewayParameters"
+  metadata {
+    name      = "substrate-broker"
+    namespace = local.substrate_namespace
+  }
+
+  depends_on = [kubernetes_manifest.agentgateway_parameters]
+}
+
+data "kubernetes_resource" "substrate_api" {
+  count = var.release_enabled ? 1 : 0
+
+  api_version = "apps/v1"
+  kind        = "Deployment"
+  metadata {
+    name      = "ate-api-server"
+    namespace = local.substrate_namespace
+  }
+
+  depends_on = [helm_release.substrate_application]
+}
+
+data "kubernetes_resource" "substrate_controller" {
+  count = var.release_enabled ? 1 : 0
+
+  api_version = "apps/v1"
+  kind        = "Deployment"
+  metadata {
+    name      = "ate-controller"
+    namespace = local.substrate_namespace
+  }
+
+  depends_on = [helm_release.substrate_application]
+}
+
+data "kubernetes_resource" "external_provider_gateway" {
+  count = var.release_enabled ? 1 : 0
+
+  api_version = "gateway.networking.k8s.io/v1"
+  kind        = "Gateway"
+  metadata {
+    name      = "external-provider-broker"
+    namespace = local.substrate_namespace
+  }
+
+  depends_on = [helm_release.substrate_application]
+}
+
+data "kubernetes_resource" "external_provider_tls_route" {
+  count = var.release_enabled ? 1 : 0
+
+  api_version = "gateway.networking.k8s.io/v1"
+  kind        = "TLSRoute"
+  metadata {
+    name      = "external-provider-broker"
+    namespace = local.substrate_namespace
+  }
+
+  depends_on = [helm_release.substrate_application]
 }
 
 data "kubernetes_service_v1" "api" {
@@ -415,6 +649,94 @@ resource "kubernetes_network_policy_v1" "kagent_substrate_egress" {
   depends_on = [kubernetes_namespace_v1.substrate]
 }
 
+# Cloud Deploy verification runs in ate-system and checks each environment's
+# controller health endpoint. Keep that bidirectional policy paired and scoped
+# to the exact verifier and controller labels; neither side receives a generic
+# namespace-wide allowance.
+resource "kubernetes_network_policy_v1" "substrate_verifier_controller_egress" {
+  for_each = var.bootstrap_enabled ? var.kagent_control_planes : {}
+
+  metadata {
+    name      = "kagent-${each.key}-verify-controller-egress"
+    namespace = local.substrate_namespace
+    labels    = local.common_labels
+  }
+
+  spec {
+    pod_selector {
+      match_labels = {
+        "app.kubernetes.io/component" = "verify"
+        "app.kubernetes.io/part-of"   = "kagent-substrate-testbed"
+      }
+    }
+    policy_types = ["Egress"]
+    egress {
+      to {
+        namespace_selector {
+          match_labels = {
+            "kubernetes.io/metadata.name" = each.value.namespace
+          }
+        }
+        pod_selector {
+          match_labels = {
+            "app.kubernetes.io/name"      = "kagent"
+            "app.kubernetes.io/instance"  = each.value.release_name
+            "app.kubernetes.io/component" = "controller"
+          }
+        }
+      }
+      ports {
+        port     = "8083"
+        protocol = "TCP"
+      }
+    }
+  }
+
+  depends_on = [kubernetes_namespace_v1.substrate]
+}
+
+resource "kubernetes_network_policy_v1" "kagent_controller_verifier_ingress" {
+  for_each = var.bootstrap_enabled ? var.kagent_control_planes : {}
+
+  metadata {
+    name      = "substrate-verifier-controller-ingress"
+    namespace = each.value.namespace
+    labels    = local.common_labels
+  }
+
+  spec {
+    pod_selector {
+      match_labels = {
+        "app.kubernetes.io/name"      = "kagent"
+        "app.kubernetes.io/instance"  = each.value.release_name
+        "app.kubernetes.io/component" = "controller"
+      }
+    }
+    policy_types = ["Ingress"]
+    ingress {
+      from {
+        namespace_selector {
+          match_labels = {
+            "kubernetes.io/metadata.name" = local.substrate_namespace
+          }
+        }
+        pod_selector {
+          match_labels = {
+            "app.kubernetes.io/component" = "verify"
+            "app.kubernetes.io/part-of"   = "kagent-substrate-testbed"
+          }
+        }
+      }
+      ports {
+        port     = "8083"
+        protocol = "TCP"
+      }
+    }
+  }
+
+  depends_on = [kubernetes_namespace_v1.substrate]
+}
+
 resource "kubernetes_network_policy_v1" "atenet_reviewed_egress" {
   for_each = var.bootstrap_enabled && !var.local_provider_only ? var.atenet_egress_destinations : {}
 
@@ -443,6 +765,12 @@ resource "kubernetes_network_policy_v1" "atenet_reviewed_egress" {
   depends_on = [kubernetes_namespace_v1.substrate]
 }
 
+import {
+  for_each = var.adopt_existing && var.bootstrap_enabled ? toset(["${local.substrate_namespace}/ate-api-authentication"]) : toset([])
+  to       = kubernetes_config_map_v1.authentication[0]
+  id       = each.value
+}
+
 resource "kubernetes_config_map_v1" "authentication" {
   count = var.bootstrap_enabled ? 1 : 0
 
@@ -454,9 +782,14 @@ resource "kubernetes_config_map_v1" "authentication" {
 
   data = { "authentication.yaml" = local.authentication }
 
-  depends_on = [kubernetes_namespace_v1.substrate]
+  depends_on = [
+    kubernetes_namespace_v1.substrate,
+    kubernetes_service_account_v1.enrollment_admin,
+  ]
 
   lifecycle {
+    prevent_destroy = true
+
     precondition {
       condition     = local.secret_contract_valid
       error_message = "Substrate/kagent require the exact nine source Secrets plus derived actor-id-ca-certs name, namespace, source and keys."
@@ -474,6 +807,69 @@ resource "kubernetes_service_account_v1" "enrollment_admin" {
   automount_service_account_token = false
 
   depends_on = [kubernetes_namespace_v1.substrate]
+}
+
+# Dev verification must run while this attestation is false. Production is
+# independently fail-closed by a Cloud Deploy PREDEPLOY action that reads this
+# single Terraform-managed key immediately before changing the prod release.
+resource "kubernetes_config_map_v1" "production_promotion_gate" {
+  count = var.bootstrap_enabled ? 1 : 0
+
+  metadata {
+    name      = "kagent-production-promotion-gate"
+    namespace = local.substrate_namespace
+    labels    = local.common_labels
+  }
+
+  data = {
+    "external_broker_smoke_ready" = tostring(var.external_broker_smoke_ready)
+    "cloud_deploy_release"        = var.external_broker_smoke_release
+  }
+
+  lifecycle {
+    prevent_destroy = true
+  }
+
+  depends_on = [kubernetes_namespace_v1.substrate]
+}
+
+resource "kubernetes_role_v1" "production_promotion_gate_reader" {
+  count = var.bootstrap_enabled ? 1 : 0
+
+  metadata {
+    name      = "kagent-production-promotion-gate-reader"
+    namespace = local.substrate_namespace
+    labels    = local.common_labels
+  }
+
+  rule {
+    api_groups     = [""]
+    resources      = ["configmaps"]
+    resource_names = [kubernetes_config_map_v1.production_promotion_gate[0].metadata[0].name]
+    verbs          = ["get"]
+  }
+}
+
+resource "kubernetes_role_binding_v1" "production_promotion_gate_reader" {
+  count = var.bootstrap_enabled ? 1 : 0
+
+  metadata {
+    name      = "kagent-production-promotion-gate-reader"
+    namespace = local.substrate_namespace
+    labels    = local.common_labels
+  }
+
+  role_ref {
+    api_group = "rbac.authorization.k8s.io"
+    kind      = "Role"
+    name      = kubernetes_role_v1.production_promotion_gate_reader[0].metadata[0].name
+  }
+
+  subject {
+    api_group = "rbac.authorization.k8s.io"
+    kind      = "User"
+    name      = var.promotion_gate_reader_email
+  }
 }
 
 resource "kubernetes_role_v1" "testbed_verifier" {
@@ -727,12 +1123,23 @@ resource "kubernetes_role_binding_v1" "kagent_env_sources" {
   }
 }
 
-# The Substrate external profile needs only these two cluster read/status roles.
+# The existing Helm release owns these four objects before the one-shot
+# adoption. Terraform first imports them and adds resource-policy=keep while
+# the old release still renders RBAC. A separately reviewed application
+# adoption can then upgrade the Helm release with rbac.create=false without
+# deleting the now Terraform-owned objects.
+import {
+  for_each = var.adopt_existing && var.bootstrap_enabled ? toset(["ate-api-server-role"]) : toset([])
+  to       = kubernetes_cluster_role_v1.substrate_api[0]
+  id       = each.value
+}
+
 resource "kubernetes_cluster_role_v1" "substrate_api" {
   count = var.bootstrap_enabled ? 1 : 0
   metadata {
-    name   = "ate-api-server-role"
-    labels = local.common_labels
+    name        = "ate-api-server-role"
+    labels      = local.common_labels
+    annotations = { "helm.sh/resource-policy" = "keep" }
   }
   rule {
     api_groups = [""]
@@ -749,13 +1156,24 @@ resource "kubernetes_cluster_role_v1" "substrate_api" {
     resources  = ["storageclasses"]
     verbs      = ["get", "watch", "list"]
   }
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+import {
+  for_each = var.adopt_existing && var.bootstrap_enabled ? toset(["ate-api-server-binding"]) : toset([])
+  to       = kubernetes_cluster_role_binding_v1.substrate_api[0]
+  id       = each.value
 }
 
 resource "kubernetes_cluster_role_binding_v1" "substrate_api" {
   count = var.bootstrap_enabled ? 1 : 0
   metadata {
-    name   = "ate-api-server-binding"
-    labels = local.common_labels
+    name        = "ate-api-server-binding"
+    labels      = local.common_labels
+    annotations = { "helm.sh/resource-policy" = "keep" }
   }
   role_ref {
     api_group = "rbac.authorization.k8s.io"
@@ -767,13 +1185,24 @@ resource "kubernetes_cluster_role_binding_v1" "substrate_api" {
     name      = "ate-api-server"
     namespace = local.substrate_namespace
   }
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+import {
+  for_each = var.adopt_existing && var.bootstrap_enabled ? toset(["ate-controller"]) : toset([])
+  to       = kubernetes_cluster_role_v1.substrate_controller[0]
+  id       = each.value
 }
 
 resource "kubernetes_cluster_role_v1" "substrate_controller" {
   count = var.bootstrap_enabled ? 1 : 0
   metadata {
-    name   = "ate-controller"
-    labels = local.common_labels
+    name        = "ate-controller"
+    labels      = local.common_labels
+    annotations = { "helm.sh/resource-policy" = "keep" }
   }
   rule {
     api_groups = ["ate.dev"]
@@ -785,13 +1214,24 @@ resource "kubernetes_cluster_role_v1" "substrate_controller" {
     resources  = ["actortemplates/status"]
     verbs      = ["get", "patch", "update"]
   }
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+import {
+  for_each = var.adopt_existing && var.bootstrap_enabled ? toset(["ate-controller"]) : toset([])
+  to       = kubernetes_cluster_role_binding_v1.substrate_controller[0]
+  id       = each.value
 }
 
 resource "kubernetes_cluster_role_binding_v1" "substrate_controller" {
   count = var.bootstrap_enabled ? 1 : 0
   metadata {
-    name   = "ate-controller"
-    labels = local.common_labels
+    name        = "ate-controller"
+    labels      = local.common_labels
+    annotations = { "helm.sh/resource-policy" = "keep" }
   }
   role_ref {
     api_group = "rbac.authorization.k8s.io"
@@ -802,5 +1242,9 @@ resource "kubernetes_cluster_role_binding_v1" "substrate_controller" {
     kind      = "ServiceAccount"
     name      = "ate-controller"
     namespace = local.substrate_namespace
+  }
+
+  lifecycle {
+    prevent_destroy = true
   }
 }

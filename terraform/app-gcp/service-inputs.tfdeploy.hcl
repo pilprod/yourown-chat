@@ -234,6 +234,7 @@ locals {
     crd_ownership_ready                = false
     controller_namespace_handoff_ready = false
     external_broker_smoke_ready        = false
+    external_broker_smoke_release      = ""
   }
 
   # app-gcp owns the complete Google Cloud release rail. An explicit invocation

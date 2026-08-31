@@ -61,6 +61,14 @@ externalControlPlane:
             app.kubernetes.io/name: kagent
             app.kubernetes.io/instance: kagent
             app.kubernetes.io/component: controller
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: kagent-dev
+        podSelector:
+          matchLabels:
+            app.kubernetes.io/name: kagent
+            app.kubernetes.io/instance: kagent-dev
+            app.kubernetes.io/component: controller
       - podSelector:
           matchLabels:
             app.kubernetes.io/name: substrate-enrollment-admin

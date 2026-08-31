@@ -10,7 +10,7 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/component: verify
-        app.kubernetes.io/part-of: kagent-promotion
+        app.kubernetes.io/part-of: kagent-substrate-testbed
     spec:
       restartPolicy: Never
       automountServiceAccountToken: false

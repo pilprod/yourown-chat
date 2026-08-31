@@ -60,6 +60,11 @@ for required in \
   grep -Fq "${required}" <<<"${main}" || fail "missing least-privilege contract: ${required}"
 done
 
+grep -Eq '^[[:space:]]*service_account[[:space:]]*=[[:space:]]*google_service_account\.publisher\[0\]\.id[[:space:]]*$' <<<"${main}" ||
+  fail 'Cloud Build trigger must explicitly execute as the publisher service account'
+grep -Eq '^[[:space:]]*logging[[:space:]]*=[[:space:]]*"CLOUD_LOGGING_ONLY"[[:space:]]*$' <<<"${main}" ||
+  fail 'custom Cloud Build service account must write logs directly to Cloud Logging'
+
 if rg -n 'google_cloudbuildv2_repository|repository_event_config|\$TAG_NAME|\$COMMIT_SHA' "${module_dir}"; then
   fail 'manual release rail must not depend on a Cloud Build GitHub connection or repository event'
 fi

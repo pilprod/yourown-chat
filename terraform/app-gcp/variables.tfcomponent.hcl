@@ -233,6 +233,7 @@ variable "kagent_substrate_delivery" {
     crd_ownership_ready                = optional(bool, false)
     controller_namespace_handoff_ready = optional(bool, false)
     external_broker_smoke_ready        = optional(bool, false)
+    external_broker_smoke_release      = optional(string, "")
     artifacts = optional(map(object({
       source_repository        = string
       source_commit            = string
@@ -280,6 +281,19 @@ variable "kagent_substrate_delivery" {
   })
   description = "Fail-closed contract: bootstrap owns shared Substrate prerequisites; release admits one immutable kagent digest set to dev and permits production only after verification and approval."
   default     = {}
+
+  validation {
+    condition = var.kagent_substrate_delivery.external_broker_smoke_ready ? (
+      var.kagent_substrate_delivery.release_enabled &&
+      can(regex(
+        "^[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$",
+        var.kagent_substrate_delivery.external_broker_smoke_release,
+      ))
+      ) : (
+      var.kagent_substrate_delivery.external_broker_smoke_release == ""
+    )
+    error_message = "external_broker_smoke_ready=true requires release_enabled=true and the exact Cloud Deploy release ID that passed the external TLS+gRPC smoke; a false attestation must leave it empty."
+  }
 
   validation {
     condition = !(
@@ -382,13 +396,13 @@ variable "kagent_substrate_delivery" {
       ) || (
       toset(keys(var.kagent_substrate_delivery.values_sha256)) == toset([
         "kagent/kagent.values.yaml",
-        "kagent/kagent-testbed.values.yaml",
+        "kagent/kagent-dev.values.yaml",
+        "kagent/kagent-prod.values.yaml",
         "kagent/substrate.values.yaml",
-        "kagent/substrate-testbed.values.yaml",
       ]) &&
       alltrue([for checksum in values(var.kagent_substrate_delivery.values_sha256) : can(regex("^[0-9a-f]{64}$", checksum))])
     )
-    error_message = "Enabled testbed bootstrap or release must checksum exactly the four tracked kagent/Substrate values files."
+    error_message = "Enabled bootstrap or release must checksum exactly the tracked kagent base/dev/prod and Substrate values files."
   }
 
   validation {
@@ -514,6 +528,26 @@ variable "adopt_existing_cluster_bootstrap_releases" {
   type        = bool
   description = "Import pre-existing cluster bootstrap Helm releases (mattermost-operator and ingress-nginx) that were installed by an interrupted/previous apply but are not yet in Terraform state."
   default     = false
+}
+
+variable "adopt_existing_substrate" {
+  type        = bool
+  description = "One-shot import of the exact pre-existing ate-system namespace, authentication ConfigMap, Substrate RBAC and substrate/substrate-crds Helm releases. Keep true through the staged bootstrap/application imports, then clear it."
+  default     = false
+}
+
+variable "adopt_existing_substrate_compatibility_confirmed" {
+  type        = bool
+  description = "Explicit reviewed attestation that both existing Substrate Helm releases are compatible with takeover by the pinned charts. Required when adoption and bootstrap are both enabled because the CRD release is reconciled in bootstrap."
+  default     = false
+
+  validation {
+    condition = !(
+      var.adopt_existing_substrate &&
+      var.kagent_substrate_delivery.bootstrap_enabled
+    ) || var.adopt_existing_substrate_compatibility_confirmed
+    error_message = "adopt_existing_substrate with bootstrap_enabled requires adopt_existing_substrate_compatibility_confirmed=true after reviewing both live-to-pinned Helm release plans."
+  }
 }
 
 variable "manage_ingress_origin_tls" {

@@ -46,8 +46,8 @@ output "kagent_substrate_production_eligible" {
 
 output "external_broker_smoke_required" {
   type        = bool
-  description = "True until an external Agent Host TLS+gRPC smoke has been explicitly attested; production approval remains closed while true."
-  value       = !var.kagent_substrate_delivery.external_broker_smoke_ready
+  description = "True until an external Agent Host TLS+gRPC smoke has been explicitly attested; the production PREDEPLOY rollout gate fails closed while true."
+  value       = !component.substrate_prerequisites.external_broker_smoke_ready
 }
 
 output "kagent_local_agent_ready" {
@@ -60,7 +60,7 @@ output "kagent_local_agent_ready" {
     component.substrate_prerequisites.release_ready &&
     var.agentgateway_platform.enabled &&
     var.agentgateway_public_ip_address != null &&
-    var.kagent_substrate_delivery.external_broker_smoke_ready
+    component.substrate_prerequisites.external_broker_smoke_ready
   )
 }
 

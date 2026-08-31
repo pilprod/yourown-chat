@@ -46,6 +46,7 @@ jq -n \
   --arg kbase "$(sha256_file "${repo_root}/helm/kagent/kagent.values.yaml")" \
   --arg kdev "$(sha256_file "${repo_root}/helm/kagent/kagent-dev.values.yaml")" \
   --arg kprod "$(sha256_file "${repo_root}/helm/kagent/kagent-prod.values.yaml")" \
+  --arg substrate_values "$(sha256_file "${repo_root}/helm/kagent/substrate.values.yaml")" \
   '{
     bootstrap_enabled: true,
     release_enabled: true,
@@ -117,7 +118,8 @@ jq -n \
     values_sha256: {
       "kagent/kagent.values.yaml": $kbase,
       "kagent/kagent-dev.values.yaml": $kdev,
-      "kagent/kagent-prod.values.yaml": $kprod
+      "kagent/kagent-prod.values.yaml": $kprod,
+      "kagent/substrate.values.yaml": $substrate_values
     },
     kagent_health_url: "http://kagent-controller.kagent-system.svc.cluster.local:8083/health",
     substrate_endpoint: "api.ate-system.svc.cluster.local:443",
@@ -138,7 +140,13 @@ grep -Fq 'production_eligible=true' "${output}"
 ! grep -Fq 'name: substrate' "${output}"
 ! grep -Fq 'remoteChart: "oci://ghcr.io/pilprod/substrate/' "${output}"
 grep -Fq 'Substrate pins use app-gcp consumer evidence; this was not a producer release asset.' "${output}"
-grep -Fq 'external_broker_smoke_ready=false; required before prod approval' "${output}"
+grep -Fq 'Production PREDEPLOY reads a release-bound Terraform smoke attestation; dev remains deployable while it is false.' "${output}"
+grep -Fq 'customActions:' "${output}"
+grep -Fq 'name: require-external-broker-smoke' "${output}"
+grep -Fq 'configmap/kagent-production-promotion-gate' "${output}"
+grep -Fq 'go-template={{index .data "external_broker_smoke_ready"}}|{{index .data "cloud_deploy_release"}}' "${output}"
+grep -Fq 'attestation}" != "true|${CLOUD_DEPLOY_RELEASE}"' "${output}"
+grep -Fq 'gcr.io/cloud-builders/kubectl@sha256:3744bfd3765ac2a09133a164fcd74c8468fac192af8accadbdfbccbb20643961' "${output}"
 grep -Fq "runtime_images.kagentHarness=ghcr.io/pilprod/kagent/golang-adk@${d7}" "${output}"
 grep -Fq "runtime_images.codexHarness=ghcr.io/pilprod/kagent/codex-harness@${d11}" "${output}"
 ! grep -Fq 'controller.agentImage' "${output}"
@@ -155,6 +163,8 @@ grep -Fq 'secretName: substrate-ate-controller-tls' "${repo_root}/helm/kagent/ve
 grep -Fq 'key: server-ca.pem' "${repo_root}/helm/kagent/verify/promotion-job.yaml"
 grep -Fq 'defaultMode: 0444' "${repo_root}/helm/kagent/verify/promotion-job.yaml"
 ! grep -Fq 'client-credential-bundle.pem' "${repo_root}/helm/kagent/verify/promotion-job.yaml"
+grep -Fq 'app.kubernetes.io/part-of: kagent-substrate-testbed' "${repo_root}/helm/kagent/verify/promotion-job.yaml"
+! grep -Fq 'app.kubernetes.io/part-of: kagent-promotion' "${repo_root}/helm/kagent/verify/promotion-job.yaml"
 grep -Fq 'runAsUser: 65532' "${repo_root}/helm/kagent/verify/promotion-job.yaml"
 grep -Fq 'runAsGroup: 65532' "${repo_root}/helm/kagent/verify/promotion-job.yaml"
 grep -Fq "\"controller.image.tag\": \"0.10.0@${d1}\"" "${output}"
@@ -167,6 +177,61 @@ grep -Fq "\"ui.image.tag\": \"0.10.0@${d2}\"" "${output}"
 [[ "$(grep -Fc '"ui.image.tag": "0.10.0@'"${d2}"'"' "${output}")" -eq 2 ]]
 grep -Fq 'jobManifestPath: kagent/verify/promotion-job.yaml' "${output}"
 
+# Operational smoke state is intentionally not baked into the immutable
+# release. The same rendered release is deployed to dev, then the live
+# Terraform ConfigMap is updated for that exact Cloud Deploy release ID before
+# the PREDEPLOY hook permits prod.
+jq '.external_broker_smoke_ready = true | .external_broker_smoke_release = "kagent-candidate-1"' "${contract}" > "${work}/smoke-ready.json"
+KAGENT_SUBSTRATE_RELEASE_JSON="$(<"${work}/smoke-ready.json")" \
+  python3 "${renderer}" --source-root "${repo_root}/helm" --output "${work}/smoke-ready.yaml"
+cmp -s "${output}" "${work}/smoke-ready.yaml" || {
+  echo "operational Broker smoke state changed the immutable Skaffold release" >&2
+  exit 1
+}
+
+gate_bin="${work}/gate-bin"
+mkdir -p "${gate_bin}"
+printf '%s\n' \
+  '#!/bin/sh' \
+  '[ "${FAKE_GCLOUD_ERROR:-false}" = false ] || exit 1' \
+  'exit 0' > "${gate_bin}/gcloud"
+printf '%s\n' \
+  '#!/bin/sh' \
+  '[ "${FAKE_KUBECTL_ERROR:-false}" = false ] || exit 1' \
+  'printf "%s" "${FAKE_ATTESTATION:-false|}"' > "${gate_bin}/kubectl"
+chmod +x "${gate_bin}/gcloud" "${gate_bin}/kubectl"
+gate_script="${repo_root}/helm/kagent/verify/require-external-broker-smoke.sh"
+gate_env=(
+  "PATH=${gate_bin}:${PATH}"
+  'GKE_CLUSTER=projects/yourown-chat/locations/europe-west3-b/clusters/europe-west3-b'
+  'CLOUD_DEPLOY_RELEASE=kagent-candidate-1'
+)
+if (unset CLOUD_DEPLOY_RELEASE; PATH="${gate_bin}:${PATH}" GKE_CLUSTER="projects/yourown-chat/locations/europe-west3-b/clusters/europe-west3-b" sh "${gate_script}" >/dev/null 2>&1); then
+  echo "missing Cloud Deploy release ID unexpectedly admitted prod" >&2
+  exit 1
+fi
+if (unset GKE_CLUSTER; PATH="${gate_bin}:${PATH}" CLOUD_DEPLOY_RELEASE="kagent-candidate-1" sh "${gate_script}" >/dev/null 2>&1); then
+  echo "missing GKE cluster ID unexpectedly admitted prod" >&2
+  exit 1
+fi
+if env "${gate_env[@]}" FAKE_GCLOUD_ERROR=true sh "${gate_script}" >/dev/null 2>&1; then
+  echo "failed GKE credential setup unexpectedly admitted prod" >&2
+  exit 1
+fi
+if env "${gate_env[@]}" FAKE_KUBECTL_ERROR=true sh "${gate_script}" >/dev/null 2>&1; then
+  echo "unreadable external Broker smoke attestation unexpectedly admitted prod" >&2
+  exit 1
+fi
+if env "${gate_env[@]}" 'FAKE_ATTESTATION=false|kagent-candidate-1' sh "${gate_script}" >/dev/null 2>&1; then
+  echo "false external Broker smoke unexpectedly admitted prod" >&2
+  exit 1
+fi
+if env "${gate_env[@]}" 'FAKE_ATTESTATION=true|older-release' sh "${gate_script}" >/dev/null 2>&1; then
+  echo "stale external Broker smoke release unexpectedly admitted prod" >&2
+  exit 1
+fi
+env "${gate_env[@]}" 'FAKE_ATTESTATION=true|kagent-candidate-1' sh "${gate_script}" >/dev/null
+
 grep -Fq 'kind: AgentgatewayParameters' "${repo_root}/helm/kagent/gateway/testbed-parameters.yaml"
 grep -Fq 'apiVersion: agentgateway.dev/v1alpha1' "${repo_root}/helm/kagent/gateway/testbed-parameters.yaml"
 grep -Fq 'cloud.google.com/l4-rbs: "enabled"' "${repo_root}/helm/kagent/gateway/testbed-parameters.yaml"
@@ -175,11 +240,15 @@ grep -Fq 'type: RuntimeDefault' "${repo_root}/helm/kagent/gateway/testbed-parame
 ! grep -Eq '^kind: (Gateway|TLSRoute)$' "${repo_root}/helm/kagent/gateway/testbed-parameters.yaml"
 grep -Fq 'gateway:' "${repo_root}/helm/kagent/substrate.values.yaml"
 grep -Fq 'enabled: true' "${repo_root}/helm/kagent/substrate.values.yaml"
+[[ "$(grep -Fc 'kubernetes.io/metadata.name: kagent-system' "${repo_root}/helm/kagent/substrate.values.yaml")" -eq 1 ]]
+[[ "$(grep -Fc 'kubernetes.io/metadata.name: kagent-dev' "${repo_root}/helm/kagent/substrate.values.yaml")" -eq 1 ]]
+[[ "$(grep -Fc 'app.kubernetes.io/part-of: kagent-substrate-testbed' "${repo_root}/helm/kagent/substrate.values.yaml")" -eq 2 ]]
 app_outputs="${repo_root}/terraform/app-gcp/outputs.tfcomponent.hcl"
 grep -Fq 'output "external_broker_smoke_required"' "${app_outputs}"
-grep -Fq 'value       = !var.kagent_substrate_delivery.external_broker_smoke_ready' "${app_outputs}"
+grep -Fq 'value       = !component.substrate_prerequisites.external_broker_smoke_ready' "${app_outputs}"
 grep -Fq 'output "kagent_local_agent_ready"' "${app_outputs}"
-grep -Fq 'var.kagent_substrate_delivery.external_broker_smoke_ready' "${app_outputs}"
+local_agent_output="$(sed -n '/output "kagent_local_agent_ready" {/,/^}/p' "${app_outputs}")"
+grep -Fq 'component.substrate_prerequisites.external_broker_smoke_ready' <<<"${local_agent_output}"
 
 prerequisites="${repo_root}/terraform/app-gcp/modules/substrate-prerequisites/main.tf"
 grep -Fq 'resource "kubernetes_namespace_v1" "substrate"' "${prerequisites}"

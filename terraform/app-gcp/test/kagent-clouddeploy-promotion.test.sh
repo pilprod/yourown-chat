@@ -22,6 +22,10 @@ grep -Fq 'profiles         = ["kagent-dev"]' <<<"${pipeline_block}" || fail 'dev
 grep -Fq 'require_approval = false' <<<"${pipeline_block}" || fail 'dev must deploy without approval'
 grep -Fq 'profiles         = ["kagent-prod"]' <<<"${pipeline_block}" || fail 'prod profile missing'
 grep -Fq 'require_approval = true' <<<"${pipeline_block}" || fail 'prod must require approval'
+[[ "$(grep -Fc 'predeploy_actions = ["require-external-broker-smoke"]' <<<"${pipeline_block}")" -eq 1 ]] ||
+  fail 'prod must have exactly one external Broker smoke predeploy gate'
+predeploy_line="$(grep -Fn 'predeploy_actions = ["require-external-broker-smoke"]' <<<"${pipeline_block}" | cut -d: -f1)"
+[[ "${predeploy_line}" -gt "${prod_line}" ]] || fail 'external Broker smoke gate must be attached only to prod'
 [[ "$(grep -Fc 'verify           = true' <<<"${pipeline_block}")" -eq 2 ]] ||
   fail 'both stages must verify'
 

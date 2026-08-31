@@ -183,6 +183,7 @@ component "clouddeploy_kagent_substrate" {
         name             = "prod"
         profiles         = ["kagent-prod"]
         require_approval = true
+        predeploy_actions = ["require-external-broker-smoke"]
         verify           = true
       },
     ]
@@ -835,15 +836,26 @@ component "substrate_prerequisites" {
   source = "./modules/substrate-prerequisites"
 
   inputs = {
-    bootstrap_enabled          = var.kagent_substrate_delivery.bootstrap_enabled
-    release_enabled            = var.kagent_substrate_delivery.release_enabled
-    gke_cluster_id             = var.gke_cluster_id
-    native_secret_sync_ready   = var.kagent_substrate_delivery.native_secret_sync_ready
-    cloudsql_private_ip        = var.cloudsql_private_ip
-    cluster_dns_ip             = var.cluster_dns_ip
-    local_provider_only        = var.kagent_substrate_delivery.local_provider_only
-    atenet_egress_destinations = var.kagent_substrate_delivery.atenet_egress_destinations
-    substrate_crd_chart        = try(var.kagent_substrate_delivery.artifacts["substrate"].charts.crds, { ref = "", version = "" })
+    adopt_existing                                   = var.adopt_existing_substrate
+    adopt_existing_substrate_compatibility_confirmed = var.adopt_existing_substrate_compatibility_confirmed
+    bootstrap_enabled                                = var.kagent_substrate_delivery.bootstrap_enabled
+    release_enabled                                  = var.kagent_substrate_delivery.release_enabled
+    gke_cluster_id                                   = var.gke_cluster_id
+    native_secret_sync_ready                         = var.kagent_substrate_delivery.native_secret_sync_ready
+    external_broker_smoke_ready                      = var.kagent_substrate_delivery.external_broker_smoke_ready
+    external_broker_smoke_release                    = var.kagent_substrate_delivery.external_broker_smoke_release
+    promotion_gate_reader_email                      = component.clouddeploy_kagent_substrate.cleanup_service_account_email
+    cloudsql_private_ip                              = var.cloudsql_private_ip
+    cluster_dns_ip                                   = var.cluster_dns_ip
+    local_provider_only                              = var.kagent_substrate_delivery.local_provider_only
+    atenet_egress_destinations                       = var.kagent_substrate_delivery.atenet_egress_destinations
+    substrate_crd_chart                              = try(var.kagent_substrate_delivery.artifacts["substrate"].charts.crds, { ref = "", version = "" })
+    substrate_application_chart = try(
+      var.kagent_substrate_delivery.artifacts["substrate"].charts.application,
+      { ref = "", version = "" },
+    )
+    substrate_helm_set_values = try(var.kagent_substrate_delivery.helm_set_values["substrate"], {})
+    substrate_values_sha256   = try(var.kagent_substrate_delivery.values_sha256["kagent/substrate.values.yaml"], "")
     kagent_control_planes = {
       prod = {
         namespace    = var.vendor_chart_bundles["kagent"].namespaces["control"].name
@@ -928,6 +940,7 @@ component "substrate_prerequisites" {
       namespace                  = var.agentgateway_platform.namespace
       service_account_name       = var.agentgateway_platform.service_account_name
       deployer_cluster_role_name = var.agentgateway_platform.deployer_cluster_role_name
+      public_ip_name             = var.agentgateway_public_ip_name == null ? "" : var.agentgateway_public_ip_name
     }
     labels = local.common_labels
   }

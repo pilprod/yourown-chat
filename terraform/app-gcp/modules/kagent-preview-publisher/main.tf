@@ -72,8 +72,8 @@ resource "google_project_iam_member" "scanner" {
 }
 
 # Cloud Build requires the configured trigger identity to create the build.
-# platform-gcp disables both default-SA selection constraints, so this identity
-# can submit only as an explicitly named service account on which it has actAs.
+# The trigger explicitly names the publisher service account and selects Cloud
+# Logging, so it does not rely on either default build service account.
 resource "google_project_iam_custom_role" "build_invoker" {
   count = local.count
 
@@ -167,8 +167,8 @@ resource "google_service_account_iam_member" "apply_acts_as_publisher" {
 }
 
 # The trigger executes as the publisher and can act as no other service
-# account. Combined with the platform org-policy override, recursive builds
-# cannot fall back to the legacy or Compute Engine default service accounts.
+# account. Its explicit service_account and logging settings keep build
+# execution independent of the legacy and Compute Engine default accounts.
 resource "google_service_account_iam_member" "publisher_acts_as_self" {
   count = local.count
 

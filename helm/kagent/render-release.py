@@ -27,6 +27,7 @@ EXPECTED_VALUES = {
     "kagent/kagent.values.yaml",
     "kagent/kagent-dev.values.yaml",
     "kagent/kagent-prod.values.yaml",
+    "kagent/substrate.values.yaml",
 }
 EXPECTED_REPOSITORIES = {
     "kagent": "https://github.com/pilprod/kagent",
@@ -314,7 +315,7 @@ def validate_contract(contract: dict, source_root: Path) -> None:
 
     values_sha256 = contract.get("values_sha256")
     if not isinstance(values_sha256, dict) or set(values_sha256) != EXPECTED_VALUES:
-        fail("values_sha256 must checksum exactly the four tracked testbed values files")
+        fail("values_sha256 must checksum exactly the tracked base, dev, prod and Substrate values files")
     for relative_path, expected in values_sha256.items():
         if not re.fullmatch(r"[0-9a-f]{64}", str(expected)):
             fail(f"values checksum for {relative_path} is invalid")
@@ -404,7 +405,29 @@ def render_profile(
     return lines
 
 
-def render(contract: dict) -> str:
+def render_gate_action(source_root: Path) -> list[str]:
+    gate_script_path = source_root / "kagent/verify/require-external-broker-smoke.sh"
+    if not gate_script_path.is_file():
+        fail("production promotion gate script is missing")
+    gate_script = gate_script_path.read_text(encoding="utf-8")
+    if "configmap/kagent-production-promotion-gate" not in gate_script:
+        fail("production promotion gate must read the Terraform-managed ConfigMap")
+    if 'attestation}" != "true|${CLOUD_DEPLOY_RELEASE}"' not in gate_script:
+        fail("production promotion gate must bind the smoke attestation to this Cloud Deploy release")
+    return [
+        "customActions:",
+        "  - name: require-external-broker-smoke",
+        "    containers:",
+        "      - name: require-external-broker-smoke",
+        "        image: gcr.io/cloud-builders/kubectl@sha256:3744bfd3765ac2a09133a164fcd74c8468fac192af8accadbdfbccbb20643961",
+        '        command: ["/bin/sh", "-ceu"]',
+        "        args:",
+        "          - |",
+        *[f"            {line}" for line in gate_script.splitlines()],
+    ]
+
+
+def render(contract: dict, source_root: Path) -> str:
     kagent = contract["artifacts"]["kagent"]["charts"]["application"]
     substrate_consumer_evidence = (
         contract["artifacts"]["substrate"]["artifact_schema_version"]
@@ -418,7 +441,7 @@ def render(contract: dict) -> str:
             else []
         ),
         "# production_eligible=true: one immutable digest set is promoted dev -> approved prod.",
-        f"# external_broker_smoke_ready={str(contract['external_broker_smoke_ready']).lower()}; required before prod approval.",
+        "# Production PREDEPLOY reads a release-bound Terraform smoke attestation; dev remains deployable while it is false.",
         "# Shared Substrate in ate-system remains a Terraform-owned prerequisite and is not redeployed per stage.",
         "# Runtime images are evidence only; installing this release does not create a Harness.",
         f"# runtime_images.kagentHarness={contract['artifacts']['kagent']['runtime_images']['kagentHarness']}",
@@ -451,6 +474,7 @@ def render(contract: dict) -> str:
             contract=contract,
         )
     )
+    lines.extend(render_gate_action(source_root))
     return "\n".join(lines) + "\n"
 
 
@@ -462,7 +486,7 @@ def main() -> int:
     try:
         contract = load_contract()
         validate_contract(contract, args.source_root)
-        rendered = render(contract)
+        rendered = render(contract, args.source_root)
     except ValueError as error:
         print(f"render-release: {error}", file=sys.stderr)
         return 2
