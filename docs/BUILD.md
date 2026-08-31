@@ -1,9 +1,5 @@
 # Mattermost image CI
 
-Независимая сборка пользовательской серверной части и двух исполнителей
-агентов, проверка их точных контрольных сумм и выпуск с подтверждением описаны в
-[AGENT_PLATFORM_BUILD_RELEASE.md](AGENT_PLATFORM_BUILD_RELEASE.md).
-
 The platform builds one patched Mattermost image from the exact assembly,
 server and web revisions and promotes its digest through the `mattermost`
 Cloud Deploy pipeline. Repository responsibilities are indexed in
@@ -40,9 +36,8 @@ stack owns:
 
 The shared `pilprod-github` connection is authorized once in the Google Cloud
 console and must have access to `pilprod/yourown-chat-mattermost`,
-`pilprod/yourown-chat-web`,
-`pilprod/yourown-chat`, the product backend `pilprod/yourown-chat-server`, and
-the agent workloads `pilprod/yourown-chat-agents`.
+`pilprod/yourown-chat-web`, `pilprod/yourown-chat`, and the product backend
+`pilprod/yourown-chat-server`.
 
 The build identity can only call
 `cloudbuild.repositories.accessReadToken`, with an IAM condition restricting
@@ -166,18 +161,14 @@ docker/                         # one Artifact Registry repository
 ├── mcp-terraform-stacks
 ├── yourown-chat-control-api
 ├── yourown-chat-identity-api
-├── yourown-chat-identity-migrate
-├── yourown-chat-workflow-worker
-└── yourown-chat-activity-worker
+└── yourown-chat-identity-migrate
 ```
 
 The control, identity and identity-migration images are built from
-`pilprod/yourown-chat-server`.
-`yourown-chat-workflow-worker` and `yourown-chat-activity-worker` are built from
-`pilprod/yourown-chat-agents`. Separate Cloud Build identities and triggers
-enforce this source boundary. A server tag releases the five server images;
-matching immutable server/agent tags coordinate the control and worker digests
-for the separate agent-compute release.
+`pilprod/yourown-chat-server`. The local-agent testbed is released independently
+through the digest-pinned kagent/Substrate path documented in
+[AGENT_PLATFORM_BUILD_RELEASE.md](AGENT_PLATFORM_BUILD_RELEASE.md); this image
+factory does not build or coordinate Temporal worker images.
 
 Owned MCP images are built directly from the private Go source repository with
 one pinned multi-service Dockerfile. The retained base/runtime catalog is for

@@ -41,11 +41,14 @@ deployment "eu" {
     gcs_bucket_name = upstream_input.platform.gcs_bucket_name
     # Exact address published by platform-gcp; used only to render the
     # production Mattermost /32 egress policy.
-    cloudsql_private_ip             = upstream_input.platform.cloudsql_private_ip
-    cluster_dns_ip                  = upstream_input.platform.cluster_dns_ip
-    workload_identity_emails        = upstream_input.platform.workload_identity_emails
-    artifact_registry_location      = upstream_input.platform.artifact_registry_location
-    artifact_registry_repository_id = upstream_input.platform.artifact_registry_repository_id
+    cloudsql_private_ip                   = upstream_input.platform.cloudsql_private_ip
+    cluster_dns_ip                        = upstream_input.platform.cluster_dns_ip
+    workload_identity_emails              = upstream_input.platform.workload_identity_emails
+    artifact_registry_location            = upstream_input.platform.artifact_registry_location
+    artifact_registry_repository_id       = upstream_input.platform.artifact_registry_repository_id
+    kagent_registry_repository_id         = upstream_input.platform.kagent_registry_repository_id
+    kagent_staging_registry_repository_id = upstream_input.platform.kagent_staging_registry_repository_id
+    kagent_registry_location              = upstream_input.platform.kagent_registry_location
     # Platform Helm chart repository (helm/platform profiles as OCI artifacts).
     helm_registry_repository_id = upstream_input.platform.helm_registry_repository_id
     cmek_key_id                 = upstream_input.platform.cmek_key_id
@@ -84,9 +87,12 @@ deployment "eu" {
     # Chart pins -- bump deliberately.
     mattermost_operator_chart_version = "1.0.5"
     ingress_nginx_chart_version       = "4.15.1"
-    # One-shot recovery toggles: flip true for a single adoption apply only.
-    adopt_existing_cluster_bootstrap_releases = false
-    adopt_existing_namespaces                 = false
+    # One-shot recovery toggles. Substrate stays true through its separately
+    # reviewed bootstrap and application adoption applies, then returns false.
+    adopt_existing_cluster_bootstrap_releases        = false
+    adopt_existing_namespaces                        = false
+    adopt_existing_substrate                         = false
+    adopt_existing_substrate_compatibility_confirmed = false
 
     matterbridge_enabled = false
 
@@ -99,15 +105,7 @@ deployment "eu" {
     # reviewed release wrappers.
     wrapper_releases_enabled = false
 
-    # The delivery path and cheap persistent state stay present. This switch
-    # chooses the static start/pause profile used by the next semver release.
-    # Operational start/pause releases remain explicit and approval-gated.
-    # The delivery plumbing and source triggers are prepared now. Runtime
-    # release permission follows the platform-owned Temporal launch state.
-    agent_platform_enabled         = true
-    temporal_enabled               = upstream_input.platform.temporal_enabled
-    agent_results_bucket           = try(upstream_input.platform.temporal_results_bucket_name, "")
-    agent_platform_runtime_enabled = false
+    temporal_enabled = upstream_input.platform.temporal_enabled
 
     # Derived from the cloudflare stack's published outputs -- origin_tls_ready
     # and zero_trust_ready are true when Secret Manager versions exist.
@@ -151,12 +149,10 @@ deployment "eu" {
     # Deploy release automatically.
     release_tag_regex = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
 
-    # Product backend, agent and MCP workloads are independent repositories
-    # (catalog roles backend, agents, mcp) with independent CI/tag triggers and
-    # build identities.
+    # Product backend and MCP workloads are independent repositories with
+    # independent CI/tag triggers and build identities.
     mcp_release_tag_regex     = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
     backend_release_tag_regex = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
-    agents_release_tag_regex  = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
 
     extra_labels = { cost-center = "platform" }
   }

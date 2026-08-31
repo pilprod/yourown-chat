@@ -9,8 +9,6 @@ output "clouddeploy_pipeline_names" {
     mattermost-preview = component.clouddeploy_mattermost_preview.delivery_pipeline_name
     mcp                = component.clouddeploy_mcp.delivery_pipeline_name
     yourown-chat       = component.clouddeploy_server.delivery_pipeline_name
-    agents-start       = component.clouddeploy_agents_start.delivery_pipeline_name
-    agents-pause       = component.clouddeploy_agents_pause.delivery_pipeline_name
     kagent-substrate   = component.clouddeploy_kagent_substrate.delivery_pipeline_name
   }
 }
@@ -39,14 +37,17 @@ output "kagent_substrate_delivery_ready" {
 
 output "kagent_substrate_production_eligible" {
   type        = bool
-  description = "The fork issue-validation rail is structurally forbidden from promoting into production."
-  value       = false
+  description = "Whether the admitted immutable kagent artifact is eligible for dev verification followed by approval-gated production promotion."
+  value = (
+    var.kagent_substrate_delivery.release_enabled &&
+    var.kagent_substrate_delivery.production_eligible
+  )
 }
 
 output "external_broker_smoke_required" {
   type        = bool
-  description = "True until an external client/Cloud Build TLS+gRPC smoke has been explicitly attested; this does not block the first testbed bootstrap release."
-  value       = !var.kagent_substrate_delivery.external_broker_smoke_ready
+  description = "True until an external Agent Host TLS+gRPC smoke has been explicitly attested; the production PREDEPLOY rollout gate fails closed while true."
+  value       = !component.substrate_prerequisites.external_broker_smoke_ready
 }
 
 output "kagent_local_agent_ready" {
@@ -59,7 +60,7 @@ output "kagent_local_agent_ready" {
     component.substrate_prerequisites.release_ready &&
     var.agentgateway_platform.enabled &&
     var.agentgateway_public_ip_address != null &&
-    var.kagent_substrate_delivery.external_broker_smoke_ready
+    component.substrate_prerequisites.external_broker_smoke_ready
   )
 }
 
@@ -134,23 +135,31 @@ output "release_source_bucket" {
 
 output "application_source_trigger_ids" {
   type        = map(string)
-  description = "Cloud Build CI and immutable-image triggers for the backend and agent source repositories (catalog roles backend, agents)."
+  description = "Cloud Build CI and immutable-image triggers for the backend source repository."
   value       = component.deploy_release.application_source_trigger_ids
 }
 
 output "kagent_preview_publisher" {
   type = object({
-    enabled               = bool
-    service_account_email = string
-    evidence_bucket_name  = string
-    ghcr_secret_id        = string
+    enabled                    = bool
+    service_account_email      = string
+    evidence_bucket_name       = string
+    source_uri                 = string
+    trigger_id                 = string
+    release_request_topic      = string
+    artifact_repository_prefix = string
+    ghcr_secret_id             = string
   })
   description = "Non-sensitive coordinates of the dedicated kagent fork preview publication infrastructure."
   value = {
-    enabled               = component.kagent_preview_publisher.enabled
-    service_account_email = component.kagent_preview_publisher.service_account_email
-    evidence_bucket_name  = component.kagent_preview_publisher.evidence_bucket_name
-    ghcr_secret_id        = component.kagent_preview_publisher.ghcr_secret_id
+    enabled                    = component.kagent_preview_publisher.enabled
+    service_account_email      = component.kagent_preview_publisher.service_account_email
+    evidence_bucket_name       = component.kagent_preview_publisher.evidence_bucket_name
+    source_uri                 = component.kagent_preview_publisher.source_uri
+    trigger_id                 = component.kagent_preview_publisher.trigger_id
+    release_request_topic      = component.kagent_preview_publisher.release_request_topic
+    artifact_repository_prefix = component.kagent_preview_publisher.artifact_repository_prefix
+    ghcr_secret_id             = component.kagent_preview_publisher.ghcr_secret_id
   }
 }
 

@@ -28,10 +28,6 @@ locals {
       name       = "yourown-chat-server"
       remote_uri = "https://github.com/pilprod/yourown-chat-server.git"
     }
-    agents = {
-      name       = "yourown-chat-agents"
-      remote_uri = "https://github.com/pilprod/yourown-chat-agents.git"
-    }
     mcp = {
       name       = "yourown-chat-mcp"
       remote_uri = "https://github.com/pilprod/yourown-chat-mcp.git"
@@ -83,13 +79,15 @@ locals {
           ref           = "oci://ghcr.io/kagent-dev/kagent/helm/kagent@sha256:ec0dacc1a76edbd190a554757c8bdb193ccb0b35deeb35f6d7a7e7ffc76d99fd"
           version       = "0.9.12"
           values_path   = "helm/vendor/kagent/application.values.yaml"
-          values_sha256 = "b5f09da13023cf3ff9d1a89025802539d5292ac5f93a194e10fed5d98a691807"
+          values_sha256 = "c0e701d37f56221ad8d037bfc5ae4e3162e7137f296ea0eda37748152d02be49"
         }
       }
 
       namespaces = {
-        control  = { name = "kagent-system", quota_profile = "testbed-control" }
-        workload = { name = "kagent-testbed", quota_profile = "testbed-workload" }
+        control     = { name = "kagent-system", quota_profile = "testbed-control" }
+        codex       = { name = "agent-codex", quota_profile = "testbed-workload" }
+        dev_control = { name = "kagent-dev", quota_profile = "dev-control" }
+        dev_codex   = { name = "agent-codex-dev", quota_profile = "dev-workload" }
       }
 
       endpoints = {
@@ -110,11 +108,35 @@ locals {
           }
         }
         agent_runtime = {
-          namespace_key = "workload"
+          namespace_key = "codex"
           pod_selector  = { app = "kagent" }
         }
         model_fixture = {
-          namespace_key = "workload"
+          namespace_key = "codex"
+          pod_selector  = { app = "model-fixture" }
+        }
+        dev_controller = {
+          namespace_key = "dev_control"
+          pod_selector = {
+            "app.kubernetes.io/name"      = "kagent"
+            "app.kubernetes.io/instance"  = "kagent-dev"
+            "app.kubernetes.io/component" = "controller"
+          }
+        }
+        dev_ui = {
+          namespace_key = "dev_control"
+          pod_selector = {
+            "app.kubernetes.io/name"      = "kagent"
+            "app.kubernetes.io/instance"  = "kagent-dev"
+            "app.kubernetes.io/component" = "ui"
+          }
+        }
+        dev_agent_runtime = {
+          namespace_key = "dev_codex"
+          pod_selector  = { app = "kagent" }
+        }
+        dev_model_fixture = {
+          namespace_key = "dev_codex"
           pod_selector  = { app = "model-fixture" }
         }
       }
@@ -151,14 +173,45 @@ locals {
           destination_key = "model_fixture"
           ports           = [{ port = 11434, protocol = "TCP" }]
         }
+        edge_dev_ui = {
+          source_kind     = "external"
+          source_key      = "edge_tunnel"
+          destination_key = "dev_ui"
+          ports           = [{ port = 8080, protocol = "TCP" }]
+        }
+        dev_ui_controller = {
+          source_kind     = "endpoint"
+          source_key      = "dev_ui"
+          destination_key = "dev_controller"
+          ports           = [{ port = 8083, protocol = "TCP" }]
+        }
+        dev_controller_agent = {
+          source_kind     = "endpoint"
+          source_key      = "dev_controller"
+          destination_key = "dev_agent_runtime"
+          ports           = [{ port = 8080, protocol = "TCP" }]
+        }
+        dev_agent_model = {
+          source_kind     = "endpoint"
+          source_key      = "dev_agent_runtime"
+          destination_key = "dev_model_fixture"
+          ports           = [{ port = 11434, protocol = "TCP" }]
+        }
       }
 
-      kubernetes_api_egress_from = ["controller"]
+      kubernetes_api_egress_from = ["controller", "dev_controller"]
       database_bindings = {
         primary = {
           source_endpoint_key   = "controller"
           secret_id_key         = "kagent"
           secret_provider_class = "kagent-database-gcp"
+          secret_file           = "database-url"
+          port                  = 5432
+        }
+        dev = {
+          source_endpoint_key   = "dev_controller"
+          secret_id_key         = "kagent_dev"
+          secret_provider_class = "kagent-dev-database-gcp"
           secret_file           = "database-url"
           port                  = 5432
         }
@@ -181,14 +234,21 @@ locals {
     crd_ownership_ready                = false
     controller_namespace_handoff_ready = false
     external_broker_smoke_ready        = false
+    external_broker_smoke_release      = ""
   }
 
-  # Creates only infrastructure and an empty Secret Manager container. The
-  # dedicated write:packages token is added as an exact external version after
-  # an action-time GitHub confirmation; no token byte enters this repository or
-  # Terraform state.
+  # app-gcp owns the complete Google Cloud release rail. An explicit invocation
+  # with an annotated gcp-v tag starts Cloud Build, which builds and scans in the private
+  # platform staging registry, promotes passing digests into the separate
+  # private immutable registry, and writes immutable GCS evidence.
+  # The gcp-v namespace avoids the fork's legacy v*.kap.* Actions trigger.
+  # GitHub is source-only: no Actions runner, GHCR token or gh CLI session is
+  # part of this path. The old empty GHCR secret container is retained only to
+  # keep this migration non-destructive.
   kagent_preview_publisher = {
     enabled                    = true
+    source_commit              = "6c42060b74589f61b4b2bed44692e1f87247ef2d"
+    release_tag_regex          = "^gcp-v0\\.0\\.0-external-slot\\.kap\\.[0-9]+$"
     evidence_bucket_name       = "yourown-chat-kagent-preview-evidence-europe-west3"
     evidence_retention_seconds = 31536000
     ghcr_secret_id             = "kagent-ghcr-write"

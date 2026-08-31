@@ -72,21 +72,6 @@ variable "backend_github_remote_uri" {
   }
 }
 
-variable "agents_repository_name" {
-  type        = string
-  description = "Cloud Build repository resource for the agent workload source (catalog role agents)."
-}
-
-variable "agents_github_remote_uri" {
-  type        = string
-  description = "HTTPS GitHub URL of the agent workload source repository (catalog role agents)."
-
-  validation {
-    condition     = can(regex("^https://github\\.com/.+\\.git$", var.agents_github_remote_uri))
-    error_message = "agents_github_remote_uri must be an https github.com URL ending in .git."
-  }
-}
-
 variable "mcp_repository_name" {
   type        = string
   description = "Cloud Build repository resource for the private first-party MCP server source (catalog role mcp)."
@@ -132,24 +117,6 @@ variable "backend_image_prefix" {
   default     = "yourown-chat"
 }
 
-variable "agents_branch_regex" {
-  type        = string
-  description = "Reviewed agent workload branch built and scanned in GCP without deployment."
-  default     = "^main$"
-}
-
-variable "agents_release_tag_regex" {
-  type        = string
-  description = "Immutable agent workload tags that publish both worker images."
-  default     = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
-}
-
-variable "agents_image_prefix" {
-  type        = string
-  description = "Artifact Registry prefix for workflow and activity worker images."
-  default     = "yourown-chat"
-}
-
 # --- Cloud Deploy target (from the clouddeploy component) --------------------
 variable "delivery_pipelines" {
   type = map(object({
@@ -163,21 +130,9 @@ variable "mcp_enabled" {
   description = "Whether the unified platform tag router may create MCP releases. Mattermost routing remains enabled independently."
 }
 
-variable "agents_enabled" {
-  type        = bool
-  description = "Whether agent delivery and the separate backend tag release trigger are enabled."
-  default     = false
-}
-
 variable "server_enabled" {
   type        = bool
   description = "Whether a backend tag may create the independent server-plane release."
-  default     = false
-}
-
-variable "agents_runtime_enabled" {
-  type        = bool
-  description = "Choose whether a semver release renders the static agent start or pause profile. Operational start/pause releases may still be cut explicitly."
   default     = false
 }
 

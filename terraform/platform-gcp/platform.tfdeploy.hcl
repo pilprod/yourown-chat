@@ -88,10 +88,9 @@ deployment "eu" {
 
     # Temporal is a platform-gcp service. Keep the launch gate closed until the
     # prerequisite MCP image has passed production verification.
-    temporal_enabled             = false
-    temporal_chart_version       = "1.2.0"
-    temporal_password_rotation   = "1"
-    agent_results_retention_days = 30
+    temporal_enabled           = false
+    temporal_chart_version     = "1.2.0"
+    temporal_password_rotation = "1"
 
     public_ingress_enabled   = true
     mattermost_calls_enabled = true
@@ -112,8 +111,8 @@ deployment "eu" {
     storage_force_destroy = false
 
     # Registry repositories use Google-managed encryption; no CMEK.
-    artifact_registry_kms_key_name = null
-    kagent_registry_repository_id  = "kagent-preview"
+    artifact_registry_kms_key_name        = null
+    kagent_registry_repository_id         = "kagent-preview"
     kagent_staging_registry_repository_id = "kagent-staging"
     # Paid per image digest. Keep the repository gate off during routine
     # builds; enable it only for a bounded build window through the guarded
@@ -244,11 +243,6 @@ publish_output "temporal_enabled" {
 publish_output "yourown_chat_server_enabled" {
   description = "Platform-owned launch state for the independent YourOwn.Chat server plane."
   value       = deployment.eu.yourown_chat_server_enabled
-}
-
-publish_output "temporal_results_bucket_name" {
-  description = "Platform-owned agent result bucket consumed by application delivery parameters."
-  value       = deployment.eu.temporal_results_bucket_name
 }
 
 publish_output "agentgateway" {

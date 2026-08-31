@@ -118,7 +118,7 @@ grep -Fq 'name: admin' "${identity_only}"
 
 grep -Fq 'chartPath: yourown-chat' "${repo_root}/helm/skaffold-yourown-chat.yaml"
 grep -Fq 'namespace: edge' "${repo_root}/helm/skaffold-yourown-chat.yaml"
-grep -Fq 'services      = "control-api auth-api transport-api identity-api identity-admin identity-migrate"' "${repo_root}/terraform/app-gcp/modules/deploy-release/backend-image.tf"
+grep -Fq 'services = "control-api auth-api transport-api identity-api identity-admin identity-migrate"' "${repo_root}/terraform/app-gcp/modules/deploy-release/backend-image.tf"
 grep -Fq -- '--build-arg SERVICE=$$service' "${repo_root}/terraform/app-gcp/modules/deploy-release/backend-image.tf"
 
 printf 'YourOwn.Chat server render tests passed\n'

@@ -1,13 +1,17 @@
-# kagent + Substrate public testbed rail
+# kagent dev-to-production promotion rail
 
-This directory is a single Cloud Deploy target for fork/issue validation. It
-is deliberately `production_eligible=false`; it has no production profile or
-promotion stage. Existing coordinates stay stable:
+This directory renders one reviewed immutable kagent candidate into two ordered
+Cloud Deploy stages. Dev is deployed and verified first; production requires an
+explicit approval and verifies the same digest set again:
 
-- Helm release `kagent` in `kagent-system`;
-- kagent workload namespace `kagent-testbed`;
-- Helm release `substrate` in `ate-system`; and
+- dev Helm release `kagent-dev` in `kagent-dev`, watching `agent-codex-dev`;
+- production Helm release `kagent` in `kagent-system`, watching `agent-codex`;
+- shared Terraform-owned Substrate in `ate-system`; and
 - Broker TLS SNI `api.ate-system.svc`.
+
+Cloud Deploy never rebuilds during promotion. Both profiles are rendered from
+the same chart and image digest fields in one release receipt. Substrate,
+Gateway and CRDs remain prerequisites and are not reinstalled by either stage.
 
 Terraform owns namespaces, quotas, NetworkPolicy prerequisites, CRD releases,
 RBAC, `ate-api-authentication`, Secret Manager containers and the
@@ -17,14 +21,54 @@ separate, reviewed handoff must first retain the release in-cluster with
 `destroy=false` and remove only its Terraform state ownership. Phase A moved
 the live object to `helm_release.application_handoff_source[0]`; Phase B must
 target exactly that address in its `removed` block. Cloud Deploy must never
-race the handoff-source release. After that handoff,
-Cloud Deploy owns only the kagent and Substrate application Helm releases.
+race the handoff-source release. After that handoff, Cloud Deploy owns only the
+kagent application releases. Shared Substrate remains Terraform-owned.
+Every per-agent namespace has Restricted Pod Security labels, a namespace-wide
+ingress/egress default deny, DNS-only baseline egress and the controller RBAC
+bindings generated from the same namespace map.
 
-Substrate's application chart owns the one `Gateway` and `TLSRoute` by setting
-`externalProviderBroker.gateway.enabled=true`. The only raw resource here is
-the application-owned `AgentgatewayParameters`, which adds the GKE static-IP
-Service annotations and Restricted-Pod-Security overlays. There is no duplicate
-Gateway/TLSRoute owner.
+Substrate itself is a two-step app-gcp resource. `bootstrap_enabled` creates
+the namespace, CRDs, RBAC and pre-sync policies. After the ten native
+Kubernetes Secrets are synchronized, `release_enabled` creates the shared
+`substrate` Helm release and `ate-system/substrate-broker`
+`AgentgatewayParameters`. The atomic Helm release owns `ate-api-server`, the
+external-template `ate-controller`, `atenet-egress`, `Gateway` and `TLSRoute`.
+`release_ready` reads those resources back from the API and requires available
+API/controller replicas, so CRDs alone cannot open the kagent release rail on
+a fresh cluster. Gateway `Programmed=True` remains an explicit Cloud Deploy
+verification check. Neither dev nor production promotion reinstalls shared
+Substrate.
+
+`adopt_existing_substrate=true` is intentionally specific to the current full
+cluster prestate. It expects the `ate-system` namespace,
+`ate-api-authentication` ConfigMap, `substrate-crds` and `substrate` releases,
+ClusterRoles `ate-api-server-role` and `ate-controller`, and ClusterRoleBindings
+`ate-api-server-binding` and `ate-controller` all to exist. It is not an
+import-if-present mode: a missing object makes the corresponding declarative
+import fail.
+
+Before each adoption apply, confirm the recorded compatibility inventory still
+matches the cluster. Then enable bootstrap only with both
+`adopt_existing_substrate=true` and
+`adopt_existing_substrate_compatibility_confirmed=true`; adoption fails closed
+without that explicit attestation. That apply imports the namespace, CRD
+release, ConfigMap and four RBAC objects, and adds
+`helm.sh/resource-policy=keep` to the RBAC objects while the existing application
+release still renders them. Keep both adoption inputs enabled for the later
+application stage. The reviewed audit traced dirty live commit `aa5e123` to
+clean merge-successor `e9ed68` / `v0.0.22` (parents: upstream `0118c301` and
+external-provider `fbdc766`), confirmed `aa5e123` is an ancestor, found the
+live-to-target CRD server diff description-only, and identified the Gateway as
+a target addition absent from the live chart. The boolean remains an explicit
+per-apply acknowledgment so this evidence cannot silently authorize a drifted
+prestate. After bootstrap and Secret synchronization, `release_enabled=true`
+imports the application release before the `rbac.create=false` upgrade. Clear
+both adoption inputs only after all eight addresses are state-owned and the
+rollout succeeds. The checked-in application release remains disabled.
+
+Substrate's Terraform-managed application chart owns the one `Gateway` and
+`TLSRoute`. There is no duplicate Gateway/TLSRoute owner in either kagent
+promotion profile.
 
 `render-release.py` accepts two separate reviewed artifact manifests. Each
 must carry source repository/commit, schema/checksum, digest-qualified app and
@@ -59,7 +103,7 @@ readiness.
 The native Secret gate covers Cloud SQL, ate-api/controller mTLS, atenet egress
 server and authorizer mTLS, actor identity pools, and the kagent client bundle.
 It also requires Kubernetes-only `actor-id-ca-certs/ca.crt`, derived exactly
-from `actor-id-ca-pool` `CAs[0].RootCertificateDER`; eight source Secrets alone
+from `actor-id-ca-pool` `CAs[0].RootCertificateDER`; nine source Secrets alone
 are not ready. The owner-only bootstrap/sync procedure is documented in
 `docs/KAGENT_SUBSTRATE_RELEASE.md`.
 The authentication ConfigMap preserves the GKE cluster-specific issuer while
@@ -83,8 +127,15 @@ TLS/gRPC/SNI validation is a separate Cloud Build or local-host smoke gate and
 `external_broker_smoke_ready` remains false until that external path exists and
 has evidence. False does not block the first deployment that creates the
 Gateway; it keeps `external_broker_smoke_required=true` and
-`kagent_local_agent_ready=false` afterward. The boolean is an explicit
-attestation input, not an automated smoke implementation.
+`kagent_local_agent_ready=false` afterward. After the dev candidate passes the
+external smoke, a reviewed Terraform run sets both
+`external_broker_smoke_ready=true` and `external_broker_smoke_release` to that
+exact Cloud Deploy release ID. Terraform writes both values to the narrowly
+readable `ate-system/kagent-production-promotion-gate` ConfigMap. The prod
+PREDEPLOY action compares the live values with `CLOUD_DEPLOY_RELEASE` and fails
+before deployment on a missing, false or stale attestation. The rendered
+release is independent of the boolean, so dev and prod still use the same
+immutable digest set.
 
 External-provider enrollment is issued separately by
 `terraform/app-gcp/scripts/issue-substrate-external-provider-enrollment.sh`.
@@ -98,10 +149,11 @@ is the caller-supplied exact
 requires release-supplied digest pins; this repository does not invent a
 `kubectl-ate` image digest.
 
-The current service input intentionally sets every activation attestation to
-false. The immutable Substrate `v0.0.22` consumer record includes the verifier
-pin, but independent immutable kagent evidence is still absent. Remaining
-prerequisites also include populated and natively synchronized TLS material,
-the explicit local-provider-only network posture, the two-step kagent ownership
-handoff, and external Broker smoke evidence. Do not flip the rail until all of
-them are reviewed.
+The current service input intentionally keeps every activation attestation
+false. Before enabling the rail, record the private Artifact Registry receipt,
+prepare separate dev/prod database and Substrate client identities, complete
+the Terraform-to-Cloud-Deploy Helm ownership handoff, and deploy the dev stage.
+A real external Agent Host TLS/gRPC smoke is required before prod deployment.
+Approval remains an explicit human action; even if it is clicked early, the
+PREDEPLOY job blocks the production deployment until the release-bound
+Terraform attestation exists.

@@ -15,7 +15,8 @@ operator identities.
 | `pilprod/yourown-chat-mobile` | iOS/Android client source and client-specific CI | Backend or platform resources | `main`; client release tags follow the client store lifecycle |
 | `pilprod/yourown-chat-desktop` | Desktop client source and desktop packaging CI | Backend or platform resources | `master`; desktop release tags follow its upstream-compatible lifecycle |
 | `pilprod/yourown-chat-server` | Go microservices for independent user identity, Mattermost workspace links, agent management, approvals, reports and the client-facing Temporal projection | Temporal activity implementation, MCP servers or IaC | `main` CI; immutable `MAJOR.MINOR.PATCH` image tags |
-| `pilprod/yourown-chat-agents` | Go Temporal workflows, activities, tools and agent compute | User-facing control API, MCP servers or IaC | `main` CI; same immutable `MAJOR.MINOR.PATCH` as server for a coordinated release |
+| `pilprod/yourown-chat-agents` | Declarative agent definitions, local-host adapters and agent integration code | Temporal workflow ownership, user-facing control API or IaC | `main` CI; agent-runtime releases are independent of server tags |
+| `pilprod/yourown-chat-workflows` | Temporal workflows, activities, deterministic orchestration and replay tests | Local host enrollment, user-facing APIs or IaC | Independent workflow lifecycle |
 | `pilprod/yourown-chat-mcp` | First-party Go MCP server source and protocol tests | Platform Terraform/Helm or agent workers | `main` CI; immutable `MAJOR.MINOR.PATCH` MCP releases |
 | `pilprod/yourown-chat-rtcd` | Patched RTCD fork and its independent image build | Mattermost server or platform manifests | patched upstream branch; immutable `vX.Y.Z-patched` image tags |
 | `pilprod/yourown-chat-migration` | Explicit data/schema migration tooling that cannot live in an owning application repository | Long-running services or shared IaC | `main`; versioned only when a migration artifact is released |
@@ -50,8 +51,9 @@ revisions:
   `X.Y.Z[-suffix]` tag and the server commit has
   `vX.Y.Z[-suffix]-patched`.
 - A server tag independently releases `auth-api`, `identity-api`,
-  `identity-admin`, `identity-migrate` and `control-api`. Agent compute is released separately only when matching server
-  and agent tags provide the compatible control/worker image set.
+  `identity-admin`, `identity-migrate` and `control-api`.
+- kagent/Substrate artifacts and declarative agents have independent immutable
+  releases; Temporal workflows use their own repository and lifecycle.
 - Mattermost preview branches are structurally limited to the dev-only pipeline;
   only an accepted assembly tag can enter dev-to-production promotion.
 
@@ -70,23 +72,13 @@ repository only after the commit is merged to its canonical branch.
 | `yourown-chat-web/upstream/mattermost` | Upstream supported release branch | Exact upstream SHA selected and reviewed by `yourown-chat-web`; never a moving branch at build time |
 | Desktop/mobile upstream submodules | Their documented upstream maintenance branch | Exact upstream SHA committed in the owning client repository before the client tag |
 
-`yourown-chat-server`, `yourown-chat-agents` and `yourown-chat-mcp` are not
-submodules of the public platform repository. They are independent release
-units. In particular, an agents release is selected as follows:
-
-1. merge the worker change into `yourown-chat-agents/main`;
-2. wait for the `main` CI gate;
-3. create plain `MAJOR.MINOR.PATCH` on that exact `main` commit;
-4. create the same version tag on the exact reviewed
-   `yourown-chat-server/main` commit;
-5. let the platform coordinate the three digest-pinned images by the matching
-   tag; do not add either source repository as a platform submodule.
-
-Before creating server/agents image tags, the release operator verifies that
-each clean local `HEAD` equals `origin/main`. A squashed pull request therefore
-must be tagged at the resulting `main` commit, not at the obsolete feature-branch
-commit. Cloud Build receives private source through the Gen2 connector; no
-second GitHub credential is copied into build steps.
+`yourown-chat-server`, `yourown-chat-agents`, `yourown-chat-workflows` and
+`yourown-chat-mcp` are not submodules of the public platform repository. They
+are independent release units. Before creating an image tag, the release
+operator verifies that the clean local `HEAD` equals `origin/main`. A squashed
+pull request is tagged at the resulting `main` commit, never at the obsolete
+feature-branch commit. Cloud Build receives configured private source through
+the Gen2 connector; no second GitHub credential is copied into build steps.
 
 ## Dependency direction
 
@@ -96,9 +88,16 @@ mattermost + yourown-chat-web
              -> Artifact Registry digest
              -> yourown-chat Helm/Skaffold delivery
 
-yourown-chat-server + yourown-chat-agents + yourown-chat-mcp
+yourown-chat-server + yourown-chat-mcp
              -> independent tested/scanned image digests
-             -> yourown-chat coordinated delivery
+             -> application delivery
+
+kagent + substrate + yourown-chat-agents
+             -> immutable control plane and declarative agents
+             -> per-agent namespaces and enrolled local hosts
+
+yourown-chat-workflows
+             -> independent Temporal workflow lifecycle
 
 platform-gcp (stateful infrastructure)
              -> app-gcp (delivery, secrets, workloads)

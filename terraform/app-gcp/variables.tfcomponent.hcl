@@ -108,6 +108,21 @@ variable "artifact_registry_repository_id" {
   description = "Artifact Registry repository ID the image CI pushes to. Published by the platform stack."
 }
 
+variable "kagent_registry_repository_id" {
+  type        = string
+  description = "Dedicated immutable Artifact Registry repository ID for reviewed kagent fork preview images and OCI charts. Published by platform-gcp."
+}
+
+variable "kagent_registry_location" {
+  type        = string
+  description = "Location shared by the dedicated private immutable kagent release and private candidate repositories. Published by platform-gcp."
+}
+
+variable "kagent_staging_registry_repository_id" {
+  type        = string
+  description = "Dedicated private Artifact Registry repository ID for disposable kagent candidates built and scanned before promotion. Published by platform-gcp."
+}
+
 variable "cmek_key_id" {
   type        = string
   description = "Shared CMEK key resource ID encrypting this stack's secrets and the release-source bucket (null when the platform runs cmek_enabled = false). Published by the platform stack."
@@ -145,7 +160,7 @@ variable "source_repositories" {
     name       = string
     remote_uri = string
   }))
-  description = "Source repositories keyed by role. Required roles: deploy (this platform repository, the Skaffold render root), mattermost (product assembly), web, server_source (patched server source, provenance only), backend, agents, mcp, rtcd. `name` is the Cloud Build 2nd-gen repository resource name; `remote_uri` is the HTTPS clone URL."
+  description = "Source repositories keyed by role. Required roles: deploy (this platform repository, the Skaffold render root), mattermost (product assembly), web, server_source (patched server source, provenance only), backend, mcp, rtcd. `name` is the Cloud Build 2nd-gen repository resource name; `remote_uri` is the HTTPS clone URL."
 }
 
 variable "vendor_chart_bundles" {
@@ -218,6 +233,7 @@ variable "kagent_substrate_delivery" {
     crd_ownership_ready                = optional(bool, false)
     controller_namespace_handoff_ready = optional(bool, false)
     external_broker_smoke_ready        = optional(bool, false)
+    external_broker_smoke_release      = optional(string, "")
     artifacts = optional(map(object({
       source_repository        = string
       source_commit            = string
@@ -263,15 +279,28 @@ variable "kagent_substrate_delivery" {
       port = number
     })), {})
   })
-  description = "Fail-closed two-phase contract: bootstrap owns pre-sync infrastructure, while release admits the production-ineligible kagent/Substrate Helm workload only after native Secret synchronization."
+  description = "Fail-closed contract: bootstrap owns shared Substrate prerequisites; release admits one immutable kagent digest set to dev and permits production only after verification and approval."
   default     = {}
+
+  validation {
+    condition = var.kagent_substrate_delivery.external_broker_smoke_ready ? (
+      var.kagent_substrate_delivery.release_enabled &&
+      can(regex(
+        "^[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$",
+        var.kagent_substrate_delivery.external_broker_smoke_release,
+      ))
+      ) : (
+      var.kagent_substrate_delivery.external_broker_smoke_release == ""
+    )
+    error_message = "external_broker_smoke_ready=true requires release_enabled=true and the exact Cloud Deploy release ID that passed the external TLS+gRPC smoke; a false attestation must leave it empty."
+  }
 
   validation {
     condition = !(
       var.kagent_substrate_delivery.bootstrap_enabled ||
       var.kagent_substrate_delivery.release_enabled
       ) || (
-      !var.kagent_substrate_delivery.production_eligible &&
+      (!var.kagent_substrate_delivery.release_enabled || var.kagent_substrate_delivery.production_eligible) &&
       toset(keys(var.kagent_substrate_delivery.artifacts)) == toset(["kagent", "substrate"]) &&
       var.kagent_substrate_delivery.artifacts["kagent"].source_repository == "https://github.com/pilprod/kagent" &&
       var.kagent_substrate_delivery.artifacts["kagent"].artifact_schema_version == "3" &&
@@ -367,13 +396,13 @@ variable "kagent_substrate_delivery" {
       ) || (
       toset(keys(var.kagent_substrate_delivery.values_sha256)) == toset([
         "kagent/kagent.values.yaml",
-        "kagent/kagent-testbed.values.yaml",
+        "kagent/kagent-dev.values.yaml",
+        "kagent/kagent-prod.values.yaml",
         "kagent/substrate.values.yaml",
-        "kagent/substrate-testbed.values.yaml",
       ]) &&
       alltrue([for checksum in values(var.kagent_substrate_delivery.values_sha256) : can(regex("^[0-9a-f]{64}$", checksum))])
     )
-    error_message = "Enabled testbed bootstrap or release must checksum exactly the four tracked kagent/Substrate values files."
+    error_message = "Enabled bootstrap or release must checksum exactly the tracked kagent base/dev/prod and Substrate values files."
   }
 
   validation {
@@ -425,7 +454,7 @@ variable "builds" {
 }
 
 # --- Automated release cutting (Cloud Deploy on a git tag) ------------------
-# The deploy, backend, agents, mcp and rtcd repository links come from
+# The deploy, backend, mcp and rtcd repository links come from
 # var.source_repositories; see service-inputs.tfdeploy.hcl and components.
 variable "mcp_release_tag_regex" {
   type        = string
@@ -436,12 +465,6 @@ variable "mcp_release_tag_regex" {
 variable "backend_release_tag_regex" {
   type        = string
   description = "Immutable server tags that build the client-facing control API image."
-  default     = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
-}
-
-variable "agents_release_tag_regex" {
-  type        = string
-  description = "Immutable agent tags that build the workflow and activity worker images."
   default     = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
 }
 
@@ -507,6 +530,26 @@ variable "adopt_existing_cluster_bootstrap_releases" {
   default     = false
 }
 
+variable "adopt_existing_substrate" {
+  type        = bool
+  description = "One-shot import of the exact pre-existing ate-system namespace, authentication ConfigMap, Substrate RBAC and substrate/substrate-crds Helm releases. Keep true through the staged bootstrap/application imports, then clear it."
+  default     = false
+}
+
+variable "adopt_existing_substrate_compatibility_confirmed" {
+  type        = bool
+  description = "Explicit reviewed attestation that both existing Substrate Helm releases are compatible with takeover by the pinned charts. Required when adoption and bootstrap are both enabled because the CRD release is reconciled in bootstrap."
+  default     = false
+
+  validation {
+    condition = !(
+      var.adopt_existing_substrate &&
+      var.kagent_substrate_delivery.bootstrap_enabled
+    ) || var.adopt_existing_substrate_compatibility_confirmed
+    error_message = "adopt_existing_substrate with bootstrap_enabled requires adopt_existing_substrate_compatibility_confirmed=true after reviewing both live-to-pinned Helm release plans."
+  }
+}
+
 variable "manage_ingress_origin_tls" {
   type        = bool
   description = "Materialise the mattermost-origin-tls Kubernetes Secret (Cloudflare Origin CA cert/key, for the ingress Full (Strict) TLS) from the Secret Manager values the cloudflare stack writes. Set from the cloudflare stack's origin_secret_ids in the deployment; false skips it (no public ingress)."
@@ -534,12 +577,6 @@ variable "matterbridge_enabled" {
 variable "mcp_servers_enabled" {
   type        = bool
   description = "Enable the in-cluster MCP delivery path. true lets unified platform tags route helm/mcp changes through the mcp dev -> prod pipeline; false skips MCP releases. Vendor-hosted remote MCP endpoints are unaffected -- see docs/MCP.md."
-  default     = false
-}
-
-variable "agent_platform_enabled" {
-  type        = bool
-  description = "Create the agent pilot delivery path and allow semver tags to route agent changes. Persistent storage is owned separately by platform-gcp."
   default     = false
 }
 
@@ -579,18 +616,6 @@ variable "temporal_enabled" {
   default     = false
 }
 
-variable "agent_results_bucket" {
-  type        = string
-  description = "Platform-owned result bucket passed to agent workload delivery. Empty while Temporal is disabled."
-  default     = ""
-}
-
-variable "agent_platform_runtime_enabled" {
-  type        = bool
-  description = "Default semver release mode for the agent pilot. false routes the release through the static pause profile; true uses the static running profile. Both preserve Cloud SQL and GCS state."
-  default     = false
-}
-
 variable "zero_trust_enabled" {
   type        = bool
   description = "Materialise the mcp-tunnel Kubernetes Secret (cloudflared run token, written to Secret Manager by the cloudflare stack's zero_trust component) so the tunnel pod in helm/mcp can start. MUST follow the cloudflare stack's zero_trust_enabled: enabling it here first would 404 on the missing Secret Manager secret. The chart-side switch is tunnel.enabled in helm/mcp/values.yaml."
@@ -615,14 +640,18 @@ variable "dev_team_rbac_subjects" {
 variable "kagent_preview_publisher" {
   type = object({
     enabled                    = bool
+    source_commit              = string
+    release_tag_regex          = string
     evidence_bucket_name       = string
     evidence_retention_seconds = number
     ghcr_secret_id             = string
     submitter_members          = set(string)
   })
-  description = "Dedicated Cloud Build publication infrastructure for immutable kagent fork previews. It creates an empty Secret Manager container only; credential values never enter Terraform."
+  description = "Terraform-owned Cloud Build publication rail for immutable kagent fork previews in the platform Artifact Registry. The legacy empty GHCR container is retained but not consumed."
   default = {
     enabled                    = false
+    source_commit              = ""
+    release_tag_regex          = "^gcp-v[0-9]+\\.[0-9]+\\.[0-9]+-external-slot\\.kap\\.[0-9]+$"
     evidence_bucket_name       = "disabled-kagent-preview-evidence"
     evidence_retention_seconds = 31536000
     ghcr_secret_id             = "kagent-ghcr-write"
@@ -632,5 +661,10 @@ variable "kagent_preview_publisher" {
   validation {
     condition     = !var.kagent_preview_publisher.enabled || var.kagent_preview_publisher.evidence_bucket_name != "disabled-kagent-preview-evidence"
     error_message = "An enabled kagent_preview_publisher requires an explicit evidence_bucket_name."
+  }
+
+  validation {
+    condition     = !var.kagent_preview_publisher.enabled || can(regex("^[0-9a-f]{40}$", var.kagent_preview_publisher.source_commit))
+    error_message = "An enabled kagent_preview_publisher requires an exact reviewed source_commit."
   }
 }

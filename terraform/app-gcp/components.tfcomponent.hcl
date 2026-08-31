@@ -174,9 +174,16 @@ component "clouddeploy_kagent_substrate" {
 
     stages = [
       {
-        name             = "testbed"
-        profiles         = ["kagent-substrate-testbed"]
+        name             = "dev"
+        profiles         = ["kagent-dev"]
         require_approval = false
+        verify           = true
+      },
+      {
+        name             = "prod"
+        profiles         = ["kagent-prod"]
+        require_approval = true
+        predeploy_actions = ["require-external-broker-smoke"]
         verify           = true
       },
     ]
@@ -239,76 +246,6 @@ component "clouddeploy_server" {
       yourown_chat_control_api_enabled               = tostring(var.temporal_enabled)
       yourown_chat_ingress_enabled                   = tostring(var.manage_ingress_origin_tls)
       yourown_chat_registration_enabled              = tostring(var.yourown_chat_registration_enabled)
-    }
-
-    labels = local.common_labels
-  }
-
-  providers = {
-    google      = provider.google.this
-    google-beta = provider.google-beta.this
-  }
-}
-
-component "clouddeploy_agents_start" {
-  source = "./modules/clouddeploy"
-
-  inputs = {
-    project_id              = var.project_id
-    region                  = var.region
-    gke_cluster_id          = var.gke_cluster_id
-    pipeline_name           = "agents-start"
-    release_manager_members = [var.workload_identity_members.mcp]
-
-    stages = [{
-      name             = "pilot"
-      profiles         = ["agents-running"]
-      require_approval = true
-      verify           = true
-    }]
-
-    deploy_parameters = {
-      agent_workflow_worker_gsa = lookup(var.workload_identity_emails, "agents-workflow", "")
-      agent_activity_worker_gsa = lookup(var.workload_identity_emails, "agents-activity", "")
-      agent_secret_project      = var.project_id
-      agent_results_bucket      = var.agent_results_bucket
-      cluster_dns_ip            = var.cluster_dns_ip
-    }
-
-    labels = local.common_labels
-  }
-
-  providers = {
-    google      = provider.google.this
-    google-beta = provider.google-beta.this
-  }
-}
-
-component "clouddeploy_agents_pause" {
-  source = "./modules/clouddeploy"
-
-  inputs = {
-    project_id              = var.project_id
-    region                  = var.region
-    gke_cluster_id          = var.gke_cluster_id
-    pipeline_name           = "agents-pause"
-    release_manager_members = [var.workload_identity_members.mcp]
-
-    stages = [{
-      name             = "pilot"
-      profiles         = ["agents-paused"]
-      require_approval = true
-      verify           = true
-    }]
-
-    # Keep the exact same immutable infrastructure inputs as the running
-    # release. Only the authored Skaffold profile changes workload replicas.
-    deploy_parameters = {
-      agent_workflow_worker_gsa = lookup(var.workload_identity_emails, "agents-workflow", "")
-      agent_activity_worker_gsa = lookup(var.workload_identity_emails, "agents-activity", "")
-      agent_secret_project      = var.project_id
-      agent_results_bucket      = var.agent_results_bucket
-      cluster_dns_ip            = var.cluster_dns_ip
     }
 
     labels = local.common_labels
@@ -442,6 +379,9 @@ component "secrets" {
         "kagent-ate-client-tls" = {
           accessors = []
         }
+        "kagent-dev-ate-client-tls" = {
+          accessors = []
+        }
       } : {},
     )
   }
@@ -507,9 +447,6 @@ component "cluster_secrets" {
       },
       var.matterbridge_enabled ? {
         matterbridge = { labels = { tier = "dev", "part-of" = "yourown-chat" } }
-      } : {},
-      var.agent_platform_enabled ? {
-        yourown-agents = { labels = { tier = "pilot", "part-of" = "yourown-chat", component = "agents" } }
       } : {},
       var.yourown_chat_server_enabled ? {
         edge = {
@@ -728,15 +665,12 @@ component "deploy_release" {
 
     backend_repository_name   = var.source_repositories.backend.name
     backend_github_remote_uri = var.source_repositories.backend.remote_uri
-    agents_repository_name    = var.source_repositories.agents.name
-    agents_github_remote_uri  = var.source_repositories.agents.remote_uri
     mcp_repository_name       = var.source_repositories.mcp.name
     mcp_github_remote_uri     = var.source_repositories.mcp.remote_uri
     rtcd_repository_name      = var.source_repositories.rtcd.name
     rtcd_github_remote_uri    = var.source_repositories.rtcd.remote_uri
     mcp_release_tag_regex     = var.mcp_release_tag_regex
     backend_release_tag_regex = var.backend_release_tag_regex
-    agents_release_tag_regex  = var.agents_release_tag_regex
 
     delivery_pipelines = {
       mattermost = {
@@ -751,12 +685,6 @@ component "deploy_release" {
       yourown-chat = {
         execution_service_account_email = component.clouddeploy_server.execution_service_account_email
       }
-      agents-start = {
-        execution_service_account_email = component.clouddeploy_agents_start.execution_service_account_email
-      }
-      agents-pause = {
-        execution_service_account_email = component.clouddeploy_agents_pause.execution_service_account_email
-      }
       kagent-substrate = {
         execution_service_account_email = component.clouddeploy_kagent_substrate.execution_service_account_email
       }
@@ -765,8 +693,6 @@ component "deploy_release" {
     release_tag_regex         = var.release_tag_regex
     mcp_enabled               = var.mcp_servers_enabled
     server_enabled            = var.yourown_chat_server_enabled
-    agents_enabled            = var.agent_platform_enabled && var.temporal_enabled
-    agents_runtime_enabled    = var.agent_platform_runtime_enabled
     kagent_substrate_delivery = var.kagent_substrate_delivery
     kagent_substrate_prerequisites_ready = (
       var.kagent_substrate_delivery.release_enabled &&
@@ -828,7 +754,6 @@ component "workload_scheduling" {
   depends_on = [component.cluster_secrets]
 
   inputs = {
-    agent_enabled  = var.agent_platform_enabled
     server_enabled = var.yourown_chat_server_enabled
     cleanup_service_account_emails = {
       mattermost = component.clouddeploy.cleanup_service_account_email
@@ -911,15 +836,42 @@ component "substrate_prerequisites" {
   source = "./modules/substrate-prerequisites"
 
   inputs = {
-    bootstrap_enabled          = var.kagent_substrate_delivery.bootstrap_enabled
-    release_enabled            = var.kagent_substrate_delivery.release_enabled
-    gke_cluster_id             = var.gke_cluster_id
-    native_secret_sync_ready   = var.kagent_substrate_delivery.native_secret_sync_ready
-    cloudsql_private_ip        = var.cloudsql_private_ip
-    cluster_dns_ip             = var.cluster_dns_ip
-    local_provider_only        = var.kagent_substrate_delivery.local_provider_only
-    atenet_egress_destinations = var.kagent_substrate_delivery.atenet_egress_destinations
-    substrate_crd_chart        = try(var.kagent_substrate_delivery.artifacts["substrate"].charts.crds, { ref = "", version = "" })
+    adopt_existing                                   = var.adopt_existing_substrate
+    adopt_existing_substrate_compatibility_confirmed = var.adopt_existing_substrate_compatibility_confirmed
+    bootstrap_enabled                                = var.kagent_substrate_delivery.bootstrap_enabled
+    release_enabled                                  = var.kagent_substrate_delivery.release_enabled
+    gke_cluster_id                                   = var.gke_cluster_id
+    native_secret_sync_ready                         = var.kagent_substrate_delivery.native_secret_sync_ready
+    external_broker_smoke_ready                      = var.kagent_substrate_delivery.external_broker_smoke_ready
+    external_broker_smoke_release                    = var.kagent_substrate_delivery.external_broker_smoke_release
+    promotion_gate_reader_email                      = component.clouddeploy_kagent_substrate.cleanup_service_account_email
+    cloudsql_private_ip                              = var.cloudsql_private_ip
+    cluster_dns_ip                                   = var.cluster_dns_ip
+    local_provider_only                              = var.kagent_substrate_delivery.local_provider_only
+    atenet_egress_destinations                       = var.kagent_substrate_delivery.atenet_egress_destinations
+    substrate_crd_chart                              = try(var.kagent_substrate_delivery.artifacts["substrate"].charts.crds, { ref = "", version = "" })
+    substrate_application_chart = try(
+      var.kagent_substrate_delivery.artifacts["substrate"].charts.application,
+      { ref = "", version = "" },
+    )
+    substrate_helm_set_values = try(var.kagent_substrate_delivery.helm_set_values["substrate"], {})
+    substrate_values_sha256   = try(var.kagent_substrate_delivery.values_sha256["kagent/substrate.values.yaml"], "")
+    kagent_control_planes = {
+      prod = {
+        namespace    = var.vendor_chart_bundles["kagent"].namespaces["control"].name
+        release_name = "kagent"
+        agent_namespaces = {
+          codex = var.vendor_chart_bundles["kagent"].namespaces["codex"].name
+        }
+      }
+      dev = {
+        namespace    = var.vendor_chart_bundles["kagent"].namespaces["dev_control"].name
+        release_name = "kagent-dev"
+        agent_namespaces = {
+          codex = var.vendor_chart_bundles["kagent"].namespaces["dev_codex"].name
+        }
+      }
+    }
     secret_contract = {
       postgres = {
         secret_manager_id = lookup(var.additional_cloudsql_connection_secret_ids, "substrate", "")
@@ -969,6 +921,12 @@ component "substrate_prerequisites" {
         kubernetes_name   = "kagent-ate-client-tls"
         keys              = ["client-credential-bundle.pem", "server-ca.pem"]
       }
+      kagent_dev_client_tls = {
+        secret_manager_id = try(component.secrets.secret_ids["kagent-dev-ate-client-tls"], "")
+        namespace         = "kagent-dev"
+        kubernetes_name   = "kagent-dev-ate-client-tls"
+        keys              = ["client-credential-bundle.pem", "server-ca.pem"]
+      }
     }
     derived_secret_contract = {
       actor_id_ca_certs = {
@@ -982,6 +940,7 @@ component "substrate_prerequisites" {
       namespace                  = var.agentgateway_platform.namespace
       service_account_name       = var.agentgateway_platform.service_account_name
       deployer_cluster_role_name = var.agentgateway_platform.deployer_cluster_role_name
+      public_ip_name             = var.agentgateway_public_ip_name == null ? "" : var.agentgateway_public_ip_name
     }
     labels = local.common_labels
   }
@@ -1028,7 +987,18 @@ component "kagent_preview_publisher" {
     project_id                  = var.project_id
     region                      = var.region
     apply_service_account_email = var.service_account_email
-    submitter_members           = var.kagent_preview_publisher.submitter_members
+    submitter_members = setunion(
+      var.kagent_preview_publisher.submitter_members,
+      toset([var.workload_identity_members.mcp]),
+    )
+
+    github_remote_uri = var.source_repositories.kagent.remote_uri
+    source_commit     = var.kagent_preview_publisher.source_commit
+    release_tag_regex = var.kagent_preview_publisher.release_tag_regex
+
+    artifact_registry_location      = var.kagent_registry_location
+    artifact_registry_repository_id = var.kagent_registry_repository_id
+    staging_registry_repository_id  = var.kagent_staging_registry_repository_id
 
     evidence_bucket_name       = var.kagent_preview_publisher.evidence_bucket_name
     evidence_retention_seconds = var.kagent_preview_publisher.evidence_retention_seconds
@@ -1039,5 +1009,6 @@ component "kagent_preview_publisher" {
 
   providers = {
     google = provider.google.this
+    random = provider.random.this
   }
 }

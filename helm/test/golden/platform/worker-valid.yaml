@@ -3,26 +3,26 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: activity-worker
-  namespace: yourown-agents
+  name: queue-worker
+  namespace: worker-test
   labels:
-    app: activity-worker
-    app.kubernetes.io/name: activity-worker
+    app: queue-worker
+    app.kubernetes.io/name: queue-worker
     app.kubernetes.io/instance: test-worker-valid
     app.kubernetes.io/component: platform-worker
-    app.kubernetes.io/part-of: yourown-chat-agents
+    app.kubernetes.io/part-of: worker-profile-test
     app.kubernetes.io/managed-by: Helm
     helm.sh/chart: "platform-worker-0.1.0"
     platform.yourown.chat/profile: platform-worker
     platform.yourown.chat/chart-version: "0.1.0"
   annotations:
     platform.yourown.chat/ingress-rules: "metrics-scrape"
-    platform.yourown.chat/egress-rules: "temporal,mcp-google-cloud,workload-identity"
+    platform.yourown.chat/egress-rules: "queue,tool-api,workload-identity"
 spec:
   podSelector:
     matchLabels:
-      app: activity-worker
-      app.kubernetes.io/name: activity-worker
+      app: queue-worker
+      app.kubernetes.io/name: queue-worker
       app.kubernetes.io/instance: test-worker-valid
   policyTypes: [Ingress, Egress]
   ingress:
@@ -48,26 +48,26 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
-    # temporal: Temporal frontend gRPC for activity polling
+    # queue: Queue polling for generic worker tasks
     - to:
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: "temporal"
+              kubernetes.io/metadata.name: "queue-system"
       ports:
         - protocol: TCP
           port: 7233
-    # mcp-google-cloud: Approved MCP tool calls from activities
+    # tool-api: Approved tool calls from the worker
     - to:
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: "mcp-google-cloud"
+              kubernetes.io/metadata.name: "tool-api"
           podSelector:
             matchLabels:
-              app: mcp-google-cloud
+              app: tool-api
       ports:
         - protocol: TCP
           port: 8080
-    # workload-identity: Workload Identity token exchange for Cloud Storage access
+    # workload-identity: Workload Identity token exchange for object storage access
     - to:
         - ipBlock:
             cidr: 169.254.169.254/32
@@ -80,20 +80,20 @@ spec:
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: activity-worker
-  namespace: yourown-agents
+  name: queue-worker
+  namespace: worker-test
   labels:
-    app: activity-worker
-    app.kubernetes.io/name: activity-worker
+    app: queue-worker
+    app.kubernetes.io/name: queue-worker
     app.kubernetes.io/instance: test-worker-valid
     app.kubernetes.io/component: platform-worker
-    app.kubernetes.io/part-of: yourown-chat-agents
+    app.kubernetes.io/part-of: worker-profile-test
     app.kubernetes.io/managed-by: Helm
     helm.sh/chart: "platform-worker-0.1.0"
     platform.yourown.chat/profile: platform-worker
     platform.yourown.chat/chart-version: "0.1.0"
   annotations:
-    iam.gke.io/gcp-service-account: "agent-activity-worker@example-project.iam.gserviceaccount.com"
+    iam.gke.io/gcp-service-account: "queue-worker@example-project.iam.gserviceaccount.com"
 automountServiceAccountToken: false
 
 ---
@@ -101,14 +101,14 @@ automountServiceAccountToken: false
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: activity-worker
-  namespace: yourown-agents
+  name: queue-worker
+  namespace: worker-test
   labels:
-    app: activity-worker
-    app.kubernetes.io/name: activity-worker
+    app: queue-worker
+    app.kubernetes.io/name: queue-worker
     app.kubernetes.io/instance: test-worker-valid
     app.kubernetes.io/component: platform-worker
-    app.kubernetes.io/part-of: yourown-chat-agents
+    app.kubernetes.io/part-of: worker-profile-test
     app.kubernetes.io/managed-by: Helm
     helm.sh/chart: "platform-worker-0.1.0"
     platform.yourown.chat/profile: platform-worker
@@ -125,17 +125,17 @@ spec:
       maxUnavailable: 0
   selector:
     matchLabels:
-      app: activity-worker
-      app.kubernetes.io/name: activity-worker
+      app: queue-worker
+      app.kubernetes.io/name: queue-worker
       app.kubernetes.io/instance: test-worker-valid
   template:
     metadata:
       labels:
-        app: activity-worker
-        app.kubernetes.io/name: activity-worker
+        app: queue-worker
+        app.kubernetes.io/name: queue-worker
         app.kubernetes.io/instance: test-worker-valid
         app.kubernetes.io/component: platform-worker
-        app.kubernetes.io/part-of: yourown-chat-agents
+        app.kubernetes.io/part-of: worker-profile-test
         app.kubernetes.io/managed-by: Helm
         helm.sh/chart: "platform-worker-0.1.0"
         platform.yourown.chat/profile: platform-worker
@@ -148,7 +148,7 @@ spec:
     spec:
       automountServiceAccountToken: false
       enableServiceLinks: false
-      serviceAccountName: activity-worker
+      serviceAccountName: queue-worker
       priorityClassName: development
       terminationGracePeriodSeconds: 60
       securityContext:
@@ -160,18 +160,16 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       containers:
-        - name: activity-worker
-          image: "europe-west3-docker.pkg.dev/example-project/docker/yourown-chat-activity-worker@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        - name: queue-worker
+          image: "europe-west3-docker.pkg.dev/example-project/docker/worker-fixture@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
           imagePullPolicy: IfNotPresent
           env:
-            - name: AGENT_RESULTS_BUCKET
+            - name: QUEUE_ADDRESS
+              value: "queue.queue-system.svc.cluster.local:7233"
+            - name: QUEUE_NAME
+              value: "work-items-v1"
+            - name: RESULTS_BUCKET
               value: "example-results"
-            - name: TEMPORAL_ACTIVITY_TASK_QUEUE
-              value: "agent-activities-go-v1"
-            - name: TEMPORAL_ADDRESS
-              value: "temporal-frontend.temporal.svc.cluster.local:7233"
-            - name: TEMPORAL_NAMESPACE
-              value: "yourown-chat"
           ports:
             - name: metrics
               containerPort: 9464

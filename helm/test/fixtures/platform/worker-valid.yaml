@@ -1,15 +1,14 @@
-# Representative Temporal activity worker wrapper values.
+# Neutral asynchronous worker used to exercise the reusable profile.
 workload:
-  name: activity-worker
-  partOf: yourown-chat-agents
+  name: queue-worker
+  partOf: worker-profile-test
 image:
-  digest: europe-west3-docker.pkg.dev/example-project/docker/yourown-chat-activity-worker@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+  digest: europe-west3-docker.pkg.dev/example-project/docker/worker-fixture@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 container:
   env:
-    TEMPORAL_ADDRESS: temporal-frontend.temporal.svc.cluster.local:7233
-    TEMPORAL_NAMESPACE: yourown-chat
-    TEMPORAL_ACTIVITY_TASK_QUEUE: agent-activities-go-v1
-    AGENT_RESULTS_BUCKET: example-results
+    QUEUE_ADDRESS: queue.queue-system.svc.cluster.local:7233
+    QUEUE_NAME: work-items-v1
+    RESULTS_BUCKET: example-results
   ports:
     - name: metrics
       port: 9464
@@ -29,7 +28,7 @@ runtime:
   paused: true
   priorityClass: development
 identity:
-  googleServiceAccount: agent-activity-worker@example-project.iam.gserviceaccount.com
+  googleServiceAccount: queue-worker@example-project.iam.gserviceaccount.com
 network:
   clusterDNSIP: 10.30.0.10
   ingress:
@@ -38,16 +37,16 @@ network:
       from: { sameNamespace: true }
       ports: [{ port: 9464 }]
   egress:
-    - name: temporal
-      purpose: Temporal frontend gRPC for activity polling
-      to: { namespace: temporal }
+    - name: queue
+      purpose: Queue polling for generic worker tasks
+      to: { namespace: queue-system }
       ports: [{ port: 7233 }]
-    - name: mcp-google-cloud
-      purpose: Approved MCP tool calls from activities
-      to: { namespace: mcp-google-cloud, podLabels: { app: mcp-google-cloud } }
+    - name: tool-api
+      purpose: Approved tool calls from the worker
+      to: { namespace: tool-api, podLabels: { app: tool-api } }
       ports: [{ port: 8080 }]
     - name: workload-identity
-      purpose: Workload Identity token exchange for Cloud Storage access
+      purpose: Workload Identity token exchange for object storage access
       to: { metadataServer: true }
       ports: [{ port: 80 }]
 observability:

@@ -1,0 +1,30 @@
+namespaceOverride: kagent-system
+
+labels:
+  platform.yourown.chat/release-channel: prod
+
+rbac:
+  namespaces:
+    - kagent-system
+    - agent-codex
+
+controller:
+  volumes:
+    - name: database-url
+      csi:
+        driver: secrets-store-gke.csi.k8s.io
+        readOnly: true
+        volumeAttributes:
+          secretProviderClass: kagent-database-gcp
+  watchNamespaces:
+    - kagent-system
+    - agent-codex
+  substrate:
+    tls:
+      existingSecret:
+        name: kagent-ate-client-tls
+
+providers:
+  ollama:
+    config:
+      host: http://model-fixture.agent-codex.svc.cluster.local:11434
