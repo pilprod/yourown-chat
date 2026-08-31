@@ -272,6 +272,8 @@ For the next candidate, reset readiness to false and the release ID to the
 empty string before recording new evidence. This operational attestation does
 not alter the rendered Skaffold release, so the already verified immutable
 candidate is promoted rather than rebuilt.
+Rollback is equally fail-closed: re-attest the exact older Cloud Deploy release
+ID after its external compatibility smoke before starting the rollback rollout.
 
 ## No-port-forward enrollment rail
 

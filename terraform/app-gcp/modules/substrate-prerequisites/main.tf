@@ -811,7 +811,7 @@ resource "kubernetes_service_account_v1" "enrollment_admin" {
 
 # Dev verification must run while this attestation is false. Production is
 # independently fail-closed by a Cloud Deploy PREDEPLOY action that reads this
-# single Terraform-managed key immediately before changing the prod release.
+# single Terraform-managed record immediately before changing the prod release.
 resource "kubernetes_config_map_v1" "production_promotion_gate" {
   count = var.bootstrap_enabled ? 1 : 0
 
