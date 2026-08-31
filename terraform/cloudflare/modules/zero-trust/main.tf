@@ -71,9 +71,41 @@ resource "cloudflare_dns_record" "public_webhook" {
 }
 
 locals {
+  # Universal SSL on a full zone covers only the apex and one label. Tunnel
+  # hostnames such as dev.kagent.<domain> are also excluded from Total TLS, so
+  # every deep private upstream must be named explicitly on an Advanced pack.
+  # Keep the apex and first-level wildcard because activating an Advanced pack
+  # replaces the zone's Universal pack.
+  deep_upstream_hostnames = sort(distinct([
+    for label in keys(var.upstreams) : "${label}.${var.domain}"
+    if strcontains(label, ".")
+  ]))
+
   mcp_upstreams = {
     for label, service in var.upstreams : label => service
     if startswith(label, "mcp-")
+  }
+}
+
+# Requires the zone's Advanced Certificate Manager entitlement plus API-token
+# SSL and Certificates Read/Write. Certificate-pack fields are ForceNew in the
+# Cloudflare v5 provider, so overlap old and new packs during future rotations.
+resource "cloudflare_certificate_pack" "deep_upstreams" {
+  for_each = length(local.deep_upstream_hostnames) > 0 ? toset(["default"]) : toset([])
+
+  zone_id               = var.zone_id
+  type                  = "advanced"
+  certificate_authority = "lets_encrypt"
+  validation_method     = "txt"
+  validity_days         = 90
+  cloudflare_branding   = false
+  hosts = toset(concat(
+    [var.domain, "*.${var.domain}"],
+    local.deep_upstream_hostnames,
+  ))
+
+  lifecycle {
+    create_before_destroy = true
   }
 }
 

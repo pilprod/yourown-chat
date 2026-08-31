@@ -15,6 +15,16 @@ kagent release lifecycle:
 | Development, before approval | `https://dev.kagent.yourown.chat` | `kagent-ui.kagent-dev.svc.cluster.local:8080` |
 | Production, after approval | `https://kagent.yourown.chat` | `kagent-ui.kagent-system.svc.cluster.local:8080` |
 
+`dev.kagent.yourown.chat` is a deep hostname. Universal SSL on the full
+`yourown.chat` zone covers only the apex and first-level wildcard, while Total
+TLS does not issue certificates for Cloudflare Tunnel hostnames. The Zero Trust
+module therefore orders one Advanced Certificate Manager pack containing
+`yourown.chat`, `*.yourown.chat`, and every deep private upstream (currently
+`dev.kagent.yourown.chat`). The apex and wildcard preserve all existing
+first-level endpoints when Cloudflare replaces the Universal pack. The account
+must already have the paid Advanced Certificate Manager entitlement, and the
+HCP varset API token must carry `SSL and Certificates Read` and `Write`.
+
 Cloud Deploy promotes the same immutable kagent release from development to
 production. Each stage runs an independent control-plane release in its own
 namespace, so a later development upgrade cannot mutate the approved
