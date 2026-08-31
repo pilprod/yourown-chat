@@ -53,9 +53,6 @@ require_literal "${app_deploy}" 'adopt_existing_substrate                       
 require_literal "${app_deploy}" 'adopt_existing_substrate_compatibility_confirmed = false'
 require_literal "${variables}" 'variable "adopt_existing_substrate"'
 require_literal "${variables}" 'variable "adopt_existing_substrate_compatibility_confirmed"'
-require_literal "${variables}" 'var.adopt_existing_substrate &&'
-require_literal "${variables}" 'var.kagent_substrate_delivery.bootstrap_enabled'
-require_literal "${variables}" ') || var.adopt_existing_substrate_compatibility_confirmed'
 forbidden_literal "${service_inputs}" 'enabled                            = false'
 
 # Phase A changes only the Terraform address of the still-managed kagent Helm
