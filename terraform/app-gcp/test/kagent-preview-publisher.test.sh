@@ -157,8 +157,10 @@ grep -Fq 'staging_registry_repository_id  = var.kagent_staging_registry_reposito
   fail 'platform-owned private kagent staging repository is not wired'
 grep -Fq 'enabled                    = true' "${inputs}" ||
   fail 'service input does not materialize the publisher infrastructure'
-grep -Fq 'source_commit              = "2f4d7ab2840f63bd4d4fa8a926aead653ab82335"' "${inputs}" ||
+grep -Fq 'source_commit              = "5a6e37f41d7ff71d89dca8de0ee6d9bafc1fa0c9"' "${inputs}" ||
   fail 'reviewed kagent source commit is not pinned'
+grep -Fq 'substrate_release_evidence_uri = "gs://yourown-chat-kagent-preview-evidence-europe-west3/substrate/0.0.22-private.2/release-evidence.json#1788214261713293"' "${inputs}" ||
+  fail 'generation-qualified private Substrate evidence is not pinned'
 grep -Fq 'release_tag_regex          = "^gcp-v0\\.0\\.0-external-slot\\.kap\\.[0-9]+$"' "${inputs}" ||
   fail 'release tags must remain in the gcp-v namespace that cannot dispatch the fork v*.kap.* workflow'
 grep -Fq 'submitter_members              = []' "${inputs}" ||
