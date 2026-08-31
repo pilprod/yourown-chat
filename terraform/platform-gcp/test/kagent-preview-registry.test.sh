@@ -30,7 +30,15 @@ grep -Fq 'keep_recent_versions   = 0' <<<"${release_block}" || {
   exit 1
 }
 if grep -Fq 'allUsers' <<<"${release_block}"; then
-  echo "kagent Artifact Registry must remain private under Domain Restricted Sharing; public distribution uses GHCR" >&2
+  echo "kagent Artifact Registry must remain private under Domain Restricted Sharing; public distribution is deferred" >&2
+  exit 1
+fi
+grep -Fq 'current distribution contract is private Artifact Registry only' "${components}" || {
+  echo "kagent distribution contract must document private Artifact Registry as the only current target" >&2
+  exit 1
+}
+if grep -Eq 'distribution is promoted separately to GHCR|before public immutable promotion' "${components}" "${variables}"; then
+  echo "kagent registry contract must not claim that public GHCR promotion currently exists" >&2
   exit 1
 fi
 grep -Fq 'delete_tagged_days     = 1' "${components}" || {
