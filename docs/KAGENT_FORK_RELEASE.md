@@ -38,6 +38,13 @@ For each accepted release it builds multi-platform (`linux/amd64` and
 - `kagent/golang-adk`;
 - `kagent/codex-harness`.
 
+The publisher deliberately uses Cloud Build's standard regional default-pool
+machine instead of requesting an 8- or 32-vCPU high-CPU worker. A project can
+have less than eight E2 CPUs of default-pool quota in a region; selecting either
+high-CPU size would then reject the build before source verification begins.
+The build keeps a two-hour timeout and 200 GiB disk as its explicit capacity
+bounds.
+
 It also deterministically packages and publishes `kagent` and `kagent-crds`
 under the same Artifact Registry prefix. No `latest` reference is published.
 The BuildKit daemon image is digest-pinned and recorded in the receipt. Each

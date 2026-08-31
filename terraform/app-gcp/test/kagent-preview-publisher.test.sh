@@ -77,6 +77,9 @@ grep -Eq '^[[:space:]]*service_account[[:space:]]*=[[:space:]]*google_service_ac
   fail 'Cloud Build trigger must explicitly execute as the publisher service account'
 grep -Eq '^[[:space:]]*logging[[:space:]]*=[[:space:]]*"CLOUD_LOGGING_ONLY"[[:space:]]*$' <<<"${main}" ||
   fail 'custom Cloud Build service account must write logs directly to Cloud Logging'
+if rg -n 'machine_type[[:space:]]*=[[:space:]]*"(E2|N1)_HIGHCPU_(8|32)"' "${module_dir}/main.tf"; then
+  fail 'regional default-pool publisher must not require high-CPU quota'
+fi
 
 if rg -n 'google_cloudbuildv2_repository|repository_event_config|\$TAG_NAME|\$COMMIT_SHA' "${module_dir}"; then
   fail 'manual release rail must not depend on a Cloud Build GitHub connection or repository event'
