@@ -32,9 +32,9 @@ expect_fail() {
 make_ca() {
   local name="$1"
   openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "${work}/${name}.key.pem" >/dev/null 2>&1
-  openssl req -new -x509 -key "${work}/${name}.key.pem" -sha256 -days 2 \
+  openssl req -new -x509 -key "${work}/${name}.key.pem" -sha256 -days 400 \
     -subj "/CN=${name}" \
-    -addext 'basicConstraints=critical,CA:TRUE' \
+    -addext 'basicConstraints=critical,CA:TRUE,pathlen:0' \
     -addext 'keyUsage=critical,keyCertSign,cRLSign' \
     -out "${work}/${name}.cert.pem" >/dev/null 2>&1
 }
@@ -44,17 +44,21 @@ make_leaf() {
   local ca="$2"
   local eku="$3"
   local san="$4"
-  openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "${work}/${name}.key.pem" >/dev/null 2>&1
-  openssl req -new -key "${work}/${name}.key.pem" -sha256 -subj "/CN=${name}" \
+  local days="${5:-45}"
+  local digest="${6:-sha256}"
+  local curve="${7:-P-256}"
+  openssl genpkey -algorithm EC -pkeyopt "ec_paramgen_curve:${curve}" -out "${work}/${name}.key.pem" >/dev/null 2>&1
+  openssl req -new -key "${work}/${name}.key.pem" "-${digest}" -subj "/CN=${name}" \
+    -addext 'basicConstraints=critical,CA:FALSE' \
+    -addext 'keyUsage=critical,digitalSignature' \
     -addext "subjectAltName=${san}" -addext "extendedKeyUsage=${eku}" \
     -out "${work}/${name}.csr.pem" >/dev/null 2>&1
   openssl x509 -req -in "${work}/${name}.csr.pem" \
     -CA "${work}/${ca}.cert.pem" -CAkey "${work}/${ca}.key.pem" -CAcreateserial \
-    -sha256 -days 2 -copy_extensions copy -out "${work}/${name}.cert.pem" >/dev/null 2>&1
+    "-${digest}" -days "${days}" -copy_extensions copy -out "${work}/${name}.cert.pem" >/dev/null 2>&1
   {
     sed -n '/-----BEGIN .*PRIVATE KEY-----/,/-----END .*PRIVATE KEY-----/p' "${work}/${name}.key.pem"
     sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p' "${work}/${name}.cert.pem"
-    sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p' "${work}/${ca}.cert.pem"
   } > "${work}/${name}.bundle.pem"
 }
 
@@ -155,6 +159,8 @@ cp "${work}/bundle.json" "${work}/sibling-git/bundle.json"
 chmod 0600 "${work}/sibling-git/bundle.json"
 expect_fail "bundle inside another Git worktree" "${bootstrap}" validate --project test-project --bundle "${work}/sibling-git/bundle.json"
 grep -Fq 'outside every Git worktree' "${work}/expected.stderr" || fail "Git worktree rejection diagnostic is missing"
+expect_fail "ambient Git override cannot hide bundle worktree" env GIT_DIR=/nonexistent GIT_WORK_TREE=/nonexistent \
+  "${bootstrap}" validate --project test-project --bundle "${work}/sibling-git/bundle.json"
 
 chmod 0644 "${work}/bundle.json"
 expect_fail "permissive bundle mode" "${bootstrap}" validate --project test-project --bundle "${work}/bundle.json"
@@ -189,6 +195,138 @@ jq --rawfile wrong "${work}/kagent-client.bundle.pem.b64" \
   "${work}/bundle.json" > "${work}/wrong-dev-san.json"
 chmod 0600 "${work}/wrong-dev-san.json"
 expect_fail "wrong kagent dev URI SAN" "${bootstrap}" validate --project test-project --bundle "${work}/wrong-dev-san.json"
+
+make_leaf kagent-extra-san api-client-ca clientAuth \
+  'URI:spiffe://cluster.local/ns/kagent-system/sa/kagent-controller,URI:spiffe://cluster.local/ns/kagent-system/sa/extra'
+encode_file "${work}/kagent-extra-san.bundle.pem" "${work}/kagent-extra-san.bundle.pem.b64"
+jq --rawfile wrong "${work}/kagent-extra-san.bundle.pem.b64" \
+  '.secrets.kagent_client_tls.data["client-credential-bundle.pem"]=$wrong' \
+  "${work}/bundle.json" > "${work}/extra-san.json"
+chmod 0600 "${work}/extra-san.json"
+expect_fail "additional kagent URI SAN" "${bootstrap}" validate --project test-project --bundle "${work}/extra-san.json"
+grep -Fq 'certificate must contain exactly URI:spiffe://cluster.local/ns/kagent-system/sa/kagent-controller' \
+  "${work}/expected.stderr" || fail "additional SAN rejection diagnostic is missing"
+
+make_leaf kagent-extra-eku api-client-ca 'clientAuth,serverAuth' \
+  'URI:spiffe://cluster.local/ns/kagent-system/sa/kagent-controller'
+encode_file "${work}/kagent-extra-eku.bundle.pem" "${work}/kagent-extra-eku.bundle.pem.b64"
+jq --rawfile wrong "${work}/kagent-extra-eku.bundle.pem.b64" \
+  '.secrets.kagent_client_tls.data["client-credential-bundle.pem"]=$wrong' \
+  "${work}/bundle.json" > "${work}/extra-eku.json"
+chmod 0600 "${work}/extra-eku.json"
+expect_fail "additional kagent EKU" "${bootstrap}" validate --project test-project --bundle "${work}/extra-eku.json"
+grep -Fq 'EKU certificate must contain exactly TLS Web Client Authentication' \
+  "${work}/expected.stderr" || fail "additional EKU rejection diagnostic is missing"
+
+make_leaf kagent-short-lived api-client-ca clientAuth \
+  'URI:spiffe://cluster.local/ns/kagent-system/sa/kagent-controller' 5
+encode_file "${work}/kagent-short-lived.bundle.pem" "${work}/kagent-short-lived.bundle.pem.b64"
+jq --rawfile wrong "${work}/kagent-short-lived.bundle.pem.b64" \
+  '.secrets.kagent_client_tls.data["client-credential-bundle.pem"]=$wrong' \
+  "${work}/bundle.json" > "${work}/short-lived.json"
+chmod 0600 "${work}/short-lived.json"
+expect_fail "short-lived kagent leaf" "${bootstrap}" validate --project test-project --bundle "${work}/short-lived.json"
+grep -Fq 'less than 30 days of remaining validity' "${work}/expected.stderr" || fail "leaf minimum-lifetime rejection diagnostic is missing"
+
+make_leaf kagent-p384 api-client-ca clientAuth \
+  'URI:spiffe://cluster.local/ns/kagent-system/sa/kagent-controller' 45 sha256 secp384r1
+encode_file "${work}/kagent-p384.bundle.pem" "${work}/kagent-p384.bundle.pem.b64"
+jq --rawfile wrong "${work}/kagent-p384.bundle.pem.b64" \
+  '.secrets.kagent_client_tls.data["client-credential-bundle.pem"]=$wrong' \
+  "${work}/bundle.json" > "${work}/p384.json"
+chmod 0600 "${work}/p384.json"
+expect_fail "P-384 kagent leaf" "${bootstrap}" validate --project test-project --bundle "${work}/p384.json"
+grep -Fq 'private key is not ECDSA P-256' "${work}/expected.stderr" || fail "P-256 leaf-key rejection diagnostic is missing"
+
+make_leaf kagent-sha384 api-client-ca clientAuth \
+  'URI:spiffe://cluster.local/ns/kagent-system/sa/kagent-controller' 45 sha384
+encode_file "${work}/kagent-sha384.bundle.pem" "${work}/kagent-sha384.bundle.pem.b64"
+jq --rawfile wrong "${work}/kagent-sha384.bundle.pem.b64" \
+  '.secrets.kagent_client_tls.data["client-credential-bundle.pem"]=$wrong' \
+  "${work}/bundle.json" > "${work}/sha384.json"
+chmod 0600 "${work}/sha384.json"
+expect_fail "SHA-384 kagent leaf" "${bootstrap}" validate --project test-project --bundle "${work}/sha384.json"
+grep -Fq 'leaf certificate is not signed with ECDSA/SHA-256' "${work}/expected.stderr" || fail "SHA-256 leaf rejection diagnostic is missing"
+
+{
+  cat "${work}/api-client-ca.cert.pem"
+  sed 's/BEGIN PRIVATE KEY/BEGIN ENCRYPTED PRIVATE KEY/; s/END PRIVATE KEY/END ENCRYPTED PRIVATE KEY/' \
+    "${work}/actor-identity-ca.key.pem"
+} > "${work}/trust-with-encrypted-key.pem"
+encode_file "${work}/trust-with-encrypted-key.pem" "${work}/trust-with-encrypted-key.pem.b64"
+jq --rawfile wrong "${work}/trust-with-encrypted-key.pem.b64" \
+  '.secrets.api_tls.data["client-ca.pem"]=$wrong' \
+  "${work}/bundle.json" > "${work}/trust-private-key.json"
+chmod 0600 "${work}/trust-private-key.json"
+expect_fail "encrypted private key in trust PEM" "${bootstrap}" validate --project test-project --bundle "${work}/trust-private-key.json"
+grep -Fq 'exactly one PEM certificate and no other PEM or private-key data' \
+  "${work}/expected.stderr" || fail "generic trust private-key rejection diagnostic is missing"
+
+jq '.Authorities += [(.Authorities[0] | .ID="2")]' "${work}/jwt.pool.json" > "${work}/two-jwt.pool.json"
+encode_file "${work}/two-jwt.pool.json" "${work}/two-jwt.pool.json.b64"
+jq --rawfile pool "${work}/two-jwt.pool.json.b64" \
+  '.secrets.actor_id_jwt_pool.data.pool=$pool' \
+  "${work}/bundle.json" > "${work}/two-jwt.json"
+chmod 0600 "${work}/two-jwt.json"
+expect_fail "multiple JWT authorities" "${bootstrap}" validate --project test-project --bundle "${work}/two-jwt.json"
+grep -Fq 'exactly one authority' "${work}/expected.stderr" || fail "single JWT authority rejection diagnostic is missing"
+
+jq '.CAs += [(.CAs[0] | .ID="2")]' "${work}/actor-ca.pool.json" > "${work}/two-actor-ca.pool.json"
+encode_file "${work}/two-actor-ca.pool.json" "${work}/two-actor-ca.pool.json.b64"
+jq --rawfile pool "${work}/two-actor-ca.pool.json.b64" \
+  '.secrets.actor_id_ca_pool.data.pool=$pool' \
+  "${work}/bundle.json" > "${work}/two-actor-ca.json"
+chmod 0600 "${work}/two-actor-ca.json"
+expect_fail "multiple actor roots" "${bootstrap}" validate --project test-project --bundle "${work}/two-actor-ca.json"
+grep -Fq 'exactly one root CA' "${work}/expected.stderr" || fail "single actor root rejection diagnostic is missing"
+
+jq '.CAs[0].RootCertificateDER="/x=="' "${work}/actor-ca.pool.json" > "${work}/noncanonical-actor-ca.pool.json"
+encode_file "${work}/noncanonical-actor-ca.pool.json" "${work}/noncanonical-actor-ca.pool.json.b64"
+jq --rawfile pool "${work}/noncanonical-actor-ca.pool.json.b64" \
+  '.secrets.actor_id_ca_pool.data.pool=$pool' \
+  "${work}/bundle.json" > "${work}/noncanonical-actor-ca.json"
+chmod 0600 "${work}/noncanonical-actor-ca.json"
+expect_fail "non-canonical nested actor root base64" "${bootstrap}" validate --project test-project --bundle "${work}/noncanonical-actor-ca.json"
+grep -Fq 'RootCertificateDER is invalid' "${work}/expected.stderr" || fail "nested canonical-base64 rejection diagnostic is missing"
+
+make_leaf kagent-critical-extensions api-client-ca 'critical,clientAuth' \
+  'critical,URI:spiffe://cluster.local/ns/kagent-system/sa/kagent-controller'
+encode_file "${work}/kagent-critical-extensions.bundle.pem" "${work}/kagent-critical-extensions.bundle.pem.b64"
+jq --rawfile replacement "${work}/kagent-critical-extensions.bundle.pem.b64" \
+  '.secrets.kagent_client_tls.data["client-credential-bundle.pem"]=$replacement' \
+  "${work}/bundle.json" > "${work}/critical-extensions.json"
+chmod 0600 "${work}/critical-extensions.json"
+"${bootstrap}" validate --project test-project --bundle "${work}/critical-extensions.json" >/dev/null || \
+  fail "exact extension parser rejected a single critical SAN/EKU"
+
+make_actor_ca_bundle_variant \
+  actor-ca-reused-root \
+  "${work}/api-client-ca.key.pem" \
+  "${work}/api-client-ca.cert.pem" \
+  "${work}/actor-ca-reused-root.json"
+expect_fail "reused actor and API client root" "${bootstrap}" validate --project test-project --bundle "${work}/actor-ca-reused-root.json"
+grep -Fq 'root and leaf certificates must all be distinct' "${work}/expected.stderr" || fail "distinct root rejection diagnostic is missing"
+
+openssl req -new -key "${work}/kagent-client.key.pem" -sha256 -subj '/CN=kagent-dev-reused-key' \
+  -addext 'basicConstraints=critical,CA:FALSE' \
+  -addext 'keyUsage=critical,digitalSignature' \
+  -addext 'extendedKeyUsage=clientAuth' \
+  -addext 'subjectAltName=URI:spiffe://cluster.local/ns/kagent-dev/sa/kagent-controller' \
+  -out "${work}/kagent-dev-reused-key.csr.pem" >/dev/null 2>&1
+openssl x509 -req -in "${work}/kagent-dev-reused-key.csr.pem" \
+  -CA "${work}/api-client-ca.cert.pem" -CAkey "${work}/api-client-ca.key.pem" -CAcreateserial \
+  -sha256 -days 45 -copy_extensions copy -out "${work}/kagent-dev-reused-key.cert.pem" >/dev/null 2>&1
+{
+  sed -n '/-----BEGIN .*PRIVATE KEY-----/,/-----END .*PRIVATE KEY-----/p' "${work}/kagent-client.key.pem"
+  sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p' "${work}/kagent-dev-reused-key.cert.pem"
+} > "${work}/kagent-dev-reused-key.bundle.pem"
+encode_file "${work}/kagent-dev-reused-key.bundle.pem" "${work}/kagent-dev-reused-key.bundle.pem.b64"
+jq --rawfile wrong "${work}/kagent-dev-reused-key.bundle.pem.b64" \
+  '.secrets.kagent_dev_client_tls.data["client-credential-bundle.pem"]=$wrong' \
+  "${work}/bundle.json" > "${work}/reused-leaf-key.json"
+chmod 0600 "${work}/reused-leaf-key.json"
+expect_fail "reused leaf key" "${bootstrap}" validate --project test-project --bundle "${work}/reused-leaf-key.json"
+grep -Fq 'root, leaf and JWT authority keys must all be distinct' "${work}/expected.stderr" || fail "distinct leaf-key rejection diagnostic is missing"
 
 jq '.CAs[0].IntermediateCertificatesDER=["bm90LXgteDUwOS1kZXI="]' \
   "${work}/actor-ca.pool.json" > "${work}/actor-ca-intermediate.pool.json"
@@ -313,6 +451,7 @@ elif [[ "$1 $2 $3" == "secrets versions list" ]]; then
     printf '[]\n'
   fi
 elif [[ "$1 $2 $3" == "secrets versions access" ]]; then
+  version="$4"
   secret=""
   output=""
   for arg in "$@"; do
@@ -321,10 +460,20 @@ elif [[ "$1 $2 $3" == "secrets versions access" ]]; then
       --out-file=*) output="${arg#--out-file=}" ;;
     esac
   done
+  source_file="${store}/${secret}"
+  if [[ "${version}" != latest ]]; then
+    [[ "${version}" =~ ^[1-9][0-9]*$ ]] || exit 11
+    if [[ -f "${store}/${secret}.version-${version}" ]]; then
+      source_file="${store}/${secret}.version-${version}"
+    elif [[ "${version}" != 1 ]]; then
+      exit 12
+    fi
+  fi
+  [[ -f "${source_file}" ]] || exit 12
   if [[ -n "${output}" ]]; then
-    cp "${store}/${secret}" "${output}"
+    cp "${source_file}" "${output}"
   else
-    cat "${store}/${secret}"
+    cat "${source_file}"
   fi
 elif [[ "$1 $2 $3" == "secrets versions add" ]]; then
   secret="$4"
@@ -336,9 +485,13 @@ elif [[ "$1 $2 $3" == "secrets versions add" ]]; then
     exit 9
   fi
   if [[ "${input}" == '-' ]]; then
-    tee "${store}/${secret}" >/dev/null
+    tee "${store}/${secret}.version-1" >/dev/null
   else
-    cp "${input}" "${store}/${secret}"
+    cp "${input}" "${store}/${secret}.version-1"
+  fi
+  cp "${store}/${secret}.version-1" "${store}/${secret}"
+  if [[ "${MOCK_SM_RACE_LATEST_SECRET:-}" == "${secret}" ]]; then
+    printf '%s\n' '{"schema":"concurrent-writer","data":{}}' > "${store}/${secret}"
   fi
   printf '%s\n' "${secret}" >> "${store}/versions-add.log"
   printf 'projects/test-project/secrets/%s/versions/1\n' "${secret}"
@@ -475,6 +628,7 @@ bootstrap_output="$(
   PATH="${work}/mock-bin:${PATH}" \
   MOCK_SECRET_STORE="${work}/secret-store" \
   MOCK_KUBE_STORE="${work}/kube-store" \
+  MOCK_SM_RACE_LATEST_SECRET="substrate-ate-api-tls" \
   "${bootstrap}" bootstrap --project test-project --context test-context --bundle "${work}/bundle.json" 2>&1
 )"
 
@@ -488,6 +642,8 @@ jq -er '.data["ca.crt"]' "${work}/kube-store/ate-system__actor-id-ca-certs.json"
 openssl x509 -in "${work}/derived-ca.pem" -outform DER -out "${work}/derived-ca.der" >/dev/null 2>&1
 cmp -s "${work}/derived-ca.der" "${work}/actor-ca.cert.der" || fail "derived ca.crt does not match actor-id-ca-pool CAs[0].RootCertificateDER"
 [[ "${bootstrap_output}" != *'private-test-value'* && "${bootstrap_output}" != *'BEGIN PRIVATE KEY'* ]] || fail "bootstrap output leaked secret material"
+exact_api_accesses="$(rg -F -- 'secrets versions access 1 --secret=substrate-ate-api-tls' "${work}/secret-store/argv.log" | wc -l | tr -d ' ')"
+[[ "${exact_api_accesses}" == 2 ]] || fail "bootstrap did not verify and refetch the exact returned API TLS version"
 
 rg -Fq -- '--data-file="${payload}"' "${bootstrap}" || fail "Secret Manager upload is not file-based"
 rg -Fq -- 'apply --server-side --field-manager="${field_manager}" -f -' "${bootstrap}" || fail "Kubernetes sync is not server-side stdin apply"

@@ -3,12 +3,22 @@
 `bootstrap-kagent-substrate-secrets.sh` is the fail-closed operator path for
 the external-local-provider testbed's native Kubernetes Secrets. It validates
 an owner-only bundle outside every Git worktree and Git metadata directory,
-writes eight structured Secret Manager
-versions without exposing bytes in arguments, reads the existing Cloud SQL URI,
+writes eight structured Secret Manager versions without exposing bytes in
+arguments, reads back each exact version returned by `versions add` rather than
+racing `latest`, reads the existing Cloud SQL URI,
 and synchronizes the exact nine source Secrets plus the Kubernetes-only
 `actor-id-ca-certs/ca.crt` derived from the actor CA pool. It never invokes
 Terraform or changes the readiness attestation. See
 [`docs/KAGENT_SUBSTRATE_RELEASE.md`](../../../docs/KAGENT_SUBSTRATE_RELEASE.md).
+
+`generate-kagent-substrate-operator-bundle.sh` is the local, no-network path
+for a fresh bootstrap bundle. It generates new ECDSA P-256 roots, leaves, JWT
+authority and actor CA, assembles only the fixed nine-source JSON contract,
+invokes the bootstrap validator, and publishes one owner-only `0600` file with
+no-clobber semantics. The explicitly supplied output parent must already be an
+owner-controlled `0700` directory outside Git. Private staging is `0700` below
+that parent and is removed on every exit. See the release guide for validity
+defaults, minimums and the rotation procedure.
 
 For the reviewed cluster where those native Secrets already exist, its
 `adopt-existing` action invokes the fixed-contract Go helper

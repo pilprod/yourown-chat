@@ -27,7 +27,7 @@ reset_operator_secret_manager_versions() {
   local source=""
   while IFS='|' read -r logical secret_id _ _ source _; do
     [[ "${source}" == "operator-envelope-v1" ]] || continue
-    rm -f -- "${work}/secret-store/${secret_id}"
+    rm -f -- "${work}/secret-store/${secret_id}" "${work}/secret-store/${secret_id}.version-"*
   done < <(contract_records)
   : > "${work}/secret-store/versions-add.log"
 }
