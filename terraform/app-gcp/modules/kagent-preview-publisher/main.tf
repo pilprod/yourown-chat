@@ -179,6 +179,19 @@ resource "google_service_account_iam_member" "publisher_acts_as_self" {
   member             = "serviceAccount:${google_service_account.publisher[0].email}"
 }
 
+# Terraform creates and owns the release topic, its IAM policy and the
+# Cloud Build-managed subscription behind the Pub/Sub trigger. Grant the apply
+# identity the service-scoped editor role before any of those resources are
+# reconciled. The apply identity already owns project IAM reconciliation; this
+# binding only supplies the Pub/Sub data-plane permissions that were missing.
+resource "google_project_iam_member" "apply_pubsub_editor" {
+  count = local.count
+
+  project = var.project_id
+  role    = "roles/pubsub.editor"
+  member  = "serviceAccount:${var.apply_service_account_email}"
+}
+
 # google provider 6.x requires every BuildTrigger to declare an event/source.
 # A dedicated Pub/Sub topic supplies that event without a GitHub connection or
 # shared webhook credential. IAM on this exact topic is the release-submit
@@ -189,6 +202,8 @@ resource "google_pubsub_topic" "release_request" {
   project = var.project_id
   name    = "kagent-preview-release"
   labels  = var.labels
+
+  depends_on = [google_project_iam_member.apply_pubsub_editor]
 }
 
 resource "google_pubsub_topic_iam_member" "release_submitter" {

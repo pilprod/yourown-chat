@@ -45,6 +45,9 @@ for required in \
   'roles/ondemandscanning.admin' \
   'resource "google_project_iam_custom_role" "build_invoker"' \
   'permissions = ["cloudbuild.builds.create"]' \
+  'resource "google_project_iam_member" "apply_pubsub_editor"' \
+  'roles/pubsub.editor' \
+  'depends_on = [google_project_iam_member.apply_pubsub_editor]' \
   'resource "google_pubsub_topic_iam_member" "release_submitter"' \
   'roles/pubsub.publisher' \
   'resource "google_storage_bucket" "evidence"' \
