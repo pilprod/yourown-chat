@@ -96,10 +96,16 @@ require_literal "${service_inputs}" 'destination_key = "codex_model_fixture"'
 require_literal "${components}" 'kagent_control_planes = {'
 require_literal "${components}" 'dev = {'
 require_literal "${components}" 'prod = {'
+require_literal "${components}" 'migration_agent_namespaces = {'
+require_literal "${components}" 'legacy = var.vendor_chart_bundles["kagent"].namespaces["workload"].name'
+require_literal "${components}" 'migration_agent_namespaces = {}'
 require_literal "${prerequisites}/variables.tf" 'variable "kagent_control_planes"'
 require_literal "${prerequisites}/variables.tf" 'toset(keys(var.kagent_control_planes)) == toset(["dev", "prod"])'
+require_literal "${prerequisites}/variables.tf" 'migration_agent_namespaces = optional(map(string), {})'
+require_literal "${prerequisites}/variables.tf" 'legacy = "kagent-testbed"'
 require_literal "${prerequisites}/variables.tf" 'length(distinct(flatten(['
 require_literal "${prerequisites}/main.tf" 'for control_key, control in var.kagent_control_planes'
+require_literal "${prerequisites}/main.tf" 'for migration_key, namespace in control.migration_agent_namespaces : "migration-${migration_key}" => {'
 
 # Getter/writer controller permissions and the existing ate-api environment
 # source permission must follow the same per-agent namespace map.

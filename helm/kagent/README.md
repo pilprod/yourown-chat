@@ -46,6 +46,16 @@ to exist. It is not an import-if-present mode: a missing object makes the
 corresponding declarative import fail. Existing Helm-owned RBAC is never
 imported. Bootstrap first creates additive Terraform-owned RBAC under stable,
 non-Helm names for the same service accounts and with the same permissions.
+The kagent rules are the exact migration union of live `0.9.12` `agents`,
+`agents/finalizers` and `agents/status` permissions with the `.kap.2`
+`harnesses` and `agenttemplates` families. A prod-only migration target keeps
+that union bound in `kagent-testbed`; dev has no legacy target.
+
+Do not remove the `kagent-testbed` bridge merely because the new chart is
+deployed. Removal requires the old controller Pod to be stopped and no longer
+watching the namespace, every legacy agent/workload to be migrated, and the
+namespace to be drained. Remove the migration target in a separate reviewed
+change before retiring the namespace itself.
 
 Before each adoption apply, confirm the recorded compatibility inventory still
 matches the cluster. Then enable bootstrap only with both

@@ -4,8 +4,11 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 app_dir="$(cd "${script_dir}/.." && pwd -P)"
 main="${app_dir}/modules/substrate-prerequisites/main.tf"
+module_variables="${app_dir}/modules/substrate-prerequisites/variables.tf"
 module_outputs="${app_dir}/modules/substrate-prerequisites/outputs.tf"
 stack_outputs="${app_dir}/outputs.tfcomponent.hcl"
+components="${app_dir}/components.tfcomponent.hcl"
+module_test="${app_dir}/modules/substrate-prerequisites/tests/parallel_rbac_names.tftest.hcl"
 release_doc="${app_dir}/../../docs/KAGENT_SUBSTRATE_RELEASE.md"
 chart_readme="${app_dir}/../../helm/kagent/README.md"
 
@@ -24,6 +27,16 @@ require_regex() {
   local file="$1"
   local pattern="$2"
   rg -q -- "${pattern}" "${file}" || fail "${file} does not match: ${pattern}"
+}
+
+require_literal_count() {
+  local file="$1"
+  local literal="$2"
+  local expected="$3"
+  local actual
+  actual="$(rg -F -o -- "${literal}" "${file}" | wc -l | tr -d '[:space:]')"
+  [[ "${actual}" == "${expected}" ]] ||
+    fail "${file} has ${actual} occurrences of ${literal}; expected ${expected}"
 }
 
 forbid_literal() {
@@ -60,6 +73,16 @@ expected_import_targets="$(printf '%s\n' \
 
 [[ "${import_targets}" == "${expected_import_targets}" ]] ||
   fail "adoption import targets differ from the four non-RBAC resources"
+
+# The legacy namespace is an explicit prod-only migration target. It remains
+# separate from both the declarative agent map and the dev control plane.
+require_literal "${components}" 'migration_agent_namespaces = {'
+require_literal "${components}" 'legacy = var.vendor_chart_bundles["kagent"].namespaces["workload"].name'
+require_literal "${components}" 'migration_agent_namespaces = {}'
+require_literal "${module_variables}" 'migration_agent_namespaces = optional(map(string), {})'
+require_literal "${module_variables}" 'legacy = "kagent-testbed"'
+require_literal "${main}" 'for migration_key, namespace in control.migration_agent_namespaces : "migration-${migration_key}" => {'
+require_literal "${main}" 'migration_only = true'
 
 # Every Terraform-owned RBAC object uses a stable additive name. These names
 # are distinct from the current Helm chart names and intentionally carry no
@@ -120,6 +143,19 @@ block="$(resource_block kubernetes_cluster_role_binding_v1 substrate_api)"
 block="$(resource_block kubernetes_cluster_role_binding_v1 substrate_controller)"
 [[ "${block}" == *'name      = "ate-controller"'* ]] || fail "Substrate controller subject changed"
 
+# During handoff the kagent.dev rules must be the exact resource union: live
+# 0.9.12 agents APIs plus the kap2 harnesses/agenttemplates APIs. The module
+# test also proves every target receives an identical rule set.
+union_resources='resources  = ["agents", "harnesses", "agenttemplates", "sandboxagents", "agentharnesses", "modelconfigs", "modelproviderconfigs", "toolservers", "memories", "remotemcpservers", "mcpservers"]'
+union_finalizers='resources  = ["agents/finalizers", "harnesses/finalizers", "agenttemplates/finalizers", "sandboxagents/finalizers", "agentharnesses/finalizers", "modelconfigs/finalizers", "modelproviderconfigs/finalizers", "toolservers/finalizers", "memories/finalizers", "remotemcpservers/finalizers", "mcpservers/finalizers"]'
+union_status='resources  = ["agents/status", "harnesses/status", "agenttemplates/status", "sandboxagents/status", "agentharnesses/status", "modelconfigs/status", "modelproviderconfigs/status", "toolservers/status", "memories/status", "remotemcpservers/status", "mcpservers/status"]'
+require_literal_count "${main}" "${union_resources}" 2
+require_literal_count "${main}" "${union_finalizers}" 2
+require_literal_count "${main}" "${union_status}" 1
+require_literal "${module_test}" 'output.kagent_rbac_targets["prod/migration-legacy"].namespace == "kagent-testbed"'
+require_literal "${module_test}" 'role.rule == kubernetes_role_v1.kagent_getter["prod/migration-legacy"].rule'
+require_literal "${module_test}" 'role.rule == kubernetes_role_v1.kagent_writer["prod/migration-legacy"].rule'
+
 forbid_literal "${main}" '"helm.sh/resource-policy" = "keep"'
 forbid_literal "${main}" 'toset(["ate-api-server-role"])'
 forbid_literal "${main}" 'toset(["ate-api-server-binding"])'
@@ -137,12 +173,17 @@ done
 
 require_literal "${module_outputs}" 'output "rbac_names"'
 require_literal "${module_outputs}" 'value       = local.rbac_names'
+require_literal "${module_outputs}" 'output "kagent_rbac_targets"'
 require_literal "${stack_outputs}" 'output "kagent_substrate_rbac_names"'
 require_literal "${stack_outputs}" 'value       = component.substrate_prerequisites.rbac_names'
+require_literal "${stack_outputs}" 'output "kagent_rbac_targets"'
+require_literal "${stack_outputs}" 'value       = component.substrate_prerequisites.kagent_rbac_targets'
 
 for doc in "${release_doc}" "${chart_readme}"; do
   require_literal "${doc}" 'Existing Helm-owned RBAC'
   require_literal "${doc}" 'parallel'
+  require_literal "${doc}" 'kagent-testbed'
+  require_literal "${doc}" 'drain'
   forbid_literal "${doc}" '`helm.sh/resource-policy=keep`'
 done
 

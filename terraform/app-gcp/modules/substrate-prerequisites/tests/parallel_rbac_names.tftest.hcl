@@ -51,6 +51,9 @@ variables {
       agent_namespaces = {
         codex = "agent-codex"
       }
+      migration_agent_namespaces = {
+        legacy = "kagent-testbed"
+      }
     }
     dev = {
       namespace    = "kagent-dev"
@@ -58,6 +61,7 @@ variables {
       agent_namespaces = {
         codex = "agent-codex-dev"
       }
+      migration_agent_namespaces = {}
     }
   }
 
@@ -167,12 +171,25 @@ run "bootstrap_creates_parallel_rbac_names" {
 
   assert {
     condition = (
-      length(kubernetes_role_v1.kagent_getter) == 4 &&
-      length(kubernetes_role_v1.kagent_writer) == 4 &&
+      length(kubernetes_role_v1.kagent_getter) == 5 &&
+      length(kubernetes_role_v1.kagent_writer) == 5 &&
       length(kubernetes_role_v1.kagent_leader_election) == 2 &&
-      length(kubernetes_role_v1.kagent_env_sources) == 4
+      length(kubernetes_role_v1.kagent_env_sources) == 5
     )
-    error_message = "Bootstrap must create additive kagent permissions for both control planes and both agent namespaces."
+    error_message = "Bootstrap must create additive kagent permissions for both control planes, both declarative agent namespaces, and the prod migration namespace."
+  }
+
+  assert {
+    condition = (
+      output.kagent_rbac_targets["prod/migration-legacy"].namespace == "kagent-testbed" &&
+      output.kagent_rbac_targets["prod/migration-legacy"].controller_namespace == "kagent-system" &&
+      output.kagent_rbac_targets["prod/migration-legacy"].migration_only &&
+      !contains(keys(output.kagent_rbac_targets), "dev/migration-legacy") &&
+      kubernetes_role_v1.kagent_getter["prod/migration-legacy"].metadata[0].namespace == "kagent-testbed" &&
+      kubernetes_role_v1.kagent_writer["prod/migration-legacy"].metadata[0].namespace == "kagent-testbed" &&
+      kubernetes_role_v1.kagent_env_sources["prod/migration-legacy"].metadata[0].namespace == "kagent-testbed"
+    )
+    error_message = "The live kagent-testbed namespace must receive an explicit prod-only migration RBAC bridge."
   }
 
   assert {
@@ -184,7 +201,7 @@ run "bootstrap_creates_parallel_rbac_names" {
       kubernetes_role_v1.kagent_leader_election["prod"].metadata[0].name == "kagent-control-plane-leader-election" &&
       kubernetes_role_binding_v1.kagent_leader_election["dev"].metadata[0].name == "kagent-control-plane-leader-election-binding" &&
       kubernetes_role_v1.kagent_env_sources["prod/codex"].metadata[0].name == "kagent-substrate-env-source-reader" &&
-      kubernetes_role_binding_v1.kagent_env_sources["dev/control"].metadata[0].name == "kagent-substrate-env-source-reader-binding"
+      kubernetes_role_binding_v1.kagent_env_sources["prod/migration-legacy"].metadata[0].name == "kagent-substrate-env-source-reader-binding"
     )
     error_message = "kagent RBAC must use only the stable parallel names."
   }
@@ -204,11 +221,62 @@ run "bootstrap_creates_parallel_rbac_names" {
       kubernetes_role_binding_v1.kagent_getter["prod/control"].subject[0].name == "kagent-controller" &&
       kubernetes_role_binding_v1.kagent_writer["dev/codex"].subject[0].name == "kagent-controller" &&
       kubernetes_role_binding_v1.kagent_leader_election["dev"].subject[0].name == "kagent-controller" &&
-      kubernetes_role_binding_v1.kagent_env_sources["prod/codex"].subject[0].name == "ate-api-server" &&
+      kubernetes_role_binding_v1.kagent_getter["prod/migration-legacy"].subject[0].namespace == "kagent-system" &&
+      kubernetes_role_binding_v1.kagent_env_sources["prod/migration-legacy"].subject[0].name == "ate-api-server" &&
       kubernetes_cluster_role_binding_v1.substrate_api[0].subject[0].name == "ate-api-server" &&
       kubernetes_cluster_role_binding_v1.substrate_controller[0].subject[0].name == "ate-controller"
     )
     error_message = "Parallel RBAC must preserve every existing service-account subject."
+  }
+
+  assert {
+    condition = (
+      toset(one([
+        for rule in kubernetes_role_v1.kagent_getter["prod/migration-legacy"].rule : rule.resources
+        if toset(rule.api_groups) == toset(["kagent.dev"]) && toset(rule.verbs) == toset(["get", "list", "watch"])
+      ])) == toset(["agents", "harnesses", "agenttemplates", "sandboxagents", "agentharnesses", "modelconfigs", "modelproviderconfigs", "toolservers", "memories", "remotemcpservers", "mcpservers"]) &&
+      toset(one([
+        for rule in kubernetes_role_v1.kagent_getter["prod/migration-legacy"].rule : rule.resources
+        if toset(rule.api_groups) == toset(["kagent.dev"]) && toset(rule.verbs) == toset(["update"])
+      ])) == toset(["agents/finalizers", "harnesses/finalizers", "agenttemplates/finalizers", "sandboxagents/finalizers", "agentharnesses/finalizers", "modelconfigs/finalizers", "modelproviderconfigs/finalizers", "toolservers/finalizers", "memories/finalizers", "remotemcpservers/finalizers", "mcpservers/finalizers"]) &&
+      toset(one([
+        for rule in kubernetes_role_v1.kagent_getter["prod/migration-legacy"].rule : rule.resources
+        if toset(rule.api_groups) == toset(["kagent.dev"]) && toset(rule.verbs) == toset(["get", "patch", "update"])
+      ])) == toset(["agents/status", "harnesses/status", "agenttemplates/status", "sandboxagents/status", "agentharnesses/status", "modelconfigs/status", "modelproviderconfigs/status", "toolservers/status", "memories/status", "remotemcpservers/status", "mcpservers/status"])
+    )
+    error_message = "Getter RBAC must be the exact union of live 0.9.12 agents permissions and the kap2 kagent.dev resources."
+  }
+
+  assert {
+    condition = (
+      toset(one([
+        for rule in kubernetes_role_v1.kagent_writer["prod/migration-legacy"].rule : rule.resources
+        if toset(rule.api_groups) == toset(["kagent.dev"]) && toset(rule.verbs) == toset(["create", "update", "patch", "delete"])
+      ])) == toset(["agents", "harnesses", "agenttemplates", "sandboxagents", "agentharnesses", "modelconfigs", "modelproviderconfigs", "toolservers", "memories", "remotemcpservers", "mcpservers"]) &&
+      toset(one([
+        for rule in kubernetes_role_v1.kagent_writer["prod/migration-legacy"].rule : rule.resources
+        if toset(rule.api_groups) == toset(["kagent.dev"]) && toset(rule.verbs) == toset(["update"])
+      ])) == toset(["agents/finalizers", "harnesses/finalizers", "agenttemplates/finalizers", "sandboxagents/finalizers", "agentharnesses/finalizers", "modelconfigs/finalizers", "modelproviderconfigs/finalizers", "toolservers/finalizers", "memories/finalizers", "remotemcpservers/finalizers", "mcpservers/finalizers"])
+    )
+    error_message = "Writer RBAC must be the exact union of live 0.9.12 agents permissions and the kap2 kagent.dev resources."
+  }
+
+  assert {
+    condition = (
+      alltrue([
+        for role in values(kubernetes_role_v1.kagent_getter) :
+        role.rule == kubernetes_role_v1.kagent_getter["prod/migration-legacy"].rule
+      ]) &&
+      alltrue([
+        for role in values(kubernetes_role_v1.kagent_writer) :
+        role.rule == kubernetes_role_v1.kagent_writer["prod/migration-legacy"].rule
+      ]) &&
+      alltrue([
+        for role in values(kubernetes_role_v1.kagent_env_sources) :
+        role.rule == kubernetes_role_v1.kagent_env_sources["prod/migration-legacy"].rule
+      ])
+    )
+    error_message = "Every control, declarative agent, and migration namespace must receive identical getter, writer, and env-source permissions."
   }
 
   assert {

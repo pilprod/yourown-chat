@@ -45,6 +45,17 @@ output "kagent_substrate_rbac_names" {
   value       = component.substrate_prerequisites.rbac_names
 }
 
+output "kagent_rbac_targets" {
+  type = map(object({
+    namespace            = string
+    controller_namespace = string
+    release_name         = string
+    migration_only       = bool
+  }))
+  description = "Exact namespaces receiving additive kagent RBAC, including the temporary prod legacy bridge."
+  value       = component.substrate_prerequisites.kagent_rbac_targets
+}
+
 output "kagent_substrate_delivery_ready" {
   type        = bool
   description = "Whether immutable application pins, Terraform CRD ownership and native Substrate secret synchronization are all enabled."

@@ -198,6 +198,16 @@ creates additive Terraform-owned Roles, RoleBindings, ClusterRoles and
 ClusterRoleBindings under stable, non-Helm names for the same service accounts
 and with the same permissions.
 
+The additive kagent getter/writer rules are a migration union: they retain the
+live `0.9.12` `kagent.dev` permissions for `agents`, `agents/finalizers` and
+`agents/status`, and add the `.kap.2` `harnesses` and `agenttemplates` families
+without removing the other common resources. The prod controller receives an
+explicit migration-only RBAC target for `kagent-testbed`; dev does not. This
+bridge must remain until the old controller Pod no longer runs or watches that
+namespace, all legacy agents and workloads have been migrated, and
+`kagent-testbed` is drained. Only a separate reviewed retirement change may
+remove the migration target, followed by namespace retirement.
+
 The handoff is deliberately staged. Before each adoption apply, confirm the
 recorded live inventory and compatibility evidence below still match the
 cluster, then explicitly acknowledge that review by setting
@@ -210,7 +220,8 @@ enabled fails closed without that explicit attestation.
    kagent and Substrate RBAC names before either Helm release changes. Review
    the intentional authentication principal migration together with creation
    of `ate-enrollment-admin`, and verify every existing service account has its
-   unchanged permissions through the new bindings.
+   unchanged permissions through the new bindings, including the prod-only
+   `kagent-testbed` bridge.
 2. Leave both adoption inputs enabled for the later application stage. Set
    `release_enabled=true` only after bootstrap reconciliation and native Secret
    synchronization are complete. Terraform imports `ate-system/substrate`

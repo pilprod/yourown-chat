@@ -52,11 +52,31 @@ locals {
 
   kagent_targets = merge([
     for control_key, control in var.kagent_control_planes : {
-      for target_key, namespace in merge({ control = control.namespace }, control.agent_namespaces) :
+      for target_key, target in merge(
+        {
+          control = {
+            namespace      = control.namespace
+            migration_only = false
+          }
+        },
+        {
+          for agent_key, namespace in control.agent_namespaces : agent_key => {
+            namespace      = namespace
+            migration_only = false
+          }
+        },
+        {
+          for migration_key, namespace in control.migration_agent_namespaces : "migration-${migration_key}" => {
+            namespace      = namespace
+            migration_only = true
+          }
+        },
+      ) :
       "${control_key}/${target_key}" => {
-        namespace            = namespace
+        namespace            = target.namespace
         controller_namespace = control.namespace
         release_name         = control.release_name
+        migration_only       = target.migration_only
       }
     }
   ]...)
@@ -959,7 +979,9 @@ resource "kubernetes_role_binding_v1" "agentgateway_deployer" {
 # kagent fork artifacts admitted to this rail must support rbac.create=false.
 # Terraform creates a parallel permission set under non-Helm names before the
 # chart ownership handoff. The controller service account and permissions stay
-# identical while the old Helm-owned RBAC is later pruned.
+# identical while the old Helm-owned RBAC is later pruned. The kagent.dev rules
+# intentionally union live 0.9.12 agents APIs with the kap2 harness and template
+# APIs until the migration-only prod namespace has been drained.
 resource "kubernetes_role_v1" "kagent_getter" {
   for_each = var.bootstrap_enabled ? local.kagent_targets : {}
   metadata {
@@ -970,17 +992,17 @@ resource "kubernetes_role_v1" "kagent_getter" {
 
   rule {
     api_groups = ["kagent.dev"]
-    resources  = ["harnesses", "agenttemplates", "sandboxagents", "agentharnesses", "modelconfigs", "modelproviderconfigs", "toolservers", "memories", "remotemcpservers", "mcpservers"]
+    resources  = ["agents", "harnesses", "agenttemplates", "sandboxagents", "agentharnesses", "modelconfigs", "modelproviderconfigs", "toolservers", "memories", "remotemcpservers", "mcpservers"]
     verbs      = ["get", "list", "watch"]
   }
   rule {
     api_groups = ["kagent.dev"]
-    resources  = ["harnesses/finalizers", "agenttemplates/finalizers", "sandboxagents/finalizers", "agentharnesses/finalizers", "modelconfigs/finalizers", "modelproviderconfigs/finalizers", "toolservers/finalizers", "memories/finalizers", "remotemcpservers/finalizers", "mcpservers/finalizers"]
+    resources  = ["agents/finalizers", "harnesses/finalizers", "agenttemplates/finalizers", "sandboxagents/finalizers", "agentharnesses/finalizers", "modelconfigs/finalizers", "modelproviderconfigs/finalizers", "toolservers/finalizers", "memories/finalizers", "remotemcpservers/finalizers", "mcpservers/finalizers"]
     verbs      = ["update"]
   }
   rule {
     api_groups = ["kagent.dev"]
-    resources  = ["harnesses/status", "agenttemplates/status", "sandboxagents/status", "agentharnesses/status", "modelconfigs/status", "modelproviderconfigs/status", "toolservers/status", "memories/status", "remotemcpservers/status", "mcpservers/status"]
+    resources  = ["agents/status", "harnesses/status", "agenttemplates/status", "sandboxagents/status", "agentharnesses/status", "modelconfigs/status", "modelproviderconfigs/status", "toolservers/status", "memories/status", "remotemcpservers/status", "mcpservers/status"]
     verbs      = ["get", "patch", "update"]
   }
   dynamic "rule" {
@@ -1015,12 +1037,12 @@ resource "kubernetes_role_v1" "kagent_writer" {
   }
   rule {
     api_groups = ["kagent.dev"]
-    resources  = ["harnesses", "agenttemplates", "sandboxagents", "agentharnesses", "modelconfigs", "modelproviderconfigs", "toolservers", "memories", "remotemcpservers", "mcpservers"]
+    resources  = ["agents", "harnesses", "agenttemplates", "sandboxagents", "agentharnesses", "modelconfigs", "modelproviderconfigs", "toolservers", "memories", "remotemcpservers", "mcpservers"]
     verbs      = ["create", "update", "patch", "delete"]
   }
   rule {
     api_groups = ["kagent.dev"]
-    resources  = ["harnesses/finalizers", "agenttemplates/finalizers", "sandboxagents/finalizers", "agentharnesses/finalizers", "modelconfigs/finalizers", "modelproviderconfigs/finalizers", "toolservers/finalizers", "memories/finalizers", "remotemcpservers/finalizers", "mcpservers/finalizers"]
+    resources  = ["agents/finalizers", "harnesses/finalizers", "agenttemplates/finalizers", "sandboxagents/finalizers", "agentharnesses/finalizers", "modelconfigs/finalizers", "modelproviderconfigs/finalizers", "toolservers/finalizers", "memories/finalizers", "remotemcpservers/finalizers", "mcpservers/finalizers"]
     verbs      = ["update"]
   }
   dynamic "rule" {
