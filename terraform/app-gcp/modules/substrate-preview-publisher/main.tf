@@ -90,8 +90,10 @@ resource "google_storage_bucket_iam_member" "evidence_creator" {
 }
 
 # The build reads back exact uploaded objects to record their immutable GCS
-# generations. Keep this grant bucket-scoped and separate from objectCreator;
-# objectAdmin is neither required nor allowed.
+# generations. `gcloud storage cp` also checks the destination with the
+# bucket-level storage.objects.list permission before the conditional create.
+# Permit that one bucket resource plus reads under the exact release prefix;
+# objectAdmin and reads of other release objects remain disallowed.
 resource "google_storage_bucket_iam_member" "evidence_viewer" {
   count = local.count
 
@@ -101,8 +103,8 @@ resource "google_storage_bucket_iam_member" "evidence_viewer" {
 
   condition {
     title       = "substrate-${var.release_version}-read"
-    description = "Read objects only under the exact reviewed Substrate release prefix."
-    expression  = "resource.name.startsWith(\"projects/_/buckets/${var.evidence_bucket_name}/objects/substrate/${var.release_version}/\")"
+    description = "List the evidence bucket and read objects only under the exact reviewed Substrate release prefix."
+    expression  = "(resource.type == \"storage.googleapis.com/Bucket\" && resource.name == \"projects/_/buckets/${var.evidence_bucket_name}\") || (resource.type == \"storage.googleapis.com/Object\" && resource.name.startsWith(\"projects/_/buckets/${var.evidence_bucket_name}/objects/substrate/${var.release_version}/\"))"
   }
 }
 
