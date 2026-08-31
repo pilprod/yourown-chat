@@ -541,13 +541,9 @@ variable "adopt_existing_substrate_compatibility_confirmed" {
   description = "Explicit reviewed attestation that both existing Substrate Helm releases are compatible with takeover by the pinned charts. Required when adoption and bootstrap are both enabled because the CRD release is reconciled in bootstrap."
   default     = false
 
-  validation {
-    condition = !(
-      var.adopt_existing_substrate &&
-      var.kagent_substrate_delivery.bootstrap_enabled
-    ) || var.adopt_existing_substrate_compatibility_confirmed
-    error_message = "adopt_existing_substrate with bootstrap_enabled requires adopt_existing_substrate_compatibility_confirmed=true after reviewing both live-to-pinned Helm release plans."
-  }
+  # Terraform Stacks top-level input validation can inspect only this variable.
+  # The cross-input adoption/bootstrap invariant is enforced by the
+  # substrate-prerequisites module before any resource change is planned.
 }
 
 variable "manage_ingress_origin_tls" {

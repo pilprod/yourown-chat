@@ -84,7 +84,11 @@ locals {
       }
 
       namespaces = {
-        control     = { name = "kagent-system", quota_profile = "testbed-control" }
+        control = { name = "kagent-system", quota_profile = "testbed-control" }
+        # Retain the currently populated legacy namespace until its ActorTemplates
+        # and workloads have been migrated and a separate drained-retirement plan
+        # has been reviewed. No endpoint below targets this namespace.
+        workload    = { name = "kagent-testbed", quota_profile = "testbed-workload" }
         codex       = { name = "agent-codex", quota_profile = "testbed-workload" }
         dev_control = { name = "kagent-dev", quota_profile = "dev-control" }
         dev_codex   = { name = "agent-codex-dev", quota_profile = "dev-workload" }

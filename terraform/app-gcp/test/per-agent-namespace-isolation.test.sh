@@ -43,10 +43,19 @@ for legacy_literal in \
   'yourown-agents' \
   'agent_platform_enabled' \
   'agent_platform_runtime_enabled' \
-  'agent_results_bucket' \
+  'agent_results_bucket'; do
+  forbidden_terraform_literal "${app_dir}" "${legacy_literal}"
+done
+
+# Terraform Stacks must explicitly claim the two retired component instances
+# for destruction. The names may remain only as removed-block tombstones, not
+# as live components or outputs.
+for legacy_component in \
   'clouddeploy_agents_start' \
   'clouddeploy_agents_pause'; do
-  forbidden_terraform_literal "${app_dir}" "${legacy_literal}"
+  forbidden_literal "${components}" "component \"${legacy_component}\" {"
+  require_literal "${components}" "from   = component.${legacy_component}"
+  forbidden_literal "${app_dir}/outputs.tfcomponent.hcl" "component.${legacy_component}."
 done
 
 for legacy_literal in \
@@ -71,9 +80,13 @@ test ! -e "${repo_root}/helm/agent-pilot.sh" || fail "legacy agent pilot helper 
 # product prefix.
 require_literal "${service_inputs}" 'codex       = { name = "agent-codex", quota_profile = "testbed-workload" }'
 require_literal "${service_inputs}" 'dev_codex   = { name = "agent-codex-dev", quota_profile = "dev-workload" }'
+# The populated pre-migration namespace remains managed so this base release
+# cannot cascade-delete its contents. It is deliberately absent from endpoints
+# and can be removed only in a later drained-retirement change.
+require_literal "${service_inputs}" 'workload    = { name = "kagent-testbed", quota_profile = "testbed-workload" }'
 require_literal "${service_inputs}" 'namespace_key = "codex"'
 require_literal "${service_inputs}" 'namespace_key = "dev_codex"'
-forbidden_literal "${service_inputs}" 'workload = { name = "kagent-testbed"'
+forbidden_literal "${service_inputs}" 'namespace_key = "workload"'
 
 require_literal "${components}" 'kagent_control_planes = {'
 require_literal "${components}" 'dev = {'

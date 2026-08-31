@@ -180,11 +180,11 @@ component "clouddeploy_kagent_substrate" {
         verify           = true
       },
       {
-        name             = "prod"
-        profiles         = ["kagent-prod"]
-        require_approval = true
+        name              = "prod"
+        profiles          = ["kagent-prod"]
+        require_approval  = true
         predeploy_actions = ["require-external-broker-smoke"]
-        verify           = true
+        verify            = true
       },
     ]
 
@@ -200,6 +200,30 @@ component "clouddeploy_kagent_substrate" {
 
     labels = local.common_labels
   }
+
+  providers = {
+    google      = provider.google.this
+    google-beta = provider.google-beta.this
+  }
+}
+
+# The legacy shared agent-worker rail was removed in favor of per-agent
+# namespaces managed through kagent. Keep these tombstones for one applied
+# configuration so Terraform Stacks can destroy the two obsolete Cloud Deploy
+# pipelines instead of leaving their component instances unclaimed.
+removed {
+  source = "./modules/clouddeploy"
+  from   = component.clouddeploy_agents_start
+
+  providers = {
+    google      = provider.google.this
+    google-beta = provider.google-beta.this
+  }
+}
+
+removed {
+  source = "./modules/clouddeploy"
+  from   = component.clouddeploy_agents_pause
 
   providers = {
     google      = provider.google.this
