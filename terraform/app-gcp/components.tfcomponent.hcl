@@ -378,12 +378,16 @@ component "secrets" {
         "kagent-ate-client-tls" = {
           accessors = []
         }
+        "kagent-dev-ate-client-tls" = {
+          accessors = []
+        }
       } : {},
     )
   }
 
   providers = {
     google = provider.google.this
+    random = provider.random.this
   }
 }
 
@@ -840,10 +844,21 @@ component "substrate_prerequisites" {
     local_provider_only        = var.kagent_substrate_delivery.local_provider_only
     atenet_egress_destinations = var.kagent_substrate_delivery.atenet_egress_destinations
     substrate_crd_chart        = try(var.kagent_substrate_delivery.artifacts["substrate"].charts.crds, { ref = "", version = "" })
-    agent_namespaces = {
-      for namespace_key, namespace in var.vendor_chart_bundles["kagent"].namespaces :
-      namespace_key => namespace.name
-      if namespace.quota_profile == "testbed-workload"
+    kagent_control_planes = {
+      prod = {
+        namespace    = var.vendor_chart_bundles["kagent"].namespaces["control"].name
+        release_name = "kagent"
+        agent_namespaces = {
+          codex = var.vendor_chart_bundles["kagent"].namespaces["codex"].name
+        }
+      }
+      dev = {
+        namespace    = var.vendor_chart_bundles["kagent"].namespaces["dev_control"].name
+        release_name = "kagent-dev"
+        agent_namespaces = {
+          codex = var.vendor_chart_bundles["kagent"].namespaces["dev_codex"].name
+        }
+      }
     }
     secret_contract = {
       postgres = {
@@ -892,6 +907,12 @@ component "substrate_prerequisites" {
         secret_manager_id = try(component.secrets.secret_ids["kagent-ate-client-tls"], "")
         namespace         = "kagent-system"
         kubernetes_name   = "kagent-ate-client-tls"
+        keys              = ["client-credential-bundle.pem", "server-ca.pem"]
+      }
+      kagent_dev_client_tls = {
+        secret_manager_id = try(component.secrets.secret_ids["kagent-dev-ate-client-tls"], "")
+        namespace         = "kagent-dev"
+        kubernetes_name   = "kagent-dev-ate-client-tls"
         keys              = ["client-credential-bundle.pem", "server-ca.pem"]
       }
     }

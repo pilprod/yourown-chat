@@ -1,10 +1,15 @@
 locals {
   substrate_namespace = "ate-system"
-  kagent_namespace    = "kagent-system"
-  kagent_namespaces = merge(
-    { control = local.kagent_namespace },
-    var.agent_namespaces,
-  )
+  kagent_targets = merge([
+    for control_key, control in var.kagent_control_planes : {
+      for target_key, namespace in merge({ control = control.namespace }, control.agent_namespaces) :
+      "${control_key}/${target_key}" => {
+        namespace            = namespace
+        controller_namespace = control.namespace
+        release_name         = control.release_name
+      }
+    }
+  ]...)
 
   expected_secret_contract = {
     postgres = {
@@ -43,8 +48,13 @@ locals {
       keys            = toset(["pool"])
     }
     kagent_client_tls = {
-      namespace       = local.kagent_namespace
+      namespace       = var.kagent_control_planes.prod.namespace
       kubernetes_name = "kagent-ate-client-tls"
+      keys            = toset(["client-credential-bundle.pem", "server-ca.pem"])
+    }
+    kagent_dev_client_tls = {
+      namespace       = var.kagent_control_planes.dev.namespace
+      kubernetes_name = "kagent-dev-ate-client-tls"
       keys            = toset(["client-credential-bundle.pem", "server-ca.pem"])
     }
   }
@@ -367,11 +377,11 @@ resource "kubernetes_network_policy_v1" "enrollment_admin_default_deny" {
 }
 
 resource "kubernetes_network_policy_v1" "kagent_substrate_egress" {
-  count = var.bootstrap_enabled ? 1 : 0
+  for_each = var.bootstrap_enabled ? var.kagent_control_planes : {}
 
   metadata {
     name      = "kagent-controller-substrate-egress"
-    namespace = local.kagent_namespace
+    namespace = each.value.namespace
     labels    = local.common_labels
   }
 
@@ -379,7 +389,7 @@ resource "kubernetes_network_policy_v1" "kagent_substrate_egress" {
     pod_selector {
       match_labels = {
         "app.kubernetes.io/name"      = "kagent"
-        "app.kubernetes.io/instance"  = "kagent"
+        "app.kubernetes.io/instance"  = each.value.release_name
         "app.kubernetes.io/component" = "controller"
       }
     }
@@ -449,7 +459,7 @@ resource "kubernetes_config_map_v1" "authentication" {
   lifecycle {
     precondition {
       condition     = local.secret_contract_valid
-      error_message = "Substrate/kagent require the exact eight source Secrets plus derived actor-id-ca-certs name, namespace, source and keys."
+      error_message = "Substrate/kagent require the exact nine source Secrets plus derived actor-id-ca-certs name, namespace, source and keys."
     }
   }
 }
@@ -529,10 +539,10 @@ resource "kubernetes_role_binding_v1" "agentgateway_deployer" {
 # kagent fork artifacts admitted to this rail must support rbac.create=false.
 # Terraform owns the controller's two namespace-scoped roles and bindings.
 resource "kubernetes_role_v1" "kagent_getter" {
-  for_each = var.bootstrap_enabled ? local.kagent_namespaces : {}
+  for_each = var.bootstrap_enabled ? local.kagent_targets : {}
   metadata {
     name      = "kagent-getter-role"
-    namespace = each.value
+    namespace = each.value.namespace
     labels    = local.common_labels
   }
 
@@ -575,10 +585,10 @@ resource "kubernetes_role_v1" "kagent_getter" {
 }
 
 resource "kubernetes_role_v1" "kagent_writer" {
-  for_each = var.bootstrap_enabled ? local.kagent_namespaces : {}
+  for_each = var.bootstrap_enabled ? local.kagent_targets : {}
   metadata {
     name      = "kagent-writer-role"
-    namespace = each.value
+    namespace = each.value.namespace
     labels    = local.common_labels
   }
   rule {
@@ -623,7 +633,7 @@ resource "kubernetes_role_binding_v1" "kagent_getter" {
   subject {
     kind      = "ServiceAccount"
     name      = "kagent-controller"
-    namespace = local.kagent_namespace
+    namespace = local.kagent_targets[each.key].controller_namespace
   }
 }
 
@@ -642,15 +652,15 @@ resource "kubernetes_role_binding_v1" "kagent_writer" {
   subject {
     kind      = "ServiceAccount"
     name      = "kagent-controller"
-    namespace = local.kagent_namespace
+    namespace = local.kagent_targets[each.key].controller_namespace
   }
 }
 
 resource "kubernetes_role_v1" "kagent_leader_election" {
-  count = var.bootstrap_enabled ? 1 : 0
+  for_each = var.bootstrap_enabled ? var.kagent_control_planes : {}
   metadata {
     name      = "kagent-leader-election-role"
-    namespace = local.kagent_namespace
+    namespace = each.value.namespace
     labels    = local.common_labels
   }
   rule {
@@ -666,29 +676,29 @@ resource "kubernetes_role_v1" "kagent_leader_election" {
 }
 
 resource "kubernetes_role_binding_v1" "kagent_leader_election" {
-  count = var.bootstrap_enabled ? 1 : 0
+  for_each = kubernetes_role_v1.kagent_leader_election
   metadata {
     name      = "kagent-leader-election-rolebinding"
-    namespace = local.kagent_namespace
+    namespace = each.value.metadata[0].namespace
     labels    = local.common_labels
   }
   role_ref {
     api_group = "rbac.authorization.k8s.io"
     kind      = "Role"
-    name      = kubernetes_role_v1.kagent_leader_election[0].metadata[0].name
+    name      = each.value.metadata[0].name
   }
   subject {
     kind      = "ServiceAccount"
     name      = "kagent-controller"
-    namespace = local.kagent_namespace
+    namespace = var.kagent_control_planes[each.key].namespace
   }
 }
 
 resource "kubernetes_role_v1" "kagent_env_sources" {
-  for_each = var.bootstrap_enabled ? local.kagent_namespaces : {}
+  for_each = var.bootstrap_enabled ? local.kagent_targets : {}
   metadata {
     name      = "kagent-ate-api-env-sources"
-    namespace = each.value
+    namespace = each.value.namespace
     labels    = local.common_labels
   }
   rule {

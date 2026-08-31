@@ -84,8 +84,10 @@ locals {
       }
 
       namespaces = {
-        control = { name = "kagent-system", quota_profile = "testbed-control" }
-        codex   = { name = "agent-codex", quota_profile = "testbed-workload" }
+        control     = { name = "kagent-system", quota_profile = "testbed-control" }
+        codex       = { name = "agent-codex", quota_profile = "testbed-workload" }
+        dev_control = { name = "kagent-dev", quota_profile = "dev-control" }
+        dev_codex   = { name = "agent-codex-dev", quota_profile = "dev-workload" }
       }
 
       endpoints = {
@@ -111,6 +113,30 @@ locals {
         }
         model_fixture = {
           namespace_key = "codex"
+          pod_selector  = { app = "model-fixture" }
+        }
+        dev_controller = {
+          namespace_key = "dev_control"
+          pod_selector = {
+            "app.kubernetes.io/name"      = "kagent"
+            "app.kubernetes.io/instance"  = "kagent-dev"
+            "app.kubernetes.io/component" = "controller"
+          }
+        }
+        dev_ui = {
+          namespace_key = "dev_control"
+          pod_selector = {
+            "app.kubernetes.io/name"      = "kagent"
+            "app.kubernetes.io/instance"  = "kagent-dev"
+            "app.kubernetes.io/component" = "ui"
+          }
+        }
+        dev_agent_runtime = {
+          namespace_key = "dev_codex"
+          pod_selector  = { app = "kagent" }
+        }
+        dev_model_fixture = {
+          namespace_key = "dev_codex"
           pod_selector  = { app = "model-fixture" }
         }
       }
@@ -147,14 +173,45 @@ locals {
           destination_key = "model_fixture"
           ports           = [{ port = 11434, protocol = "TCP" }]
         }
+        edge_dev_ui = {
+          source_kind     = "external"
+          source_key      = "edge_tunnel"
+          destination_key = "dev_ui"
+          ports           = [{ port = 8080, protocol = "TCP" }]
+        }
+        dev_ui_controller = {
+          source_kind     = "endpoint"
+          source_key      = "dev_ui"
+          destination_key = "dev_controller"
+          ports           = [{ port = 8083, protocol = "TCP" }]
+        }
+        dev_controller_agent = {
+          source_kind     = "endpoint"
+          source_key      = "dev_controller"
+          destination_key = "dev_agent_runtime"
+          ports           = [{ port = 8080, protocol = "TCP" }]
+        }
+        dev_agent_model = {
+          source_kind     = "endpoint"
+          source_key      = "dev_agent_runtime"
+          destination_key = "dev_model_fixture"
+          ports           = [{ port = 11434, protocol = "TCP" }]
+        }
       }
 
-      kubernetes_api_egress_from = ["controller"]
+      kubernetes_api_egress_from = ["controller", "dev_controller"]
       database_bindings = {
         primary = {
           source_endpoint_key   = "controller"
           secret_id_key         = "kagent"
           secret_provider_class = "kagent-database-gcp"
+          secret_file           = "database-url"
+          port                  = 5432
+        }
+        dev = {
+          source_endpoint_key   = "dev_controller"
+          secret_id_key         = "kagent_dev"
+          secret_provider_class = "kagent-dev-database-gcp"
           secret_file           = "database-url"
           port                  = 5432
         }

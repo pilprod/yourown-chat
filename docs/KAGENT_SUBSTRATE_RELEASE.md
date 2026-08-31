@@ -44,7 +44,7 @@ the Phase A state move has completed.
 
 ## Native Secret source contract
 
-Terraform creates or references eight Secret Manager containers, but never
+Terraform creates or references nine Secret Manager containers, but never
 reads their bytes. The operator rail synchronizes the following exact sources:
 
 | Logical source | Secret Manager ID | Kubernetes Secret | Exact keys |
@@ -57,25 +57,26 @@ reads their bytes. The operator rail synchronizes the following exact sources:
 | `actor_id_jwt_pool` | `substrate-actor-id-jwt-pool` | `ate-system/actor-id-jwt-pool` | `pool` |
 | `actor_id_ca_pool` | `substrate-actor-id-ca-pool` | `ate-system/actor-id-ca-pool` | `pool` |
 | `kagent_client_tls` | `kagent-ate-client-tls` | `kagent-system/kagent-ate-client-tls` | `client-credential-bundle.pem`, `server-ca.pem` |
+| `kagent_dev_client_tls` | `kagent-dev-ate-client-tls` | `kagent-dev/kagent-dev-ate-client-tls` | `client-credential-bundle.pem`, `server-ca.pem` |
 
 The chart also always mounts `ate-system/actor-id-ca-certs` key `ca.crt`.
-There is deliberately no ninth Secret Manager container: the operator derives
+There is deliberately no tenth Secret Manager container: the operator derives
 that cert-only Secret from `actor_id_ca_pool.pool` at
 `CAs[0].RootCertificateDER`, verifies it is currently valid, permits certificate
 signing, has `CA:TRUE`, and has a public key matching the pool signing key, then
 verifies the applied bytes exactly.
 
-`native_secret_sync_ready` means all eight source Secrets and this derived
-ninth Kubernetes Secret are valid. Leave it `false` after any partial or failed
+`native_secret_sync_ready` means all nine source Secrets and this derived
+tenth Kubernetes Secret are valid. Leave it `false` after any partial or failed
 run.
 
 ## Owner-only operator bundle
 
 The first bootstrap requires one local JSON bundle with schema
 `yourown.chat/kagent-substrate-native-secret-bundle/v1`. It contains exactly
-`schema`, `projectId`, and the eight `secrets` records from the table. The
+`schema`, `projectId`, and the nine `secrets` records from the table. The
 PostgreSQL record uses `source: "existing-raw"` and carries no data; its current
-value is read from `substrate-database-url`. Each of the other seven uses
+value is read from `substrate-database-url`. Each of the other eight uses
 `source: "operator-envelope-v1"` and an exact `data` map whose values are
 canonical base64 of the file bytes. Base64 is encoding, not encryption.
 
@@ -109,10 +110,10 @@ state. The script uses a private temporary directory and deletes it on exit.
 
 Required local commands are Bash, Python 3, `jq`, OpenSSL, ripgrep, the standard
 POSIX command-line tools, `gcloud` and `kubectl`. The operator needs `get`,
-`versions.access` and `versions.add` on the eight fixed Secret Manager
-containers, and `get`/`patch` for Secrets in only `ate-system` and
-`kagent-system`, plus `create` for the initial materialization. Because the
-preflight verifies both namespaces, the kube identity also needs cluster-scoped
+`versions.access` and `versions.add` on the nine fixed Secret Manager
+containers, and `get`/`patch` for Secrets only in `ate-system`, `kagent-system`
+and `kagent-dev`, plus `create` for the initial materialization. Because the
+preflight verifies all three namespaces, the kube identity also needs cluster-scoped
 `get` on `namespaces`. All permissions are checked before any new Secret
 Manager version is uploaded.
 
@@ -124,8 +125,8 @@ terraform/app-gcp/scripts/bootstrap-kagent-substrate-secrets.sh validate \
   --bundle /secure/kagent-substrate-native-secrets.json
 ```
 
-After the bootstrap HCP run has created both namespaces and all containers,
-add seven envelope versions and synchronize all nine Kubernetes Secrets:
+After the bootstrap HCP run has created all three namespaces and all containers,
+add eight envelope versions and synchronize all ten Kubernetes Secrets:
 
 ```sh
 terraform/app-gcp/scripts/bootstrap-kagent-substrate-secrets.sh bootstrap \
@@ -155,7 +156,9 @@ and these identities:
 - atenet URI SAN
   `spiffe://cluster.local/ns/ate-system/sa/atenet-egress`;
 - kagent URI SAN
-  `spiffe://cluster.local/ns/kagent-system/sa/kagent-controller`.
+  `spiffe://cluster.local/ns/kagent-system/sa/kagent-controller`;
+- kagent dev URI SAN
+  `spiffe://cluster.local/ns/kagent-dev/sa/kagent-controller`.
 
 The script prints only Secret names and Secret Manager version resource names.
 It never changes `native_secret_sync_ready`; that attestation belongs in a

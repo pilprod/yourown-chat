@@ -66,23 +66,29 @@ fi
 test ! -e "${repo_root}/helm/skaffold-agents.yaml" || fail "legacy agent Skaffold rail still exists"
 test ! -e "${repo_root}/helm/agent-pilot.sh" || fail "legacy agent pilot helper still exists"
 
-# One declarative workload namespace is admitted initially. The stable map key
-# is the agent ID; the Kubernetes name deliberately carries no product prefix.
-require_literal "${service_inputs}" 'codex   = { name = "agent-codex", quota_profile = "testbed-workload" }'
+# Dev and prod each receive a disjoint declarative workload namespace. Stable
+# agent IDs remain local to their control plane and resource names carry no
+# product prefix.
+require_literal "${service_inputs}" 'codex       = { name = "agent-codex", quota_profile = "testbed-workload" }'
+require_literal "${service_inputs}" 'dev_codex   = { name = "agent-codex-dev", quota_profile = "dev-workload" }'
 require_literal "${service_inputs}" 'namespace_key = "codex"'
+require_literal "${service_inputs}" 'namespace_key = "dev_codex"'
 forbidden_literal "${service_inputs}" 'workload = { name = "kagent-testbed"'
 
-require_literal "${components}" 'agent_namespaces = {'
-require_literal "${components}" 'if namespace.quota_profile == "testbed-workload"'
-require_literal "${prerequisites}/variables.tf" 'variable "agent_namespaces"'
-require_literal "${prerequisites}/variables.tf" 'length(distinct(values(var.agent_namespaces))) == length(var.agent_namespaces)'
-require_literal "${prerequisites}/main.tf" '{ control = local.kagent_namespace }'
+require_literal "${components}" 'kagent_control_planes = {'
+require_literal "${components}" 'dev = {'
+require_literal "${components}" 'prod = {'
+require_literal "${prerequisites}/variables.tf" 'variable "kagent_control_planes"'
+require_literal "${prerequisites}/variables.tf" 'toset(keys(var.kagent_control_planes)) == toset(["dev", "prod"])'
+require_literal "${prerequisites}/variables.tf" 'length(distinct(flatten(['
+require_literal "${prerequisites}/main.tf" 'for control_key, control in var.kagent_control_planes'
 
 # Getter/writer controller permissions and the existing ate-api environment
 # source permission must follow the same per-agent namespace map.
-[[ "$(rg -Fc 'for_each = var.bootstrap_enabled ? local.kagent_namespaces : {}' "${prerequisites}/main.tf")" -eq 3 ]] ||
-  fail "all three namespace-scoped RBAC families must iterate kagent_namespaces"
+[[ "$(rg -Fc 'for_each = var.bootstrap_enabled ? local.kagent_targets : {}' "${prerequisites}/main.tf")" -eq 3 ]] ||
+  fail "all three namespace-scoped RBAC families must iterate kagent_targets"
 require_literal "${prerequisites}/main.tf" 'namespace = each.value.metadata[0].namespace'
+require_literal "${prerequisites}/main.tf" 'namespace = local.kagent_targets[each.key].controller_namespace'
 
 # The generic namespace owner applies the isolation baseline to every map
 # entry, including the initial Codex agent namespace.

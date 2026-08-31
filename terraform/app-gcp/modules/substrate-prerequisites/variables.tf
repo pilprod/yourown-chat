@@ -48,22 +48,45 @@ variable "local_provider_only" {
   }
 }
 
-variable "agent_namespaces" {
-  type        = map(string)
-  description = "Declarative per-agent workload namespaces keyed by stable agent ID. The kagent control namespace is added separately."
+variable "kagent_control_planes" {
+  type = map(object({
+    namespace        = string
+    release_name     = string
+    agent_namespaces = map(string)
+  }))
+  description = "Exact dev/prod kagent controllers and their disjoint declarative per-agent namespaces."
 
   validation {
     condition = (
-      length(var.agent_namespaces) > 0 &&
-      length(distinct(values(var.agent_namespaces))) == length(var.agent_namespaces) &&
-      alltrue([
-        for agent_id, namespace in var.agent_namespaces :
-        can(regex("^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$", agent_id)) &&
-        can(regex("^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$", namespace)) &&
-        !contains(["ate-system", "kagent-system"], namespace)
-      ])
+      toset(keys(var.kagent_control_planes)) == toset(["dev", "prod"]) &&
+      try(var.kagent_control_planes.prod.namespace == "kagent-system", false) &&
+      try(var.kagent_control_planes.prod.release_name == "kagent", false) &&
+      try(var.kagent_control_planes.dev.namespace == "kagent-dev", false) &&
+      try(var.kagent_control_planes.dev.release_name == "kagent-dev", false) &&
+      alltrue(flatten([
+        for control_key, control in var.kagent_control_planes : concat(
+          [
+            can(regex("^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$", control.namespace)),
+            can(regex("^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$", control.release_name)),
+            length(control.agent_namespaces) > 0,
+          ],
+          [
+            for agent_id, namespace in control.agent_namespaces :
+            can(regex("^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$", agent_id)) &&
+            can(regex("^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$", namespace)) &&
+            !contains(["ate-system", "kagent-system", "kagent-dev"], namespace)
+          ],
+        )
+      ])) &&
+      length(flatten([
+        for control in values(var.kagent_control_planes) :
+        concat([control.namespace], values(control.agent_namespaces))
+        ])) == length(distinct(flatten([
+          for control in values(var.kagent_control_planes) :
+          concat([control.namespace], values(control.agent_namespaces))
+      ])))
     )
-    error_message = "agent_namespaces must contain unique DNS-safe per-agent namespaces distinct from ate-system and kagent-system."
+    error_message = "kagent_control_planes must define exact dev/prod controllers with unique DNS-safe, non-overlapping per-agent namespaces."
   }
 }
 

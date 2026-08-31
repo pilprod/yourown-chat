@@ -64,7 +64,7 @@ readiness.
 The native Secret gate covers Cloud SQL, ate-api/controller mTLS, atenet egress
 server and authorizer mTLS, actor identity pools, and the kagent client bundle.
 It also requires Kubernetes-only `actor-id-ca-certs/ca.crt`, derived exactly
-from `actor-id-ca-pool` `CAs[0].RootCertificateDER`; eight source Secrets alone
+from `actor-id-ca-pool` `CAs[0].RootCertificateDER`; nine source Secrets alone
 are not ready. The owner-only bootstrap/sync procedure is documented in
 `docs/KAGENT_SUBSTRATE_RELEASE.md`.
 The authentication ConfigMap preserves the GKE cluster-specific issuer while
