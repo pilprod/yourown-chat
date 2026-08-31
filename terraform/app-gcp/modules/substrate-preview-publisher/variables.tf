@@ -4,6 +4,12 @@ variable "enabled" {
   default     = false
 }
 
+variable "evidence_bucket_owner_enabled" {
+  type        = bool
+  description = "Whether the kagent publisher component that owns the shared evidence bucket is enabled."
+  default     = false
+}
+
 variable "project_id" {
   type        = string
   description = "GCP project owning the private release rail."

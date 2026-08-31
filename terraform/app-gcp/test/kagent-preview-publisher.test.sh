@@ -82,7 +82,8 @@ for required in \
   'gcloud auth print-access-token' \
   'trap cleanup EXIT' \
   'rm -f \' \
-  '--env SUBSTRATE_RELEASE_RECEIPT=/workspace/private-substrate/release-evidence.json' \
+  '--env SUBSTRATE_RELEASE_EVIDENCE=/workspace/private-substrate/release-evidence.json' \
+  '--env SUBSTRATE_RELEASE_EVIDENCE_URI='\''${var.substrate_release_evidence_uri}'\''' \
   '--env HELM_REGISTRY_CONFIG=/workspace/private-substrate/registry-config.json'; do
   grep -Fq -- "${required}" <<<"${main}" ||
     fail "missing private Substrate verification input: ${required}"
