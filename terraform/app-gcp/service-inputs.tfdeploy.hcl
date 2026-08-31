@@ -79,7 +79,7 @@ locals {
           ref           = "oci://ghcr.io/kagent-dev/kagent/helm/kagent@sha256:ec0dacc1a76edbd190a554757c8bdb193ccb0b35deeb35f6d7a7e7ffc76d99fd"
           version       = "0.9.12"
           values_path   = "helm/vendor/kagent/application.values.yaml"
-          values_sha256 = "c0e701d37f56221ad8d037bfc5ae4e3162e7137f296ea0eda37748152d02be49"
+          values_sha256 = "b5f09da13023cf3ff9d1a89025802539d5292ac5f93a194e10fed5d98a691807"
         }
       }
 

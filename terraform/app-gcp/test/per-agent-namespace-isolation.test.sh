@@ -110,13 +110,17 @@ require_literal "${vendor_bundle}" 'resource "kubernetes_network_policy_v1" "def
 require_literal "${vendor_bundle}" 'policy_types = ["Ingress", "Egress"]'
 require_literal "${vendor_bundle}" 'resource "kubernetes_network_policy_v1" "dns_egress"'
 
-for values in \
-  "${repo_root}/helm/vendor/kagent/application.values.yaml" \
-  "${repo_root}/helm/kagent/kagent-prod.values.yaml"; do
-  require_literal "${values}" '    - agent-codex'
-  require_literal "${values}" 'host: http://model-fixture.agent-codex.svc.cluster.local:11434'
-  forbidden_literal "${values}" 'kagent-testbed'
-done
+# Phase A must not retarget the live prod release while its Helm state address
+# is being handed off. The future Cloud Deploy prod profile already targets the
+# isolated namespace, but the currently Terraform-owned vendor values stay byte
+# compatible with the live kagent-testbed release until drained migration.
+require_literal "${repo_root}/helm/vendor/kagent/application.values.yaml" '    - kagent-testbed'
+require_literal "${repo_root}/helm/vendor/kagent/application.values.yaml" 'host: http://model-fixture.kagent-testbed.svc.cluster.local:11434'
+forbidden_literal "${repo_root}/helm/vendor/kagent/application.values.yaml" 'agent-codex'
+
+require_literal "${repo_root}/helm/kagent/kagent-prod.values.yaml" '    - agent-codex'
+require_literal "${repo_root}/helm/kagent/kagent-prod.values.yaml" 'host: http://model-fixture.agent-codex.svc.cluster.local:11434'
+forbidden_literal "${repo_root}/helm/kagent/kagent-prod.values.yaml" 'kagent-testbed'
 
 # Cloud Deploy owns environment-specific topology in overlays; the shared base
 # may not silently bind a candidate to the production namespace.
