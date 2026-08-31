@@ -5,6 +5,27 @@ Origin CA and Authenticated Origin Pull certificates, Zero Trust Tunnel,
 Access applications, AI Controls MCP registrations, and the shared MCP Portal.
 Cloudflare provider 5.22.x is the supported baseline.
 
+## kagent UI promotion routes
+
+The Zero Trust tunnel publishes two Access-protected browser routes for the
+kagent release lifecycle:
+
+| Release stage | Browser endpoint | In-cluster upstream |
+| --- | --- | --- |
+| Development, before approval | `https://dev.kagent.yourown.chat` | `kagent-ui.kagent-dev.svc.cluster.local:8080` |
+| Production, after approval | `https://kagent.yourown.chat` | `kagent-ui.kagent-system.svc.cluster.local:8080` |
+
+Cloud Deploy promotes the same immutable kagent release from development to
+production. Each stage runs an independent control-plane release in its own
+namespace, so a later development upgrade cannot mutate the approved
+production release.
+
+This Cloudflare contract protects and routes only the kagent browser UI. It
+does not carry Agent Host, agentgateway, A2A, or Temporal traffic, and local
+agent connectivity must not depend on Cloudflare. Clusters without Cloudflare
+can expose the same kagent control-plane APIs through their own authenticated
+ingress without changing the local-agent transport protocol.
+
 ## API token permissions
 
 The account-scoped token stored in the HCP Terraform varset requires:
