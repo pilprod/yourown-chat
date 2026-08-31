@@ -24,6 +24,7 @@ bash -n "${driver}"
 bash -n "${invoker}"
 
 main="$(cat "${module_dir}/main.tf")"
+expected_evidence_viewer_expression='expression  = "(resource.type == \"storage.googleapis.com/Bucket\" && resource.name == \"projects/_/buckets/${var.evidence_bucket_name}\") || (resource.type == \"storage.googleapis.com/Object\" && resource.name.startsWith(\"projects/_/buckets/${var.evidence_bucket_name}/objects/substrate/${var.release_version}/\"))"'
 
 for required in \
   'resource "google_service_account" "publisher"' \
@@ -37,7 +38,7 @@ for required in \
   'roles/storage.objectCreator' \
   'resource "google_storage_bucket_iam_member" "evidence_viewer"' \
   'roles/storage.objectViewer' \
-  'resource.name.startsWith(\"projects/_/buckets/${var.evidence_bucket_name}/objects/substrate/${var.release_version}/\")' \
+  "${expected_evidence_viewer_expression}" \
   'resource "google_pubsub_topic" "release_request"' \
   'name    = "substrate-private-release"' \
   'resource "google_pubsub_topic_iam_member" "release_submitter"' \
@@ -53,6 +54,9 @@ for required in \
   'logging = "CLOUD_LOGGING_ONLY"'; do
   grep -Fq "${required}" <<<"${main}" || fail "missing private release contract: ${required}"
 done
+
+test "$(grep -Fc "${expected_evidence_viewer_expression}" <<<"${main}")" -eq 1 ||
+  fail "private evidence viewer condition must have one exact bucket-list and release-prefix-read expression"
 
 [[ "$(grep -Fc 'resource.name.startsWith(\"projects/_/buckets/${var.evidence_bucket_name}/objects/substrate/${var.release_version}/\")' "${module_dir}/main.tf")" -eq 2 ]] ||
   fail 'creator and viewer grants must both be restricted to the exact Substrate release prefix'
