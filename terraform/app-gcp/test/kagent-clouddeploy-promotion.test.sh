@@ -13,20 +13,21 @@ fail() {
 }
 
 pipeline_block="$(sed -n '/component "clouddeploy_kagent_substrate" {/,/^}/p' "${components}")"
-dev_line="$(grep -n 'name             = "dev"' <<<"${pipeline_block}" | cut -d: -f1)"
-prod_line="$(grep -n 'name             = "prod"' <<<"${pipeline_block}" | cut -d: -f1)"
+pipeline_contract="$(sed -E 's/[[:space:]]*=[[:space:]]*/=/' <<<"${pipeline_block}")"
+dev_line="$(grep -nE '^[[:space:]]*name="dev"[[:space:]]*$' <<<"${pipeline_contract}" | cut -d: -f1)"
+prod_line="$(grep -nE '^[[:space:]]*name="prod"[[:space:]]*$' <<<"${pipeline_contract}" | cut -d: -f1)"
 [[ -n "${dev_line}" && -n "${prod_line}" && "${dev_line}" -lt "${prod_line}" ]] ||
   fail 'stages must be ordered dev then prod'
 
-grep -Fq 'profiles         = ["kagent-dev"]' <<<"${pipeline_block}" || fail 'dev profile missing'
-grep -Fq 'require_approval = false' <<<"${pipeline_block}" || fail 'dev must deploy without approval'
-grep -Fq 'profiles         = ["kagent-prod"]' <<<"${pipeline_block}" || fail 'prod profile missing'
-grep -Fq 'require_approval = true' <<<"${pipeline_block}" || fail 'prod must require approval'
-[[ "$(grep -Fc 'predeploy_actions = ["require-external-broker-smoke"]' <<<"${pipeline_block}")" -eq 1 ]] ||
+grep -Fq 'profiles=["kagent-dev"]' <<<"${pipeline_contract}" || fail 'dev profile missing'
+grep -Fq 'require_approval=false' <<<"${pipeline_contract}" || fail 'dev must deploy without approval'
+grep -Fq 'profiles=["kagent-prod"]' <<<"${pipeline_contract}" || fail 'prod profile missing'
+grep -Fq 'require_approval=true' <<<"${pipeline_contract}" || fail 'prod must require approval'
+[[ "$(grep -Fc 'predeploy_actions=["require-external-broker-smoke"]' <<<"${pipeline_contract}")" -eq 1 ]] ||
   fail 'prod must have exactly one external Broker smoke predeploy gate'
-predeploy_line="$(grep -Fn 'predeploy_actions = ["require-external-broker-smoke"]' <<<"${pipeline_block}" | cut -d: -f1)"
+predeploy_line="$(grep -Fn 'predeploy_actions=["require-external-broker-smoke"]' <<<"${pipeline_contract}" | cut -d: -f1)"
 [[ "${predeploy_line}" -gt "${prod_line}" ]] || fail 'external Broker smoke gate must be attached only to prod'
-[[ "$(grep -Fc 'verify           = true' <<<"${pipeline_block}")" -eq 2 ]] ||
+[[ "$(grep -Fc 'verify=true' <<<"${pipeline_contract}")" -eq 2 ]] ||
   fail 'both stages must verify'
 
 grep -Fq 'kagent-substrate=kagent-substrate-dev|kagent-substrate-prod' "${mcp_values}" ||
