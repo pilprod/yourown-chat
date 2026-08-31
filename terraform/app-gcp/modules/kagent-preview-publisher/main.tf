@@ -179,6 +179,36 @@ resource "google_service_account_iam_member" "publisher_acts_as_self" {
   member             = "serviceAccount:${google_service_account.publisher[0].email}"
 }
 
+# Terraform creates and owns the release topic and its IAM policy. A dedicated
+# role keeps that authority narrower than roles/pubsub.editor while including
+# the get/setIamPolicy permissions that the topic IAM member resource requires.
+resource "google_project_iam_custom_role" "apply_pubsub_manager" {
+  count = local.count
+
+  project     = var.project_id
+  role_id     = "kagentPreviewPubsubManager"
+  title       = "kagent preview Pub/Sub manager"
+  description = "Allows Terraform to manage only the kagent preview release topic and its IAM policy."
+  permissions = [
+    "pubsub.topics.create",
+    "pubsub.topics.delete",
+    "pubsub.topics.get",
+    "pubsub.topics.getIamPolicy",
+    "pubsub.topics.list",
+    "pubsub.topics.setIamPolicy",
+    "pubsub.topics.update",
+  ]
+  stage = "GA"
+}
+
+resource "google_project_iam_member" "apply_pubsub_manager" {
+  count = local.count
+
+  project = var.project_id
+  role    = google_project_iam_custom_role.apply_pubsub_manager[0].id
+  member  = "serviceAccount:${var.apply_service_account_email}"
+}
+
 # google provider 6.x requires every BuildTrigger to declare an event/source.
 # A dedicated Pub/Sub topic supplies that event without a GitHub connection or
 # shared webhook credential. IAM on this exact topic is the release-submit
@@ -189,6 +219,8 @@ resource "google_pubsub_topic" "release_request" {
   project = var.project_id
   name    = "kagent-preview-release"
   labels  = var.labels
+
+  depends_on = [google_project_iam_member.apply_pubsub_manager]
 }
 
 resource "google_pubsub_topic_iam_member" "release_submitter" {

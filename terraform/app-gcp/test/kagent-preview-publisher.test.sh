@@ -45,6 +45,18 @@ for required in \
   'roles/ondemandscanning.admin' \
   'resource "google_project_iam_custom_role" "build_invoker"' \
   'permissions = ["cloudbuild.builds.create"]' \
+  'resource "google_project_iam_custom_role" "apply_pubsub_manager"' \
+  'role_id     = "kagentPreviewPubsubManager"' \
+  '"pubsub.topics.create"' \
+  '"pubsub.topics.delete"' \
+  '"pubsub.topics.get"' \
+  '"pubsub.topics.getIamPolicy"' \
+  '"pubsub.topics.list"' \
+  '"pubsub.topics.setIamPolicy"' \
+  '"pubsub.topics.update"' \
+  'resource "google_project_iam_member" "apply_pubsub_manager"' \
+  'role    = google_project_iam_custom_role.apply_pubsub_manager[0].id' \
+  'depends_on = [google_project_iam_member.apply_pubsub_manager]' \
   'resource "google_pubsub_topic_iam_member" "release_submitter"' \
   'roles/pubsub.publisher' \
   'resource "google_storage_bucket" "evidence"' \
@@ -72,6 +84,9 @@ fi
 
 if rg -n 'roles/storage\.objectAdmin|roles/secretmanager\.admin|roles/cloudbuild\.builds\.builder|roles/owner|roles/editor' "${module_dir}"; then
   fail 'module must not grant broad roles'
+fi
+if rg -n '^[[:space:]]*role[[:space:]]*=[[:space:]]*"roles/pubsub\.(admin|editor)"' "${module_dir}"; then
+  fail 'Terraform topic management must use the dedicated custom role'
 fi
 if rg -n 'random_password|release_webhook|secret_data' "${module_dir}"; then
   fail 'release request authorization must use Google IAM, not a shared secret in Terraform state'
