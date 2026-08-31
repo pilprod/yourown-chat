@@ -49,6 +49,17 @@ variable "keep_recent_versions" {
   default     = 10
 }
 
+variable "delete_tagged_days" {
+  type        = number
+  description = "Delete tagged artifacts older than this many days (0 disables the policy). Intended only for dedicated staging repositories."
+  default     = 0
+
+  validation {
+    condition     = var.delete_tagged_days >= 0
+    error_message = "delete_tagged_days must be zero or a positive number of days."
+  }
+}
+
 variable "labels" {
   type        = map(string)
   description = "Labels applied to the repository."

@@ -233,6 +233,37 @@ output "helm_registry_repository_path" {
   value       = component.artifact_registry_helm.repository_path
 }
 
+# --- kagent fork immutable release registry -----------------------------------
+output "kagent_registry_repository_id" {
+  type        = string
+  description = "Dedicated immutable Artifact Registry repository ID for reviewed kagent fork preview images and OCI charts."
+  value       = component.artifact_registry_kagent.repository_id
+}
+
+output "kagent_registry_location" {
+  type        = string
+  description = "Location of the dedicated immutable kagent fork preview repository."
+  value       = component.artifact_registry_kagent.location
+}
+
+output "kagent_registry_repository_path" {
+  type        = string
+  description = "Artifact Registry path prefix for reviewed kagent fork preview images and OCI charts."
+  value       = component.artifact_registry_kagent.repository_path
+}
+
+output "kagent_staging_registry_repository_id" {
+  type        = string
+  description = "Dedicated private Artifact Registry repository ID for disposable kagent build-and-scan candidates."
+  value       = component.artifact_registry_kagent_staging.repository_id
+}
+
+output "kagent_staging_registry_repository_path" {
+  type        = string
+  description = "Private Artifact Registry path prefix for disposable kagent build-and-scan candidates."
+  value       = component.artifact_registry_kagent_staging.repository_path
+}
+
 # --- Temporal platform service ----------------------------------------------
 output "temporal_enabled" {
   type        = bool

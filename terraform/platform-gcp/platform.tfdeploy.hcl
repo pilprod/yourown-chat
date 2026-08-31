@@ -111,8 +111,10 @@ deployment "eu" {
 
     storage_force_destroy = false
 
-    # Registry is public -> no CMEK.
+    # Registry repositories use Google-managed encryption; no CMEK.
     artifact_registry_kms_key_name = null
+    kagent_registry_repository_id  = "kagent-preview"
+    kagent_staging_registry_repository_id = "kagent-staging"
     # Paid per image digest. Keep the repository gate off during routine
     # builds; enable it only for a bounded build window through the guarded
     # Google Cloud MCP security_set_scanning tool, then disable it again.
@@ -152,6 +154,31 @@ publish_output "artifact_registry_location" {
 publish_output "artifact_registry_repository_id" {
   description = "Artifact Registry repository ID for the image CI."
   value       = deployment.eu.artifact_registry_repository_id
+}
+
+publish_output "kagent_registry_repository_id" {
+  description = "Dedicated immutable Artifact Registry repository ID for the app-gcp kagent preview release rail."
+  value       = deployment.eu.kagent_registry_repository_id
+}
+
+publish_output "kagent_registry_location" {
+  description = "Location of the dedicated immutable kagent preview repository."
+  value       = deployment.eu.kagent_registry_location
+}
+
+publish_output "kagent_registry_repository_path" {
+  description = "Artifact Registry path prefix for reviewed kagent fork preview artifacts."
+  value       = deployment.eu.kagent_registry_repository_path
+}
+
+publish_output "kagent_staging_registry_repository_id" {
+  description = "Dedicated private Artifact Registry repository ID for app-gcp kagent candidate build and scan."
+  value       = deployment.eu.kagent_staging_registry_repository_id
+}
+
+publish_output "kagent_staging_registry_repository_path" {
+  description = "Private Artifact Registry path prefix for disposable kagent candidates."
+  value       = deployment.eu.kagent_staging_registry_repository_path
 }
 
 publish_output "cmek_key_id" {
