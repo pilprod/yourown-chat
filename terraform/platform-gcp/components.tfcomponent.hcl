@@ -49,7 +49,6 @@ locals {
     # app-gcp owns the source-less release trigger and its topic. The platform
     # only enables the shared Pub/Sub API prerequisite.
     "pubsub.googleapis.com",
-    "orgpolicy.googleapis.com",
     "cloudbilling.googleapis.com",
     "bigquery.googleapis.com",
     "bigquerydatatransfer.googleapis.com",
@@ -86,25 +85,6 @@ component "project_services" {
   providers = {
     google = provider.google.this
   }
-}
-
-# Cloud Build must always run as the explicit least-privilege service account
-# selected by each trigger or manual submission. Disable both legacy default-SA
-# constraints at the project so organization-level enforcement cannot force a
-# build onto either Google-managed default identity.
-component "cloudbuild_user_specified_service_account_policy" {
-  source = "./modules/cloudbuild-user-specified-service-account-policy"
-
-  inputs = {
-    project_id          = component.project_services.project_id
-    policy_admin_member = "serviceAccount:${var.service_account_email}"
-  }
-
-  providers = {
-    google = provider.google.this
-  }
-
-  depends_on = [component.project_services]
 }
 
 # Workload Identity SAs. depends_on component.gke: the PROJECT.svc.id.goog pool
