@@ -192,7 +192,7 @@ resource "google_cloudbuild_trigger" "release" {
   project         = var.project_id
   location        = var.region
   name            = "substrate-private-release"
-  description     = "Copies reviewed Substrate v0.0.22 indexes into private GAR, scans them and writes retained evidence."
+  description     = "Copies the reviewed Substrate v0.0.22 external-control-plane-only image set into private GAR, scans it and writes retained evidence."
   service_account = google_service_account.publisher[0].id
 
   pubsub_config {

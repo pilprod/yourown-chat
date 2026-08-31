@@ -41,17 +41,13 @@ readonly expected_staging_prefix="europe-west3-docker.pkg.dev/yourown-chat/kagen
 [[ "${chart_tree}" =~ ^[0-9a-f]{40}$ ]]
 [[ "${build_id}" =~ ^[0-9A-Za-z.-]+$ ]]
 
-readonly managed_components=(
+readonly required_components=(
+  agentgateway
   ateapi
   atecontroller
-  atelet
-  ateom-gvisor
-  ateom-microvm
-  podcertcontroller
   atenet
-  substrate-release-verify
 )
-readonly all_components=("${managed_components[@]}" agentgateway)
+readonly all_components=("${required_components[@]}")
 readonly charts=(substrate substrate-crds)
 
 source_image_ref() {
@@ -62,23 +58,8 @@ source_image_ref() {
     atecontroller)
       printf '%s' 'ghcr.io/pilprod/substrate/atecontroller@sha256:0845893ae2ecfd15f580bc410db22c8daae0d6b0388eca67541154a6ec98f554'
       ;;
-    atelet)
-      printf '%s' 'ghcr.io/pilprod/substrate/atelet@sha256:b81462d5bcf1eddfc2eff6124890df9f0cab8d38d5f74d28ec7774f8b1dc8ae0'
-      ;;
-    ateom-gvisor)
-      printf '%s' 'ghcr.io/pilprod/substrate/ateom-gvisor@sha256:7e70dce48f0d93c6bf9e7a9edce0c154ff4262aa3aac3b56bcb6bdc1c7931899'
-      ;;
-    ateom-microvm)
-      printf '%s' 'ghcr.io/pilprod/substrate/ateom-microvm@sha256:1e0566ceef05a632a97d3c3bbb8bf2a23f93b60ebeeee7a1262655c03eb05e88'
-      ;;
-    podcertcontroller)
-      printf '%s' 'ghcr.io/pilprod/substrate/podcertcontroller@sha256:cbab23249412d6a48d848c52704436c3808dae468966807c0ed7007dd1f60be1'
-      ;;
     atenet)
       printf '%s' 'ghcr.io/pilprod/substrate/atenet@sha256:01d96092c93fd623dbe051479a76573da551b56be29121b11b760d9067fc8c4c'
-      ;;
-    substrate-release-verify)
-      printf '%s' 'ghcr.io/pilprod/substrate/substrate-release-verify@sha256:850d8d8ec018f49486b410a15dd38e965f1fbb4d02f8a8be36d5256f33eef74b'
       ;;
     agentgateway)
       printf '%s' "${source_agentgateway_ref}"
@@ -245,6 +226,13 @@ case "${action}" in
     done
     jq -S . <<<"${platform_digests}" \
       > "${release_inputs}/platform-image-digests.json"
+    jq -e '
+      keys == ["agentgateway", "ateapi", "atecontroller", "atenet"] and
+      all(.[];
+        keys == ["linux_amd64", "linux_arm64"] and
+        all(.[]; test("^sha256:[0-9a-f]{64}$"))
+      )
+    ' "${release_inputs}/platform-image-digests.json" >/dev/null
     ;;
 
   package-charts)
@@ -467,12 +455,7 @@ PY
       --arg release_version "${release_version}" \
       --arg ateapi "$(digest_file image ateapi)" \
       --arg atecontroller "$(digest_file image atecontroller)" \
-      --arg atelet "$(digest_file image atelet)" \
-      --arg ateom_gvisor "$(digest_file image ateom-gvisor)" \
-      --arg ateom_microvm "$(digest_file image ateom-microvm)" \
-      --arg podcertcontroller "$(digest_file image podcertcontroller)" \
       --arg atenet "$(digest_file image atenet)" \
-      --arg release_verifier "$(digest_file image substrate-release-verify)" \
       --arg agentgateway "$(digest_file image agentgateway)" \
       --arg application "${application}" \
       --arg crds "${crds}" \
@@ -484,6 +467,8 @@ PY
         schema_version: "yourown.chat/substrate-private-gar-release/v1",
         deployment_class: "dev-to-approved-prod",
         production_eligible: true,
+        supported_profiles: ["external-control-plane-only"],
+        required_components: ["agentgateway", "ateapi", "atecontroller", "atenet"],
         source: {
           repository: "https://github.com/pilprod/substrate",
           commit: $source_commit,
@@ -504,15 +489,10 @@ PY
           source_image_refs: $source_image_refs
         },
         images: {
+          agentgateway: {ref: ($prefix + "/agentgateway@" + $agentgateway), digest: $agentgateway},
           ateapi: {ref: ($prefix + "/ateapi@" + $ateapi), digest: $ateapi},
           atecontroller: {ref: ($prefix + "/atecontroller@" + $atecontroller), digest: $atecontroller},
-          atelet: {ref: ($prefix + "/atelet@" + $atelet), digest: $atelet},
-          "ateom-gvisor": {ref: ($prefix + "/ateom-gvisor@" + $ateom_gvisor), digest: $ateom_gvisor},
-          "ateom-microvm": {ref: ($prefix + "/ateom-microvm@" + $ateom_microvm), digest: $ateom_microvm},
-          podcertcontroller: {ref: ($prefix + "/podcertcontroller@" + $podcertcontroller), digest: $podcertcontroller},
-          atenet: {ref: ($prefix + "/atenet@" + $atenet), digest: $atenet},
-          releaseVerifier: {ref: ($prefix + "/substrate-release-verify@" + $release_verifier), digest: $release_verifier},
-          agentgateway: {ref: ($prefix + "/agentgateway@" + $agentgateway), digest: $agentgateway}
+          atenet: {ref: ($prefix + "/atenet@" + $atenet), digest: $atenet}
         },
         platform_image_digests: $platform_digests,
         charts: {
@@ -544,6 +524,38 @@ PY
           scanner: "Google Artifact Analysis On-Demand Scanning"
         }
       }' > "${release_dir}/release-evidence.json"
+
+    # RELEASE_EVIDENCE_GUARD_BEGIN
+    jq -e \
+      --arg release_prefix "${SUBSTRATE_RELEASE_PREFIX}" '
+      . as $evidence |
+      $evidence.supported_profiles == ["external-control-plane-only"] and
+      $evidence.required_components == ["agentgateway", "ateapi", "atecontroller", "atenet"] and
+      $evidence.copy_provenance.source_image_refs == {
+        agentgateway: "ghcr.io/kagent-dev/substrate/agentgateway@sha256:068028a256bd63c91fd6e85a471269c014747297b0ffa785feaef6967eb0c429",
+        ateapi: "ghcr.io/pilprod/substrate/ateapi@sha256:8a4cf985f809cc768e32091e39d45bce5f2e95fe43cd67f01d5e60c7df2ea868",
+        atecontroller: "ghcr.io/pilprod/substrate/atecontroller@sha256:0845893ae2ecfd15f580bc410db22c8daae0d6b0388eca67541154a6ec98f554",
+        atenet: "ghcr.io/pilprod/substrate/atenet@sha256:01d96092c93fd623dbe051479a76573da551b56be29121b11b760d9067fc8c4c"
+      } and
+      ($evidence.images | keys) == ["agentgateway", "ateapi", "atecontroller", "atenet"] and
+      ($evidence.platform_image_digests | keys) == ["agentgateway", "ateapi", "atecontroller", "atenet"] and
+      all($evidence.images | to_entries[];
+        (.value | keys) == ["digest", "ref"] and
+        (.value.digest | test("^sha256:[0-9a-f]{64}$")) and
+        .value.ref == ($release_prefix + "/" + .key + "@" + .value.digest)
+      ) and
+      all($evidence.required_components[];
+        . as $component |
+        $evidence.images[$component].digest ==
+          ($evidence.copy_provenance.source_image_refs[$component] |
+            capture("@(?<digest>sha256:[0-9a-f]{64})$").digest)
+      ) and
+      all($evidence.platform_image_digests[];
+        keys == ["linux_amd64", "linux_arm64"] and
+        all(.[]; test("^sha256:[0-9a-f]{64}$"))
+      )
+    ' "${release_dir}/release-evidence.json" >/dev/null
+    # RELEASE_EVIDENCE_GUARD_END
 
     evidence_sha_hex="$(sha256sum "${release_dir}/release-evidence.json" | cut -d' ' -f1)"
     [[ "${evidence_sha_hex}" =~ ^[0-9a-f]{64}$ ]]

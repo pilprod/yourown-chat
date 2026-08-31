@@ -2,9 +2,20 @@
 
 Substrate deployment artifacts stay private. GitHub is read-only source and the
 public, digest-qualified `v0.0.22` release is only the input to a Google Cloud
-handoff. The app-gcp publisher copies the exact image indexes, reproduces the
-two charts from the reviewed source tree, scans both runnable architectures and
-publishes passing artifacts into the existing private Google Artifact Registry.
+handoff. The app-gcp publisher is fail-closed to the Helm profile
+`external-control-plane-only`. It copies only the four image indexes rendered
+by that profile, reproduces the two charts from the reviewed source tree, scans
+both runnable architectures and publishes passing artifacts into the existing
+private Google Artifact Registry:
+
+- `agentgateway`;
+- `ateapi`;
+- `atecontroller`;
+- `atenet`.
+
+The `atelet`, `ateom-gvisor`, `ateom-microvm`, `podcertcontroller` and
+`substrate-release-verify` images are outside this profile. They are not staged,
+promoted, scanned or recorded as artifacts of this release.
 
 The applied input authorizes exactly this first handoff:
 
@@ -20,6 +31,18 @@ staging prefix:  europe-west3-docker.pkg.dev/yourown-chat/kagent-staging/substra
 The publisher does not create a second evidence bucket. It depends on and
 reuses the private, versioned kagent evidence bucket, with Substrate receipts
 isolated below `substrate/<release-version>/`.
+
+The release evidence declares the exact top-level scope:
+
+```json
+{
+  "supported_profiles": ["external-control-plane-only"],
+  "required_components": ["agentgateway", "ateapi", "atecontroller", "atenet"]
+}
+```
+
+Both `images` and `platform_image_digests` must contain exactly that component
+set. Any broader or narrower set is rejected by the producer/consumer guards.
 
 ## Release sequence
 
@@ -49,12 +72,18 @@ isolated below `substrate/<release-version>/`.
    the verifier receives those values only as ephemeral files inside Cloud
    Build. An empty URI makes kagent publication fail closed.
 
-The build stages exact source indexes into the disposable private repository,
-verifies both `linux/amd64` and `linux/arm64` manifests, blocks High or Critical
-findings, then acquires a generation-zero release lock before writing final
-references. It publishes no `latest` tag. A failure after lock acquisition burns
-the coordinate: update the exact Terraform input in a separately reviewed
-change before making another request.
+The build stages the four exact source indexes into the disposable private
+repository, verifies both `linux/amd64` and `linux/arm64` manifests and blocks
+High or Critical findings for every required component. It then acquires a
+generation-zero release lock before writing final references. It publishes no
+`latest` tag. A failure after lock acquisition burns the coordinate: update the
+exact Terraform input in a separately reviewed change before making another
+request.
+
+The earlier scan failure happened before the generation-zero lock and wrote no
+final image or chart reference. Therefore `0.0.22-private.1` remains the exact
+authorized coordinate; it must not be bumped merely because disposable staging
+objects exist.
 
 No GitHub Action, GHCR writer credential, public Artifact Registry IAM grant or
 local Docker registry login participates in this release path.
