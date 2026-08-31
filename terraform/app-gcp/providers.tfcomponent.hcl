@@ -62,6 +62,16 @@ provider "random" "this" {}
 # if that list is ever locked down.
 provider "helm" "this" {
   config {
+    # Authenticate private immutable kagent OCI charts with the same
+    # short-lived GCP token used for GKE. Helm provider v3 parses the OCI URL
+    # and logs in to its host, so retain the oci:// scheme but no repository
+    # path.
+    registries = [{
+      url      = "oci://${var.kagent_registry_location}-docker.pkg.dev"
+      username = "oauth2accesstoken"
+      password = component.gke_auth.access_token
+    }]
+
     kubernetes = {
       host                   = component.gke_auth.host
       cluster_ca_certificate = component.gke_auth.cluster_ca_certificate
