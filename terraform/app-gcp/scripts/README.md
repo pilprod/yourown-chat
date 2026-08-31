@@ -20,10 +20,15 @@ owner-controlled `0700` directory outside Git. Private staging is `0700` below
 that parent and is removed on every exit. See the release guide for validity
 defaults, minimums and the rotation procedure.
 
-For the reviewed cluster where those native Secrets already exist, its
-`adopt-existing` action invokes the fixed-contract Go helper
-`adopt-kagent-substrate-secrets.go`. That one-time path accepts no bundle or
-arbitrary Secret names. It validates the whole live contract in memory, requires
+The current GKE cluster is not eligible for `adopt-existing`: live discovery
+found both kagent client TLS Secrets absent. It must use a freshly generated
+operator bundle and `bootstrap` in a quiesced credential-rotation window,
+followed by restart or reload of every consumer and API/Broker endpoint
+verification before readiness. For a legacy cluster where the entire exact
+native Secret set already exists, `adopt-existing` invokes the fixed-contract
+Go helper `adopt-kagent-substrate-secrets.go`. That one-time path accepts no
+bundle or arbitrary Secret names. It validates the whole live contract in
+memory, requires
 the existing PostgreSQL Secret Manager value to match, uploads only empty
 targets over stdin with empty-or-one-exact retry semantics, reconciles the same
 ten Kubernetes Secrets over stdin, and removes legacy last-applied annotations

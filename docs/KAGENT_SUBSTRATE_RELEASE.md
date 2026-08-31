@@ -192,16 +192,31 @@ terraform/app-gcp/scripts/bootstrap-kagent-substrate-secrets.sh bootstrap \
   --bundle /secure/kagent-substrate-native-secrets.json
 ```
 
-### One-time adoption of the current live Secrets
+### One-time adoption of a complete legacy prestate
 
-The current cluster already has the complete native Secret set. After the
-bootstrap HCP run creates the eight missing empty Secret Manager containers,
-adopt that exact prestate without creating an owner bundle:
+Do not use this path for the current GKE cluster. Live discovery found that
+`kagent-system/kagent-ate-client-tls` and
+`kagent-dev/kagent-dev-ate-client-tls` are absent, so its native Secret set is
+not complete and cannot be adopted. Generate a fresh operator bundle and use
+`bootstrap` as shown above.
+
+For this cluster, that fresh bootstrap is a credential rotation for the
+already-running `ate-api-server`, `ate-controller` and `atenet-egress`
+workloads, not an offline first install. Run it only in a quiesced maintenance
+window with those consumers and any other users of the native Secret contract
+stopped from reconciling or serving traffic. After bootstrap, restart or reload
+every consumer, verify the API and external Broker TLS/SNI/gRPC paths, and only
+then attest `native_secret_sync_ready`.
+
+`adopt-existing` is retained only for a legacy cluster that already has the
+entire exact native Secret contract. After the bootstrap HCP run has created
+the eight missing empty Secret Manager containers, an operator may adopt that
+verified prestate without creating an owner bundle:
 
 ```sh
 terraform/app-gcp/scripts/bootstrap-kagent-substrate-secrets.sh adopt-existing \
-  --project yourown-chat \
-  --context gke_yourown-chat_europe-west3-b_europe-west3-b
+  --project <legacy-project-id> \
+  --context <complete-legacy-cluster-context>
 ```
 
 `adopt-existing` is deliberately narrower than bootstrap or rotation. It accepts
@@ -246,8 +261,9 @@ UID/resourceVersion-guarded metadata patch, then verify both the data and the
 annotation absence. A failure before or during Secret Manager upload therefore
 does not mutate Kubernetes or remove recovery metadata. The command prints only
 Secret names and Secret Manager version resource names. Run this mode only for
-the reviewed current prestate; use `bootstrap` for a fresh cluster and `sync`
-for later Secret Manager-to-Kubernetes reconciliation.
+an independently verified complete legacy prestate; use `bootstrap` when any
+contract Secret is missing and `sync` for later Secret Manager-to-Kubernetes
+reconciliation.
 
 For later reconciliation from existing Secret Manager versions, no local
 bundle is accepted:
