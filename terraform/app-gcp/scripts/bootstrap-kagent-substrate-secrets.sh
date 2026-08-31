@@ -16,11 +16,15 @@ usage() {
 Usage:
   bootstrap-kagent-substrate-secrets.sh validate --project PROJECT --bundle /secure/bundle.json
   bootstrap-kagent-substrate-secrets.sh bootstrap --project PROJECT --context KUBE_CONTEXT --bundle /secure/bundle.json
+  bootstrap-kagent-substrate-secrets.sh adopt-existing --project PROJECT --context KUBE_CONTEXT
   bootstrap-kagent-substrate-secrets.sh sync --project PROJECT --context KUBE_CONTEXT
 
 validate checks an owner-only operator bundle without contacting Google Cloud or
 Kubernetes. bootstrap validates and uploads eight versioned envelopes, reads the
 existing Cloud SQL URI, then synchronizes the exact native Secret contract.
+adopt-existing performs the one-time, fixed-contract migration from the existing
+native Kubernetes Secrets into empty Secret Manager containers. It accepts no
+bundle and keeps Secret bytes only in memory and child-process pipes.
 sync reconstructs that contract from Secret Manager without an operator bundle.
 
 The bundle must be a regular, non-symlink file owned by the current user, have
@@ -761,17 +765,17 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "${action}" in
-  validate|bootstrap|sync) ;;
-  *) usage >&2; fail "action must be validate, bootstrap or sync" ;;
+  validate|bootstrap|adopt-existing|sync) ;;
+  *) usage >&2; fail "action must be validate, bootstrap, adopt-existing or sync" ;;
 esac
 
 [[ "${project}" =~ ^[a-z][a-z0-9-]{4,28}[a-z0-9]$ ]] || fail "--project is required and must be a valid project ID"
 if [[ "${action}" == "validate" || "${action}" == "bootstrap" ]]; then
   [[ -n "${bundle}" ]] || fail "--bundle is required for ${action}"
 else
-  [[ -z "${bundle}" ]] || fail "sync reads Secret Manager and does not accept --bundle"
+  [[ -z "${bundle}" ]] || fail "${action} does not accept --bundle"
 fi
-if [[ "${action}" == "bootstrap" || "${action}" == "sync" ]]; then
+if [[ "${action}" == "bootstrap" || "${action}" == "adopt-existing" || "${action}" == "sync" ]]; then
   [[ -n "${context}" && ! "${context}" =~ [[:cntrl:]] ]] || fail "--context is required"
 fi
 
@@ -782,10 +786,23 @@ if [[ "${action}" == "bootstrap" || "${action}" == "sync" ]]; then
   need_command gcloud
   need_command kubectl
 fi
+if [[ "${action}" == "adopt-existing" ]]; then
+  need_command env
+  need_command go
+  need_command gcloud
+  need_command kubectl
+fi
 
 if [[ -n "${bundle}" ]]; then
   validate_bundle_permissions "${bundle}"
   validate_bundle_schema "${bundle}" "${project}"
+fi
+
+if [[ "${action}" == "adopt-existing" ]]; then
+  ulimit -c 0 || fail "cannot disable core dumps for memory-only adoption"
+  exec env GOWORK=off GOTRACEBACK=none go run "${script_dir}/adopt-kagent-substrate-secrets.go" \
+    --project "${project}" \
+    --context "${context}"
 fi
 
 temp_dir="$(mktemp -d "${TMPDIR:-/tmp}/kagent-substrate-secrets.XXXXXX")"

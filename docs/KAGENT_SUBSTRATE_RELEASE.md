@@ -70,9 +70,9 @@ verifies the applied bytes exactly.
 tenth Kubernetes Secret are valid. Leave it `false` after any partial or failed
 run.
 
-## Owner-only operator bundle
+## Owner-only operator bundle for a fresh bootstrap
 
-The first bootstrap requires one local JSON bundle with schema
+The fresh-cluster bootstrap requires one local JSON bundle with schema
 `yourown.chat/kagent-substrate-native-secret-bundle/v1`. It contains exactly
 `schema`, `projectId`, and the nine `secrets` records from the table. The
 PostgreSQL record uses `source: "existing-raw"` and carries no data; its current
@@ -109,13 +109,17 @@ state. The script uses a private temporary directory and deletes it on exit.
 ## Validate, bootstrap and rotate
 
 Required local commands are Bash, Python 3, `jq`, OpenSSL, ripgrep, the standard
-POSIX command-line tools, `gcloud` and `kubectl`. The operator needs `get`,
+POSIX command-line tools, `gcloud` and `kubectl`; the one-time existing-Secret
+adoption below additionally requires Go. The operator needs `get`,
 `versions.access` and `versions.add` on the nine fixed Secret Manager
 containers, and `get`/`patch` for Secrets only in `ate-system`, `kagent-system`
 and `kagent-dev`, plus `create` for the initial materialization. Because the
 preflight verifies all three namespaces, the kube identity also needs cluster-scoped
-`get` on `namespaces`. All permissions are checked before any new Secret
-Manager version is uploaded.
+`get` on `namespaces`. Kubernetes access, Secret Manager container presence and
+all required reads are checked before any new version is uploaded. Secret
+Manager itself enforces `versions.add` on the first stdin upload; that permission
+has no non-writing CLI probe, and a denial stops the run before Kubernetes is
+mutated.
 
 Validate without external writes:
 
@@ -134,6 +138,63 @@ terraform/app-gcp/scripts/bootstrap-kagent-substrate-secrets.sh bootstrap \
   --context gke_yourown-chat_europe-west3-b_europe-west3-b \
   --bundle /secure/kagent-substrate-native-secrets.json
 ```
+
+### One-time adoption of the current live Secrets
+
+The current cluster already has the complete native Secret set. After the
+bootstrap HCP run creates the eight missing empty Secret Manager containers,
+adopt that exact prestate without creating an owner bundle:
+
+```sh
+terraform/app-gcp/scripts/bootstrap-kagent-substrate-secrets.sh adopt-existing \
+  --project yourown-chat \
+  --context gke_yourown-chat_europe-west3-b_europe-west3-b
+```
+
+`adopt-existing` is deliberately narrower than bootstrap or rotation. It accepts
+no bundle and no arbitrary namespace, Kubernetes Secret or Secret Manager ID.
+It reads only the fixed nine source Secrets and the fixed derived
+`ate-system/actor-id-ca-certs`. The current `substrate-database-url` latest
+version remains authoritative and must equal the live
+`ate-system/substrate-cloud-sql` bytes exactly. Each other Secret Manager target
+must be empty, or contain exactly one enabled envelope whose decoded keys and
+bytes exactly match the live Kubernetes source. The latter state permits a safe
+retry after an interrupted initial upload; any history, disabled version or
+mismatch fails closed.
+
+The helper validates the entire PostgreSQL, pool, certificate, trust-chain, EKU,
+SAN and derived-CA contract in one Go process before the first external write.
+Secret bytes remain only in process memory and child-process pipes: there is no
+bundle, temporary payload file, `--out-file`, secret-bearing argument or raw
+child diagnostic. Core dumps and gcloud HTTP-body logging are disabled. Missing
+envelopes are uploaded with `--data-file=-`, and the exact returned version is
+read back into memory and byte-compared before Kubernetes reconciliation starts.
+
+Run the command only inside an **exclusive, quiesced adoption window**. From
+the first read until the command returns successfully, stop Secret rotation,
+controller reconciliation, manual changes to these ten Kubernetes Secrets and
+creation, enablement, disablement or destruction of versions in the nine Secret
+Manager containers. Kubernetes and Secret Manager do not provide a shared
+transaction. The helper therefore uses fail-closed phase barriers, but it cannot
+make a concurrent cross-system writer atomic; an interrupted run may leave only
+the already verified, exact Secret Manager versions and/or managed Kubernetes
+labels for a safe retry. Do not attest readiness until the command succeeds.
+
+All ten existing Kubernetes Secret UIDs and data are then reconciled with
+server-side apply over stdin and read back. Immediately before the first Secret
+Manager upload it re-reads all ten sources and requires unchanged identity, UID,
+resourceVersion and data. It then revalidates the exact metadata and payload of
+all nine Secret Manager sources immediately before Kubernetes reconciliation,
+again after the whole-set Kubernetes readback and before cleanup, and once more
+before reporting success. Only after the cleanup barrier succeeds does the
+helper remove any legacy
+`kubectl.kubernetes.io/last-applied-configuration` annotation with a
+UID/resourceVersion-guarded metadata patch, then verify both the data and the
+annotation absence. A failure before or during Secret Manager upload therefore
+does not mutate Kubernetes or remove recovery metadata. The command prints only
+Secret names and Secret Manager version resource names. Run this mode only for
+the reviewed current prestate; use `bootstrap` for a fresh cluster and `sync`
+for later Secret Manager-to-Kubernetes reconciliation.
 
 For later reconciliation from existing Secret Manager versions, no local
 bundle is accepted:
