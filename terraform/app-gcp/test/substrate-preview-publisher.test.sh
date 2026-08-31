@@ -80,6 +80,19 @@ grep -Fq 'readonly expected_release_version="0.0.22-private.1"' "${invoker}" ||
 grep -Fq 'gcloud pubsub topics publish substrate-private-release' "${invoker}" ||
   fail 'manual request must use the IAM-protected Google Pub/Sub topic'
 
+expected_component_block=$'readonly required_components=(\n  agentgateway\n  ateapi\n  atecontroller\n  atenet\n)'
+actual_component_block="$(sed -n '/^readonly required_components=(/,/^)/p' "${driver}")"
+[[ "${actual_component_block}" == "${expected_component_block}" ]] ||
+  fail 'private release component scope must remain exactly agentgateway, ateapi, atecontroller and atenet'
+grep -Fq 'readonly all_components=("${required_components[@]}")' "${driver}" ||
+  fail 'all staging, scan and promotion loops must derive from the closed required component set'
+
+for excluded in atelet ateom-gvisor ateom-microvm podcertcontroller substrate-release-verify; do
+  if grep -Fq -- "${excluded}" "${driver}"; then
+    fail "profile-excluded component leaked into private release driver: ${excluded}"
+  fi
+done
+
 for required in \
   'readonly expected_release_prefix="europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate"' \
   'readonly expected_staging_prefix="europe-west3-docker.pkg.dev/yourown-chat/kagent-staging/substrate"' \
@@ -88,6 +101,7 @@ for required in \
   'docker buildx imagetools create --tag "${candidate}" "${source_ref}"' \
   'gcloud artifacts docker images scan' \
   'for architecture in amd64 arm64' \
+  'if grep -Exq '\''CRITICAL|HIGH'\'' "${release_dir}/${evidence_prefix}-severities.txt"; then' \
   '> "${release_inputs}/platform-image-digests.json"' \
   'printf '\''%s\n'\'' "${reference}" > "${release_dir}/${evidence_prefix}-scan-target.txt"' \
   'gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0, compresslevel=9)' \
@@ -101,6 +115,15 @@ for required in \
   'docker buildx imagetools create --tag "${final}" "${staging_repository}@${expected}"' \
   'registry_visibility: "private"' \
   'schema_version: "yourown.chat/substrate-private-gar-release/v1"' \
+  'supported_profiles: ["external-control-plane-only"]' \
+  'required_components: ["agentgateway", "ateapi", "atecontroller", "atenet"]' \
+  '$evidence.copy_provenance.source_image_refs == {' \
+  '($evidence.images | keys) == ["agentgateway", "ateapi", "atecontroller", "atenet"]' \
+  '($evidence.platform_image_digests | keys) == ["agentgateway", "ateapi", "atecontroller", "atenet"]' \
+  'all($evidence.required_components[];' \
+  '. as $component |' \
+  '$evidence.images[$component].digest ==' \
+  'capture("@(?<digest>sha256:[0-9a-f]{64})$").digest)' \
   'source_image_refs: $source_image_refs' \
   'platform_image_digests: $platform_digests' \
   'package_sha256: $application_package_sha' \
@@ -112,6 +135,81 @@ for required in \
   'gcloud storage cp "${path}" "${destination}/${name}" --if-generation-match=0'; do
   grep -Fq -- "${required}" "${driver}" || fail "missing fail-closed driver contract: ${required}"
 done
+
+guard_filter="$({
+  sed -n '/# RELEASE_EVIDENCE_GUARD_BEGIN/,/# RELEASE_EVIDENCE_GUARD_END/p' "${driver}" |
+    sed '1,/--arg release_prefix/d; /^    '\'' "${release_dir}\/release-evidence.json"/,$d' |
+    sed 's/^      //'
+})"
+[[ -n "${guard_filter}" ]] || fail 'could not extract the runtime evidence guard'
+
+test_dir="$(mktemp -d)"
+trap 'rm -rf "${test_dir}"' EXIT
+release_prefix='europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate'
+valid_evidence="${test_dir}/valid-evidence.json"
+cat > "${valid_evidence}" <<'JSON'
+{
+  "supported_profiles": ["external-control-plane-only"],
+  "required_components": ["agentgateway", "ateapi", "atecontroller", "atenet"],
+  "copy_provenance": {
+    "source_image_refs": {
+      "agentgateway": "ghcr.io/kagent-dev/substrate/agentgateway@sha256:068028a256bd63c91fd6e85a471269c014747297b0ffa785feaef6967eb0c429",
+      "ateapi": "ghcr.io/pilprod/substrate/ateapi@sha256:8a4cf985f809cc768e32091e39d45bce5f2e95fe43cd67f01d5e60c7df2ea868",
+      "atecontroller": "ghcr.io/pilprod/substrate/atecontroller@sha256:0845893ae2ecfd15f580bc410db22c8daae0d6b0388eca67541154a6ec98f554",
+      "atenet": "ghcr.io/pilprod/substrate/atenet@sha256:01d96092c93fd623dbe051479a76573da551b56be29121b11b760d9067fc8c4c"
+    }
+  },
+  "images": {
+    "agentgateway": {"digest": "sha256:068028a256bd63c91fd6e85a471269c014747297b0ffa785feaef6967eb0c429", "ref": "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate/agentgateway@sha256:068028a256bd63c91fd6e85a471269c014747297b0ffa785feaef6967eb0c429"},
+    "ateapi": {"digest": "sha256:8a4cf985f809cc768e32091e39d45bce5f2e95fe43cd67f01d5e60c7df2ea868", "ref": "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate/ateapi@sha256:8a4cf985f809cc768e32091e39d45bce5f2e95fe43cd67f01d5e60c7df2ea868"},
+    "atecontroller": {"digest": "sha256:0845893ae2ecfd15f580bc410db22c8daae0d6b0388eca67541154a6ec98f554", "ref": "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate/atecontroller@sha256:0845893ae2ecfd15f580bc410db22c8daae0d6b0388eca67541154a6ec98f554"},
+    "atenet": {"digest": "sha256:01d96092c93fd623dbe051479a76573da551b56be29121b11b760d9067fc8c4c", "ref": "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate/atenet@sha256:01d96092c93fd623dbe051479a76573da551b56be29121b11b760d9067fc8c4c"}
+  },
+  "platform_image_digests": {
+    "agentgateway": {"linux_amd64": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "linux_arm64": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+    "ateapi": {"linux_amd64": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "linux_arm64": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+    "atecontroller": {"linux_amd64": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "linux_arm64": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+    "atenet": {"linux_amd64": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "linux_arm64": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}
+  }
+}
+JSON
+
+jq -e --arg release_prefix "${release_prefix}" "${guard_filter}" "${valid_evidence}" >/dev/null ||
+  fail 'runtime evidence guard rejected the exact reviewed evidence contract'
+
+digest_mismatch="${test_dir}/digest-mismatch.json"
+jq '.images.ateapi.digest = "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" |
+    .images.ateapi.ref = "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate/ateapi@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"' \
+  "${valid_evidence}" > "${digest_mismatch}"
+if jq -e --arg release_prefix "${release_prefix}" "${guard_filter}" "${digest_mismatch}" >/dev/null; then
+  fail 'runtime evidence guard accepted an image digest that differs from its pinned source ref'
+fi
+
+source_ref_mismatch="${test_dir}/source-ref-mismatch.json"
+jq '.copy_provenance.source_image_refs.ateapi = "ghcr.io/pilprod/substrate/ateapi@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" |
+    .images.ateapi.digest = "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" |
+    .images.ateapi.ref = "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate/ateapi@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"' \
+  "${valid_evidence}" > "${source_ref_mismatch}"
+if jq -e --arg release_prefix "${release_prefix}" "${guard_filter}" "${source_ref_mismatch}" >/dev/null; then
+  fail 'runtime evidence guard accepted a source ref outside the four reviewed GHCR pins'
+fi
+
+for source_ref in \
+  'ghcr.io/kagent-dev/substrate/agentgateway@sha256:068028a256bd63c91fd6e85a471269c014747297b0ffa785feaef6967eb0c429' \
+  'ghcr.io/pilprod/substrate/ateapi@sha256:8a4cf985f809cc768e32091e39d45bce5f2e95fe43cd67f01d5e60c7df2ea868' \
+  'ghcr.io/pilprod/substrate/atecontroller@sha256:0845893ae2ecfd15f580bc410db22c8daae0d6b0388eca67541154a6ec98f554' \
+  'ghcr.io/pilprod/substrate/atenet@sha256:01d96092c93fd623dbe051479a76573da551b56be29121b11b760d9067fc8c4c'; do
+  [[ "$(grep -Fc -- "${source_ref}" "${driver}")" -eq 2 ]] ||
+    fail "pinned source ref must appear once in the copier and once in the runtime evidence guard: ${source_ref}"
+done
+
+images_block="$(sed -n '/^        images: {/,/^        },/p' "${driver}")"
+for component in agentgateway ateapi atecontroller atenet; do
+  grep -Eq "^[[:space:]]+${component}: \\{ref:" <<<"${images_block}" ||
+    fail "release evidence images is missing required component ${component}"
+done
+[[ "$(grep -Ec '^[[:space:]]+[a-z][a-z0-9-]*: \{ref:' <<<"${images_block}")" -eq 4 ]] ||
+  fail 'release evidence images must contain exactly the four required profile components'
 
 [[ "$(grep -Fc 'package_sha256: $application_package_sha' "${driver}")" -eq 2 ]] ||
   fail 'application archive SHA must be retained in both release evidence and receipt'
