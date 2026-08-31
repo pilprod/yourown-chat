@@ -18,12 +18,26 @@ kagent release lifecycle:
 `dev.kagent.yourown.chat` is a deep hostname. Universal SSL on the full
 `yourown.chat` zone covers only the apex and first-level wildcard, while Total
 TLS does not issue certificates for Cloudflare Tunnel hostnames. The Zero Trust
-module therefore orders one Advanced Certificate Manager pack containing
-`yourown.chat`, `*.yourown.chat`, and every deep private upstream (currently
-`dev.kagent.yourown.chat`). The apex and wildcard preserve all existing
-first-level endpoints when Cloudflare replaces the Universal pack. The account
-must already have the paid Advanced Certificate Manager entitlement, and the
-HCP varset API token must carry `SSL and Certificates Read` and `Write`.
+module therefore declares one Advanced Certificate Manager pack containing
+exactly `yourown.chat`, `*.yourown.chat`, and every deep private upstream
+(currently `dev.kagent.yourown.chat`). The apex and wildcard preserve all
+existing first-level endpoints when Cloudflare replaces the Universal pack.
+
+The paid pack is fail-closed. Both the component variable default and the
+current deployment input `zero_trust_advanced_certificate_enabled` are
+`false`, so normal plans do not try to order a certificate when the account
+lacks Advanced Certificate Manager. DNS, Tunnel and Access resources still
+exist, but the deep development hostname cannot complete edge TLS until this
+gate is enabled.
+
+Enable the gate only after Advanced Certificate Manager is active for the zone
+and the HCP varset API token carries `SSL and Certificates Read` and `Write`.
+Terraform cannot purchase that entitlement. Set the deployment input to
+`true`, review that the plan creates only
+`cloudflare_certificate_pack.deep_upstreams["default"]` with the exact hosts
+above, apply it, wait for the pack to become active, and then verify the TLS and
+Access flow at `https://dev.kagent.yourown.chat`. Leave the gate `false` if the
+entitlement or token permissions are absent.
 
 Cloud Deploy promotes the same immutable kagent release from development to
 production. Each stage runs an independent control-plane release in its own
