@@ -87,11 +87,12 @@ locals {
   }
 }
 
-# Requires the zone's Advanced Certificate Manager entitlement plus API-token
-# SSL and Certificates Read/Write. Certificate-pack fields are ForceNew in the
-# Cloudflare v5 provider, so overlap old and new packs during future rotations.
+# Fail closed until the paid zone entitlement and API-token SSL and
+# Certificates Read/Write permissions are confirmed explicitly. Certificate-
+# pack fields are ForceNew in the Cloudflare v5 provider, so overlap old and
+# new packs during future rotations.
 resource "cloudflare_certificate_pack" "deep_upstreams" {
-  for_each = length(local.deep_upstream_hostnames) > 0 ? toset(["default"]) : toset([])
+  for_each = var.advanced_certificate_manager_enabled && length(local.deep_upstream_hostnames) > 0 ? toset(["default"]) : toset([])
 
   zone_id               = var.zone_id
   type                  = "advanced"

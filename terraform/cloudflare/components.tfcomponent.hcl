@@ -93,13 +93,14 @@ component "zero_trust" {
 
   inputs = {
     # Derived from the zone lookup -- no hand-copied dashboard value.
-    account_id       = one([for c in component.cloudflare : c.account_id])
-    zone_id          = one([for c in component.cloudflare : c.zone_id])
-    domain           = var.domain
-    mcp_portal_subdomain = var.zero_trust_mcp_portal_subdomain
-    upstreams        = var.zero_trust_upstreams
-    public_upstreams = var.zero_trust_public_upstreams
-    allowed_emails   = var.zero_trust_allowed_emails
+    account_id                           = one([for c in component.cloudflare : c.account_id])
+    zone_id                              = one([for c in component.cloudflare : c.zone_id])
+    domain                               = var.domain
+    advanced_certificate_manager_enabled = var.zero_trust_advanced_certificate_enabled
+    mcp_portal_subdomain                 = var.zero_trust_mcp_portal_subdomain
+    upstreams                            = var.zero_trust_upstreams
+    public_upstreams                     = var.zero_trust_public_upstreams
+    allowed_emails                       = var.zero_trust_allowed_emails
   }
 
   providers = {

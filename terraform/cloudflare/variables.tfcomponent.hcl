@@ -79,6 +79,12 @@ variable "zero_trust_mcp_portal_subdomain" {
   default     = "tools"
 }
 
+variable "zero_trust_advanced_certificate_enabled" {
+  type        = bool
+  description = "Fail-closed opt-in for the paid Advanced Certificate Manager pack covering deep Zero Trust upstream hostnames. Enable only after the zone entitlement and API-token SSL and Certificates permissions are confirmed."
+  default     = false
+}
+
 variable "cloudflare_proxied" {
   type        = bool
   description = "Whether the apex A record is proxied (orange cloud). Keep true so Cloudflare fronts the origin."

@@ -18,6 +18,12 @@ variable "domain" {
   description = "Zone apex; each upstream key becomes <key>.<domain>."
 }
 
+variable "advanced_certificate_manager_enabled" {
+  type        = bool
+  description = "Fail-closed opt-in for the paid Advanced Certificate Manager pack covering deep private-upstream hostnames. Enable only after the zone entitlement and API-token permissions are confirmed."
+  default     = false
+}
+
 variable "mcp_portal_subdomain" {
   type        = string
   description = "DNS label used by the shared MCP tool gateway. Keep agents.<domain> available for the future agent control plane."

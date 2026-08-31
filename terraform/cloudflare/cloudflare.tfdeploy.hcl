@@ -78,6 +78,9 @@ deployment "yourown-chat" {
     zero_trust_enabled        = true
     zero_trust_team_name      = "yourown-chat"
     zero_trust_allowed_emails = ["ilya@papou.email"]
+    # Fail closed: Terraform must not order a paid Advanced certificate until
+    # the zone entitlement and token permissions are confirmed out of band.
+    zero_trust_advanced_certificate_enabled = false
     zero_trust_upstreams = merge(
       {
         for hostname, route in local.private_http_routes :
