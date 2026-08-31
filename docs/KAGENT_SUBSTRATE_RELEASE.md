@@ -80,6 +80,43 @@ value is read from `substrate-database-url`. Each of the other eight uses
 `source: "operator-envelope-v1"` and an exact `data` map whose values are
 canonical base64 of the file bytes. Base64 is encoding, not encryption.
 
+Generate that bundle locally; do not hand-assemble it or reuse Preview PKI:
+
+```sh
+install -d -m 0700 /absolute/path/on-an-encrypted-volume/substrate-bootstrap
+
+terraform/app-gcp/scripts/generate-kagent-substrate-operator-bundle.sh \
+  --project yourown-chat \
+  --output /absolute/path/on-an-encrypted-volume/substrate-bootstrap/operator-bundle.json
+```
+
+The output path must be absolute, normalized and nonexistent. Its parent must
+already be a real, current-user-owned `0700` directory with no symlink
+component and outside every Git worktree or Git metadata directory. The helper
+uses `0700` private staging below that parent, cleans it on every exit, invokes
+the existing fixed-contract validator, and publishes one non-linked regular
+file with mode `0600`. It performs no network, Secret Manager, Kubernetes or
+Terraform operation. The file contains unencrypted private keys; keep it on an
+encrypted volume and remove it through the approved credential handling process
+after bootstrap evidence and recovery requirements are satisfied.
+
+Every run creates wholly new ECDSA P-256 material signed with SHA-256:
+
+- distinct API server, API client, egress server and actor root CAs;
+- exactly six key-plus-leaf credential bundles, with the private key first and
+  no embedded CA certificate; trust roots remain in separate contract files;
+- exactly the two DNS SANs and four SPIFFE URI SANs listed below, one SAN and
+  one server/client EKU per leaf;
+- exactly one ES256 JWT authority with ID `1`; and
+- exactly one root-only actor CA with ID `1` and no intermediates.
+
+CA validity defaults to 3650 days and may be set from 365 through 7300 with
+`--ca-validity-days`. Leaf validity defaults to 365 days and may be set from 30
+through 825 with `--leaf-validity-days`; it must be shorter than CA validity.
+The validator requires at least 365 days remaining for every root and 30 days
+remaining for every leaf, with a five-minute issuance/validation tolerance.
+Defaults intentionally leave a large rotation window.
+
 A record has this shape (use the exact IDs, namespace, name and keys from the
 table):
 
@@ -105,6 +142,22 @@ directory. The MVP actor CA pool is root-only and rejects non-empty
 to Google Secret Manager through `--data-file` and to Kubernetes through
 server-side apply on stdin; they do not enter HCL, Terraform plans or Terraform
 state. The script uses a private temporary directory and deletes it on exit.
+
+For rotation, generate a new bundle rather than extending or reusing any key.
+Schedule the operation before a leaf reaches 30 days remaining or a root reaches
+365 days remaining. During initial activation, keep
+`native_secret_sync_ready = false` until synchronization and verification have
+completed. For an already active release, do not toggle the Terraform readiness
+or Helm ownership gates as a rotation mechanism; quiesce the clients through
+the operational maintenance procedure, validate the new bundle locally, and
+run `bootstrap` in that controlled window.
+After each `versions add`, bootstrap parses the exact returned version resource,
+reads that numbered version back and byte-compares it, then refetches those same
+numbered versions for materialization; a concurrent change to `latest` cannot
+silently change the rollout. Complete workload restart or reload and endpoint
+verification before separately attesting readiness. Preserve the prior enabled
+versions until rollback evidence is no longer required; version disablement or
+destruction is a separate reviewed operation.
 
 ## Validate, bootstrap and rotate
 
@@ -206,8 +259,11 @@ terraform/app-gcp/scripts/bootstrap-kagent-substrate-secrets.sh sync \
 ```
 
 Both write modes validate every payload before Kubernetes mutation. Checks
-cover PostgreSQL URI shape, closed pool JSON, pool private-key/certificate
-matching, credential-bundle order, key/leaf matching, trust chains, TLS EKU,
+cover PostgreSQL URI shape, closed single-entry pool JSON, pool
+private-key/certificate matching, exact key-plus-leaf credential-bundle order,
+P-256 keys, ECDSA/SHA-256 signatures, distinct keys/certificates/serials,
+self-signed CA constraints and minimum remaining lifetimes, key/leaf matching,
+trust chains, exact single TLS EKU,
 and these identities:
 
 - server DNS SANs `api.ate-system.svc` and

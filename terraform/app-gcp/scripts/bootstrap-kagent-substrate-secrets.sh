@@ -6,6 +6,8 @@ umask 077
 readonly bundle_schema="yourown.chat/kagent-substrate-native-secret-bundle/v1"
 readonly payload_schema="yourown.chat/native-secret-envelope/v1"
 readonly field_manager="yourown-chat-secret-bootstrap"
+readonly minimum_ca_remaining_seconds=$((365 * 24 * 60 * 60 - 300))
+readonly minimum_leaf_remaining_seconds=$((30 * 24 * 60 * 60 - 300))
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 repo_root="$(cd "${script_dir}/../../.." && pwd -P)"
@@ -88,6 +90,10 @@ data_path() {
   printf '%s/%s.%s\n' "${temp_dir}" "$1" "$2"
 }
 
+uploaded_version_path() {
+  printf '%s/%s.uploaded-version\n' "${temp_dir}" "$1"
+}
+
 portable_mode() {
   local value=""
   value="$(stat -f '%Lp' "$1" 2>/dev/null || true)"
@@ -132,8 +138,10 @@ validate_bundle_permissions() {
       ;;
   esac
   canonical_parent="$(dirname -- "${canonical}")"
-  inside_worktree="$(git -C "${canonical_parent}" rev-parse --is-inside-work-tree 2>/dev/null || true)"
-  inside_git_dir="$(git -C "${canonical_parent}" rev-parse --is-inside-git-dir 2>/dev/null || true)"
+  inside_worktree="$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_CEILING_DIRECTORIES -u GIT_DISCOVERY_ACROSS_FILESYSTEM \
+    git -C "${canonical_parent}" rev-parse --is-inside-work-tree 2>/dev/null || true)"
+  inside_git_dir="$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_CEILING_DIRECTORIES -u GIT_DISCOVERY_ACROSS_FILESYSTEM \
+    git -C "${canonical_parent}" rev-parse --is-inside-git-dir 2>/dev/null || true)"
   if [[ "${inside_worktree}" == "true" || "${inside_git_dir}" == "true" ]]; then
     fail "bundle must live outside every Git worktree and Git metadata directory"
   fi
@@ -314,12 +322,37 @@ materialize_payload() {
 validate_ca_bundle() {
   local file="$1"
   local label="$2"
-  if rg -q -- 'BEGIN (EC |RSA )?PRIVATE KEY' "${file}"; then
-    fail "${label} trust bundle contains a private key"
-  fi
-  rg -q -- 'BEGIN CERTIFICATE' "${file}" || fail "${label} trust bundle contains no certificate"
-  openssl crl2pkcs7 -nocrl -certfile "${file}" 2>/dev/null | \
-    openssl pkcs7 -print_certs -noout >/dev/null 2>&1 || fail "${label} is not a valid PEM certificate bundle"
+  local key_usage=""
+
+  python3 -I - "${file}" <<'PY' >/dev/null 2>&1 || \
+    fail "${label} trust bundle must contain exactly one PEM certificate and no other PEM or private-key data"
+import re
+import sys
+
+data = open(sys.argv[1], "rb").read()
+pattern = re.compile(br"-----BEGIN ([A-Z0-9 ]+)-----.*?-----END \1-----", re.DOTALL)
+blocks = list(pattern.finditer(data))
+if len(blocks) != 1 or blocks[0].group(1) != b"CERTIFICATE":
+    raise SystemExit(1)
+if data[:blocks[0].start()].strip() or data[blocks[0].end():].strip():
+    raise SystemExit(1)
+PY
+  openssl x509 -in "${file}" -noout >/dev/null 2>&1 || fail "${label} is not a valid PEM certificate"
+  openssl x509 -in "${file}" -noout -checkend 0 >/dev/null 2>&1 || fail "${label} certificate is expired"
+  openssl x509 -in "${file}" -noout -checkend "${minimum_ca_remaining_seconds}" >/dev/null 2>&1 || \
+    fail "${label} certificate has less than 365 days of remaining validity"
+  openssl verify -check_ss_sig -CAfile "${file}" "${file}" >/dev/null 2>&1 || \
+    fail "${label} certificate is not a valid self-signed root"
+  openssl x509 -in "${file}" -text -noout 2>/dev/null | \
+    grep -Fq 'CA:TRUE' || fail "${label} certificate is not a CA"
+  key_usage="$(openssl x509 -in "${file}" -noout -ext keyUsage 2>/dev/null)" || \
+    fail "${label} key usage is unreadable"
+  grep -Fq 'Certificate Sign' <<<"${key_usage}" || fail "${label} certificate does not permit certificate signing"
+  openssl x509 -in "${file}" -pubkey -noout 2>/dev/null | \
+    openssl pkey -pubin -text -noout 2>/dev/null | \
+    grep -Eq -- 'prime256v1|P-256' || fail "${label} certificate public key is not ECDSA P-256"
+  openssl x509 -in "${file}" -text -noout 2>/dev/null | \
+    grep -Fq 'Signature Algorithm: ecdsa-with-SHA256' || fail "${label} certificate is not signed with ECDSA/SHA-256"
 }
 
 split_credential_bundle() {
@@ -340,12 +373,12 @@ for left, right in zip(blocks, blocks[1:]):
 key_types = {b"PRIVATE KEY", b"RSA PRIVATE KEY", b"EC PRIVATE KEY"}
 keys = [block for block in blocks if block.group(1) in key_types]
 certs = [block for block in blocks if block.group(1) == b"CERTIFICATE"]
-if len(keys) != 1 or blocks[0].group(1) not in key_types or len(certs) < 1 or len(blocks) != 1 + len(certs):
-    raise SystemExit("credential bundle must be one private key followed by a leaf-first certificate chain")
+if len(blocks) != 2 or len(keys) != 1 or len(certs) != 1 or blocks[0].group(1) not in key_types or blocks[1].group(1) != b"CERTIFICATE":
+    raise SystemExit("credential bundle must be exactly one private key followed by exactly one leaf certificate")
 for path, content in (
     (key_path, keys[0].group(0) + b"\n"),
     (leaf_path, certs[0].group(0) + b"\n"),
-    (chain_path, b"\n".join(cert.group(0) for cert in certs[1:]) + (b"\n" if len(certs) > 1 else b"")),
+    (chain_path, b""),
 ):
     with open(path, "wb") as handle:
         handle.write(content)
@@ -368,12 +401,33 @@ verify_leaf_with_ca() {
   fi
 }
 
-require_san() {
+require_exact_certificate_extension() {
   local leaf="$1"
-  local san="$2"
-  openssl x509 -in "${leaf}" -noout -ext subjectAltName 2>/dev/null | \
-    tr ',' '\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | \
-    grep -Fx -- "${san}" >/dev/null || fail "certificate is missing required SAN ${san}"
+  local extension="$2"
+  local expected="$3"
+  local label="$4"
+  local actual=""
+
+  actual="$(openssl x509 -in "${leaf}" -noout -ext "${extension}" 2>/dev/null | \
+    sed '1d; s/^[[:space:]]*//; s/[[:space:]]*$//' | tr ',' '\n' | \
+    sed 's/^[[:space:]]*//; s/[[:space:]]*$//; /^[[:space:]]*$/d')" || \
+    fail "${label} certificate extension is unreadable"
+  [[ "${actual}" == "${expected}" ]] || fail "${label} certificate must contain exactly ${expected}"
+}
+
+require_exact_san() {
+  require_exact_certificate_extension "$1" subjectAltName "$2" SAN
+}
+
+require_exact_eku() {
+  local purpose="$2"
+  local expected=""
+  case "${purpose}" in
+    sslserver) expected='TLS Web Server Authentication' ;;
+    sslclient) expected='TLS Web Client Authentication' ;;
+    *) fail "unsupported certificate purpose: ${purpose}" ;;
+  esac
+  require_exact_certificate_extension "$1" extendedKeyUsage "${expected}" EKU
 }
 
 validate_credential_bundle() {
@@ -386,12 +440,24 @@ validate_credential_bundle() {
   split_credential_bundle "${bundle_file}" "${prefix}.key.pem" "${prefix}.leaf.pem" "${prefix}.chain.pem" || \
     fail "${prefix} credential bundle layout is invalid"
   openssl pkey -in "${prefix}.key.pem" -noout >/dev/null 2>&1 || fail "${prefix} private key is invalid"
+  openssl pkey -in "${prefix}.key.pem" -text -noout 2>/dev/null | \
+    grep -Eq -- 'prime256v1|P-256' || fail "${prefix} private key is not ECDSA P-256"
   openssl x509 -in "${prefix}.leaf.pem" -noout -checkend 0 >/dev/null 2>&1 || fail "${prefix} leaf certificate is invalid or expired"
+  openssl x509 -in "${prefix}.leaf.pem" -noout -checkend "${minimum_leaf_remaining_seconds}" >/dev/null 2>&1 || \
+    fail "${prefix} leaf certificate has less than 30 days of remaining validity"
+  openssl x509 -in "${prefix}.leaf.pem" -pubkey -noout 2>/dev/null | \
+    openssl pkey -pubin -text -noout 2>/dev/null | \
+    grep -Eq -- 'prime256v1|P-256' || fail "${prefix} leaf certificate public key is not ECDSA P-256"
+  openssl x509 -in "${prefix}.leaf.pem" -text -noout 2>/dev/null | \
+    grep -Fq 'Signature Algorithm: ecdsa-with-SHA256' || fail "${prefix} leaf certificate is not signed with ECDSA/SHA-256"
+  openssl x509 -in "${prefix}.leaf.pem" -text -noout 2>/dev/null | \
+    grep -Fq 'CA:FALSE' || fail "${prefix} leaf certificate does not explicitly prohibit CA use"
   openssl pkey -in "${prefix}.key.pem" -pubout -outform DER 2>/dev/null | openssl dgst -sha256 -binary > "${prefix}.key.hash"
   openssl x509 -in "${prefix}.leaf.pem" -pubkey -noout 2>/dev/null | openssl pkey -pubin -outform DER 2>/dev/null | openssl dgst -sha256 -binary > "${prefix}.cert.hash"
   cmp -s "${prefix}.key.hash" "${prefix}.cert.hash" || fail "${prefix} private key does not match the leaf certificate"
   verify_leaf_with_ca "${prefix}" "${ca_file}" "${purpose}"
-  require_san "${prefix}.leaf.pem" "${san}"
+  require_exact_san "${prefix}.leaf.pem" "${san}"
+  require_exact_eku "${prefix}.leaf.pem" "${purpose}"
 }
 
 validate_pool_json() {
@@ -417,30 +483,31 @@ except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
     raise SystemExit(f"invalid {kind} pool JSON: {error}")
 
 if kind == "jwt":
-    if not isinstance(document, dict) or set(document) != {"Authorities"} or not isinstance(document["Authorities"], list) or not document["Authorities"]:
-        raise SystemExit("JWT pool must contain a non-empty Authorities array")
+    if not isinstance(document, dict) or set(document) != {"Authorities"} or not isinstance(document["Authorities"], list) or len(document["Authorities"]) != 1:
+        raise SystemExit("JWT pool must contain exactly one authority")
     expected = {"ID", "Algorithm", "SigningKeyPKCS8", "SigningKeyPEM"}
     ids = set()
     for item in document["Authorities"]:
         if not isinstance(item, dict) or set(item) != expected:
             raise SystemExit("JWT authority has an unexpected shape")
-        if not isinstance(item["ID"], str) or not item["ID"] or item["ID"] in ids or item["Algorithm"] != "ES256" or item["SigningKeyPEM"] != "":
+        if item["ID"] != "1" or item["ID"] in ids or item["Algorithm"] != "ES256" or item["SigningKeyPEM"] != "":
             raise SystemExit("JWT authority ID/algorithm/key encoding is invalid")
         ids.add(item["ID"])
         try:
-            if not base64.b64decode(item["SigningKeyPKCS8"], validate=True):
+            decoded = base64.b64decode(item["SigningKeyPKCS8"], validate=True)
+            if not decoded or base64.b64encode(decoded).decode("ascii") != item["SigningKeyPKCS8"]:
                 raise ValueError()
         except (TypeError, ValueError, base64.binascii.Error):
             raise SystemExit("JWT authority PKCS8 key is invalid")
 elif kind == "ca":
-    if not isinstance(document, dict) or set(document) != {"CAs"} or not isinstance(document["CAs"], list) or not document["CAs"]:
-        raise SystemExit("CA pool must contain a non-empty CAs array")
+    if not isinstance(document, dict) or set(document) != {"CAs"} or not isinstance(document["CAs"], list) or len(document["CAs"]) != 1:
+        raise SystemExit("CA pool must contain exactly one root CA")
     expected = {"ID", "SigningKeyPKCS8", "SigningKeyPEM", "RootCertificateDER", "RootCertificatePEM", "IntermediateCertificatesDER"}
     ids = set()
     for item in document["CAs"]:
         if not isinstance(item, dict) or set(item) != expected:
             raise SystemExit("CA entry has an unexpected shape")
-        if not isinstance(item["ID"], str) or not item["ID"] or item["ID"] in ids or item["SigningKeyPEM"] != "" or item["RootCertificatePEM"] != "":
+        if item["ID"] != "1" or item["ID"] in ids or item["SigningKeyPEM"] != "" or item["RootCertificatePEM"] != "":
             raise SystemExit("CA entry ID/key/certificate encoding is invalid")
         ids.add(item["ID"])
         if item["IntermediateCertificatesDER"] is None:
@@ -451,7 +518,8 @@ elif kind == "ca":
             raise SystemExit("CA intermediate certificates are not supported by the root-only MVP contract")
         for field in ("SigningKeyPKCS8", "RootCertificateDER"):
             try:
-                if not base64.b64decode(item[field], validate=True):
+                decoded = base64.b64decode(item[field], validate=True)
+                if not decoded or base64.b64encode(decoded).decode("ascii") != item[field]:
                     raise ValueError()
             except (TypeError, ValueError, base64.binascii.Error):
                 raise SystemExit(f"CA entry {field} is invalid")
@@ -480,6 +548,8 @@ validate_jwt_pool() {
   while (( index < count )); do
     key_file="${temp_dir}/jwt-authority-${index}.der"
     decode_json_base64_field "${pool}" ".Authorities[${index}].SigningKeyPKCS8" "${key_file}"
+    openssl pkcs8 -inform DER -in "${key_file}" -nocrypt -out /dev/null >/dev/null 2>&1 || \
+      fail "JWT authority ${index} is not an unencrypted PKCS8 private key"
     openssl pkey -inform DER -in "${key_file}" -text -noout 2>/dev/null | \
       grep -Eq -- 'prime256v1|P-256' || fail "JWT authority ${index} is not an ECDSA P-256 private key"
     index=$((index + 1))
@@ -506,7 +576,11 @@ validate_ca_pool_and_derive() {
     cert_hash="${temp_dir}/actor-ca-${index}.cert.hash"
     decode_json_base64_field "${pool}" ".CAs[${index}].SigningKeyPKCS8" "${key_file}"
     decode_json_base64_field "${pool}" ".CAs[${index}].RootCertificateDER" "${cert_file}"
+    openssl pkcs8 -inform DER -in "${key_file}" -nocrypt -out /dev/null >/dev/null 2>&1 || \
+      fail "actor CA ${index} private key is not unencrypted PKCS8"
     openssl pkey -inform DER -in "${key_file}" -noout >/dev/null 2>&1 || fail "actor CA ${index} private key is invalid"
+    openssl pkey -inform DER -in "${key_file}" -text -noout 2>/dev/null | \
+      grep -Eq -- 'prime256v1|P-256' || fail "actor CA ${index} private key is not ECDSA P-256"
     openssl x509 -inform DER -in "${cert_file}" -noout -checkend 0 >/dev/null 2>&1 || fail "actor CA ${index} certificate is invalid or expired"
     not_before="$(LC_ALL=C openssl x509 -inform DER -in "${cert_file}" -noout -startdate 2>/dev/null)" || \
       fail "actor CA ${index} certificate validity start is unreadable"
@@ -537,6 +611,40 @@ PY
   jq -Rs --arg schema "${payload_schema}" \
     '{schema: $schema, data: {"ca.crt": @base64}}' "$(data_path actor_id_ca_certs ca.crt)" > "$(payload_path actor_id_ca_certs)"
   validate_payload_schema "$(payload_path actor_id_ca_certs)" actor_id_ca_certs
+}
+
+certificate_hash() {
+  openssl x509 -in "$1" -outform DER 2>/dev/null | openssl dgst -sha256 -binary | openssl base64 -A
+}
+
+certificate_public_key_hash() {
+  openssl x509 -in "$1" -pubkey -noout 2>/dev/null | \
+    openssl pkey -pubin -outform DER 2>/dev/null | openssl dgst -sha256 -binary | openssl base64 -A
+}
+
+private_key_public_hash() {
+  local format="$1"
+  local file="$2"
+  if [[ "${format}" == "DER" ]]; then
+    openssl pkey -inform DER -in "${file}" -pubout -outform DER 2>/dev/null | \
+      openssl dgst -sha256 -binary | openssl base64 -A
+  else
+    openssl pkey -in "${file}" -pubout -outform DER 2>/dev/null | \
+      openssl dgst -sha256 -binary | openssl base64 -A
+  fi
+}
+
+certificate_serial() {
+  openssl x509 -in "$1" -noout -serial 2>/dev/null | sed 's/^serial=//'
+}
+
+require_all_distinct() {
+  local label="$1"
+  shift
+  local expected="$#"
+  local actual=""
+  actual="$(printf '%s\n' "$@" | sort -u | wc -l | tr -d '[:space:]')"
+  [[ "${actual}" == "${expected}" ]] || fail "${label} must all be distinct"
 }
 
 validate_postgres_uri() {
@@ -574,6 +682,7 @@ validate_materialized_contract() {
   local kagent_server_ca="$(data_path kagent_client_tls server-ca.pem)"
   local kagent_dev_bundle="$(data_path kagent_dev_client_tls client-credential-bundle.pem)"
   local kagent_dev_server_ca="$(data_path kagent_dev_client_tls server-ca.pem)"
+  local actor_ca="$(data_path actor_id_ca_certs ca.crt)"
 
   if [[ -f "${postgres_file}" ]]; then
     validate_postgres_uri "${postgres_file}"
@@ -603,6 +712,37 @@ validate_materialized_contract() {
     'URI:spiffe://cluster.local/ns/kagent-system/sa/kagent-controller' "${temp_dir}/kagent-client"
   validate_credential_bundle "${kagent_dev_bundle}" "${api_client_ca}" sslclient \
     'URI:spiffe://cluster.local/ns/kagent-dev/sa/kagent-controller' "${temp_dir}/kagent-dev-client"
+
+  local api_root_hash="$(certificate_hash "${controller_server_ca}")"
+  [[ "$(certificate_hash "${egress_client_server_ca}")" == "${api_root_hash}" ]] || \
+    fail "atenet authorizer must trust the exact ate-api server root"
+  [[ "$(certificate_hash "${kagent_server_ca}")" == "${api_root_hash}" ]] || \
+    fail "kagent must trust the exact ate-api server root"
+  [[ "$(certificate_hash "${kagent_dev_server_ca}")" == "${api_root_hash}" ]] || \
+    fail "kagent dev must trust the exact ate-api server root"
+
+  local root_files=("${controller_server_ca}" "${api_client_ca}" "${egress_server_ca}" "${actor_ca}")
+  local leaf_files=(
+    "${temp_dir}/api-server.leaf.pem"
+    "${temp_dir}/egress-server.leaf.pem"
+    "${temp_dir}/controller-client.leaf.pem"
+    "${temp_dir}/egress-client.leaf.pem"
+    "${temp_dir}/kagent-client.leaf.pem"
+    "${temp_dir}/kagent-dev-client.leaf.pem"
+  )
+  local certificate_hashes=()
+  local public_key_hashes=()
+  local serials=()
+  local file=""
+  for file in "${root_files[@]}" "${leaf_files[@]}"; do
+    certificate_hashes+=("$(certificate_hash "${file}")")
+    public_key_hashes+=("$(certificate_public_key_hash "${file}")")
+    serials+=("$(certificate_serial "${file}")")
+  done
+  public_key_hashes+=("$(private_key_public_hash DER "${temp_dir}/jwt-authority-0.der")")
+  require_all_distinct "root and leaf certificates" "${certificate_hashes[@]}"
+  require_all_distinct "root, leaf and JWT authority keys" "${public_key_hashes[@]}"
+  require_all_distinct "root and leaf certificate serials" "${serials[@]}"
 }
 
 ensure_secret_containers() {
@@ -630,14 +770,38 @@ fetch_operator_payloads() {
   local secret_id=""
   local source=""
   local payload=""
+  local version="latest"
+  local uploaded_version=""
   while IFS='|' read -r logical secret_id _ _ source _; do
     [[ "${source}" == "operator-envelope-v1" ]] || continue
     payload="$(payload_path "${logical}")"
+    uploaded_version="$(uploaded_version_path "${logical}")"
+    version="latest"
+    if [[ -f "${uploaded_version}" ]]; then
+      read -r version < "${uploaded_version}"
+      [[ "${version}" =~ ^[1-9][0-9]*$ ]] || fail "recorded Secret Manager version is invalid: ${secret_id}"
+    fi
     rm -f -- "${payload}"
-    gcloud secrets versions access latest --secret="${secret_id}" --project="${project}" --out-file="${payload}" >/dev/null || \
+    gcloud secrets versions access "${version}" --secret="${secret_id}" --project="${project}" --out-file="${payload}" >/dev/null || \
       fail "Secret Manager payload is unavailable: ${secret_id}"
     validate_payload_schema "${payload}" "${logical}"
   done < <(source_contract_records)
+}
+
+secret_version_number() {
+  local secret_id="$1"
+  local version_name="$2"
+  python3 -I - "${secret_id}" "${version_name}" <<'PY'
+import re
+import sys
+
+secret_id, version_name = sys.argv[1:]
+pattern = re.compile(r"projects/[^/]+/secrets/" + re.escape(secret_id) + r"/versions/([1-9][0-9]*)")
+match = pattern.fullmatch(version_name)
+if match is None:
+    raise SystemExit(1)
+print(match.group(1))
+PY
 }
 
 upload_operator_payloads() {
@@ -647,14 +811,21 @@ upload_operator_payloads() {
   local payload=""
   local fetched=""
   local version_name=""
+  local version_number=""
+  local version_record=""
   while IFS='|' read -r logical secret_id _ _ source _; do
     [[ "${source}" == "operator-envelope-v1" ]] || continue
     payload="$(payload_path "${logical}")"
     version_name="$(gcloud secrets versions add "${secret_id}" --project="${project}" --data-file="${payload}" --format='value(name)')" || \
       fail "failed to add a Secret Manager version for ${secret_id}"
     [[ -n "${version_name}" ]] || fail "Secret Manager returned no version identifier for ${secret_id}"
+    version_number="$(secret_version_number "${secret_id}" "${version_name}")" || \
+      fail "Secret Manager returned an invalid version identifier for ${secret_id}"
+    version_record="$(uploaded_version_path "${logical}")"
+    printf '%s\n' "${version_number}" > "${version_record}"
+    chmod 0600 "${version_record}"
     fetched="${temp_dir}/${logical}.fetched.json"
-    gcloud secrets versions access latest --secret="${secret_id}" --project="${project}" --out-file="${fetched}" >/dev/null || \
+    gcloud secrets versions access "${version_number}" --secret="${secret_id}" --project="${project}" --out-file="${fetched}" >/dev/null || \
       fail "new Secret Manager version is unreadable: ${secret_id}"
     cmp -s "${payload}" "${fetched}" || fail "new Secret Manager version differs from the validated envelope: ${secret_id}"
     mv -f -- "${fetched}" "${payload}"
@@ -779,7 +950,7 @@ if [[ "${action}" == "bootstrap" || "${action}" == "adopt-existing" || "${action
   [[ -n "${context}" && ! "${context}" =~ [[:cntrl:]] ]] || fail "--context is required"
 fi
 
-for command_name in python3 jq openssl stat id mktemp find awk sed grep rg cmp git dirname; do
+for command_name in env python3 jq openssl stat id mktemp find awk sed grep rg cmp git dirname sort tr wc; do
   need_command "${command_name}"
 done
 if [[ "${action}" == "bootstrap" || "${action}" == "sync" ]]; then
