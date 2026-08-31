@@ -49,9 +49,18 @@ require_literal "$deployment" 'domain               = "yourown.chat"'
 require_literal "$zero_trust_module" 'resource "cloudflare_zero_trust_access_application" "this"'
 require_literal "$zero_trust_module" 'for_each = var.upstreams'
 require_literal "$zero_trust_module" 'domain           = "${each.key}.${var.domain}"'
+require_literal "$zero_trust_module" 'resource "cloudflare_certificate_pack" "deep_upstreams"'
+require_literal "$zero_trust_module" 'if strcontains(label, ".")'
+require_literal "$zero_trust_module" '[var.domain, "*.${var.domain}"]'
+require_literal "$zero_trust_module" 'certificate_authority = "lets_encrypt"'
+require_literal "$zero_trust_module" 'validation_method     = "txt"'
+require_literal "$zero_trust_module" 'validity_days         = 90'
+require_literal "$zero_trust_module" 'create_before_destroy = true'
+forbid_literal "$zero_trust_module" 'resource "cloudflare_total_tls"'
 
 require_literal "$cloudflare_docs" 'https://dev.kagent.yourown.chat'
 require_literal "$cloudflare_docs" 'https://kagent.yourown.chat'
+require_literal "$cloudflare_docs" 'Advanced Certificate Manager'
 require_literal "$cloudflare_docs" 'does not carry Agent Host, agentgateway, A2A, or Temporal traffic'
 
 terraform -chdir="$cloudflare_dir" fmt -check -recursive >/dev/null
