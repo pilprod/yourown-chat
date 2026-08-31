@@ -289,8 +289,26 @@ if [[ "$1 $2" == "secrets describe" ]]; then
   printf 'projects/test-project/secrets/%s\n' "$3"
 elif [[ "$1 $2 $3" == "secrets versions list" ]]; then
   secret="$4"
+  list_count_file="${store}/versions-list-count"
+  list_count=0
+  if [[ -f "${list_count_file}" ]]; then read -r list_count < "${list_count_file}"; fi
+  list_count="$((list_count + 1))"
+  printf '%s\n' "${list_count}" > "${list_count_file}"
+  if [[ "${MOCK_SM_VERSION_DRIFT_AT_LIST_COUNT:-}" == "${list_count}" && "${MOCK_SM_VERSION_DRIFT_SECRET:-}" == "${secret}" ]]; then
+    case "${MOCK_SM_VERSION_DRIFT_MODE:-}" in
+      add) : > "${store}/${secret}.extra-version" ;;
+      disable) : > "${store}/${secret}.disabled-version" ;;
+      *) exit 13 ;;
+    esac
+  fi
   if [[ -f "${store}/${secret}" ]]; then
-    printf '[{"name":"projects/test-project/secrets/%s/versions/1","state":"ENABLED"}]\n' "${secret}"
+    if [[ -f "${store}/${secret}.extra-version" ]]; then
+      printf '[{"name":"projects/test-project/secrets/%s/versions/1","state":"ENABLED"},{"name":"projects/test-project/secrets/%s/versions/2","state":"ENABLED"}]\n' "${secret}" "${secret}"
+    elif [[ -f "${store}/${secret}.disabled-version" ]]; then
+      printf '[{"name":"projects/test-project/secrets/%s/versions/1","state":"DISABLED"}]\n' "${secret}"
+    else
+      printf '[{"name":"projects/test-project/secrets/%s/versions/1","state":"ENABLED"}]\n' "${secret}"
+    fi
   else
     printf '[]\n'
   fi
@@ -361,6 +379,10 @@ elif [[ "${joined}" == *' apply '* ]]; then
   if [[ "${MOCK_FAIL_APPLY_SECRET:-}" == "${name}" ]]; then
     exit 10
   fi
+  if [[ "${MOCK_SM_POSTGRES_VERSION_ADD_ON_APPLY_SECRET:-}" == "${name}" && ! -e "${store}/postgres-drift-triggered" ]]; then
+    : > "${MOCK_SECRET_STORE:?}/substrate-database-url.extra-version"
+    : > "${store}/postgres-drift-triggered"
+  fi
   destination="${store}/${namespace}__${name}.json"
   if [[ -f "${destination}" ]]; then
     uid="$(jq -er '.metadata.uid' "${destination}")"
@@ -420,7 +442,20 @@ elif [[ "${joined}" == *' get secret '* ]]; then
     if [[ "${previous}" == 'secret' ]]; then name="${arg}"; fi
     previous="${arg}"
   done
-  cat "${store}/${namespace}__${name}.json"
+  destination="${store}/${namespace}__${name}.json"
+  get_count_file="${store}/secret-get-count"
+  get_count=0
+  if [[ -f "${get_count_file}" ]]; then read -r get_count < "${get_count_file}"; fi
+  get_count="$((get_count + 1))"
+  printf '%s\n' "${get_count}" > "${get_count_file}"
+  if [[ "${MOCK_KUBE_DRIFT_AT_GET_COUNT:-}" == "${get_count}" && "${MOCK_KUBE_DRIFT_SECRET:-}" == "${namespace}/${name}" ]]; then
+    jq '
+      .metadata.resourceVersion = (((.metadata.resourceVersion | tonumber) + 1) | tostring) |
+      .data["client-ca.pem"] = .data["server-credential-bundle.pem"]
+    ' "${destination}" > "${destination}.next"
+    mv -f -- "${destination}.next" "${destination}"
+  fi
+  cat "${destination}"
 else
   exit 2
 fi

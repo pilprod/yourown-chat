@@ -32,6 +32,15 @@ reset_operator_secret_manager_versions() {
   : > "${work}/secret-store/versions-add.log"
 }
 
+reset_drift_state() {
+  rm -f -- \
+    "${work}/secret-store/versions-list-count" \
+    "${work}/secret-store/"*.extra-version \
+    "${work}/secret-store/"*.disabled-version \
+    "${work}/kube-store/secret-get-count" \
+    "${work}/kube-store/postgres-drift-triggered"
+}
+
 assert_last_applied_count() {
   local expected="$1"
   local actual=""
@@ -66,9 +75,11 @@ rg -Fq -- 'kubectl.kubernetes.io~1last-applied-configuration' "${adopter}" || fa
 rg -Fq -- 'CLOUDSDK_CORE_LOG_HTTP=false' "${adopter}" || fail "gcloud HTTP payload logging is not forced off"
 rg -Fq -- 'ulimit -c 0' "${bootstrap}" || fail "memory-only adoption does not disable core dumps"
 rg -Fq -- 'bootstrap-kagent-substrate-secrets.sh adopt-existing' "${release_doc}" || fail "release guide omits the one-time adoption command"
+rg -Fq -- 'exclusive, quiesced adoption window' "${release_doc}" || fail "release guide omits the exclusive adoption window"
 rg -Fq -- 'empty-or-one-exact retry semantics' "${scripts_readme}" || fail "script README omits adoption retry semantics"
 
 reset_operator_secret_manager_versions
+reset_drift_state
 assert_last_applied_count 10
 snapshot_secret_data "${work}/before-adoption.sha256"
 
@@ -137,6 +148,26 @@ grep -Fq 'differs from the Kubernetes source' "${work}/expected.stderr" || fail 
 assert_last_applied_count 10
 rm -f -- "${work}/secret-store/substrate-ate-api-tls"
 
+# Drift the API Secret's resourceVersion and exact data on its second read,
+# which occurs in the whole-set barrier immediately before the first possible
+# Secret Manager upload. Nothing may be uploaded and all recovery annotations
+# must remain.
+cp "${work}/kube-store/ate-system__substrate-ate-api-tls.json" "${work}/api-pre-upload.original.json"
+printf '0\n' > "${work}/kube-store/secret-get-count"
+expect_fail "adopt-existing Kubernetes pre-upload drift" \
+  env PATH="${work}/mock-bin:${PATH}" \
+  TMPDIR="${runtime_tmp}" \
+  MOCK_SECRET_STORE="${work}/secret-store" \
+  MOCK_KUBE_STORE="${work}/kube-store" \
+  MOCK_KUBE_DRIFT_AT_GET_COUNT=12 \
+  MOCK_KUBE_DRIFT_SECRET="ate-system/substrate-ate-api-tls" \
+  "${bootstrap}" adopt-existing --project test-project --context test-context
+grep -Fq 'changed during pre-upload validation' "${work}/expected.stderr" || fail "pre-upload Kubernetes drift diagnostic is missing"
+[[ ! -s "${work}/secret-store/versions-add.log" ]] || fail "Kubernetes pre-upload drift did not fail before Secret Manager writes"
+assert_last_applied_count 10
+cp "${work}/api-pre-upload.original.json" "${work}/kube-store/ate-system__substrate-ate-api-tls.json"
+reset_drift_state
+
 # Fail the third upload. The first two exact envelopes remain as retry evidence;
 # no Kubernetes mutation or annotation cleanup is permitted after this failure.
 expect_fail "adopt-existing interrupted upload" \
@@ -162,6 +193,43 @@ expect_fail "adopt-existing interrupted reconciliation" \
 [[ "$(wc -l < "${work}/secret-store/versions-add.log" | tr -d ' ')" == 8 ]] || fail "reconciliation failure did not leave the exact eight uploaded envelopes"
 assert_last_applied_count 10
 
+# Add a PostgreSQL Secret Manager version while Kubernetes reconciliation is in
+# progress. The post-readback metadata barrier must fail before any last-applied
+# annotation is removed.
+reset_drift_state
+expect_fail "adopt-existing PostgreSQL version-add reconciliation drift" \
+  env PATH="${work}/mock-bin:${PATH}" \
+  TMPDIR="${runtime_tmp}" \
+  MOCK_SECRET_STORE="${work}/secret-store" \
+  MOCK_KUBE_STORE="${work}/kube-store" \
+  MOCK_SM_POSTGRES_VERSION_ADD_ON_APPLY_SECRET="actor-id-jwt-pool" \
+  "${bootstrap}" adopt-existing --project test-project --context test-context
+grep -Fq 'container substrate-database-url changed during adoption' "${work}/expected.stderr" || fail "PostgreSQL version-add drift diagnostic is missing"
+assert_last_applied_count 10
+reset_drift_state
+
+# The first envelope list in the post-reconciliation cleanup barrier is call
+# 20: nine initial classifications, nine pre-reconciliation validations,
+# PostgreSQL at call 19, then api_tls. Both a concurrent version addition and a
+# disable must fail before annotation cleanup begins.
+for drift_mode in add disable; do
+  printf '0\n' > "${work}/secret-store/versions-list-count"
+  expect_fail "adopt-existing envelope ${drift_mode} cleanup drift" \
+    env PATH="${work}/mock-bin:${PATH}" \
+    TMPDIR="${runtime_tmp}" \
+    MOCK_SECRET_STORE="${work}/secret-store" \
+    MOCK_KUBE_STORE="${work}/kube-store" \
+    MOCK_SM_VERSION_DRIFT_AT_LIST_COUNT=20 \
+    MOCK_SM_VERSION_DRIFT_SECRET="substrate-ate-api-tls" \
+    MOCK_SM_VERSION_DRIFT_MODE="${drift_mode}" \
+    "${bootstrap}" adopt-existing --project test-project --context test-context
+  grep -Fq 'changed during adoption' "${work}/expected.stderr" || fail "envelope ${drift_mode} drift diagnostic is missing"
+  assert_last_applied_count 10
+  reset_drift_state
+done
+
+printf '0\n' > "${work}/secret-store/versions-list-count"
+
 adoption_output="$(
   PATH="${work}/mock-bin:${PATH}" \
   TMPDIR="${runtime_tmp}" \
@@ -173,6 +241,7 @@ adoption_output="$(
 [[ "$(wc -l < "${work}/secret-store/versions-add.log" | tr -d ' ')" == 8 ]] || fail "retry did not reuse the exact uploaded envelopes"
 [[ "$(find "${work}/kube-store" -type f -name '*.json' | wc -l | tr -d ' ')" == 10 ]] || fail "adoption changed the fixed Kubernetes Secret set"
 assert_last_applied_count 0
+[[ "$(cat "${work}/secret-store/versions-list-count")" == 36 ]] || fail "successful adoption did not execute all four nine-source Secret Manager barriers"
 snapshot_secret_data "${work}/after-adoption.sha256"
 cmp -s "${work}/before-adoption.sha256" "${work}/after-adoption.sha256" || fail "adoption changed native Kubernetes Secret bytes"
 

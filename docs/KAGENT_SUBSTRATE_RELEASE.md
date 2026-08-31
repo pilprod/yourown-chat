@@ -170,9 +170,24 @@ child diagnostic. Core dumps and gcloud HTTP-body logging are disabled. Missing
 envelopes are uploaded with `--data-file=-`, and the exact returned version is
 read back into memory and byte-compared before Kubernetes reconciliation starts.
 
+Run the command only inside an **exclusive, quiesced adoption window**. From
+the first read until the command returns successfully, stop Secret rotation,
+controller reconciliation, manual changes to these ten Kubernetes Secrets and
+creation, enablement, disablement or destruction of versions in the nine Secret
+Manager containers. Kubernetes and Secret Manager do not provide a shared
+transaction. The helper therefore uses fail-closed phase barriers, but it cannot
+make a concurrent cross-system writer atomic; an interrupted run may leave only
+the already verified, exact Secret Manager versions and/or managed Kubernetes
+labels for a safe retry. Do not attest readiness until the command succeeds.
+
 All ten existing Kubernetes Secret UIDs and data are then reconciled with
-server-side apply over stdin and read back. Only after the whole exact set has
-succeeded does the helper remove any legacy
+server-side apply over stdin and read back. Immediately before the first Secret
+Manager upload it re-reads all ten sources and requires unchanged identity, UID,
+resourceVersion and data. It then revalidates the exact metadata and payload of
+all nine Secret Manager sources immediately before Kubernetes reconciliation,
+again after the whole-set Kubernetes readback and before cleanup, and once more
+before reporting success. Only after the cleanup barrier succeeds does the
+helper remove any legacy
 `kubectl.kubernetes.io/last-applied-configuration` annotation with a
 UID/resourceVersion-guarded metadata patch, then verify both the data and the
 annotation absence. A failure before or during Secret Manager upload therefore

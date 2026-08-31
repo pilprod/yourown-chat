@@ -24,6 +24,8 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -78,6 +80,10 @@ type kubernetesSecret struct {
 type secretVersion struct {
 	Name  string `json:"name"`
 	State string `json:"state"`
+}
+
+type secretManagerSnapshot struct {
+	versions map[string][]secretVersion
 }
 
 type envelope struct {
@@ -192,7 +198,7 @@ func (a *adopter) adopt() error {
 
 	secrets := make(map[string]*kubernetesSecret, len(sourceContract)+1)
 	data := make(map[string]map[string][]byte, len(sourceContract)+1)
-	for _, spec := range append(append([]sourceSpec(nil), sourceContract...), derivedContract) {
+	for _, spec := range kubernetesContract() {
 		secret, err := a.getKubernetesSecret(spec)
 		if err != nil {
 			return err
@@ -214,7 +220,15 @@ func (a *adopter) adopt() error {
 			return err
 		}
 	}
-	postgres, err := a.accessSecretVersion(sourceContract[0], "latest")
+	postgresVersions, err := a.listSecretVersions(sourceContract[0])
+	if err != nil {
+		return err
+	}
+	postgresVersion, err := a.latestEnabledVersion(sourceContract[0], postgresVersions)
+	if err != nil {
+		return err
+	}
+	postgres, err := a.accessSecretVersion(sourceContract[0], a.versionNumber(sourceContract[0], postgresVersion.Name))
 	if err != nil {
 		return err
 	}
@@ -256,6 +270,14 @@ func (a *adopter) adopt() error {
 		}
 	}
 
+	// The validation above can be long enough for a live controller or operator
+	// to change one of the sources. Re-read the complete fixed set immediately
+	// before the first possible Secret Manager write and require the original
+	// UID, resourceVersion, identity and exact data.
+	if err := a.revalidateKubernetesSnapshot(secrets, data); err != nil {
+		return err
+	}
+
 	for _, spec := range pending {
 		versionName, err := a.addSecretVersion(spec, payloads[spec.logical])
 		if err != nil {
@@ -271,31 +293,21 @@ func (a *adopter) adopt() error {
 		fmt.Printf("added Secret Manager version %s\n", versionName)
 	}
 
-	// Re-list and re-read every target after all uploads. This detects concurrent
-	// version creation and makes a partially completed prior run safely resumable.
-	for _, spec := range sourceContract[1:] {
-		versions, err := a.listSecretVersions(spec)
-		if err != nil {
-			return err
-		}
-		if len(versions) != 1 || versions[0].State != "ENABLED" {
-			return fmt.Errorf("Secret Manager container %s changed during adoption", spec.secretID)
-		}
-		current, err := a.accessSecretVersion(spec, a.versionNumber(spec, versions[0].Name))
-		if err != nil {
-			return err
-		}
-		if err := compareEnvelope(spec, data[spec.logical], current); err != nil {
-			return err
-		}
+	// Capture the exact nine-source Secret Manager state immediately before
+	// Kubernetes reconciliation. PostgreSQL history must be unchanged since the
+	// initial comparison; every adoption target must now be one exact enabled
+	// envelope.
+	managerSnapshot, err := a.captureSecretManagerSnapshot(data, postgresVersions)
+	if err != nil {
+		return err
 	}
 
-	for _, spec := range append(append([]sourceSpec(nil), sourceContract...), derivedContract) {
+	for _, spec := range kubernetesContract() {
 		if err := a.reconcileSecret(spec, secrets[spec.logical], data[spec.logical]); err != nil {
 			return err
 		}
 	}
-	for _, spec := range append(append([]sourceSpec(nil), sourceContract...), derivedContract) {
+	for _, spec := range kubernetesContract() {
 		verified, err := a.getKubernetesSecret(spec)
 		if err != nil {
 			return err
@@ -305,15 +317,20 @@ func (a *adopter) adopt() error {
 		}
 		secrets[spec.logical] = verified
 	}
+	// This is the cleanup gate: if PostgreSQL or any envelope changed while the
+	// Kubernetes set was being reconciled, preserve every recovery annotation.
+	if err := a.revalidateSecretManagerSnapshot(managerSnapshot, data); err != nil {
+		return err
+	}
 
 	// Remove the client-side apply snapshot only after every version and every
 	// exact Kubernetes value has been reconciled and read back successfully.
-	for _, spec := range append(append([]sourceSpec(nil), sourceContract...), derivedContract) {
+	for _, spec := range kubernetesContract() {
 		if err := a.removeLastApplied(spec, secrets[spec.logical]); err != nil {
 			return err
 		}
 	}
-	for _, spec := range append(append([]sourceSpec(nil), sourceContract...), derivedContract) {
+	for _, spec := range kubernetesContract() {
 		verified, err := a.getKubernetesSecret(spec)
 		if err != nil {
 			return err
@@ -324,9 +341,21 @@ func (a *adopter) adopt() error {
 		if _, exists := verified.Metadata.Annotations["kubectl.kubernetes.io/last-applied-configuration"]; exists {
 			return fmt.Errorf("last-applied annotation remains on %s/%s", spec.namespace, spec.kubernetes)
 		}
+	}
+	// A last full Secret Manager barrier prevents a drifted adoption from being
+	// reported as successful. Cross-system atomicity still requires the
+	// documented exclusive adoption window.
+	if err := a.revalidateSecretManagerSnapshot(managerSnapshot, data); err != nil {
+		return err
+	}
+	for _, spec := range kubernetesContract() {
 		fmt.Printf("adopted Kubernetes Secret %s/%s\n", spec.namespace, spec.kubernetes)
 	}
 	return nil
+}
+
+func kubernetesContract() []sourceSpec {
+	return append(append([]sourceSpec(nil), sourceContract...), derivedContract)
 }
 
 func (a *adopter) checkKubernetesAccess() error {
@@ -370,6 +399,20 @@ func (a *adopter) getKubernetesSecret(spec sourceSpec) (*kubernetesSecret, error
 	return &secret, nil
 }
 
+func (a *adopter) revalidateKubernetesSnapshot(expected map[string]*kubernetesSecret, data map[string]map[string][]byte) error {
+	for _, spec := range kubernetesContract() {
+		current, err := a.getKubernetesSecret(spec)
+		if err != nil {
+			return err
+		}
+		original := expected[spec.logical]
+		if original == nil || current.Metadata.UID != original.Metadata.UID || current.Metadata.ResourceVersion != original.Metadata.ResourceVersion || !equalData(current.Data, data[spec.logical]) {
+			return fmt.Errorf("Kubernetes Secret changed during pre-upload validation: %s/%s", spec.namespace, spec.kubernetes)
+		}
+	}
+	return nil
+}
+
 func (a *adopter) ensureSecretContainer(secretID string) error {
 	output, err := runCommand("Secret Manager container is unavailable: "+secretID, nil, "gcloud", "secrets", "describe", secretID, "--project="+a.project, "--format=value(name)")
 	if err != nil || strings.TrimSpace(string(output)) == "" {
@@ -387,15 +430,131 @@ func (a *adopter) listSecretVersions(spec sourceSpec) ([]secretVersion, error) {
 	if err := json.Unmarshal(output, &versions); err != nil {
 		return nil, fmt.Errorf("Secret Manager version metadata is invalid: %s", spec.secretID)
 	}
+	seen := make(map[string]struct{}, len(versions))
 	for _, version := range versions {
-		if a.versionNumber(spec, version.Name) == "" {
+		number := a.versionNumber(spec, version.Name)
+		if number == "" {
+			return nil, fmt.Errorf("Secret Manager version identity is invalid: %s", spec.secretID)
+		}
+		if _, err := strconv.ParseUint(number, 10, 64); err != nil {
 			return nil, fmt.Errorf("Secret Manager version identity is invalid: %s", spec.secretID)
 		}
 		if version.State == "" {
 			return nil, fmt.Errorf("Secret Manager version state is missing: %s", spec.secretID)
 		}
+		if _, duplicate := seen[number]; duplicate {
+			return nil, fmt.Errorf("Secret Manager version identity is duplicated: %s", spec.secretID)
+		}
+		seen[number] = struct{}{}
 	}
+	sort.Slice(versions, func(i, j int) bool {
+		left, _ := strconv.ParseUint(a.versionNumber(spec, versions[i].Name), 10, 64)
+		right, _ := strconv.ParseUint(a.versionNumber(spec, versions[j].Name), 10, 64)
+		return left < right
+	})
 	return versions, nil
+}
+
+func (a *adopter) latestEnabledVersion(spec sourceSpec, versions []secretVersion) (secretVersion, error) {
+	if len(versions) == 0 || versions[len(versions)-1].State != "ENABLED" {
+		return secretVersion{}, fmt.Errorf("Secret Manager container %s has no enabled latest version", spec.secretID)
+	}
+	return versions[len(versions)-1], nil
+}
+
+func (a *adopter) captureSecretManagerSnapshot(data map[string]map[string][]byte, expectedPostgresVersions []secretVersion) (*secretManagerSnapshot, error) {
+	snapshot := &secretManagerSnapshot{versions: make(map[string][]secretVersion, len(sourceContract))}
+	for index, spec := range sourceContract {
+		versions, err := a.listSecretVersions(spec)
+		if err != nil {
+			return nil, err
+		}
+		if index == 0 {
+			if !equalSecretVersions(versions, expectedPostgresVersions) {
+				return nil, fmt.Errorf("Secret Manager container %s changed during adoption", spec.secretID)
+			}
+			selected, err := a.latestEnabledVersion(spec, versions)
+			if err != nil {
+				return nil, err
+			}
+			current, err := a.accessSecretVersion(spec, a.versionNumber(spec, selected.Name))
+			if err != nil {
+				return nil, err
+			}
+			if err := validatePostgresURI(current); err != nil {
+				return nil, err
+			}
+			if !bytes.Equal(current, data[spec.logical]["connection-string"]) {
+				return nil, fmt.Errorf("Secret Manager PostgreSQL value changed during adoption: %s", spec.secretID)
+			}
+		} else {
+			if len(versions) != 1 || versions[0].State != "ENABLED" {
+				return nil, fmt.Errorf("Secret Manager container %s changed during adoption", spec.secretID)
+			}
+			current, err := a.accessSecretVersion(spec, a.versionNumber(spec, versions[0].Name))
+			if err != nil {
+				return nil, err
+			}
+			if err := compareEnvelope(spec, data[spec.logical], current); err != nil {
+				return nil, err
+			}
+		}
+		snapshot.versions[spec.logical] = cloneSecretVersions(versions)
+	}
+	return snapshot, nil
+}
+
+func (a *adopter) revalidateSecretManagerSnapshot(expected *secretManagerSnapshot, data map[string]map[string][]byte) error {
+	if expected == nil || len(expected.versions) != len(sourceContract) {
+		return errors.New("Secret Manager adoption snapshot is incomplete")
+	}
+	for index, spec := range sourceContract {
+		versions, err := a.listSecretVersions(spec)
+		if err != nil {
+			return err
+		}
+		if !equalSecretVersions(versions, expected.versions[spec.logical]) {
+			return fmt.Errorf("Secret Manager container %s changed during adoption", spec.secretID)
+		}
+		selected := versions[0]
+		if index == 0 {
+			selected, err = a.latestEnabledVersion(spec, versions)
+			if err != nil {
+				return err
+			}
+		}
+		current, err := a.accessSecretVersion(spec, a.versionNumber(spec, selected.Name))
+		if err != nil {
+			return err
+		}
+		if index == 0 {
+			if err := validatePostgresURI(current); err != nil {
+				return err
+			}
+			if !bytes.Equal(current, data[spec.logical]["connection-string"]) {
+				return fmt.Errorf("Secret Manager PostgreSQL value changed during adoption: %s", spec.secretID)
+			}
+		} else if err := compareEnvelope(spec, data[spec.logical], current); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func cloneSecretVersions(versions []secretVersion) []secretVersion {
+	return append([]secretVersion(nil), versions...)
+}
+
+func equalSecretVersions(left, right []secretVersion) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
 }
 
 func (a *adopter) versionNumber(spec sourceSpec, name string) string {

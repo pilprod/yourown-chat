@@ -17,9 +17,14 @@ arbitrary Secret names. It validates the whole live contract in memory, requires
 the existing PostgreSQL Secret Manager value to match, uploads only empty
 targets over stdin with empty-or-one-exact retry semantics, reconciles the same
 ten Kubernetes Secrets over stdin, and removes legacy last-applied annotations
-only after exact whole-set readback. Secret payloads are never written to a
-file, command argument or diagnostic. Later reconciliation remains the `sync`
-action and flows from Secret Manager to Kubernetes.
+only after exact whole-set readback and a second nine-source Secret Manager
+barrier. It rechecks the original Kubernetes UID, resourceVersion and bytes
+immediately before the first possible upload, and performs a final nine-source
+barrier before success. Secret payloads are never written to a file, command
+argument or diagnostic. Because Kubernetes and Secret Manager have no shared
+transaction, run adoption in the exclusive, quiesced window described in the
+release guide. Later reconciliation remains the `sync` action and flows from
+Secret Manager to Kubernetes.
 
 ## Public semver consumer evidence
 
