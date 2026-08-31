@@ -564,7 +564,10 @@ resource "google_cloudbuild_trigger" "release" {
     options {
       disk_size_gb = 200
       logging      = "CLOUD_LOGGING_ONLY"
-      machine_type = "E2_HIGHCPU_32"
+      # Keep the regional default-pool machine. New projects can have only five
+      # E2 CPUs of default-pool quota, so either high-CPU option (8 or 32 vCPU)
+      # can be rejected before the first build step runs. The two-hour timeout
+      # remains the explicit capacity bound for the multi-platform build.
     }
   }
 
