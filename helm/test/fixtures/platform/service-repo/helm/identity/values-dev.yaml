@@ -1,7 +1,0 @@
-# Development overlay: records only intentional differences.
-identity-api:
-  runtime:
-    priorityClass: development
-identity-migrate:
-  runtime:
-    priorityClass: development

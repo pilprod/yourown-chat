@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Platform policy check for a rendered manifest produced from platform profile
-# charts. Used by the release assembler before a Cloud Deploy release is
-# created and by helm/test/platform-lib.sh. Exit 1 with one line per
-# violation; exit 0 when the manifest satisfies the platform invariants.
+# charts. Used by helm/test/platform-lib.sh for every profile render. Exit 1
+# with one line per violation; exit 0 when the manifest satisfies the platform
+# invariants.
 set -euo pipefail
 
 file="${1:?usage: policy-check.sh <rendered-manifest.yaml>}"

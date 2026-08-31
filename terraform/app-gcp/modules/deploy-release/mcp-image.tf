@@ -45,16 +45,6 @@ resource "google_artifact_registry_repository_iam_member" "mcp_writer" {
   member     = "serviceAccount:${google_service_account.mcp_build.email}"
 }
 
-resource "google_artifact_registry_repository_iam_member" "mcp_chart_reader" {
-  count = var.helm_chart_repository == null ? 0 : 1
-
-  project    = var.project_id
-  location   = var.helm_chart_repository.location
-  repository = var.helm_chart_repository.repository_id
-  role       = "roles/artifactregistry.reader"
-  member     = "serviceAccount:${google_service_account.mcp_build.email}"
-}
-
 resource "google_clouddeploy_delivery_pipeline_iam_member" "mcp_source_releaser" {
   for_each = { for name, value in var.delivery_pipelines : name => value if name == "mcp" }
 
@@ -226,10 +216,6 @@ resource "google_cloudbuild_trigger" "mcp_source" {
           echo "MCP branch verification completed; no release is created"
           exit 0
         fi
-        if [ "${var.wrapper_releases_enabled}" = "true" ]; then
-          echo "Legacy chart release path is superseded by the wrapper-release step"
-          exit 0
-        fi
 
         google_cloud_digest="$$(cat /workspace/google-cloud-image-digest)"
         terraform_stacks_digest="$$(cat /workspace/terraform-stacks-image-digest)"
@@ -257,81 +243,8 @@ resource "google_cloudbuild_trigger" "mcp_source" {
       ]
     }
 
-    step {
-      id         = "wrapper-release"
-      name       = "gcr.io/google.com/cloudsdktool/cloud-sdk:slim"
-      entrypoint = "bash"
-      args = ["-ceu", <<-EOT
-        if [ "${var.wrapper_releases_enabled}" != "true" ] || [ -z "$TAG_NAME" ]; then
-          echo "Wrapper-based release path is disabled or this is not a release tag"
-          exit 0
-        fi
-
-        platform_dir=/workspace/yourown-chat
-        ${indent(8, local.helm_install_script)}
-        ${indent(8, local.helm_registry_login_script)}
-
-        tunnel_repo="${local.artifact_repository_prefix}/mcp-cloudflared"
-        tunnel_digest="$$(gcloud artifacts docker images describe \
-          "$$tunnel_repo:runtime" --format='value(image_summary.digest)')"
-        [ -n "$$tunnel_digest" ] || { echo "Pinned cloudflared runtime digest was not found" >&2; exit 1; }
-        image_args="--image mcp-cloudflared=$$tunnel_repo@$$tunnel_digest"
-        for server in google-cloud terraform-stacks; do
-          image_args="$$image_args --image mcp-$$server=$$(cat "/workspace/$$server-image-uri")"
-        done
-        platform_sha="$$(git -C /workspace/yourown-chat rev-parse HEAD)"
-
-        bash /workspace/yourown-chat/helm/platform/release/assemble.sh \
-          --repo "$$PWD" \
-          --out /workspace/release-source \
-          --evidence /workspace/release-evidence \
-          --chart-registry "${local.chart_registry}" \
-          ${join(" ", [for profile in local.wrapper_profiles.mcp : "--profile ${profile}"])} \
-          --cleanup-action cleanup-mcp-dev=mcp-dev \
-          --actions /workspace/yourown-chat/helm/platform/release/actions/mcp-capability-sync.yaml \
-          ${local.wrapper_identity_args} \
-          --secret-project "${var.project_id}" ${local.wrapper_dns_arg} \
-          --source-revision "$COMMIT_SHA" \
-          --platform-revision "$$platform_sha" \
-          $$image_args
-
-        safe_tag="$$(printf '%s' "$TAG_NAME" | tr '.' '-')"
-        release_name="mcp-$$safe_tag"
-        set +e
-        output="$$(gcloud deploy releases create "$$release_name" \
-          --project "${var.project_id}" \
-          --region "${var.region}" \
-          --delivery-pipeline "mcp" \
-          --source /workspace/release-source \
-          --gcs-source-staging-dir "gs://${google_storage_bucket.source.name}/source" \
-          --deploy-parameters "$$(cat /workspace/release-source/deploy-parameters)" \
-          --annotations "source-repo=${local.mcp_source_slug},git-tag=$TAG_NAME,git-sha=$COMMIT_SHA,build-id=$BUILD_ID,platform-sha=$$platform_sha,render=platform-wrapper" 2>&1)"
-        status=$$?
-        set -e
-        if [ $$status -ne 0 ] && ! printf '%s' "$$output" | grep -q 'ALREADY_EXISTS'; then
-          printf '%s\n' "$$output" >&2
-          exit $$status
-        fi
-        printf '%s\n' "$$output"
-        gcloud storage cp -r /workspace/release-evidence \
-          "gs://${google_storage_bucket.source.name}/evidence/${var.mcp_repository_name}/$BUILD_ID/release/"
-      EOT
-      ]
-    }
-
     timeout = "3600s"
     options { logging = "CLOUD_LOGGING_ONLY" }
-  }
-
-  lifecycle {
-    precondition {
-      condition     = !var.wrapper_releases_enabled || var.helm_chart_repository != null
-      error_message = "wrapper_releases_enabled requires helm_chart_repository (the platform Helm chart OCI repository published by platform-gcp)."
-    }
-    precondition {
-      condition     = !var.wrapper_releases_enabled || var.cluster_dns_ip != ""
-      error_message = "wrapper_releases_enabled requires cluster_dns_ip (the profiles require the cluster DNS address release parameter)."
-    }
   }
 
   depends_on = [

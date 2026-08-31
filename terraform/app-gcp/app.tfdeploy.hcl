@@ -93,12 +93,6 @@ deployment "eu" {
     # Per-server on/off lives in helm/mcp/values.yaml.
     mcp_servers_enabled = true
 
-    # Wrapper-based delivery (service helm/release.yaml + platform workload
-    # profiles). Stays off until the platform charts are published by the
-    # chart publication rail and the owning service repositories carry
-    # reviewed release wrappers.
-    wrapper_releases_enabled = false
-
     # The delivery path and cheap persistent state stay present. This switch
     # chooses the static start/pause profile used by the next semver release.
     # Operational start/pause releases remain explicit and approval-gated.

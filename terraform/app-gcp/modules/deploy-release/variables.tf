@@ -235,32 +235,3 @@ variable "labels" {
   description = "Labels applied to the source-staging bucket."
   default     = {}
 }
-
-# --- Wrapper-based delivery through the platform workload profiles -----------
-variable "wrapper_releases_enabled" {
-  type        = bool
-  description = "When true, immutable service tags create Cloud Deploy releases from the service repository's helm/release.yaml and platform-profile release wrappers (assembled by helm/platform/release/assemble.sh from the public platform checkout) instead of the legacy charts under helm/. Requires helm_chart_repository."
-  default     = false
-}
-
-variable "helm_chart_repository" {
-  type = object({
-    location      = string
-    repository_id = string
-  })
-  description = "Artifact Registry coordinates of the platform Helm chart OCI repository published by platform-gcp. null disables wrapper releases. Chart publication into it is owned by the separate chart publication rail."
-  default     = null
-  nullable    = true
-}
-
-variable "workload_identity_emails" {
-  type        = map(string)
-  description = "Workload key => Google service account e-mail. Passed to the release assembler as --identity KEY=EMAIL so a wrapper workload binds its Workload Identity through the manifest `identity` key (default: the workload alias)."
-  default     = {}
-}
-
-variable "cluster_dns_ip" {
-  type        = string
-  description = "Exact kube-dns Service ClusterIP forwarded to wrapper releases as the typed network.clusterDNSIP release parameter. Empty omits the parameter."
-  default     = ""
-}

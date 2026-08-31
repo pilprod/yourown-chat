@@ -107,13 +107,12 @@ golden() {
   fi
 }
 
-# Platform-owned invariants every profile render must satisfy. The policy
-# check itself is shared with the release assembler
-# (helm/platform/release/policy-check.sh); the test adds label and annotation
-# expectations that only hold for a direct profile render.
+# Platform-owned invariants every profile render must satisfy. The generic
+# policy check lives in helm/test/platform-policy-check.sh; the test adds
+# label and annotation expectations that only hold for a direct profile render.
 assert_platform_invariants() {
   local file="$1"
-  if ! bash "${repo_root}/helm/platform/release/policy-check.sh" "${file}"; then
+  if ! bash "${repo_root}/helm/test/platform-policy-check.sh" "${file}"; then
     echo "FAIL: platform policy check rejected ${file}" >&2
     failures=$((failures + 1))
   fi

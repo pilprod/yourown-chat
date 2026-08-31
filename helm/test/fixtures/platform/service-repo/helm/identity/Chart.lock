@@ -1,9 +1,0 @@
-dependencies:
-- name: platform-service
-  repository: file://../../../../../../platform/platform-service
-  version: 0.1.0
-- name: platform-job
-  repository: file://../../../../../../platform/platform-job
-  version: 0.1.0
-digest: sha256:04174fb602c0417eac59e0f4f9adc448370b1566e4b24474c0e03b7046ac2f05
-generated: "2026-08-22T22:28:34.18393-03:00"
