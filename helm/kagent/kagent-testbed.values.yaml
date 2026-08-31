@@ -1,4 +1,4 @@
-# Deployment class is testbed even though existing release continuity keeps
-# the controller in kagent-system and workloads in kagent-testbed.
+# Deployment class is testbed even though release continuity keeps the
+# controller in kagent-system. Workloads use declarative per-agent namespaces.
 controller:
   replicas: 1

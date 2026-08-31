@@ -242,7 +242,7 @@ published; wrappers therefore follow publication, not the reverse.
 ## Migration of the transitional charts
 
 The charts currently under `helm/` in this repository (`yourown-chat`, `mcp`,
-`agent-platform`, `mattermost`, `matterbridge`) predate the policy. They remain
+`mattermost`, `matterbridge`) predate the policy. They remain
 the deployed source until each is replaced, component by component:
 
 1. publish the platform profile versions the component needs;

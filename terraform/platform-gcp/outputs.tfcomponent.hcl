@@ -147,15 +147,12 @@ output "workload_identity_emails" {
     mcp-dev              = component.workload_identity_mcp_dev.email
     mcp-terraform-stacks = component.workload_identity_mcp_terraform_stacks.email
     mcp-tunnel           = component.workload_identity_mcp_tunnel.email
-    agents               = component.workload_identity_agents.email
     backend-control-api  = component.workload_identity_backend_control_api.email
     auth-api             = component.workload_identity_auth_api.email
     transport-api        = component.workload_identity_transport_api.email
     identity-api         = component.workload_identity_identity_api.email
     identity-admin       = component.workload_identity_identity_admin.email
     identity-migrate     = component.workload_identity_identity_migrate.email
-    agents-workflow      = component.workload_identity_agent_workflow.email
-    agents-activity      = component.workload_identity_agents.email
   }
 }
 
@@ -170,15 +167,12 @@ output "workload_identity_members" {
     mcp-dev              = component.workload_identity_mcp_dev.iam_member
     mcp-terraform-stacks = component.workload_identity_mcp_terraform_stacks.iam_member
     mcp-tunnel           = component.workload_identity_mcp_tunnel.iam_member
-    agents               = component.workload_identity_agents.iam_member
     backend-control-api  = component.workload_identity_backend_control_api.iam_member
     auth-api             = component.workload_identity_auth_api.iam_member
     transport-api        = component.workload_identity_transport_api.iam_member
     identity-api         = component.workload_identity_identity_api.iam_member
     identity-admin       = component.workload_identity_identity_admin.iam_member
     identity-migrate     = component.workload_identity_identity_migrate.iam_member
-    agents-workflow      = component.workload_identity_agent_workflow.iam_member
-    agents-activity      = component.workload_identity_agents.iam_member
   }
 }
 
@@ -275,12 +269,6 @@ output "yourown_chat_server_enabled" {
   type        = bool
   description = "Whether the independent YourOwn.Chat server plane foundation is enabled."
   value       = var.yourown_chat_server_enabled
-}
-
-output "temporal_results_bucket_name" {
-  type        = string
-  description = "Private agent result bucket created by platform-gcp when Temporal is enabled."
-  value       = try(component.storage.additional_bucket_names["agent-results"], null)
 }
 
 output "temporal_release_name" {

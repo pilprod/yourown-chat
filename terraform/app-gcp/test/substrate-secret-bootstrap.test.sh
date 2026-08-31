@@ -92,6 +92,7 @@ make_leaf egress-server egress-server-ca serverAuth 'DNS:atenet-egress.ate-syste
 make_leaf controller-client api-client-ca clientAuth 'URI:spiffe://cluster.local/ns/ate-system/sa/ate-controller'
 make_leaf egress-client api-client-ca clientAuth 'URI:spiffe://cluster.local/ns/ate-system/sa/atenet-egress'
 make_leaf kagent-client api-client-ca clientAuth 'URI:spiffe://cluster.local/ns/kagent-system/sa/kagent-controller'
+make_leaf kagent-dev-client api-client-ca clientAuth 'URI:spiffe://cluster.local/ns/kagent-dev/sa/kagent-controller'
 
 openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "${work}/jwt.key.pem" >/dev/null 2>&1
 openssl pkcs8 -topk8 -nocrypt -in "${work}/jwt.key.pem" -outform DER -out "${work}/jwt.key.der" >/dev/null 2>&1
@@ -110,7 +111,7 @@ for file in \
   api-server.bundle.pem api-client-ca.cert.pem \
   controller-client.bundle.pem api-server-ca.cert.pem \
   egress-server.bundle.pem egress-server-ca.cert.pem \
-  egress-client.bundle.pem kagent-client.bundle.pem \
+  egress-client.bundle.pem kagent-client.bundle.pem kagent-dev-client.bundle.pem \
   jwt.pool.json actor-ca.pool.json; do
   encode_file "${work}/${file}" "${work}/${file}.b64"
 done
@@ -124,6 +125,7 @@ jq -n \
   --rawfile egress_server_ca "${work}/egress-server-ca.cert.pem.b64" \
   --rawfile egress_client_bundle "${work}/egress-client.bundle.pem.b64" \
   --rawfile kagent_bundle "${work}/kagent-client.bundle.pem.b64" \
+  --rawfile kagent_dev_bundle "${work}/kagent-dev-client.bundle.pem.b64" \
   --rawfile jwt_pool "${work}/jwt.pool.json.b64" \
   --rawfile actor_ca_pool "${work}/actor-ca.pool.json.b64" \
   '{
@@ -137,13 +139,14 @@ jq -n \
       egress_authorizer_tls:{secretManagerId:"substrate-atenet-egress-client-tls",namespace:"ate-system",kubernetesName:"substrate-atenet-egress-client-tls",source:"operator-envelope-v1",data:{"client-credential-bundle.pem":$egress_client_bundle,"server-ca.pem":$api_server_ca}},
       actor_id_jwt_pool:{secretManagerId:"substrate-actor-id-jwt-pool",namespace:"ate-system",kubernetesName:"actor-id-jwt-pool",source:"operator-envelope-v1",data:{pool:$jwt_pool}},
       actor_id_ca_pool:{secretManagerId:"substrate-actor-id-ca-pool",namespace:"ate-system",kubernetesName:"actor-id-ca-pool",source:"operator-envelope-v1",data:{pool:$actor_ca_pool}},
-      kagent_client_tls:{secretManagerId:"kagent-ate-client-tls",namespace:"kagent-system",kubernetesName:"kagent-ate-client-tls",source:"operator-envelope-v1",data:{"client-credential-bundle.pem":$kagent_bundle,"server-ca.pem":$api_server_ca}}
+      kagent_client_tls:{secretManagerId:"kagent-ate-client-tls",namespace:"kagent-system",kubernetesName:"kagent-ate-client-tls",source:"operator-envelope-v1",data:{"client-credential-bundle.pem":$kagent_bundle,"server-ca.pem":$api_server_ca}},
+      kagent_dev_client_tls:{secretManagerId:"kagent-dev-ate-client-tls",namespace:"kagent-dev",kubernetesName:"kagent-dev-ate-client-tls",source:"operator-envelope-v1",data:{"client-credential-bundle.pem":$kagent_dev_bundle,"server-ca.pem":$api_server_ca}}
     }
   }' > "${work}/bundle.json"
 chmod 0600 "${work}/bundle.json"
 
 validation_output="$(${bootstrap} validate --project test-project --bundle "${work}/bundle.json" 2>&1)"
-[[ "${validation_output}" == *'validated eight-source contract and derived ate-system/actor-id-ca-certs'* ]] || fail "valid bundle did not pass"
+[[ "${validation_output}" == *'validated nine-source contract and derived ate-system/actor-id-ca-certs'* ]] || fail "valid bundle did not pass"
 [[ "${validation_output}" != *'BEGIN PRIVATE KEY'* ]] || fail "validation output leaked private material"
 
 mkdir -p "${work}/sibling-git"
@@ -180,6 +183,12 @@ jq --rawfile wrong "${work}/controller-client.bundle.pem.b64" \
   "${work}/bundle.json" > "${work}/wrong-san.json"
 chmod 0600 "${work}/wrong-san.json"
 expect_fail "wrong kagent URI SAN" "${bootstrap}" validate --project test-project --bundle "${work}/wrong-san.json"
+
+jq --rawfile wrong "${work}/kagent-client.bundle.pem.b64" \
+  '.secrets.kagent_dev_client_tls.data["client-credential-bundle.pem"]=$wrong' \
+  "${work}/bundle.json" > "${work}/wrong-dev-san.json"
+chmod 0600 "${work}/wrong-dev-san.json"
+expect_fail "wrong kagent dev URI SAN" "${bootstrap}" validate --project test-project --bundle "${work}/wrong-dev-san.json"
 
 jq '.CAs[0].IntermediateCertificatesDER=["bm90LXgteDUwOS1kZXI="]' \
   "${work}/actor-ca.pool.json" > "${work}/actor-ca-intermediate.pool.json"
@@ -356,8 +365,11 @@ bootstrap_output="$(
   "${bootstrap}" bootstrap --project test-project --context test-context --bundle "${work}/bundle.json" 2>&1
 )"
 
-[[ "$(find "${work}/kube-store" -type f | wc -l | tr -d ' ')" == 9 ]] || fail "bootstrap did not materialize exactly nine Kubernetes Secrets"
+[[ "$(find "${work}/kube-store" -type f | wc -l | tr -d ' ')" == 10 ]] || fail "bootstrap did not materialize exactly ten Kubernetes Secrets"
 [[ -f "${work}/kube-store/ate-system__actor-id-ca-certs.json" ]] || fail "derived actor-id-ca-certs Secret is missing"
+[[ -f "${work}/kube-store/kagent-dev__kagent-dev-ate-client-tls.json" ]] || fail "kagent dev client TLS Secret is missing"
+jq -er '.data | keys == ["client-credential-bundle.pem", "server-ca.pem"]' \
+  "${work}/kube-store/kagent-dev__kagent-dev-ate-client-tls.json" >/dev/null || fail "kagent dev client TLS keys are wrong"
 jq -er '.data | keys == ["ca.crt"]' "${work}/kube-store/ate-system__actor-id-ca-certs.json" >/dev/null || fail "derived actor-id-ca-certs keys are wrong"
 jq -er '.data["ca.crt"]' "${work}/kube-store/ate-system__actor-id-ca-certs.json" | openssl base64 -d -A -out "${work}/derived-ca.pem" >/dev/null 2>&1
 openssl x509 -in "${work}/derived-ca.pem" -outform DER -out "${work}/derived-ca.der" >/dev/null 2>&1

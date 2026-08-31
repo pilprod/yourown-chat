@@ -92,7 +92,7 @@ variable "bundle" {
       alltrue([
         for namespace in values(var.bundle.namespaces) :
         can(regex("^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$", namespace.name)) &&
-        contains(["testbed-control", "testbed-workload"], namespace.quota_profile)
+        contains(["testbed-control", "testbed-workload", "dev-control", "dev-workload"], namespace.quota_profile)
       ]) &&
       alltrue([
         for endpoint_key, endpoint in var.bundle.endpoints :

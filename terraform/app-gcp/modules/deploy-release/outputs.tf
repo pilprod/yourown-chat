@@ -29,11 +29,11 @@ output "source_bucket_name" {
 }
 
 output "application_source_repository_ids" {
-  description = "Cloud Build repository links for the independent server and agent sources."
+  description = "Cloud Build repository links for the independent server source."
   value       = { for name, repository in google_cloudbuildv2_repository.source : name => repository.id }
 }
 
 output "application_source_trigger_ids" {
-  description = "Branch and immutable-tag build triggers for the server and agent sources."
+  description = "Branch and immutable-tag build triggers for the server source."
   value       = { for name, trigger in google_cloudbuild_trigger.source_image : name => trigger.id }
 }

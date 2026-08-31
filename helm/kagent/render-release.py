@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render the immutable, production-ineligible kagent/Substrate testbed rail."""
+"""Render one immutable kagent candidate through dev then approved prod."""
 
 from __future__ import annotations
 
@@ -25,9 +25,9 @@ HELM_KEY = re.compile(r"^[A-Za-z0-9_.\-/\[\]]+$")
 EXPECTED_ARTIFACTS = {"kagent", "substrate"}
 EXPECTED_VALUES = {
     "kagent/kagent.values.yaml",
-    "kagent/kagent-testbed.values.yaml",
+    "kagent/kagent-dev.values.yaml",
+    "kagent/kagent-prod.values.yaml",
     "kagent/substrate.values.yaml",
-    "kagent/substrate-testbed.values.yaml",
 }
 EXPECTED_REPOSITORIES = {
     "kagent": "https://github.com/pilprod/kagent",
@@ -232,7 +232,6 @@ def validate_tracked_kagent_shape(source_root: Path) -> None:
         fail("tracked kagent values must keep rbac.create=false")
     expected_scalars = {
         ("fullnameOverride",): "kagent",
-        ("namespaceOverride",): "kagent-system",
         ("controller", "auth", "mode"): "unsecure",
         ("database", "postgres", "urlFile"): "/var/run/secrets/kagent-database/database-url",
         ("database", "postgres", "vectorEnabled"): "false",
@@ -242,21 +241,45 @@ def validate_tracked_kagent_shape(source_root: Path) -> None:
     for setting_path, expected in expected_scalars.items():
         if yaml_scalar(source, setting_path) != expected:
             fail(f"tracked kagent values must preserve {'.'.join(setting_path)}={expected}")
-    for required in (
-        "driver: secrets-store-gke.csi.k8s.io",
-        "secretProviderClass: kagent-database-gcp",
-        "failureThreshold: 20",
-        "host: http://model-fixture.kagent-testbed.svc.cluster.local:11434",
-    ):
+    for required in ("driver: secrets-store-gke.csi.k8s.io", "failureThreshold: 20"):
         if required not in source:
-            fail(f"tracked kagent values must preserve the live testbed setting: {required}")
+            fail(f"tracked kagent values must preserve the shared setting: {required}")
+    if "namespaceOverride:" in source or "secretProviderClass:" in source or "host: http://model-fixture." in source:
+        fail("base kagent values must remain environment-neutral")
+    overlays = {
+        "dev": {
+            "path": source_root / "kagent/kagent-dev.values.yaml",
+            "required": (
+                "namespaceOverride: kagent-dev",
+                "- agent-codex-dev",
+                "secretProviderClass: kagent-dev-database-gcp",
+                "name: kagent-dev-ate-client-tls",
+                "host: http://model-fixture.agent-codex-dev.svc.cluster.local:11434",
+            ),
+        },
+        "prod": {
+            "path": source_root / "kagent/kagent-prod.values.yaml",
+            "required": (
+                "namespaceOverride: kagent-system",
+                "- agent-codex",
+                "secretProviderClass: kagent-database-gcp",
+                "name: kagent-ate-client-tls",
+                "host: http://model-fixture.agent-codex.svc.cluster.local:11434",
+            ),
+        },
+    }
+    for environment, overlay in overlays.items():
+        overlay_source = overlay["path"].read_text(encoding="utf-8")
+        for required in overlay["required"]:
+            if required not in overlay_source:
+                fail(f"tracked {environment} kagent values must preserve: {required}")
     if "skillsInitImage:" in source:
         fail("tracked kagent values must not restore the obsolete skills-init image")
 
 
 def validate_contract(contract: dict, source_root: Path) -> None:
-    if contract.get("production_eligible") is not False:
-        fail("testbed release must set production_eligible=false")
+    if contract.get("production_eligible") is not True:
+        fail("dev-to-prod promotion requires production_eligible=true")
     if not isinstance(contract.get("external_broker_smoke_ready"), bool):
         fail("external_broker_smoke_ready must be an explicit boolean attestation")
     artifacts = contract.get("artifacts")
@@ -292,7 +315,7 @@ def validate_contract(contract: dict, source_root: Path) -> None:
 
     values_sha256 = contract.get("values_sha256")
     if not isinstance(values_sha256, dict) or set(values_sha256) != EXPECTED_VALUES:
-        fail("values_sha256 must checksum exactly the four tracked testbed values files")
+        fail("values_sha256 must checksum exactly the tracked base, dev, prod and Substrate values files")
     for relative_path, expected in values_sha256.items():
         if not re.fullmatch(r"[0-9a-f]{64}", str(expected)):
             fail(f"values checksum for {relative_path} is invalid")
@@ -318,72 +341,41 @@ def set_values_lines(values: dict[str, str], indent: str) -> list[str]:
     return lines
 
 
-def render(contract: dict) -> str:
-    kagent = contract["artifacts"]["kagent"]["charts"]["application"]
-    substrate = contract["artifacts"]["substrate"]["charts"]["application"]
-    substrate_consumer_evidence = (
-        contract["artifacts"]["substrate"]["artifact_schema_version"]
-        == SUBSTRATE_CONSUMER_EVIDENCE_SCHEMA
-    )
+def render_profile(
+    *,
+    name: str,
+    release_name: str,
+    namespace: str,
+    health_url: str,
+    kagent: dict,
+    contract: dict,
+) -> list[str]:
     lines = [
-        "# Generated from reviewed immutable artifact evidence.",
-        *(
-            ["# Substrate pins use app-gcp consumer evidence; this was not a producer release asset."]
-            if substrate_consumer_evidence
-            else []
-        ),
-        "# production_eligible=false: this config has one testbed target only.",
-        f"# external_broker_smoke_ready={str(contract['external_broker_smoke_ready']).lower()}; required for local-agent-ready, not bootstrap.",
-        "# Runtime images are evidence only; installing this release does not create a Harness.",
-        f"# runtime_images.kagentHarness={contract['artifacts']['kagent']['runtime_images']['kagentHarness']}",
-        f"# runtime_images.codexHarness={contract['artifacts']['kagent']['runtime_images']['codexHarness']}",
-        "apiVersion: skaffold/v4beta11",
-        "kind: Config",
-        "metadata:",
-        "  name: yourown-chat-kagent-substrate-testbed",
-        "deploy:",
-        "  kubectl: {}",
-        "profiles:",
-        "  - name: kagent-substrate-testbed",
+        f"  - name: {name}",
         "    manifests:",
-        "      rawYaml:",
-        "        - kagent/gateway/testbed-parameters.yaml",
         "      helm:",
         "        releases:",
-        "          - name: substrate",
-        f"            remoteChart: {quoted(substrate['ref'])}",
-        f"            version: {quoted(substrate['version'])}",
-        "            namespace: ate-system",
+        f"          - name: {release_name}",
+        f"            remoteChart: {quoted(kagent['ref'])}",
+        f"            version: {quoted(kagent['version'])}",
+        f"            namespace: {namespace}",
         "            createNamespace: false",
         "            valuesFiles:",
-        "              - kagent/substrate.values.yaml",
-        "              - kagent/substrate-testbed.values.yaml",
+        "              - kagent/kagent.values.yaml",
+        f"              - kagent/{name}.values.yaml",
     ]
-    lines.extend(set_values_lines(contract["helm_set_values"]["substrate"], "            "))
-    lines.extend(
-        [
-            "          - name: kagent",
-            f"            remoteChart: {quoted(kagent['ref'])}",
-            f"            version: {quoted(kagent['version'])}",
-            "            namespace: kagent-system",
-            "            createNamespace: false",
-            "            valuesFiles:",
-            "              - kagent/kagent.values.yaml",
-            "              - kagent/kagent-testbed.values.yaml",
-        ]
-    )
     lines.extend(set_values_lines(contract["helm_set_values"]["kagent"], "            "))
     lines.extend(
         [
             "    verify:",
-            "      - name: kagent-substrate-testbed-health",
+            f"      - name: {name}-health",
             "        container:",
             "          name: smoke-test",
             f"          image: {quoted(contract['artifacts']['substrate']['image_refs']['releaseVerifier'])}",
             '          command: ["/ko-app/substrate-release-verify"]',
             "          args:",
             "            - --kagent-health-url",
-            f"            - {quoted(contract['kagent_health_url'])}",
+            f"            - {quoted(health_url)}",
             "            - --substrate-endpoint",
             f"            - {quoted(contract['substrate_endpoint'])}",
             "            - --substrate-ca-file",
@@ -407,9 +399,82 @@ def render(contract: dict) -> str:
             "            - --require-gateway-programmed",
             "        executionMode:",
             "          kubernetesCluster:",
-            "            jobManifestPath: kagent/verify/testbed-job.yaml",
+            "            jobManifestPath: kagent/verify/promotion-job.yaml",
         ]
     )
+    return lines
+
+
+def render_gate_action(source_root: Path) -> list[str]:
+    gate_script_path = source_root / "kagent/verify/require-external-broker-smoke.sh"
+    if not gate_script_path.is_file():
+        fail("production promotion gate script is missing")
+    gate_script = gate_script_path.read_text(encoding="utf-8")
+    if "configmap/kagent-production-promotion-gate" not in gate_script:
+        fail("production promotion gate must read the Terraform-managed ConfigMap")
+    if 'attestation}" != "true|${CLOUD_DEPLOY_RELEASE}"' not in gate_script:
+        fail("production promotion gate must bind the smoke attestation to this Cloud Deploy release")
+    return [
+        "customActions:",
+        "  - name: require-external-broker-smoke",
+        "    containers:",
+        "      - name: require-external-broker-smoke",
+        "        image: gcr.io/cloud-builders/kubectl@sha256:3744bfd3765ac2a09133a164fcd74c8468fac192af8accadbdfbccbb20643961",
+        '        command: ["/bin/sh", "-ceu"]',
+        "        args:",
+        "          - |",
+        *[f"            {line}" for line in gate_script.splitlines()],
+    ]
+
+
+def render(contract: dict, source_root: Path) -> str:
+    kagent = contract["artifacts"]["kagent"]["charts"]["application"]
+    substrate_consumer_evidence = (
+        contract["artifacts"]["substrate"]["artifact_schema_version"]
+        == SUBSTRATE_CONSUMER_EVIDENCE_SCHEMA
+    )
+    lines = [
+        "# Generated from reviewed immutable artifact evidence.",
+        *(
+            ["# Substrate pins use app-gcp consumer evidence; this was not a producer release asset."]
+            if substrate_consumer_evidence
+            else []
+        ),
+        "# production_eligible=true: one immutable digest set is promoted dev -> approved prod.",
+        "# Production PREDEPLOY reads a release-bound Terraform smoke attestation; dev remains deployable while it is false.",
+        "# Shared Substrate in ate-system remains a Terraform-owned prerequisite and is not redeployed per stage.",
+        "# Runtime images are evidence only; installing this release does not create a Harness.",
+        f"# runtime_images.kagentHarness={contract['artifacts']['kagent']['runtime_images']['kagentHarness']}",
+        f"# runtime_images.codexHarness={contract['artifacts']['kagent']['runtime_images']['codexHarness']}",
+        "apiVersion: skaffold/v4beta11",
+        "kind: Config",
+        "metadata:",
+        "  name: kagent-promotion",
+        "deploy:",
+        "  kubectl: {}",
+        "profiles:",
+    ]
+    lines.extend(
+        render_profile(
+            name="kagent-dev",
+            release_name="kagent-dev",
+            namespace="kagent-dev",
+            health_url="http://kagent-controller.kagent-dev.svc.cluster.local:8083/health",
+            kagent=kagent,
+            contract=contract,
+        )
+    )
+    lines.extend(
+        render_profile(
+            name="kagent-prod",
+            release_name="kagent",
+            namespace="kagent-system",
+            health_url=contract["kagent_health_url"],
+            kagent=kagent,
+            contract=contract,
+        )
+    )
+    lines.extend(render_gate_action(source_root))
     return "\n".join(lines) + "\n"
 
 
@@ -421,7 +486,7 @@ def main() -> int:
     try:
         contract = load_contract()
         validate_contract(contract, args.source_root)
-        rendered = render(contract)
+        rendered = render(contract, args.source_root)
     except ValueError as error:
         print(f"render-release: {error}", file=sys.stderr)
         return 2

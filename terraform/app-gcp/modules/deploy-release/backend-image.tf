@@ -6,8 +6,6 @@ locals {
     identity_api     = "${local.artifact_repository_prefix}/${var.backend_image_prefix}-identity-api"
     identity_admin   = "${local.artifact_repository_prefix}/${var.backend_image_prefix}-identity-admin"
     identity_migrate = "${local.artifact_repository_prefix}/${var.backend_image_prefix}-identity-migrate"
-    workflow_worker  = "${local.artifact_repository_prefix}/${var.agents_image_prefix}-workflow-worker"
-    activity_worker  = "${local.artifact_repository_prefix}/${var.agents_image_prefix}-activity-worker"
   }
 
   source_repositories = {
@@ -15,20 +13,12 @@ locals {
       name       = var.backend_repository_name
       remote_uri = var.backend_github_remote_uri
     }
-    agents = {
-      name       = var.agents_repository_name
-      remote_uri = var.agents_github_remote_uri
-    }
   }
 
   source_builders = {
     backend = {
       account_id   = "backend-build"
       display_name = "YourOwn.Chat server image builder"
-    }
-    agents = {
-      account_id   = "agents-build"
-      display_name = "YourOwn.Chat agent worker image builder"
     }
   }
 
@@ -38,42 +28,24 @@ locals {
         builder  = builder
         pipeline = pipeline
         settings = settings
-      } if startswith(pipeline, "agents-") || (builder == "backend" && pipeline == "yourown-chat")
+      } if builder == "backend" && pipeline == "yourown-chat"
     }
   ]...)
 
   source_builds = {
     "${var.backend_repository_name}-ci" = {
-      source        = "backend"
-      branch        = var.backend_branch_regex
-      tag           = null
-      release       = false
-      services      = "control-api auth-api transport-api identity-api identity-admin identity-migrate"
-      workflowcheck = false
+      source   = "backend"
+      branch   = var.backend_branch_regex
+      tag      = null
+      release  = false
+      services = "control-api auth-api transport-api identity-api identity-admin identity-migrate"
     }
     "${var.backend_repository_name}-image" = {
-      source        = "backend"
-      branch        = null
-      tag           = var.backend_release_tag_regex
-      release       = true
-      services      = "control-api auth-api transport-api identity-api identity-admin identity-migrate"
-      workflowcheck = false
-    }
-    "${var.agents_repository_name}-ci" = {
-      source        = "agents"
-      branch        = var.agents_branch_regex
-      tag           = null
-      release       = false
-      services      = "workflow-worker activity-worker"
-      workflowcheck = true
-    }
-    "${var.agents_repository_name}-image" = {
-      source        = "agents"
-      branch        = null
-      tag           = var.agents_release_tag_regex
-      release       = true
-      services      = "workflow-worker activity-worker"
-      workflowcheck = true
+      source   = "backend"
+      branch   = null
+      tag      = var.backend_release_tag_regex
+      release  = true
+      services = "control-api auth-api transport-api identity-api identity-admin identity-migrate"
     }
   }
 }
@@ -91,9 +63,7 @@ resource "google_cloudbuildv2_repository" "source" {
   remote_uri        = each.value.remote_uri
 }
 
-# The client-facing server and the agent compute have different trust
-# boundaries. A compromised worker build cannot publish a server image (or the
-# reverse), even though both write to the same project-wide registry.
+# The client-facing server build uses its own least-privilege identity.
 resource "google_service_account" "source_build" {
   for_each = local.source_builders
 
@@ -189,10 +159,8 @@ resource "google_service_account_iam_member" "apply_acts_as_source_build" {
   member             = "serviceAccount:${var.apply_service_account_email}"
 }
 
-# Source tags publish immutable, scanned images. The same release tag is
-# required in both repositories: whichever build observes all three images
-# first creates one atomic approval-gated Cloud Deploy release. A main-branch
-# build can never deploy.
+# Source tags publish immutable, scanned server images. A main-branch build can
+# never deploy.
 resource "google_cloudbuild_trigger" "source_image" {
   for_each = local.source_builds
 
@@ -226,9 +194,6 @@ resource "google_cloudbuild_trigger" "source_image" {
         }
         go vet ./...
         go test -race -coverprofile=/workspace/${each.value.source}-coverage.out ./...
-        if [ "${each.value.workflowcheck}" = "true" ]; then
-          go run go.temporal.io/sdk/contrib/tools/workflowcheck@v0.5.0 ./...
-        fi
         go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
       EOT
       ]
@@ -248,9 +213,6 @@ resource "google_cloudbuild_trigger" "source_image" {
         for service in ${each.value.services}; do
           image_path="${local.artifact_repository_prefix}/${var.backend_image_prefix}-$$service"
           service_arg="--build-arg SERVICE=$$service"
-          if [ "${each.value.source}" = "agents" ]; then
-            image_path="${local.artifact_repository_prefix}/${var.agents_image_prefix}-$$service"
-          fi
           docker buildx build \
             --file Dockerfile \
             $$service_arg \
@@ -275,9 +237,6 @@ resource "google_cloudbuild_trigger" "source_image" {
         if [ -n "$TAG_NAME" ]; then image_tag="$TAG_NAME"; fi
         for service in ${each.value.services}; do
           image_path="${local.artifact_repository_prefix}/${var.backend_image_prefix}-$$service"
-          if [ "${each.value.source}" = "agents" ]; then
-            image_path="${local.artifact_repository_prefix}/${var.agents_image_prefix}-$$service"
-          fi
           digest="$$(gcloud artifacts docker images describe "$$image_path:$$image_tag" --format='value(image_summary.digest)')"
           [ -n "$$digest" ] || { echo "Pushed $$service digest was not found" >&2; exit 1; }
           image="$$image_path@$$digest"
@@ -367,57 +326,6 @@ resource "google_cloudbuild_trigger" "source_image" {
           printf '%s\n' "$$server_output"
         fi
 
-        if [ "${var.agents_enabled}" != "true" ]; then
-          echo "Server images are ready; the Terraform Temporal launch gate is closed, so no agent release is created"
-          exit 0
-        fi
-
-        deploy_parameters=""
-        digest_set_input=""
-        for service in control-api workflow-worker activity-worker; do
-          if [ "$$service" = "control-api" ]; then
-            image_path="${local.artifact_repository_prefix}/${var.backend_image_prefix}-$$service"
-          else
-            image_path="${local.artifact_repository_prefix}/${var.agents_image_prefix}-$$service"
-          fi
-          digest="$$(gcloud artifacts docker images describe \
-            "$$image_path:$TAG_NAME" --format='value(image_summary.digest)' 2>/dev/null || true)"
-          if [ -z "$$digest" ]; then
-            echo "Release tag $TAG_NAME is not complete yet: waiting for $$service from the matching repository tag"
-            exit 0
-          fi
-          parameter="yourown_chat_$$(printf '%s' "$$service" | tr '-' '_')_image"
-          [ -z "$$deploy_parameters" ] || deploy_parameters="$$deploy_parameters,"
-          deploy_parameters="$$deploy_parameters$$parameter=$$image_path@$$digest"
-          digest_set_input="$$digest_set_input$$digest\n"
-        done
-
-        release_name="agents-$$safe_tag"
-        pipeline="${var.agents_runtime_enabled ? "agents-start" : "agents-pause"}"
-        mode="${var.agents_runtime_enabled ? "running" : "paused"}"
-        digest_set="$$(printf '%b' "$$digest_set_input" | sha256sum | cut -d' ' -f1)"
-
-        set +e
-        output="$$(gcloud deploy releases create "$$release_name" \
-          --project "${var.project_id}" \
-          --region "${var.region}" \
-          --delivery-pipeline "$$pipeline" \
-          --source "/workspace/yourown-chat/helm" \
-          --skaffold-file "skaffold-agents.yaml" \
-          --gcs-source-staging-dir "gs://${google_storage_bucket.source.name}/source" \
-          --deploy-parameters "$$deploy_parameters" \
-          --annotations "release-tag=$TAG_NAME,coordinator=${each.value.source},build-id=$BUILD_ID,image-set=$$digest_set,platform-sha=$$platform_sha,agent-mode=$$mode" 2>&1)"
-        status=$$?
-        set -e
-        if [ $$status -ne 0 ]; then
-          if printf '%s' "$$output" | grep -q 'ALREADY_EXISTS'; then
-            echo "Coordinated release $$release_name already exists; the other source build won the race"
-            exit 0
-          fi
-          printf '%s\n' "$$output" >&2
-          exit $$status
-        fi
-        printf '%s\n' "$$output"
       EOT
       ]
     }
@@ -440,34 +348,6 @@ resource "google_cloudbuild_trigger" "source_image" {
           echo "yourown_chat_server_enabled=false; no server release is created"
           exit 0
         fi
-        if [ "${each.value.source}" = "agents" ] && [ "${var.agents_enabled}" != "true" ]; then
-          echo "Agent delivery is not enabled; no agent release is created"
-          exit 0
-        fi
-
-        # Agent workers are only compatible with the control API released from
-        # the same version tag. The agent release waits (bounded) until the
-        # server repository has published control-api for this exact tag and
-        # records that digest; push the server tag first when cutting a
-        # coordinated release.
-        control_api_annotation=""
-        if [ "${each.value.source}" = "agents" ]; then
-          control_api_repo="${local.workload_image_paths.control_api}"
-          control_api_digest=""
-          for attempt in $$(seq 1 40); do
-            control_api_digest="$$(gcloud artifacts docker images describe \
-              "$$control_api_repo:$TAG_NAME" --format='value(image_summary.digest)' 2>/dev/null || true)"
-            [ -n "$$control_api_digest" ] && break
-            echo "Waiting for the matching control-api image $$control_api_repo:$TAG_NAME (attempt $$attempt/40)"
-            sleep 30
-          done
-          if [ -z "$$control_api_digest" ]; then
-            echo "Release tag $TAG_NAME is not complete: no control-api image for this tag after 20 minutes; push the matching server tag first and re-run this build" >&2
-            exit 1
-          fi
-          control_api_annotation=",control-api-digest=$$control_api_digest"
-        fi
-
         platform_dir=/workspace/yourown-chat
         ${indent(8, local.helm_install_script)}
         ${indent(8, local.helm_registry_login_script)}
@@ -475,9 +355,6 @@ resource "google_cloudbuild_trigger" "source_image" {
         image_args=""
         for service in ${each.value.services}; do
           image_name="${var.backend_image_prefix}-$$service"
-          if [ "${each.value.source}" = "agents" ]; then
-            image_name="${var.agents_image_prefix}-$$service"
-          fi
           image_args="$$image_args --image $$image_name=$$(cat "/workspace/$$service-image-uri")"
         done
         platform_sha="$$(git -C /workspace/yourown-chat rev-parse HEAD)"
@@ -497,10 +374,6 @@ resource "google_cloudbuild_trigger" "source_image" {
         safe_tag="$$(printf '%s' "$TAG_NAME" | tr '.+' '--')"
         pipeline="yourown-chat"
         mode="server"
-        if [ "${each.value.source}" = "agents" ]; then
-          pipeline="${var.agents_runtime_enabled ? "agents-start" : "agents-pause"}"
-          mode="${var.agents_runtime_enabled ? "running" : "paused"}"
-        fi
         release_name="$$pipeline-$$safe_tag"
         set +e
         output="$$(gcloud deploy releases create "$$release_name" \
@@ -510,7 +383,7 @@ resource "google_cloudbuild_trigger" "source_image" {
           --source /workspace/release-source \
           --gcs-source-staging-dir "gs://${google_storage_bucket.source.name}/source" \
           --deploy-parameters "$$(cat /workspace/release-source/deploy-parameters)" \
-          --annotations "release-tag=$TAG_NAME,build-id=$BUILD_ID,source-sha=$COMMIT_SHA,platform-sha=$$platform_sha,render=platform-wrapper,agent-mode=$$mode$$control_api_annotation" 2>&1)"
+          --annotations "release-tag=$TAG_NAME,build-id=$BUILD_ID,source-sha=$COMMIT_SHA,platform-sha=$$platform_sha,render=platform-wrapper,mode=$$mode" 2>&1)"
         status=$$?
         set -e
         if [ $$status -ne 0 ] && ! printf '%s' "$$output" | grep -q 'ALREADY_EXISTS'; then

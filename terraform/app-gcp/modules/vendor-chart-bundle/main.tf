@@ -87,6 +87,24 @@ locals {
       "limits.cpu"           = "12"
       "limits.memory"        = "16Gi"
     }
+    dev-control = {
+      pods                   = "10"
+      persistentvolumeclaims = "0"
+      "requests.cpu"         = "2"
+      "requests.memory"      = "4Gi"
+      "requests.storage"     = "0"
+      "limits.cpu"           = "8"
+      "limits.memory"        = "8Gi"
+    }
+    dev-workload = {
+      pods                   = "20"
+      persistentvolumeclaims = "0"
+      "requests.cpu"         = "4"
+      "requests.memory"      = "8Gi"
+      "requests.storage"     = "0"
+      "limits.cpu"           = "12"
+      "limits.memory"        = "16Gi"
+    }
   }
 }
 

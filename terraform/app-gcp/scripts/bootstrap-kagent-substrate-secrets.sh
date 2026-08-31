@@ -19,7 +19,7 @@ Usage:
   bootstrap-kagent-substrate-secrets.sh sync --project PROJECT --context KUBE_CONTEXT
 
 validate checks an owner-only operator bundle without contacting Google Cloud or
-Kubernetes. bootstrap validates and uploads seven versioned envelopes, reads the
+Kubernetes. bootstrap validates and uploads eight versioned envelopes, reads the
 existing Cloud SQL URI, then synchronizes the exact native Secret contract.
 sync reconstructs that contract from Secret Manager without an operator bundle.
 
@@ -57,6 +57,7 @@ egress_authorizer_tls|substrate-atenet-egress-client-tls|ate-system|substrate-at
 actor_id_jwt_pool|substrate-actor-id-jwt-pool|ate-system|actor-id-jwt-pool|operator-envelope-v1|pool
 actor_id_ca_pool|substrate-actor-id-ca-pool|ate-system|actor-id-ca-pool|operator-envelope-v1|pool
 kagent_client_tls|kagent-ate-client-tls|kagent-system|kagent-ate-client-tls|operator-envelope-v1|client-credential-bundle.pem,server-ca.pem
+kagent_dev_client_tls|kagent-dev-ate-client-tls|kagent-dev|kagent-dev-ate-client-tls|operator-envelope-v1|client-credential-bundle.pem,server-ca.pem
 CONTRACT
 }
 
@@ -151,6 +152,7 @@ expected = {
     "actor_id_jwt_pool": ("substrate-actor-id-jwt-pool", "ate-system", "actor-id-jwt-pool", "operator-envelope-v1", ["pool"]),
     "actor_id_ca_pool": ("substrate-actor-id-ca-pool", "ate-system", "actor-id-ca-pool", "operator-envelope-v1", ["pool"]),
     "kagent_client_tls": ("kagent-ate-client-tls", "kagent-system", "kagent-ate-client-tls", "operator-envelope-v1", ["client-credential-bundle.pem", "server-ca.pem"]),
+    "kagent_dev_client_tls": ("kagent-dev-ate-client-tls", "kagent-dev", "kagent-dev-ate-client-tls", "operator-envelope-v1", ["client-credential-bundle.pem", "server-ca.pem"]),
 }
 
 def reject_constant(value):
@@ -177,7 +179,7 @@ if document["schema"] != bundle_schema:
 if document["projectId"] != project:
     raise SystemExit("operator bundle projectId does not match --project")
 if not isinstance(document["secrets"], dict) or set(document["secrets"]) != set(expected):
-    raise SystemExit("operator bundle must contain exactly the eight source Secret records")
+    raise SystemExit("operator bundle must contain exactly the nine source Secret records")
 
 for logical, (secret_id, namespace, name, source, keys) in expected.items():
     record = document["secrets"][logical]
@@ -227,6 +229,7 @@ keys = {
     "actor_id_jwt_pool": ["pool"],
     "actor_id_ca_pool": ["pool"],
     "kagent_client_tls": ["client-credential-bundle.pem", "server-ca.pem"],
+    "kagent_dev_client_tls": ["client-credential-bundle.pem", "server-ca.pem"],
     "actor_id_ca_certs": ["ca.crt"],
 }
 
@@ -565,6 +568,8 @@ validate_materialized_contract() {
   local egress_client_server_ca="$(data_path egress_authorizer_tls server-ca.pem)"
   local kagent_bundle="$(data_path kagent_client_tls client-credential-bundle.pem)"
   local kagent_server_ca="$(data_path kagent_client_tls server-ca.pem)"
+  local kagent_dev_bundle="$(data_path kagent_dev_client_tls client-credential-bundle.pem)"
+  local kagent_dev_server_ca="$(data_path kagent_dev_client_tls server-ca.pem)"
 
   if [[ -f "${postgres_file}" ]]; then
     validate_postgres_uri "${postgres_file}"
@@ -577,11 +582,13 @@ validate_materialized_contract() {
   validate_ca_bundle "${egress_server_ca}" "atenet gateway server CA"
   validate_ca_bundle "${egress_client_server_ca}" "atenet authorizer ate-api server CA"
   validate_ca_bundle "${kagent_server_ca}" "kagent ate-api server CA"
+  validate_ca_bundle "${kagent_dev_server_ca}" "kagent dev ate-api server CA"
 
   validate_credential_bundle "${api_bundle}" "${controller_server_ca}" sslserver \
     'DNS:api.ate-system.svc' "${temp_dir}/api-server"
   verify_leaf_with_ca "${temp_dir}/api-server" "${egress_client_server_ca}" sslserver
   verify_leaf_with_ca "${temp_dir}/api-server" "${kagent_server_ca}" sslserver
+  verify_leaf_with_ca "${temp_dir}/api-server" "${kagent_dev_server_ca}" sslserver
   validate_credential_bundle "${egress_server_bundle}" "${egress_server_ca}" sslserver \
     'DNS:atenet-egress.ate-system.svc' "${temp_dir}/egress-server"
   validate_credential_bundle "${controller_bundle}" "${api_client_ca}" sslclient \
@@ -590,6 +597,8 @@ validate_materialized_contract() {
     'URI:spiffe://cluster.local/ns/ate-system/sa/atenet-egress' "${temp_dir}/egress-client"
   validate_credential_bundle "${kagent_bundle}" "${api_client_ca}" sslclient \
     'URI:spiffe://cluster.local/ns/kagent-system/sa/kagent-controller' "${temp_dir}/kagent-client"
+  validate_credential_bundle "${kagent_dev_bundle}" "${api_client_ca}" sslclient \
+    'URI:spiffe://cluster.local/ns/kagent-dev/sa/kagent-controller' "${temp_dir}/kagent-dev-client"
 }
 
 ensure_secret_containers() {
@@ -658,7 +667,7 @@ materialize_all_payloads() {
 
 check_cluster_access() {
   local namespace=""
-  for namespace in ate-system kagent-system; do
+  for namespace in ate-system kagent-system kagent-dev; do
     kubectl --context="${context}" get namespace "${namespace}" -o name >/dev/null || \
       fail "namespace ${namespace} is unavailable in context ${context}"
     [[ "$(kubectl --context="${context}" auth can-i get secrets -n "${namespace}")" == "yes" ]] || \
@@ -790,7 +799,7 @@ case "${action}" in
       materialize_payload "${logical}" "$(payload_path "${logical}")"
     done < <(source_contract_records)
     validate_materialized_contract
-    printf 'validated eight-source contract and derived ate-system/actor-id-ca-certs; PostgreSQL bytes are validated only during bootstrap/sync\n'
+    printf 'validated nine-source contract and derived ate-system/actor-id-ca-certs; PostgreSQL bytes are validated only during bootstrap/sync\n'
     ;;
   bootstrap)
     prepare_bundle_payloads

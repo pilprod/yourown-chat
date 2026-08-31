@@ -1,126 +1,85 @@
 # Agent platform architecture
 
-This document is the canonical architecture and repository-boundary contract
-for the YourOwn.Chat agent platform. Build, release and first-launch operations
-are defined in [AGENT_PLATFORM_BUILD_RELEASE.md](AGENT_PLATFORM_BUILD_RELEASE.md).
+This document is the repository-boundary and runtime contract for the
+YourOwn.Chat agent platform. Build and release ownership is defined in
+[AGENT_PLATFORM_BUILD_RELEASE.md](AGENT_PLATFORM_BUILD_RELEASE.md).
 
 ## Repository boundaries
 
 | Repository | Owns | Must not own |
 |---|---|---|
-| [`pilprod/yourown-chat`](https://github.com/pilprod/yourown-chat) | Public architecture, Terraform, Helm, Docker build definitions and delivery routing | Product backend, worker or MCP source code |
-| [`pilprod/yourown-chat-server`](https://github.com/pilprod/yourown-chat-server) | `transport-api`, `auth-api`, `identity-api`, `identity-migrate`, `control-api`, independent users, Mattermost links, commands, approvals and Temporal state projection | Workflow/activity execution or MCP implementations |
-| [`pilprod/yourown-chat-agents`](https://github.com/pilprod/yourown-chat-agents) | Temporal workflow and activity workers, deterministic orchestration, agent execution and replay tests | Client-facing authorization or infrastructure ownership |
-| [`pilprod/yourown-chat-mcp`](https://github.com/pilprod/yourown-chat-mcp) | Go source for all owned MCP servers and their protocol/tool tests | Terraform, Helm or production credentials |
+| [`pilprod/yourown-chat`](https://github.com/pilprod/yourown-chat) | Public architecture, Terraform, Helm, immutable pins and delivery routing | Product backend, agent or workflow source |
+| [`pilprod/yourown-chat-server`](https://github.com/pilprod/yourown-chat-server) | Client-facing identity, workspace links, agent management, approvals and state projection | Agent execution, workflows or MCP implementations |
+| [`pilprod/yourown-chat-agents`](https://github.com/pilprod/yourown-chat-agents) | Declarative agent definitions, local-host adapters and agent integration code | Temporal workflow ownership or platform infrastructure |
+| `pilprod/yourown-chat-workflows` | Temporal workflows, activities, deterministic orchestration and replay tests | Local host enrollment or infrastructure ownership |
+| [`pilprod/yourown-chat-mcp`](https://github.com/pilprod/yourown-chat-mcp) | First-party MCP servers and protocol/tool tests | Terraform, Helm or workflow state |
+| [`pilprod/kagent`](https://github.com/pilprod/kagent) | kagent integration fork and upstreamable control-plane changes | Local Codex or Claude execution |
+| [`pilprod/substrate`](https://github.com/pilprod/substrate) | External host enrollment, connectivity and local process/container substrate | Durable workflow orchestration |
 
-The source split is complete: `yourown-chat-server` builds the independently
-deployable `transport-api`, `auth-api`, `identity-api`, `identity-admin`, `identity-migrate` and `control-api`;
-`yourown-chat-agents` builds `workflow-worker` and `activity-worker`; and the
-owned MCP implementations live only in `yourown-chat-mcp`.
-
-## Runtime flow
+## Runtime boundaries
 
 ```text
-YourOwn.Chat client
-  -> Mattermost + yourown-chat-server
-  -> Temporal wire contract
-  -> yourown-chat-agents workers
-  -> authenticated MCP gateway
-  -> isolated MCP server
-  -> explicitly allowed external system
+YourOwn.Chat / Temporal
+        -> kagent control plane in GKE
+        -> Substrate connection and policy
+        -> enrolled external host
+        -> Codex or Claude process/container
+        -> explicitly declared local tools, MCP, skills and memory
 ```
 
-The server starts workflows, submits human decisions and reads state. Workers
-consume Temporal task queues. They do not call each other directly or import
-each other's internal Go packages. MCP servers expose tools; they do not own
-workflow state, approvals or human conversation state.
+kagent is the cluster-side control plane. It owns declarative agent lifecycle,
+desired state and controller reconciliation. Substrate owns authenticated
+connectivity to an enrolled external host. The host launches the requested
+runtime as a process or container and exposes only the declared local
+capabilities. Temporal, when used, talks to kagent rather than bypassing it to
+call the client host directly.
 
-## Shared contract
+Temporal workflows are a separate durable orchestration layer. They are not a
+prerequisite for testing a locally launched agent, and their source and release
+lifecycle do not share the kagent/Substrate delivery rail.
 
-Workflow types, task-queue names, Temporal query/update names and serializable
-input, state, decision, event and report schemas are versioned wire contracts.
-Both application modules currently retain matching `internal/contracts` types.
-A neutral schema becomes the generation source before contract version two.
+## Namespace and authorization boundary
 
-An incompatible change is expanded and contracted:
+The control plane lives in `kagent-system`. Agent workloads are not placed in
+one common namespace. `app-gcp` declares a stable agent-key-to-namespace map;
+the initial mapping is `codex -> agent-codex`.
 
-1. the server reads old and new contract versions;
-2. workers start writing the new version;
-3. replay and compatibility tests cover existing histories;
-4. support for the old version is removed only after its workflows complete.
+Every declared agent namespace has:
+
+- restricted Pod Security admission labels;
+- default-deny ingress and egress;
+- an explicit DNS egress baseline;
+- a reviewed quota profile;
+- the exact namespace-scoped kagent getter, writer and environment-source
+  bindings required by the controller.
+
+New namespace resources use functional names without a product prefix. The
+existing `yourown.chat/*` ownership and policy label domain remains unchanged.
+Controller watch and RBAC scope must be extended only by adding a reviewed map
+entry; wildcard namespace access is not an acceptable shortcut.
 
 ## Identity and network boundaries
 
-The application plane is split by trust zone: `edge` contains the short-named
-`transport` and `auth` workloads; `identity` contains `api`, `admin` and
-`migrate`; `control` contains `control`. Every namespace is
-default-deny, and every cross-namespace edge
-selects both the exact namespace and workload label.
+- External hosts authenticate as dedicated host/agent identities, never as the
+  interactive user.
+- kagent remains the only cluster-side management entry point for Temporal and
+  application callers.
+- MCP, skills and memory/RAG attachments are declared as agent capabilities;
+  their credentials and network permissions remain independently scoped.
+- Process mode can use explicitly allowed local tools. Container mode keeps the
+  container runtime as the outer sandbox and receives only declared mounts and
+  sockets.
+- Risky mutations still require an auditable human decision at the owning
+  control or workflow layer.
 
-- `transport-api`, `auth-api`, `identity-api`, `identity-migrate`, `control-api`, `workflow-worker` and
-  `activity-worker` use separate Workload Identity service accounts and
-  Kubernetes service accounts.
-- The workflow worker talks only to Temporal. The activity worker receives only
-  the explicitly required MCP/model/storage access.
-- The identity service uses its own role and logical database in the existing
-  smallest Cloud SQL instance. Its native `/v1` surface is cluster-private and
-  reachable only through the X-Wing HPKE `transport-api`; administrative
-  `/internal` routes remain isolated in a separate binary.
-- Temporal has no public ingress and uses two logical databases on the private
-  Cloud SQL address.
-- MCP servers remain separate namespace tenants. A compromised MCP cannot reach
-  another MCP or Mattermost through an internal service.
-- Interactive identity and agent workload identity are never interchangeable.
-- Risky mutations pause in Temporal and resume only with an auditable human
-  approve/edit/reject decision.
+## Terraform ownership rule
 
-## Lifecycle ownership
+Every durable resource has exactly one Stack owner. `platform-gcp` owns GKE,
+Cloud SQL, platform buckets, Workload Identity and official platform services
+such as Temporal. `app-gcp` owns kagent/Substrate delivery, application runtime
+configuration and the per-agent namespace policy. A feature must extend its
+current owner instead of creating a parallel Stack, database, bucket or
+identity lifecycle.
 
-Temporal is platform infrastructure. Terraform installs the pinned official
-chart, creates its databases, secret, result bucket, namespace, quota and
-network policy from `platform-gcp`. It is not copied into Helm delivery and has
-no custom image.
-
-### Terraform ownership rule for future agents
-
-Every durable resource has exactly one Stack owner. Before adding a Terraform
-module or Stack, find the existing owner of the underlying resource and extend
-that owner's module first. A feature name is not a valid reason to introduce a
-parallel infrastructure module.
-
-- `platform-gcp` owns GKE, the shared Cloud SQL instance and its logical
-  databases/users, KMS, GCS platform buckets, Workload Identity and official
-  platform services such as Temporal.
-- `app-gcp` owns delivery rails and application runtime configuration. It must
-  consume platform outputs and must not create a second database, bucket or
-  platform-service lifecycle.
-- Terraform modules live under their owning Stack (`platform-gcp/modules` or
-  `app-gcp/modules`). Do not add a shared `terraform/modules` directory. Small
-  data-only helpers are duplicated when necessary so ownership, provider
-  configuration and state boundaries remain local to each Stack.
-- A new Stack is justified only by an independently approved lifecycle and
-  state boundary. It must not recreate or partially claim a resource already
-  owned by another Stack.
-
-For Temporal this means extending the existing `platform-gcp` Cloud SQL and
-storage modules, then composing the official chart inside `platform-gcp`.
-Creating `components/temporal`, `temporal-storage` or a second Cloud SQL/GCS
-module outside the owning Stack violates this rule.
-
-The six custom Go workloads are delivered by Cloud Deploy using immutable
-digests. `helm/yourown-chat` owns the persistent client-facing application;
-`helm/agent-platform` owns only the two pausable workers. A normal pause scales
-agent workers to zero while retaining identity data, the server, Temporal
-history and reports. Server and agent compute have independent releases; the
-agent release still requires a matching server contract tag.
-
-## First safe slice
-
-The pilot builds a plan, waits for an explicit human decision, executes an
-idempotent dry-run activity without external side effects and returns a
-structured report. Mattermost/Jira adapters, MCP calls, model routing and real
-mutations are added one activity at a time after this durable approval path is
-verified.
-
-ClickHouse, a separate vector database and Langfuse are deliberately excluded
-until measured event volume proves Cloud SQL and standard logs insufficient.
+The active release and ownership handoff are documented in
+[KAGENT_SUBSTRATE_RELEASE.md](KAGENT_SUBSTRATE_RELEASE.md).

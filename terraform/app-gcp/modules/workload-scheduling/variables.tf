@@ -4,18 +4,6 @@ variable "dev_namespace" {
   default     = "dev"
 }
 
-variable "agent_namespace" {
-  type        = string
-  description = "Namespace containing the agent pilot and its narrow verification service account."
-  default     = "yourown-agents"
-}
-
-variable "agent_enabled" {
-  type        = bool
-  description = "Create verifier RBAC only when the agent pilot namespace exists."
-  default     = false
-}
-
 variable "server_namespaces" {
   type        = set(string)
   description = "Trust-zone namespaces containing the independent YourOwn.Chat server plane."
