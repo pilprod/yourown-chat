@@ -17,13 +17,13 @@ The `atelet`, `ateom-gvisor`, `ateom-microvm`, `podcertcontroller` and
 `substrate-release-verify` images are outside this profile. They are not staged,
 promoted, scanned or recorded as artifacts of this release.
 
-The applied input authorizes exactly this first handoff:
+The applied input authorizes exactly this replacement handoff:
 
 ```text
 source tag:      v0.0.22
 tag object:      00a6a684cea3b3feea67461cf79347332ec759ef
 source commit:   e9ed68e587b56df2aa2a7f0267a744598c4d48b4
-release version: 0.0.22-private.1
+release version: 0.0.22-private.2
 release prefix:  europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate
 staging prefix:  europe-west3-docker.pkg.dev/yourown-chat/kagent-staging/substrate
 ```
@@ -53,7 +53,7 @@ set. Any broader or narrower set is rejected by the producer/consumer guards.
 
    ```bash
    terraform/app-gcp/modules/substrate-preview-publisher/scripts/publish-release-request.sh \
-     0.0.22-private.1
+     0.0.22-private.2
    ```
 
 3. Follow the Cloud Build through Google Cloud MCP. Do not open kagent bootstrap
@@ -62,7 +62,7 @@ set. Any broader or narrower set is rejected by the producer/consumer guards.
 4. Copy only digest-qualified image and OCI chart references from:
 
    ```text
-   gs://yourown-chat-kagent-preview-evidence-europe-west3/substrate/0.0.22-private.1/
+   gs://yourown-chat-kagent-preview-evidence-europe-west3/substrate/0.0.22-private.2/
    ```
 
 5. Copy the build's exact generation-qualified `evidence_uri` into
@@ -80,10 +80,12 @@ generation-zero release lock before writing final references. It publishes no
 exact Terraform input in a separately reviewed change before making another
 request.
 
-The earlier scan failure happened before the generation-zero lock and wrote no
-final image or chart reference. Therefore `0.0.22-private.1` remains the exact
-authorized coordinate; it must not be bumped merely because disposable staging
-objects exist.
+`0.0.22-private.1` is permanently consumed by failed build
+`eef8312e-a31d-4d75-bc66-df3778fe5533`: it acquired the lock, promoted the four
+image indexes and pushed the application chart before failing to record Helm's
+stderr digest. It produced no CRD chart or release evidence and is not a valid
+deployment input. The clean replacement coordinate is `0.0.22-private.2`; the
+publisher must never overwrite or resume `.1`.
 
 No GitHub Action, GHCR writer credential, public Artifact Registry IAM grant or
 local Docker registry login participates in this release path.

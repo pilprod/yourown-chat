@@ -682,7 +682,7 @@ variable "substrate_preview_publisher" {
     source_tag        = "v0.0.22"
     source_tag_object = "00a6a684cea3b3feea67461cf79347332ec759ef"
     source_commit     = "e9ed68e587b56df2aa2a7f0267a744598c4d48b4"
-    release_version   = "0.0.22-private.1"
+    release_version   = "0.0.22-private.2"
     submitter_members = []
   }
 
@@ -691,9 +691,9 @@ variable "substrate_preview_publisher" {
       var.substrate_preview_publisher.source_tag == "v0.0.22" &&
       var.substrate_preview_publisher.source_tag_object == "00a6a684cea3b3feea67461cf79347332ec759ef" &&
       var.substrate_preview_publisher.source_commit == "e9ed68e587b56df2aa2a7f0267a744598c4d48b4" &&
-      var.substrate_preview_publisher.release_version == "0.0.22-private.1"
+      var.substrate_preview_publisher.release_version == "0.0.22-private.2"
     )
-    error_message = "The initial private Substrate publisher must remain pinned to v0.0.22, tag object 00a6a684cea3b3feea67461cf79347332ec759ef, commit e9ed68e587b56df2aa2a7f0267a744598c4d48b4 and coordinate 0.0.22-private.1."
+    error_message = "The private Substrate publisher must remain pinned to v0.0.22, tag object 00a6a684cea3b3feea67461cf79347332ec759ef, commit e9ed68e587b56df2aa2a7f0267a744598c4d48b4 and coordinate 0.0.22-private.2."
   }
 
 }

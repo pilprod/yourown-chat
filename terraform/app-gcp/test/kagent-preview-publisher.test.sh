@@ -22,6 +22,10 @@ grep -Fq 'gcloud pubsub topics publish' "${invoker}" ||
   fail 'release request must use the IAM-protected Pub/Sub topic'
 
 main="$(cat "${module_dir}/main.tf")"
+expected_substrate_evidence_case="'gs://\${var.evidence_bucket_name}/substrate/0.0.22-private.2/release-evidence.json#'[1-9][0-9]*) ;;"
+
+grep -Fq '0\\.0\\.22-private\\.2/release-evidence\\.json#[1-9][0-9]*$' "${module_dir}/variables.tf" ||
+  fail 'private Substrate evidence input must accept only the replacement coordinate'
 
 for required in \
   'resource "google_service_account" "publisher"' \
@@ -67,7 +71,7 @@ for required in \
   'roles/storage.objectCreator' \
   'resource "google_storage_bucket_iam_member" "evidence_viewer"' \
   'roles/storage.objectViewer' \
-  'resource.name.startsWith(\"projects/_/buckets/${google_storage_bucket.evidence[0].name}/objects/substrate/0.0.22-private.1/\")' \
+  'resource.name.startsWith(\"projects/_/buckets/${google_storage_bucket.evidence[0].name}/objects/substrate/0.0.22-private.2/\")' \
   'resource "google_secret_manager_secret" "ghcr_write"' \
   'resource "google_service_account_iam_member" "submitter"' \
   'for_each = var.enabled ? toset(["serviceAccount:${var.apply_service_account_email}"]) : toset([])' \
@@ -78,6 +82,7 @@ done
 
 for required in \
   'id         = "materialize-private-substrate-verification-inputs"' \
+  "${expected_substrate_evidence_case}" \
   'gcloud storage cp "$$receipt_uri"' \
   'gcloud auth print-access-token' \
   'trap cleanup EXIT' \

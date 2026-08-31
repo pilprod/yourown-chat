@@ -6,6 +6,7 @@ root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
 module_dir="${root_dir}/terraform/app-gcp/modules/substrate-preview-publisher"
 components="${root_dir}/terraform/app-gcp/components.tfcomponent.hcl"
 inputs="${root_dir}/terraform/app-gcp/service-inputs.tfdeploy.hcl"
+stack_variables="${root_dir}/terraform/app-gcp/variables.tfcomponent.hcl"
 app="${root_dir}/terraform/app-gcp/app.tfdeploy.hcl"
 outputs="${root_dir}/terraform/app-gcp/outputs.tfcomponent.hcl"
 driver="${module_dir}/scripts/publish-private-gar.sh"
@@ -71,15 +72,17 @@ if rg -n 'available_secrets|secret_env|secretEnv|github_token|ghcr_write|docker\
   fail 'private publisher must not depend on package credentials or mutable final tags'
 fi
 
-grep -Fq 'condition     = var.release_version == "0.0.22-private.1"' "${module_dir}/variables.tf" ||
+grep -Fq 'condition     = var.release_version == "0.0.22-private.2"' "${module_dir}/variables.tf" ||
   fail 'module must authorize exactly one applied private release coordinate'
+grep -Fq 'var.substrate_preview_publisher.release_version == "0.0.22-private.2"' "${stack_variables}" ||
+  fail 'Stack input must authorize exactly the replacement private release coordinate'
 grep -Fq 'condition     = var.source_tag == "v0.0.22"' "${module_dir}/variables.tf" ||
   fail 'reviewed annotated source tag is not fixed'
 grep -Fq 'condition     = var.source_tag_object == "00a6a684cea3b3feea67461cf79347332ec759ef"' "${module_dir}/variables.tf" ||
   fail 'reviewed annotated tag object is not fixed'
 grep -Fq 'condition     = var.source_commit == "e9ed68e587b56df2aa2a7f0267a744598c4d48b4"' "${module_dir}/variables.tf" ||
   fail 'reviewed peeled source commit is not fixed'
-grep -Fq 'readonly expected_release_version="0.0.22-private.1"' "${invoker}" ||
+grep -Fq 'readonly expected_release_version="0.0.22-private.2"' "${invoker}" ||
   fail 'manual submitter must reject any coordinate not authorized by the applied configuration'
 grep -Fq 'gcloud pubsub topics publish substrate-private-release' "${invoker}" ||
   fail 'manual request must use the IAM-protected Google Pub/Sub topic'
@@ -100,6 +103,7 @@ done
 for required in \
   'readonly expected_release_prefix="europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate"' \
   'readonly expected_staging_prefix="europe-west3-docker.pkg.dev/yourown-chat/kagent-staging/substrate"' \
+  '[[ "${release_version}" == "0.0.22-private.2" ]]' \
   '[[ "${source_tag}" == "v0.0.22" ]]' \
   '[[ "${source_commit}" == "e9ed68e587b56df2aa2a7f0267a744598c4d48b4" ]]' \
   'docker buildx imagetools create --tag "${candidate}" "${source_ref}"' \
@@ -109,6 +113,7 @@ for required in \
   '> "${release_inputs}/platform-image-digests.json"' \
   'printf '\''%s\n'\'' "${reference}" > "${release_dir}/${evidence_prefix}-scan-target.txt"' \
   'gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0, compresslevel=9)' \
+  'output="$("${HELM_BIN}" push "${archive}" "oci://${SUBSTRATE_RELEASE_PREFIX}/helm" 2>&1)"' \
   'info.uid = 0' \
   'info.gid = 0' \
   'info.mode = 0o755' \
@@ -254,12 +259,12 @@ for required in \
   'source_tag        = "v0.0.22"' \
   'source_tag_object = "00a6a684cea3b3feea67461cf79347332ec759ef"' \
   'source_commit     = "e9ed68e587b56df2aa2a7f0267a744598c4d48b4"' \
-  'release_version   = "0.0.22-private.1"' \
+  'release_version   = "0.0.22-private.2"' \
   'submitter_members = []'; do
   grep -Fq "${required}" "${inputs}" || fail "applied private release input is missing: ${required}"
 done
 
-if "${invoker}" 0.0.22-private.2 >/dev/null 2>&1; then
+if "${invoker}" 0.0.22-private.1 >/dev/null 2>&1; then
   fail 'manual submitter accepted a coordinate not authorized by the applied configuration'
 fi
 

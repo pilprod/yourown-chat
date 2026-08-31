@@ -140,9 +140,9 @@ resource "google_storage_bucket_iam_member" "evidence_viewer" {
   member = "serviceAccount:${google_service_account.publisher[0].email}"
 
   condition {
-    title       = "substrate-0.0.22-private.1-read"
+    title       = "substrate-0.0.22-private.2-read"
     description = "Read only the exact private Substrate evidence handoff consumed by this kagent rail."
-    expression  = "resource.name.startsWith(\"projects/_/buckets/${google_storage_bucket.evidence[0].name}/objects/substrate/0.0.22-private.1/\")"
+    expression  = "resource.name.startsWith(\"projects/_/buckets/${google_storage_bucket.evidence[0].name}/objects/substrate/0.0.22-private.2/\")"
   }
 }
 
@@ -365,7 +365,7 @@ resource "google_cloudbuild_trigger" "release" {
           receipt_uri='${var.substrate_release_evidence_uri}'
           test -n "$$receipt_uri"
           case "$$receipt_uri" in
-            'gs://${var.evidence_bucket_name}/substrate/0.0.22-private.1/release-evidence.json#'[1-9][0-9]*) ;;
+            'gs://${var.evidence_bucket_name}/substrate/0.0.22-private.2/release-evidence.json#'[1-9][0-9]*) ;;
             *)
               printf 'private Substrate evidence URI is not the applied generation-qualified coordinate\n' >&2
               exit 1

@@ -76,11 +76,11 @@ variable "source_tag_object" {
 variable "release_version" {
   type        = string
   description = "One exact private GAR release coordinate authorized by the applied configuration. A failed locked publication requires a reviewed input bump."
-  default     = "0.0.22-private.1"
+  default     = "0.0.22-private.2"
 
   validation {
-    condition     = var.release_version == "0.0.22-private.1"
-    error_message = "The initial private Substrate handoff is pinned to release coordinate 0.0.22-private.1."
+    condition     = var.release_version == "0.0.22-private.2"
+    error_message = "The current private Substrate handoff is pinned to release coordinate 0.0.22-private.2."
   }
 }
 
