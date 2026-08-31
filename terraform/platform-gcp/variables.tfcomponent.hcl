@@ -111,7 +111,7 @@ variable "kagent_registry_repository_id" {
 
 variable "kagent_staging_registry_repository_id" {
   type        = string
-  description = "ID of the dedicated private Artifact Registry staging repository used by app-gcp to build and scan kagent candidates before public immutable promotion."
+  description = "ID of the dedicated private Artifact Registry staging repository used by app-gcp to build and scan kagent candidates before immutable promotion into the private release repository."
   default     = "kagent-staging"
 
   validation {
