@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: kagent-substrate-health
+  name: kagent-promotion-health
   namespace: ate-system
 spec:
   backoffLimit: 1
@@ -10,7 +10,7 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/component: verify
-        app.kubernetes.io/part-of: kagent-substrate-testbed
+        app.kubernetes.io/part-of: kagent-promotion
     spec:
       restartPolicy: Never
       automountServiceAccountToken: false
@@ -38,9 +38,7 @@ spec:
         - name: substrate-server-ca
           secret:
             secretName: substrate-ate-controller-tls
-            # The serving CA is public trust material. World-readable keeps the
-            # projection usable by the image's arbitrary non-root UID without
-            # granting access to any private key or client credential.
+            # Public trust material only; no private key or client credential.
             defaultMode: 0444
             items:
               - key: server-ca.pem

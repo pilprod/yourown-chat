@@ -174,9 +174,15 @@ component "clouddeploy_kagent_substrate" {
 
     stages = [
       {
-        name             = "testbed"
-        profiles         = ["kagent-substrate-testbed"]
+        name             = "dev"
+        profiles         = ["kagent-dev"]
         require_approval = false
+        verify           = true
+      },
+      {
+        name             = "prod"
+        profiles         = ["kagent-prod"]
+        require_approval = true
         verify           = true
       },
     ]

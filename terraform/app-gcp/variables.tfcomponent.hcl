@@ -278,7 +278,7 @@ variable "kagent_substrate_delivery" {
       port = number
     })), {})
   })
-  description = "Fail-closed two-phase contract: bootstrap owns pre-sync infrastructure, while release admits the production-ineligible kagent/Substrate Helm workload only after native Secret synchronization."
+  description = "Fail-closed contract: bootstrap owns shared Substrate prerequisites; release admits one immutable kagent digest set to dev and permits production only after verification and approval."
   default     = {}
 
   validation {
@@ -286,7 +286,7 @@ variable "kagent_substrate_delivery" {
       var.kagent_substrate_delivery.bootstrap_enabled ||
       var.kagent_substrate_delivery.release_enabled
       ) || (
-      !var.kagent_substrate_delivery.production_eligible &&
+      (!var.kagent_substrate_delivery.release_enabled || var.kagent_substrate_delivery.production_eligible) &&
       toset(keys(var.kagent_substrate_delivery.artifacts)) == toset(["kagent", "substrate"]) &&
       var.kagent_substrate_delivery.artifacts["kagent"].source_repository == "https://github.com/pilprod/kagent" &&
       var.kagent_substrate_delivery.artifacts["kagent"].artifact_schema_version == "3" &&

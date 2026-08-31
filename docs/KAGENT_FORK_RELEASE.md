@@ -57,8 +57,9 @@ archives, scan results and a schema-2 Cloud Build identity receipt. The release
 evidence keeps the canonical `v<version>` artifact tag, while the identity
 receipt records the reviewed `gcp-v<version>` source tag separately. The deployment input
 must copy only the immutable digest references and the verified manifest hash
-from this receipt. Cloud Deploy then renders the production-ineligible
-`kagent-substrate` testbed release from the reviewed `yourown-chat` repository.
+from this receipt. Cloud Deploy renders one `kagent-substrate` release with a
+`kagent-dev` stage and an approval-gated `kagent-prod` stage. Both stages consume
+the same digest set; promotion never rebuilds the fork.
 
 The release namespace is deliberately `gcp-v...`, not `v...`: the fork still
 contains a legacy GitHub Actions glob for `v*.kap.*`, and the Google-only rail

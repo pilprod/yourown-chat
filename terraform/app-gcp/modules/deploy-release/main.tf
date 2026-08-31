@@ -411,10 +411,10 @@ resource "google_cloudbuild_trigger" "release" {
               create_release \
                 kagent-substrate \
                 "kagent-substrate-$$safe_tag-$SHORT_SHA-$$short_build" \
-                "git-tag=$TAG_NAME,git-sha=$COMMIT_SHA,build-id=$BUILD_ID,production-eligible=false,kagent-source=${try(var.kagent_substrate_delivery.artifacts["kagent"].source_commit, "disabled")},kagent-manifest=${try(var.kagent_substrate_delivery.artifacts["kagent"].artifact_manifest_sha256, "disabled")},substrate-source=${try(var.kagent_substrate_delivery.artifacts["substrate"].source_commit, "disabled")},substrate-manifest=${try(var.kagent_substrate_delivery.artifacts["substrate"].artifact_manifest_sha256, "disabled")}"
+                "git-tag=$TAG_NAME,git-sha=$COMMIT_SHA,build-id=$BUILD_ID,production-eligible=true,promotion=dev-to-approved-prod,kagent-source=${try(var.kagent_substrate_delivery.artifacts["kagent"].source_commit, "disabled")},kagent-manifest=${try(var.kagent_substrate_delivery.artifacts["kagent"].artifact_manifest_sha256, "disabled")},substrate-source=${try(var.kagent_substrate_delivery.artifacts["substrate"].source_commit, "disabled")},substrate-manifest=${try(var.kagent_substrate_delivery.artifacts["substrate"].artifact_manifest_sha256, "disabled")}"
             fi
           elif [ "$$kagent_substrate_changed" = "true" ]; then
-            echo "kagent/Substrate testbed changes detected, but release_enabled=false; bootstrap may proceed without admitting Helm workloads"
+            echo "kagent promotion changes detected, but release_enabled=false; shared Substrate bootstrap may proceed without admitting kagent workloads"
           fi
 
           if [ "$$mattermost_changed" = "false" ] && [ "$$mcp_changed" = "false" ] && [ "$$agents_changed" = "false" ] && [ "$$server_changed" = "false" ] && [ "$$kagent_substrate_changed" = "false" ]; then

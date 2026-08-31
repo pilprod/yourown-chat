@@ -44,14 +44,13 @@ jq -n \
   --arg substrate_application_ref "${substrate_application_ref}" \
   --arg substrate_crds_ref "${substrate_crds_ref}" \
   --arg kbase "$(sha256_file "${repo_root}/helm/kagent/kagent.values.yaml")" \
-  --arg ktest "$(sha256_file "${repo_root}/helm/kagent/kagent-testbed.values.yaml")" \
-  --arg sbase "$(sha256_file "${repo_root}/helm/kagent/substrate.values.yaml")" \
-  --arg stest "$(sha256_file "${repo_root}/helm/kagent/substrate-testbed.values.yaml")" \
+  --arg kdev "$(sha256_file "${repo_root}/helm/kagent/kagent-dev.values.yaml")" \
+  --arg kprod "$(sha256_file "${repo_root}/helm/kagent/kagent-prod.values.yaml")" \
   '{
     bootstrap_enabled: true,
     release_enabled: true,
     native_secret_sync_ready: true,
-    production_eligible: false,
+    production_eligible: true,
     external_broker_smoke_ready: false,
     artifacts: {
       kagent: {
@@ -117,9 +116,8 @@ jq -n \
     },
     values_sha256: {
       "kagent/kagent.values.yaml": $kbase,
-      "kagent/kagent-testbed.values.yaml": $ktest,
-      "kagent/substrate.values.yaml": $sbase,
-      "kagent/substrate-testbed.values.yaml": $stest
+      "kagent/kagent-dev.values.yaml": $kdev,
+      "kagent/kagent-prod.values.yaml": $kprod
     },
     kagent_health_url: "http://kagent-controller.kagent-system.svc.cluster.local:8083/health",
     substrate_endpoint: "api.ate-system.svc.cluster.local:443",
@@ -132,14 +130,15 @@ output="${work}/skaffold.yaml"
 KAGENT_SUBSTRATE_RELEASE_JSON="$(<"${contract}")" \
   python3 "${renderer}" --source-root "${repo_root}/helm" --output "${output}"
 
-grep -Fq 'name: kagent-substrate-testbed' "${output}"
-grep -Fq 'name: substrate' "${output}"
-grep -Fq 'namespace: ate-system' "${output}"
-grep -Fq 'name: kagent' "${output}"
+grep -Fq 'name: kagent-dev' "${output}"
+grep -Fq 'name: kagent-prod' "${output}"
+grep -Fq 'namespace: kagent-dev' "${output}"
 grep -Fq 'namespace: kagent-system' "${output}"
-grep -Fq 'production_eligible=false' "${output}"
+grep -Fq 'production_eligible=true' "${output}"
+! grep -Fq 'name: substrate' "${output}"
+! grep -Fq 'remoteChart: "oci://ghcr.io/pilprod/substrate/' "${output}"
 grep -Fq 'Substrate pins use app-gcp consumer evidence; this was not a producer release asset.' "${output}"
-grep -Fq 'external_broker_smoke_ready=false; required for local-agent-ready, not bootstrap' "${output}"
+grep -Fq 'external_broker_smoke_ready=false; required before prod approval' "${output}"
 grep -Fq "runtime_images.kagentHarness=ghcr.io/pilprod/kagent/golang-adk@${d7}" "${output}"
 grep -Fq "runtime_images.codexHarness=ghcr.io/pilprod/kagent/codex-harness@${d11}" "${output}"
 ! grep -Fq 'controller.agentImage' "${output}"
@@ -152,19 +151,21 @@ grep -Fq -- '--substrate-server-name' "${output}"
 grep -Fq -- 'api.ate-system.svc' "${output}"
 grep -Fq -- 'api.ate-system.svc.cluster.local:443' "${output}"
 ! grep -Fq -- '--broker-address' "${output}"
-grep -Fq 'secretName: substrate-ate-controller-tls' "${repo_root}/helm/kagent/verify/testbed-job.yaml"
-grep -Fq 'key: server-ca.pem' "${repo_root}/helm/kagent/verify/testbed-job.yaml"
-grep -Fq 'defaultMode: 0444' "${repo_root}/helm/kagent/verify/testbed-job.yaml"
-! grep -Fq 'client-credential-bundle.pem' "${repo_root}/helm/kagent/verify/testbed-job.yaml"
-grep -Fq 'runAsUser: 65532' "${repo_root}/helm/kagent/verify/testbed-job.yaml"
-grep -Fq 'runAsGroup: 65532' "${repo_root}/helm/kagent/verify/testbed-job.yaml"
+grep -Fq 'secretName: substrate-ate-controller-tls' "${repo_root}/helm/kagent/verify/promotion-job.yaml"
+grep -Fq 'key: server-ca.pem' "${repo_root}/helm/kagent/verify/promotion-job.yaml"
+grep -Fq 'defaultMode: 0444' "${repo_root}/helm/kagent/verify/promotion-job.yaml"
+! grep -Fq 'client-credential-bundle.pem' "${repo_root}/helm/kagent/verify/promotion-job.yaml"
+grep -Fq 'runAsUser: 65532' "${repo_root}/helm/kagent/verify/promotion-job.yaml"
+grep -Fq 'runAsGroup: 65532' "${repo_root}/helm/kagent/verify/promotion-job.yaml"
 grep -Fq "\"controller.image.tag\": \"0.10.0@${d1}\"" "${output}"
 grep -Fq "\"ui.image.tag\": \"0.10.0@${d2}\"" "${output}"
 ! grep -Fq '  agentImage:' "${repo_root}/helm/kagent/kagent.values.yaml"
 ! grep -Fq 'controller.image.digest' "${output}"
 ! grep -Fq 'ui.image.digest' "${output}"
-[[ "$(grep -c '^  - name: kagent-substrate-' "${output}")" -eq 1 ]]
-! grep -Eq 'kagent-substrate-(dev|prod)' "${output}"
+[[ "$(grep -c '^  - name: kagent-' "${output}")" -eq 2 ]]
+[[ "$(grep -Fc '"controller.image.tag": "0.10.0@'"${d1}"'"' "${output}")" -eq 2 ]]
+[[ "$(grep -Fc '"ui.image.tag": "0.10.0@'"${d2}"'"' "${output}")" -eq 2 ]]
+grep -Fq 'jobManifestPath: kagent/verify/promotion-job.yaml' "${output}"
 
 grep -Fq 'kind: AgentgatewayParameters' "${repo_root}/helm/kagent/gateway/testbed-parameters.yaml"
 grep -Fq 'apiVersion: agentgateway.dev/v1alpha1' "${repo_root}/helm/kagent/gateway/testbed-parameters.yaml"
@@ -209,13 +210,13 @@ helm template kagent-image-contract "${kagent_fixture}" \
 grep -Fq "image: ghcr.io/pilprod/kagent/controller:0.10.0@${d1}" "${rendered_images}"
 grep -Fq "image: ghcr.io/pilprod/kagent/ui:0.10.0@${d2}" "${rendered_images}"
 
-jq '.production_eligible = true' "${contract}" > "${work}/bad.json"
+jq '.production_eligible = false' "${contract}" > "${work}/bad.json"
 if KAGENT_SUBSTRATE_RELEASE_JSON="$(<"${work}/bad.json")" \
   python3 "${renderer}" --source-root "${repo_root}/helm" --output "${work}/bad.yaml" 2>"${work}/bad.err"; then
-  echo "production-eligible contract unexpectedly rendered" >&2
+  echo "production-ineligible contract unexpectedly rendered" >&2
   exit 1
 fi
-grep -Fq 'production_eligible=false' "${work}/bad.err"
+grep -Fq 'dev-to-prod promotion requires production_eligible=true' "${work}/bad.err"
 
 jq 'del(.external_broker_smoke_ready)' "${contract}" > "${work}/missing-smoke-status.json"
 if KAGENT_SUBSTRATE_RELEASE_JSON="$(<"${work}/missing-smoke-status.json")" \

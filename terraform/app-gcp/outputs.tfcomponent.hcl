@@ -39,13 +39,16 @@ output "kagent_substrate_delivery_ready" {
 
 output "kagent_substrate_production_eligible" {
   type        = bool
-  description = "The fork issue-validation rail is structurally forbidden from promoting into production."
-  value       = false
+  description = "Whether the admitted immutable kagent artifact is eligible for dev verification followed by approval-gated production promotion."
+  value = (
+    var.kagent_substrate_delivery.release_enabled &&
+    var.kagent_substrate_delivery.production_eligible
+  )
 }
 
 output "external_broker_smoke_required" {
   type        = bool
-  description = "True until an external client/Cloud Build TLS+gRPC smoke has been explicitly attested; this does not block the first testbed bootstrap release."
+  description = "True until an external Agent Host TLS+gRPC smoke has been explicitly attested; production approval remains closed while true."
   value       = !var.kagent_substrate_delivery.external_broker_smoke_ready
 }
 

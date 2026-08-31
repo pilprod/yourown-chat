@@ -1,13 +1,17 @@
-# kagent + Substrate public testbed rail
+# kagent dev-to-production promotion rail
 
-This directory is a single Cloud Deploy target for fork/issue validation. It
-is deliberately `production_eligible=false`; it has no production profile or
-promotion stage. Existing coordinates stay stable:
+This directory renders one reviewed immutable kagent candidate into two ordered
+Cloud Deploy stages. Dev is deployed and verified first; production requires an
+explicit approval and verifies the same digest set again:
 
-- Helm release `kagent` in `kagent-system`;
-- kagent workload namespace `kagent-testbed`;
-- Helm release `substrate` in `ate-system`; and
+- dev Helm release `kagent-dev` in `kagent-dev`, watching `agent-codex-dev`;
+- production Helm release `kagent` in `kagent-system`, watching `agent-codex`;
+- shared Terraform-owned Substrate in `ate-system`; and
 - Broker TLS SNI `api.ate-system.svc`.
+
+Cloud Deploy never rebuilds during promotion. Both profiles are rendered from
+the same chart and image digest fields in one release receipt. Substrate,
+Gateway and CRDs remain prerequisites and are not reinstalled by either stage.
 
 Terraform owns namespaces, quotas, NetworkPolicy prerequisites, CRD releases,
 RBAC, `ate-api-authentication`, Secret Manager containers and the
@@ -17,14 +21,12 @@ separate, reviewed handoff must first retain the release in-cluster with
 `destroy=false` and remove only its Terraform state ownership. Phase A moved
 the live object to `helm_release.application_handoff_source[0]`; Phase B must
 target exactly that address in its `removed` block. Cloud Deploy must never
-race the handoff-source release. After that handoff,
-Cloud Deploy owns only the kagent and Substrate application Helm releases.
+race the handoff-source release. After that handoff, Cloud Deploy owns only the
+kagent application releases.
 
-Substrate's application chart owns the one `Gateway` and `TLSRoute` by setting
-`externalProviderBroker.gateway.enabled=true`. The only raw resource here is
-the application-owned `AgentgatewayParameters`, which adds the GKE static-IP
-Service annotations and Restricted-Pod-Security overlays. There is no duplicate
-Gateway/TLSRoute owner.
+Substrate's Terraform-managed application chart owns the one `Gateway` and
+`TLSRoute`. There is no duplicate Gateway/TLSRoute owner in either kagent
+promotion profile.
 
 `render-release.py` accepts two separate reviewed artifact manifests. Each
 must carry source repository/commit, schema/checksum, digest-qualified app and
@@ -98,10 +100,8 @@ is the caller-supplied exact
 requires release-supplied digest pins; this repository does not invent a
 `kubectl-ate` image digest.
 
-The current service input intentionally sets every activation attestation to
-false. The immutable Substrate `v0.0.22` consumer record includes the verifier
-pin, but independent immutable kagent evidence is still absent. Remaining
-prerequisites also include populated and natively synchronized TLS material,
-the explicit local-provider-only network posture, the two-step kagent ownership
-handoff, and external Broker smoke evidence. Do not flip the rail until all of
-them are reviewed.
+The current service input intentionally keeps every activation attestation
+false. Before enabling the rail, record the private Artifact Registry receipt,
+prepare separate dev/prod database and Substrate client identities, complete
+the Terraform-to-Cloud-Deploy Helm ownership handoff, and deploy the dev stage.
+A real external Agent Host TLS/gRPC smoke is required before approving prod.
