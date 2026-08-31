@@ -15,6 +15,16 @@ grep -Fq '"pubsub.googleapis.com"' "${components}" ||
 grep -Fq 'app-gcp owns the source-less release trigger and its topic' "${components}" ||
   fail "platform must document app ownership of the source-less trigger and topic"
 
+# These constraints only select Cloud Build's default identity. app-gcp always
+# supplies a dedicated service account, so platform must not require an
+# organization-level policy bootstrap for this release rail.
+if grep -Fq 'cloudbuild_user_specified_service_account_policy' "${components}" ||
+  grep -Fq '"orgpolicy.googleapis.com"' "${components}" ||
+  grep -R -F 'constraints/cloudbuild.useBuildServiceAccount' \
+    --include='*.tf' "${platform_dir}/modules" >/dev/null; then
+  fail "explicit Cloud Build service accounts must not depend on an Org Policy override"
+fi
+
 if grep -R -E 'resource "google_(pubsub_topic|cloudbuild_trigger)"' \
   --include='*.tf' "${platform_dir}/modules" >/dev/null; then
   fail "Pub/Sub topics and Cloud Build triggers belong to app-gcp, not platform-gcp"
