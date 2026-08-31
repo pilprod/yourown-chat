@@ -136,7 +136,7 @@ grep -Fq 'staging_registry_repository_id  = var.kagent_staging_registry_reposito
   fail 'platform-owned private kagent staging repository is not wired'
 grep -Fq 'enabled                    = true' "${inputs}" ||
   fail 'service input does not materialize the publisher infrastructure'
-grep -Fq 'source_commit              = "6c42060b74589f61b4b2bed44692e1f87247ef2d"' "${inputs}" ||
+grep -Fq 'source_commit              = "2f4d7ab2840f63bd4d4fa8a926aead653ab82335"' "${inputs}" ||
   fail 'reviewed kagent source commit is not pinned'
 grep -Fq 'release_tag_regex          = "^gcp-v0\\.0\\.0-external-slot\\.kap\\.[0-9]+$"' "${inputs}" ||
   fail 'release tags must remain in the gcp-v namespace that cannot dispatch the fork v*.kap.* workflow'

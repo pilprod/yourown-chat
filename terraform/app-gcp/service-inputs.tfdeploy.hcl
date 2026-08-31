@@ -271,7 +271,7 @@ locals {
   # keep this migration non-destructive.
   kagent_preview_publisher = {
     enabled                    = true
-    source_commit              = "6c42060b74589f61b4b2bed44692e1f87247ef2d"
+    source_commit              = "2f4d7ab2840f63bd4d4fa8a926aead653ab82335"
     release_tag_regex          = "^gcp-v0\\.0\\.0-external-slot\\.kap\\.[0-9]+$"
     evidence_bucket_name       = "yourown-chat-kagent-preview-evidence-europe-west3"
     evidence_retention_seconds = 31536000
