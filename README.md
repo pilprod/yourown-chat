@@ -18,12 +18,12 @@ own the platform with separate state and blast radius:
 |---|---|---|---|
 | **platform-gcp** | `terraform/platform-gcp` | The stateful foundation: APIs, network + reserved ingress IP, CMEK key, GKE cluster, Cloud SQL, native identity database, object storage, container registry, active billing dataset, Workload Identity SAs | Rarely |
 | **cloudflare** | `terraform/cloudflare` | The public edge for `yourown.chat`: DNS, TLS/security settings, DNSSEC, WAF, Origin CA cert + the origin-TLS secrets it fills | Sometimes |
-| **app-gcp** | `terraform/app-gcp` | App secrets; independent Mattermost, MCP and agent-pilot delivery pipelines; persistent dev PostgreSQL; image CI; tag routing; cluster bootstrap | Often |
+| **app-gcp** | `terraform/app-gcp` | App secrets; Mattermost, MCP, YourOwn.Chat and kagent/Substrate delivery pipelines; per-agent namespaces; persistent dev PostgreSQL; image CI; tag routing; cluster bootstrap | Often |
 | **agent-registry-gcp** | `terraform/agent-registry-gcp` | Google Cloud Agent Registry catalog entries for external APIs and vendor-hosted MCP servers; GKE and Google MCPs register automatically | Rarely |
 
 The self-hosted agent architecture and repository boundaries are documented in
-[the agent platform contract](docs/AGENT_PLATFORM.md); its tag-driven delivery
-and guarded Temporal bootstrap are in
+[the agent platform contract](docs/AGENT_PLATFORM.md); its kagent/Substrate
+release and ownership handoff are in
 [the release runbook](docs/AGENT_PLATFORM_BUILD_RELEASE.md).
 The complete public ownership and release map is maintained in
 [the repository catalog](docs/REPOSITORIES.md).
@@ -49,7 +49,7 @@ holds the VPC, the cluster and the database — and the Cloudflare API token
 | Kubernetes | One zonal GKE Standard cluster, private nodes, one autoscaling `general` pool (`e2-standard-2`, 1–3 nodes) |
 | Container registry | One Artifact Registry repo (`docker`) with a shared hardened runtime base; paid Artifact Analysis scanning is off by default and opened through a guarded MCP action only for selected build windows |
 | CI | Mattermost patch branches and immutable tags use their dev-to-prod flow; private MCP Go source has independent main/tag triggers that test, attest, scan and release two images through one public Dockerfile |
-| CD | Separate Mattermost, MCP and agent-pilot pipelines; ephemeral test workloads; one semver platform tag routes only changed components |
+| CD | Separate Mattermost, MCP, YourOwn.Chat and kagent/Substrate pipelines; ephemeral test workloads; one semver platform tag routes only changed components |
 | Agent-operated delivery | An agent can author a change, inspect CI/CD and Terraform plans, promote a verified release, and request the guarded production approval through MCP; write actions remain Human-in-the-loop |
 | Secrets | Everything in Secret Manager, mounted via the CSI add-on + Workload Identity |
 | Encryption | One shared Cloud KMS **HSM** key (CMEK, 90-day rotation) over Cloud SQL, GCS, Secret Manager and **GKE etcd** (application-layer Kubernetes Secrets encryption) |
@@ -877,10 +877,9 @@ terraform/
 helm/                    # Kubernetes workloads, delivered by Cloud Deploy
   skaffold-mattermost.yaml # Mattermost-only dev/prod render and cleanup
   skaffold-mcp.yaml        # MCP-only dev/prod render, smoke, and cleanup
-  skaffold-agents.yaml     # approval-gated agent pilot start/pause
   skaffold-yourown-chat.yaml # approval-gated client-facing application
+  kagent/                   # digest-pinned kagent/Substrate render and release evidence
   yourown-chat/            # identity API, database migration and optional control API
-  agent-platform/          # workflow worker and activity worker only
   matterbridge/          # isolated bridge deployment
   mattermost/            # one chart, promoted with dev/prod values
   mcp/                   # MCP Helm chart, dev probes and prod credential/API smoke
@@ -892,11 +891,13 @@ docker/
   mcp/                   # one pinned Go multi-service Dockerfile
 docs/BUILD.md            # image build flow in detail
 docs/AGENT_PLATFORM.md               # repository and runtime boundaries
-docs/AGENT_PLATFORM_BUILD_RELEASE.md # tag releases and Temporal launch runbook
+docs/AGENT_PLATFORM_BUILD_RELEASE.md # kagent/Substrate build and release contract
 ```
 
-Agent workflow and activity worker source lives in
-[`pilprod/yourown-chat-agents`](https://github.com/pilprod/yourown-chat-agents).
+Declarative agent definitions and local-host integration code live in
+[`pilprod/yourown-chat-agents`](https://github.com/pilprod/yourown-chat-agents);
+Temporal workflow source has a separate `pilprod/yourown-chat-workflows`
+lifecycle.
 The independent identity, workspace-link and control API services live in
 [`pilprod/yourown-chat-server`](https://github.com/pilprod/yourown-chat-server).
 Owned MCP Go source lives in
@@ -904,9 +905,9 @@ Owned MCP Go source lives in
 This public platform repository contains no application source; it owns the
 GCP repository links, build definitions, Terraform, Helm and release routing.
 
-The target Mattermost/Temporal/multi-agent boundaries and identity evolution
-are recorded in [`docs/AGENT_PLATFORM.md`](docs/AGENT_PLATFORM.md).
-The build, vulnerability review, coordinated tags and Temporal launch order are recorded in
+The kagent, Substrate, local-host and Temporal responsibility boundaries are
+recorded in [`docs/AGENT_PLATFORM.md`](docs/AGENT_PLATFORM.md).
+The immutable agent runtime release and ownership handoff are recorded in
 [`docs/AGENT_PLATFORM_BUILD_RELEASE.md`](docs/AGENT_PLATFORM_BUILD_RELEASE.md).
 The minimal database, namespace, identity and network footprint for the
 client-facing application is recorded in

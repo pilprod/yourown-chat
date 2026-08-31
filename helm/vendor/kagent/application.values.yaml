@@ -16,7 +16,7 @@ labels:
 rbac:
   namespaces:
     - kagent-system
-    - kagent-testbed
+    - agent-codex
 
 controller:
   replicas: 1
@@ -43,7 +43,7 @@ controller:
       readOnly: true
   watchNamespaces:
     - kagent-system
-    - kagent-testbed
+    - agent-codex
   # v0.9.12 is not a multi-user authorization boundary. Cloudflare Access and
   # the platform NetworkPolicies isolate this explicitly single-user testbed.
   auth:
@@ -87,7 +87,7 @@ providers:
     provider: Ollama
     model: fixture-model
     config:
-      host: http://model-fixture.kagent-testbed.svc.cluster.local:11434
+      host: http://model-fixture.agent-codex.svc.cluster.local:11434
 
 kmcp:
   enabled: false

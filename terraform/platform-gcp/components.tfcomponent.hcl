@@ -22,8 +22,6 @@ locals {
     identity-api         = { namespace = "identity", ksa = "api" }
     identity-admin       = { namespace = "identity", ksa = "admin" }
     identity-migrate     = { namespace = "identity", ksa = "migrate" }
-    agents-workflow      = { namespace = "yourown-agents", ksa = "agent-workflow-worker" }
-    agents-activity      = { namespace = "yourown-agents", ksa = "agent-activity-worker" }
   }
 
   common_labels = merge({
@@ -304,23 +302,6 @@ component "workload_identity_mcp_tunnel" {
   depends_on = [component.gke]
 }
 
-component "workload_identity_agents" {
-  source = "./modules/workload-identity"
-
-  inputs = {
-    project_id = component.project_services.project_id
-    # Preserve the existing GSA resource name while narrowing its only KSA
-    # binding to the side-effecting activity worker.
-    account_id   = "agent-platform"
-    display_name = "AI agent activity worker identity"
-    namespace    = local.ns["agents-activity"].namespace
-    ksa_name     = local.ns["agents-activity"].ksa
-  }
-
-  providers  = { google = provider.google.this }
-  depends_on = [component.gke]
-}
-
 component "workload_identity_backend_control_api" {
   source = "./modules/workload-identity"
 
@@ -435,21 +416,6 @@ component "workload_identity_identity_migrate" {
   depends_on = [component.gke]
 }
 
-component "workload_identity_agent_workflow" {
-  source = "./modules/workload-identity"
-
-  inputs = {
-    project_id   = component.project_services.project_id
-    account_id   = "agent-workflow-worker"
-    display_name = "AI agent deterministic workflow worker identity"
-    namespace    = local.ns["agents-workflow"].namespace
-    ksa_name     = local.ns["agents-workflow"].ksa
-  }
-
-  providers  = { google = provider.google.this }
-  depends_on = [component.gke]
-}
-
 component "network" {
   source = "./modules/network"
 
@@ -540,14 +506,6 @@ component "storage" {
     filestore_secret_accessors = [component.workload_identity_mattermost.iam_member]
     secret_replica_locations   = [var.region]
 
-    additional_buckets = var.temporal_enabled ? {
-      agent-results = {
-        name           = "agent-results-${var.project_id}-${var.region}"
-        retention_days = var.agent_results_retention_days
-        force_destroy  = false
-        members        = [component.workload_identity_agents.iam_member]
-      }
-    } : {}
   }
 
   providers = {

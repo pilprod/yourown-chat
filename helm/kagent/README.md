@@ -22,7 +22,10 @@ separate, reviewed handoff must first retain the release in-cluster with
 the live object to `helm_release.application_handoff_source[0]`; Phase B must
 target exactly that address in its `removed` block. Cloud Deploy must never
 race the handoff-source release. After that handoff, Cloud Deploy owns only the
-kagent application releases.
+kagent application releases. Shared Substrate remains Terraform-owned.
+Every per-agent namespace has Restricted Pod Security labels, a namespace-wide
+ingress/egress default deny, DNS-only baseline egress and the controller RBAC
+bindings generated from the same namespace map.
 
 Substrate's Terraform-managed application chart owns the one `Gateway` and
 `TLSRoute`. There is no duplicate Gateway/TLSRoute owner in either kagent

@@ -392,9 +392,3 @@ variable "temporal_password_rotation" {
   description = "Explicit rotation trigger for the Temporal database user."
   default     = "1"
 }
-
-variable "agent_results_retention_days" {
-  type        = number
-  description = "Retention period for agent report objects in the platform results bucket."
-  default     = 30
-}

@@ -10,9 +10,9 @@ The public Helm platform policy, now retained in the disconnected archive at
 `pilprod/yourown-chat-rules/public/helm-policy.md`, was accepted on
 2026-08-22. It specified reusable platform charts with strict typed values
 contracts, immutable versioned OCI publication, and minimal service wrappers in
-the owning repositories. The repository currently contains five
-service-specific charts under `helm/` (`yourown-chat`, `mcp`, `agent-platform`,
-`mattermost`, `matterbridge`) that render Deployments, Services, NetworkPolicies,
+the owning repositories. The repository currently contains four
+service-specific charts under `helm/` (`yourown-chat`, `mcp`, `mattermost`,
+`matterbridge`) that render Deployments, Services, NetworkPolicies,
 SecretProviderClasses and Ingresses independently, with service values and
 environment overlays stored in the public platform repository, and no chart is
 published as an artifact. Service repositories contain no release wrappers.

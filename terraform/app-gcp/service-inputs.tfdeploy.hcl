@@ -28,10 +28,6 @@ locals {
       name       = "yourown-chat-server"
       remote_uri = "https://github.com/pilprod/yourown-chat-server.git"
     }
-    agents = {
-      name       = "yourown-chat-agents"
-      remote_uri = "https://github.com/pilprod/yourown-chat-agents.git"
-    }
     mcp = {
       name       = "yourown-chat-mcp"
       remote_uri = "https://github.com/pilprod/yourown-chat-mcp.git"
@@ -83,13 +79,13 @@ locals {
           ref           = "oci://ghcr.io/kagent-dev/kagent/helm/kagent@sha256:ec0dacc1a76edbd190a554757c8bdb193ccb0b35deeb35f6d7a7e7ffc76d99fd"
           version       = "0.9.12"
           values_path   = "helm/vendor/kagent/application.values.yaml"
-          values_sha256 = "b5f09da13023cf3ff9d1a89025802539d5292ac5f93a194e10fed5d98a691807"
+          values_sha256 = "c0e701d37f56221ad8d037bfc5ae4e3162e7137f296ea0eda37748152d02be49"
         }
       }
 
       namespaces = {
-        control  = { name = "kagent-system", quota_profile = "testbed-control" }
-        workload = { name = "kagent-testbed", quota_profile = "testbed-workload" }
+        control = { name = "kagent-system", quota_profile = "testbed-control" }
+        codex   = { name = "agent-codex", quota_profile = "testbed-workload" }
       }
 
       endpoints = {
@@ -110,11 +106,11 @@ locals {
           }
         }
         agent_runtime = {
-          namespace_key = "workload"
+          namespace_key = "codex"
           pod_selector  = { app = "kagent" }
         }
         model_fixture = {
-          namespace_key = "workload"
+          namespace_key = "codex"
           pod_selector  = { app = "model-fixture" }
         }
       }

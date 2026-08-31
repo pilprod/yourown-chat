@@ -9,8 +9,6 @@ output "clouddeploy_pipeline_names" {
     mattermost-preview = component.clouddeploy_mattermost_preview.delivery_pipeline_name
     mcp                = component.clouddeploy_mcp.delivery_pipeline_name
     yourown-chat       = component.clouddeploy_server.delivery_pipeline_name
-    agents-start       = component.clouddeploy_agents_start.delivery_pipeline_name
-    agents-pause       = component.clouddeploy_agents_pause.delivery_pipeline_name
     kagent-substrate   = component.clouddeploy_kagent_substrate.delivery_pipeline_name
   }
 }
@@ -137,7 +135,7 @@ output "release_source_bucket" {
 
 output "application_source_trigger_ids" {
   type        = map(string)
-  description = "Cloud Build CI and immutable-image triggers for the backend and agent source repositories (catalog roles backend, agents)."
+  description = "Cloud Build CI and immutable-image triggers for the backend source repository."
   value       = component.deploy_release.application_source_trigger_ids
 }
 

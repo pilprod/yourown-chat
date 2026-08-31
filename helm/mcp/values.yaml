@@ -144,7 +144,7 @@ servers:
       GOOGLE_CLOUD_DEPLOY_ENABLED: "true"
       GOOGLE_CLOUD_DEPLOY_PROJECT: "yourown-chat"
       GOOGLE_CLOUD_DEPLOY_LOCATION: "europe-west3"
-      GOOGLE_CLOUD_DEPLOY_PIPELINE_TARGETS: "mattermost=mattermost-dev|mattermost-prod,mattermost-preview=mattermost-preview-dev,mcp=mcp-dev|mcp-prod,yourown-chat=yourown-chat-pilot,agents-start=agents-start-pilot,agents-pause=agents-pause-pilot,kagent-substrate=kagent-substrate-dev|kagent-substrate-prod"
+      GOOGLE_CLOUD_DEPLOY_PIPELINE_TARGETS: "mattermost=mattermost-dev|mattermost-prod,mattermost-preview=mattermost-preview-dev,mcp=mcp-dev|mcp-prod,yourown-chat=yourown-chat-pilot,kagent-substrate=kagent-substrate-dev|kagent-substrate-prod"
       GOOGLE_CLOUD_DEPLOY_CLEANUP_ENABLED: "true"
       GOOGLE_CLOUD_DEPLOY_DEV_WORKLOADS: "mattermost=dev/dev-mattermost,mattermost-preview=dev/dev-mattermost,mcp=dev/dev-mcp-terraform-stacks|dev/dev-mcp-google-cloud"
       GOOGLE_CLOUD_BUILD_PROJECT: "yourown-chat"

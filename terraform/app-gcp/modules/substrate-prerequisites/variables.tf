@@ -48,6 +48,25 @@ variable "local_provider_only" {
   }
 }
 
+variable "agent_namespaces" {
+  type        = map(string)
+  description = "Declarative per-agent workload namespaces keyed by stable agent ID. The kagent control namespace is added separately."
+
+  validation {
+    condition = (
+      length(var.agent_namespaces) > 0 &&
+      length(distinct(values(var.agent_namespaces))) == length(var.agent_namespaces) &&
+      alltrue([
+        for agent_id, namespace in var.agent_namespaces :
+        can(regex("^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$", agent_id)) &&
+        can(regex("^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$", namespace)) &&
+        !contains(["ate-system", "kagent-system"], namespace)
+      ])
+    )
+    error_message = "agent_namespaces must contain unique DNS-safe per-agent namespaces distinct from ate-system and kagent-system."
+  }
+}
+
 variable "secret_contract" {
   type = map(object({
     secret_manager_id = string

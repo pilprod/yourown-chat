@@ -6,8 +6,8 @@ chart=platform-worker
 rendered="$(mktemp)"; second="$(mktemp)"; running="$(mktemp)"
 trap 'rm -f "${rendered}" "${second}" "${running}"' EXIT
 
-render "${chart}" worker-valid yourown-agents > "${rendered}"
-render "${chart}" worker-valid yourown-agents > "${second}"
+render "${chart}" worker-valid worker-test > "${rendered}"
+render "${chart}" worker-valid worker-test > "${second}"
 cmp -s "${rendered}" "${second}" || { echo "FAIL: render is not deterministic" >&2; failures=$((failures + 1)); }
 assert_platform_invariants "${rendered}"
 golden "${rendered}" worker-valid
@@ -23,26 +23,26 @@ assert_contains "${rendered}" 'replicas: 0'
 assert_contains "${rendered}" 'platform.yourown.chat/paused: "true"'
 assert_contains "${rendered}" 'priorityClassName: development'
 assert_contains "${rendered}" 'terminationGracePeriodSeconds: 60'
-assert_contains "${rendered}" 'kubernetes.io/metadata.name: "temporal"'
+assert_contains "${rendered}" 'kubernetes.io/metadata.name: "queue-system"'
 assert_contains "${rendered}" 'cidr: 169.254.169.254/32'
 assert_contains "${rendered}" 'prometheus.io/scrape: "true"'
-assert_contains "${rendered}" 'AGENT_RESULTS_BUCKET'
+assert_contains "${rendered}" 'RESULTS_BUCKET'
 
 # Resume restores the declared replica count.
-render "${chart}" worker-valid yourown-agents --set runtime.paused=false > "${running}"
+render "${chart}" worker-valid worker-test --set runtime.paused=false > "${running}"
 assert_contains "${running}" 'replicas: 1'
 assert_contains "${running}" 'platform.yourown.chat/paused: "false"'
 
 # A worker without ports or probes still renders a deny-by-default policy and no probes.
-render "${chart}" worker-valid yourown-agents --set-json 'container.ports=[]' --set-json 'container.health={"port":"metrics"}' --set observability.metrics.enabled=false --set-json 'network.ingress=[]' > "${running}"
+render "${chart}" worker-valid worker-test --set-json 'container.ports=[]' --set-json 'container.health={"port":"metrics"}' --set observability.metrics.enabled=false --set-json 'network.ingress=[]' > "${running}"
 assert_not_contains "${running}" 'readinessProbe' "no probes without health declaration"
 assert_contains "${running}" 'ingress: []'
 
-expect_fail "worker cannot declare ingress" "ingress.*not allowed" "${chart}" worker-valid yourown-agents --set ingress.enabled=true
-expect_fail "worker cannot declare a Service" "service.*not allowed" "${chart}" worker-valid yourown-agents --set service.enabled=true
-expect_fail "worker cannot declare agent registry" "agentRegistry.*not allowed" "${chart}" worker-valid yourown-agents --set agentRegistry.enabled=true
-expect_fail "ingress rule without ports on a portless worker" "needs ports" "${chart}" worker-valid yourown-agents --set-json 'container.ports=[]' --set-json 'container.health={"port":"metrics"}' --set observability.metrics.enabled=false --set-json 'network.ingress=[{"name":"x","purpose":"scrape without ports","from":{"sameNamespace":true}}]'
-expect_fail "metrics port not declared" "not declared in container.ports" "${chart}" worker-valid yourown-agents --set observability.metrics.port=http
-expect_fail "extra containers" "extraContainers.*not allowed" "${chart}" worker-valid yourown-agents --set-json 'extraContainers=[{"name":"x"}]'
+expect_fail "worker cannot declare ingress" "ingress.*not allowed" "${chart}" worker-valid worker-test --set ingress.enabled=true
+expect_fail "worker cannot declare a Service" "service.*not allowed" "${chart}" worker-valid worker-test --set service.enabled=true
+expect_fail "worker cannot declare agent registry" "agentRegistry.*not allowed" "${chart}" worker-valid worker-test --set agentRegistry.enabled=true
+expect_fail "ingress rule without ports on a portless worker" "needs ports" "${chart}" worker-valid worker-test --set-json 'container.ports=[]' --set-json 'container.health={"port":"metrics"}' --set observability.metrics.enabled=false --set-json 'network.ingress=[{"name":"x","purpose":"scrape without ports","from":{"sameNamespace":true}}]'
+expect_fail "metrics port not declared" "not declared in container.ports" "${chart}" worker-valid worker-test --set observability.metrics.port=http
+expect_fail "extra containers" "extraContainers.*not allowed" "${chart}" worker-valid worker-test --set-json 'extraContainers=[{"name":"x"}]'
 
 finish

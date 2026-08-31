@@ -102,15 +102,7 @@ deployment "eu" {
     # reviewed release wrappers.
     wrapper_releases_enabled = false
 
-    # The delivery path and cheap persistent state stay present. This switch
-    # chooses the static start/pause profile used by the next semver release.
-    # Operational start/pause releases remain explicit and approval-gated.
-    # The delivery plumbing and source triggers are prepared now. Runtime
-    # release permission follows the platform-owned Temporal launch state.
-    agent_platform_enabled         = true
-    temporal_enabled               = upstream_input.platform.temporal_enabled
-    agent_results_bucket           = try(upstream_input.platform.temporal_results_bucket_name, "")
-    agent_platform_runtime_enabled = false
+    temporal_enabled = upstream_input.platform.temporal_enabled
 
     # Derived from the cloudflare stack's published outputs -- origin_tls_ready
     # and zero_trust_ready are true when Secret Manager versions exist.
@@ -154,12 +146,10 @@ deployment "eu" {
     # Deploy release automatically.
     release_tag_regex = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
 
-    # Product backend, agent and MCP workloads are independent repositories
-    # (catalog roles backend, agents, mcp) with independent CI/tag triggers and
-    # build identities.
+    # Product backend and MCP workloads are independent repositories with
+    # independent CI/tag triggers and build identities.
     mcp_release_tag_regex     = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
     backend_release_tag_regex = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
-    agents_release_tag_regex  = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
 
     extra_labels = { cost-center = "platform" }
   }

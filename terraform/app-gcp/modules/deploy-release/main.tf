@@ -19,7 +19,6 @@ locals {
   # overlay selects values-<overlay>.yaml inside each wrapper.
   wrapper_profiles = {
     backend = ["server-pilot=prod"]
-    agents  = ["agents-running=running", "agents-paused=paused"]
     mcp     = ["mcp-dev=dev", "mcp-prod=prod"]
   }
 
@@ -172,7 +171,7 @@ resource "google_cloudbuild_trigger" "release" {
   project         = var.project_id
   location        = var.region
   name            = "release"
-  description     = "Route Mattermost, MCP, agents and the production-ineligible kagent/Substrate testbed to component Cloud Deploy pipelines on ${var.release_tag_regex} tags."
+  description     = "Route Mattermost, MCP, the server and the production-ineligible kagent/Substrate testbed to component Cloud Deploy pipelines on ${var.release_tag_regex} tags."
   service_account = google_service_account.releaser.id
 
   repository_event_config {
@@ -232,8 +231,6 @@ resource "google_cloudbuild_trigger" "release" {
             /workspace/changed-files mattermost "$$previous_tag")"
           mcp_changed="$$(bash route-components.sh \
             /workspace/changed-files mcp "$$previous_tag")"
-          agents_changed="$$(bash route-components.sh \
-            /workspace/changed-files agents "$$previous_tag")"
           server_changed="$$(bash route-components.sh \
             /workspace/changed-files yourown-chat "$$previous_tag")"
           kagent_substrate_changed="$$(bash route-components.sh \
@@ -250,22 +247,6 @@ resource "google_cloudbuild_trigger" "release" {
               --delivery-pipeline "$$pipeline" \
               --source "." \
               --skaffold-file "skaffold-$$pipeline.yaml" \
-              --gcs-source-staging-dir "gs://${google_storage_bucket.source.name}/source" \
-              --annotations "$$annotations" \
-              "$$@"
-          }
-
-          create_agent_release() {
-            pipeline="$$1"
-            release_id="$$2"
-            annotations="$$3"
-            shift 3
-            gcloud deploy releases create "$$release_id" \
-              --project "${var.project_id}" \
-              --region "${var.region}" \
-              --delivery-pipeline "$$pipeline" \
-              --source "." \
-              --skaffold-file "skaffold-agents.yaml" \
               --gcs-source-staging-dir "gs://${google_storage_bucket.source.name}/source" \
               --annotations "$$annotations" \
               "$$@"
@@ -361,48 +342,6 @@ resource "google_cloudbuild_trigger" "release" {
             echo "YourOwn.Chat application changes detected, but yourown_chat_server_enabled=false; skipping release"
           fi
 
-          if [ "${var.agents_enabled}" = "true" ]; then
-            if [ "$$agents_changed" = "true" ]; then
-              agent_pipeline="${var.agents_runtime_enabled ? "agents-start" : "agents-pause"}"
-              agent_mode="${var.agents_runtime_enabled ? "running" : "paused"}"
-              server_repo="${local.workload_image_paths.control_api}"
-              server_tag="$$(gcloud artifacts docker tags list "$$server_repo" \
-                --filter="tag~'/tags/[0-9]+\\.[0-9]+\\.[0-9]+$$'" \
-                --format='value(tag)' | sort -V | tail -n1)"
-              [ -n "$$server_tag" ] || { echo "No released YourOwn.Chat server tag found"; exit 1; }
-              server_tag="$${server_tag##*/}"
-
-              agents_tag="$$server_tag"
-
-              deploy_parameters=""
-              digest_set_input=""
-              for service in control-api workflow-worker activity-worker; do
-                if [ "$$service" = "control-api" ]; then
-                  service_repo="${local.artifact_repository_prefix}/${var.backend_image_prefix}-$$service"
-                  service_tag="$$server_tag"
-                else
-                  service_repo="${local.artifact_repository_prefix}/${var.agents_image_prefix}-$$service"
-                  service_tag="$$agents_tag"
-                fi
-                service_digest="$$(gcloud artifacts docker images describe \
-                  "$$service_repo:$$service_tag" --format='value(image_summary.digest)')"
-                [ -n "$$service_digest" ] || { echo "No digest for $$service:$$service_tag"; exit 1; }
-                parameter_name="yourown_chat_$$(printf '%s' "$$service" | tr '-' '_')_image"
-                if [ -n "$$deploy_parameters" ]; then deploy_parameters="$$deploy_parameters,"; fi
-                deploy_parameters="$$deploy_parameters$$parameter_name=$$service_repo@$$service_digest"
-                digest_set_input="$$digest_set_input$$service_digest\n"
-              done
-              workload_digest_set="$$(printf '%b' "$$digest_set_input" | sha256sum | cut -d' ' -f1)"
-              create_agent_release \
-                "$$agent_pipeline" \
-                "agents-$$agent_mode-$$safe_tag-$SHORT_SHA-$$short_build" \
-                "git-tag=$TAG_NAME,git-sha=$COMMIT_SHA,build-id=$BUILD_ID,previous-tag=$$previous_tag,agent-mode=$$agent_mode,workload-tag=$$server_tag,workload-image-set=$$workload_digest_set" \
-                --deploy-parameters "$$deploy_parameters"
-            fi
-          elif [ "$$agents_changed" = "true" ]; then
-            echo "Agent pilot changes detected, but agent_platform_enabled=false; skipping release"
-          fi
-
           if [ "${try(var.kagent_substrate_delivery.release_enabled, false)}" = "true" ]; then
             if [ "$$kagent_substrate_changed" = "true" ]; then
               python3 kagent/render-release.py \
@@ -417,8 +356,8 @@ resource "google_cloudbuild_trigger" "release" {
             echo "kagent promotion changes detected, but release_enabled=false; shared Substrate bootstrap may proceed without admitting kagent workloads"
           fi
 
-          if [ "$$mattermost_changed" = "false" ] && [ "$$mcp_changed" = "false" ] && [ "$$agents_changed" = "false" ] && [ "$$server_changed" = "false" ] && [ "$$kagent_substrate_changed" = "false" ]; then
-            echo "No Mattermost, MCP, agent, server or kagent/Substrate deployment changes in $TAG_NAME"
+          if [ "$$mattermost_changed" = "false" ] && [ "$$mcp_changed" = "false" ] && [ "$$server_changed" = "false" ] && [ "$$kagent_substrate_changed" = "false" ]; then
+            echo "No Mattermost, MCP, server or kagent/Substrate deployment changes in $TAG_NAME"
           fi
         EOT
       ]
