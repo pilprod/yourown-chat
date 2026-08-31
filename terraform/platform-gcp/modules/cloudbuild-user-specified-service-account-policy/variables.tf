@@ -7,3 +7,13 @@ variable "project_id" {
     error_message = "project_id must be a valid GCP project ID (6-30 chars, lowercase letters, digits, hyphens)."
   }
 }
+
+variable "policy_admin_member" {
+  type        = string
+  description = "Existing Terraform apply principal granted only the permissions required to manage these two project policies."
+
+  validation {
+    condition     = can(regex("^(serviceAccount|principal|principalSet):.+$", var.policy_admin_member))
+    error_message = "policy_admin_member must be an IAM serviceAccount, principal or principalSet member string."
+  }
+}

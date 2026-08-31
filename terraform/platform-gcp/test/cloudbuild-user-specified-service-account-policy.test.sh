@@ -19,6 +19,7 @@ require_literal "${components}" '"orgpolicy.googleapis.com"'
 require_literal "${components}" 'component "cloudbuild_user_specified_service_account_policy"'
 require_literal "${components}" 'source = "./modules/cloudbuild-user-specified-service-account-policy"'
 require_literal "${components}" 'project_id = component.project_services.project_id'
+require_literal "${components}" 'policy_admin_member = "serviceAccount:${var.service_account_email}"'
 require_literal "${components}" 'depends_on = [component.project_services]'
 
 require_literal "${module}" '"constraints/cloudbuild.useBuildServiceAccount"'
@@ -29,6 +30,12 @@ require_literal "${module}" 'name   = "${local.project_parent}/policies/${trimpr
 require_literal "${module}" 'parent = local.project_parent'
 require_literal "${module}" 'inherit_from_parent = false'
 require_literal "${module}" 'enforce = "FALSE"'
+require_literal "${module}" 'resource "google_project_iam_custom_role" "policy_manager"'
+require_literal "${module}" 'role_id     = "cloudBuildPolicyManager"'
+require_literal "${module}" '"orgpolicy.policies.create"'
+require_literal "${module}" '"orgpolicy.policies.update"'
+require_literal "${module}" 'resource "google_project_iam_member" "policy_manager"'
+require_literal "${module}" 'depends_on = [google_project_iam_member.policy_manager]'
 
 if grep -Fq 'enforce = "TRUE"' "${module}"; then
   fail "Cloud Build default service-account constraints must not be enforced"

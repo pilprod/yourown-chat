@@ -96,7 +96,8 @@ component "cloudbuild_user_specified_service_account_policy" {
   source = "./modules/cloudbuild-user-specified-service-account-policy"
 
   inputs = {
-    project_id = component.project_services.project_id
+    project_id          = component.project_services.project_id
+    policy_admin_member = "serviceAccount:${var.service_account_email}"
   }
 
   providers = {
