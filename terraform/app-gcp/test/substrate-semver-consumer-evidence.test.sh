@@ -17,7 +17,10 @@ fail() {
 require_literal() {
   local path="$1"
   local literal="$2"
-  grep -Fq -- "${literal}" "${path}" || fail "${path} is missing: ${literal}"
+  if ! grep -Fq -- "${literal}" "${path}"; then
+    sed -n '1,160p' "${path}" >&2
+    fail "${path} is missing: ${literal}"
+  fi
 }
 
 sha256_file() {
@@ -277,5 +280,44 @@ expect_bootstrap_failure changed-evidence-path \
   '| .artifacts.substrate.artifact_manifest_path = "kagent/evidence/substrate/v0.0.23/substrate-v0.0.23.consumer-evidence.json"'
 expect_bootstrap_failure changed-evidence-schema \
   '| .artifacts.substrate.artifact_schema_version = "yourown.chat/substrate-semver-consumer-evidence/v2"'
+
+# Exercise the private producer-v2 branch through Terraform as well. The
+# shared Substrate Helm release is applied before the Cloud Deploy renderer, so
+# Terraform must bind every chart-consumed digest to the admitted image refs.
+private_registry='europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate'
+private_contract="${work}/valid-private-bootstrap-contract.json"
+jq --arg registry "${private_registry}" \
+  '.artifacts.substrate.artifact_schema_version = "yourown.chat/substrate-private-gar-release/v2"
+   | .artifacts.substrate.artifact_manifest_path = ""
+   | .artifacts.substrate.charts.application = {
+       ref: ("oci://" + $registry + "/helm/substrate@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+       version: "0.0.22-private.3"
+     }
+   | .artifacts.substrate.charts.crds = {
+       ref: ("oci://" + $registry + "/helm/substrate-crds@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+       version: "0.0.22-private.3"
+     }
+   | .artifacts.substrate.image_refs = {
+       ateapi: ($registry + "/ateapi@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"),
+       atecontroller: ($registry + "/atecontroller@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"),
+       atenet: ($registry + "/atenet@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"),
+       agentgateway: ($registry + "/agentgateway@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"),
+       releaseVerifier: ($registry + "/substrate-release-verify@sha256:9999999999999999999999999999999999999999999999999999999999999999")
+     }
+   | .helm_set_values.substrate = {
+       "image.registry": $registry,
+       "image.digests.ateapi": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+       "image.digests.atecontroller": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+       "image.digests.atenet": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+       "images.agentgateway": ($registry + "/agentgateway@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
+     }' "${valid_contract}" >"${private_contract}"
+
+private_tfvars="${work}/closed-private-bootstrap.tfvars.json"
+jq '{kagent_substrate_delivery: .}' "${private_contract}" >"${private_tfvars}"
+if terraform -chdir="${gate_module}" plan -refresh=false -input=false -lock=false -no-color \
+  -var-file="${private_tfvars}" >"${work}/closed-private-bootstrap.plan" 2>&1; then
+  fail "unpinned private-v2 bootstrap contract unexpectedly passed Stack validation"
+fi
+require_literal "${work}/closed-private-bootstrap.plan" 'evidence schema v2 remains closed'
 
 printf 'Substrate semver consumer evidence tests passed\n'

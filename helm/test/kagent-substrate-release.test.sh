@@ -177,6 +177,150 @@ grep -Fq "\"ui.image.tag\": \"0.10.0@${d2}\"" "${output}"
 [[ "$(grep -Fc '"ui.image.tag": "0.10.0@'"${d2}"'"' "${output}")" -eq 2 ]]
 grep -Fq 'jobManifestPath: kagent/verify/promotion-job.yaml' "${output}"
 
+# The producer path is a separate fail-closed private contract. It must render
+# the same release with all five Substrate images and both charts in private GAR.
+private_registry='europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate'
+private_contract="${work}/private-contract.json"
+jq \
+  --arg registry "${private_registry}" \
+  --arg d3 "${d3}" --arg d4 "${d4}" --arg d5 "${d5}" \
+  --arg d6 "${d6}" --arg d8 "${d8}" --arg d9 "${d9}" --arg d10 "${d10}" \
+  '.artifacts.substrate.artifact_schema_version = "yourown.chat/substrate-private-gar-release/v2"
+   | .artifacts.substrate.artifact_manifest_path = ""
+   | .artifacts.substrate.charts.application = {
+       ref: ("oci://" + $registry + "/helm/substrate@" + $d5),
+       version: "0.0.22-private.3"
+     }
+   | .artifacts.substrate.charts.crds = {
+       ref: ("oci://" + $registry + "/helm/substrate-crds@" + $d6),
+       version: "0.0.22-private.3"
+     }
+   | .artifacts.substrate.image_refs = {
+       ateapi: ($registry + "/ateapi@" + $d3),
+       atecontroller: ($registry + "/atecontroller@" + $d4),
+       atenet: ($registry + "/atenet@" + $d8),
+       agentgateway: ($registry + "/agentgateway@" + $d9),
+       releaseVerifier: ($registry + "/substrate-release-verify@" + $d10)
+     }
+   | .helm_set_values.substrate = {
+       "image.registry": $registry,
+       "image.digests.ateapi": $d3,
+       "image.digests.atecontroller": $d4,
+       "image.digests.atenet": $d8,
+       "images.agentgateway": ($registry + "/agentgateway@" + $d9)
+     }' "${contract}" > "${private_contract}"
+private_output="${work}/private-skaffold.yaml"
+KAGENT_SUBSTRATE_RELEASE_JSON="$(<"${private_contract}")" \
+  python3 "${renderer}" --source-root "${repo_root}/helm" --output "${private_output}"
+grep -Fq "image: \"${private_registry}/substrate-release-verify@${d10}\"" "${private_output}"
+! grep -Fq 'Substrate pins use app-gcp consumer evidence' "${private_output}"
+
+jq --arg digest "${d10}" \
+  '.artifacts.substrate.image_refs.releaseVerifier = ("ghcr.io/pilprod/substrate/substrate-release-verify@" + $digest)' \
+  "${private_contract}" > "${work}/public-private-verifier.json"
+if KAGENT_SUBSTRATE_RELEASE_JSON="$(<"${work}/public-private-verifier.json")" \
+  python3 "${renderer}" --source-root "${repo_root}/helm" --output "${work}/public-private-verifier.yaml" 2>"${work}/public-private-verifier.err"; then
+  echo "public verifier unexpectedly rendered for private Substrate evidence" >&2
+  exit 1
+fi
+grep -Fq 'private Substrate image releaseVerifier must come from the reviewed private GAR registry' \
+  "${work}/public-private-verifier.err"
+
+jq 'del(.artifacts.substrate.image_refs.releaseVerifier)' \
+  "${private_contract}" > "${work}/missing-private-verifier.json"
+if KAGENT_SUBSTRATE_RELEASE_JSON="$(<"${work}/missing-private-verifier.json")" \
+  python3 "${renderer}" --source-root "${repo_root}/helm" --output "${work}/missing-private-verifier.yaml" 2>"${work}/missing-private-verifier.err"; then
+  echo "private Substrate evidence without releaseVerifier unexpectedly rendered" >&2
+  exit 1
+fi
+grep -Fq 'private Substrate image releaseVerifier must come from the reviewed private GAR registry' \
+  "${work}/missing-private-verifier.err"
+
+jq --arg digest "${d9}" \
+  '.artifacts.substrate.image_refs.agentgateway = ("ghcr.io/kagent-dev/substrate/agentgateway@" + $digest)
+   | .helm_set_values.substrate["images.agentgateway"] = .artifacts.substrate.image_refs.agentgateway' \
+  "${private_contract}" > "${work}/public-private-agentgateway.json"
+if KAGENT_SUBSTRATE_RELEASE_JSON="$(<"${work}/public-private-agentgateway.json")" \
+  python3 "${renderer}" --source-root "${repo_root}/helm" --output "${work}/public-private-agentgateway.yaml" 2>"${work}/public-private-agentgateway.err"; then
+  echo "public agentgateway unexpectedly rendered for private Substrate evidence" >&2
+  exit 1
+fi
+grep -Fq 'private Substrate image agentgateway must come from the reviewed private GAR registry' \
+  "${work}/public-private-agentgateway.err"
+
+jq --arg digest "${d3}" \
+  '.artifacts.substrate.image_refs.ateapi = ("ghcr.io/pilprod/substrate/ateapi@" + $digest)' \
+  "${private_contract}" > "${work}/public-private-runtime.json"
+if KAGENT_SUBSTRATE_RELEASE_JSON="$(<"${work}/public-private-runtime.json")" \
+  python3 "${renderer}" --source-root "${repo_root}/helm" --output "${work}/public-private-runtime.yaml" 2>"${work}/public-private-runtime.err"; then
+  echo "public runtime image unexpectedly rendered for private Substrate evidence" >&2
+  exit 1
+fi
+grep -Fq 'private Substrate image ateapi must come from the reviewed private GAR registry' \
+  "${work}/public-private-runtime.err"
+
+jq --arg digest "${d5}" \
+  '.artifacts.substrate.charts.application.ref = ("oci://ghcr.io/pilprod/substrate/helm/substrate@" + $digest)' \
+  "${private_contract}" > "${work}/public-private-chart.json"
+if KAGENT_SUBSTRATE_RELEASE_JSON="$(<"${work}/public-private-chart.json")" \
+  python3 "${renderer}" --source-root "${repo_root}/helm" --output "${work}/public-private-chart.yaml" 2>"${work}/public-private-chart.err"; then
+  echo "public chart unexpectedly rendered for private Substrate evidence" >&2
+  exit 1
+fi
+grep -Fq 'private Substrate chart application must come from the reviewed private GAR registry' \
+  "${work}/public-private-chart.err"
+
+jq '.artifacts.substrate.charts.crds.version = "0.0.22-private.4"' \
+  "${private_contract}" > "${work}/private-chart-version-mismatch.json"
+if KAGENT_SUBSTRATE_RELEASE_JSON="$(<"${work}/private-chart-version-mismatch.json")" \
+  python3 "${renderer}" --source-root "${repo_root}/helm" --output "${work}/private-chart-version-mismatch.yaml" 2>"${work}/private-chart-version-mismatch.err"; then
+  echo "mismatched private chart versions unexpectedly rendered" >&2
+  exit 1
+fi
+grep -Fq 'private Substrate application and CRD charts must use the same release version' \
+  "${work}/private-chart-version-mismatch.err"
+
+jq '.artifacts.substrate.charts.application.version = "0.0.22"
+   | .artifacts.substrate.charts.crds.version = "0.0.22"' \
+  "${private_contract}" > "${work}/nonprivate-chart-version.json"
+if KAGENT_SUBSTRATE_RELEASE_JSON="$(<"${work}/nonprivate-chart-version.json")" \
+  python3 "${renderer}" --source-root "${repo_root}/helm" --output "${work}/nonprivate-chart-version.yaml" 2>"${work}/nonprivate-chart-version.err"; then
+  echo "non-private chart version unexpectedly rendered for private Substrate evidence" >&2
+  exit 1
+fi
+grep -Fq 'private Substrate charts must use a private immutable release version' \
+  "${work}/nonprivate-chart-version.err"
+
+jq '.helm_set_values.substrate["image.digests.ateapi"] = "sha256:8888888888888888888888888888888888888888888888888888888888888888"' \
+  "${private_contract}" > "${work}/private-helm-digest-mismatch.json"
+if KAGENT_SUBSTRATE_RELEASE_JSON="$(<"${work}/private-helm-digest-mismatch.json")" \
+  python3 "${renderer}" --source-root "${repo_root}/helm" --output "${work}/private-helm-digest-mismatch.yaml" 2>"${work}/private-helm-digest-mismatch.err"; then
+  echo "private Helm digest mismatch unexpectedly rendered" >&2
+  exit 1
+fi
+grep -Fq 'helm_set_values.substrate.image.digests.ateapi must match the artifact' \
+  "${work}/private-helm-digest-mismatch.err"
+
+jq '.artifacts.substrate.artifact_manifest_path = "kagent/evidence/substrate/private.json"' \
+  "${private_contract}" > "${work}/private-manifest-path.json"
+if KAGENT_SUBSTRATE_RELEASE_JSON="$(<"${work}/private-manifest-path.json")" \
+  python3 "${renderer}" --source-root "${repo_root}/helm" --output "${work}/private-manifest-path.yaml" 2>"${work}/private-manifest-path.err"; then
+  echo "private producer evidence with a checked-in manifest path unexpectedly rendered" >&2
+  exit 1
+fi
+grep -Fq 'private Substrate producer evidence must not use an app-gcp artifact_manifest_path' \
+  "${work}/private-manifest-path.err"
+
+jq '.artifacts.substrate.artifact_schema_version = "yourown.chat/substrate-release/v1"' \
+  "${private_contract}" > "${work}/generic-producer-schema.json"
+if KAGENT_SUBSTRATE_RELEASE_JSON="$(<"${work}/generic-producer-schema.json")" \
+  python3 "${renderer}" --source-root "${repo_root}/helm" --output "${work}/generic-producer-schema.yaml" 2>"${work}/generic-producer-schema.err"; then
+  echo "generic producer schema unexpectedly bypassed the private GAR contract" >&2
+  exit 1
+fi
+grep -Fq 'private GAR release schema v2 or checked-in semver consumer evidence' \
+  "${work}/generic-producer-schema.err"
+
 # Operational smoke state is intentionally not baked into the immutable
 # release. The same rendered release is deployed to dev, then the live
 # Terraform ConfigMap is updated for that exact Cloud Deploy release ID before
@@ -429,7 +573,7 @@ if KAGENT_SUBSTRATE_RELEASE_JSON="$(<"${work}/wrong-substrate-schema.json")" \
   echo "legacy GKE preview evidence unexpectedly rendered as a Cloud Deploy artifact" >&2
   exit 1
 fi
-grep -Fq 'producer release schema v1 or checked-in semver consumer evidence' "${work}/wrong-substrate-schema.err"
+grep -Fq 'private GAR release schema v2 or checked-in semver consumer evidence' "${work}/wrong-substrate-schema.err"
 
 jq '.artifacts.substrate.artifact_manifest_path = "kagent/evidence/substrate/v0.0.23/substrate-v0.0.23.consumer-evidence.json"' \
   "${contract}" > "${work}/missing-consumer-evidence.json"

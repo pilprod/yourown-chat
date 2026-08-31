@@ -72,17 +72,30 @@ if rg -n 'available_secrets|secret_env|secretEnv|github_token|ghcr_write|docker\
   fail 'private publisher must not depend on package credentials or mutable final tags'
 fi
 
-grep -Fq 'condition     = var.release_version == "0.0.22-private.2"' "${module_dir}/variables.tf" ||
+grep -Fq 'condition     = var.release_version == "0.0.22-private.3"' "${module_dir}/variables.tf" ||
   fail 'module must authorize exactly one applied private release coordinate'
-grep -Fq 'var.substrate_preview_publisher.release_version == "0.0.22-private.2"' "${stack_variables}" ||
+grep -Fq 'var.substrate_preview_publisher.release_version == "0.0.22-private.3"' "${stack_variables}" ||
   fail 'Stack input must authorize exactly the replacement private release coordinate'
+grep -Fq 'artifact_schema_version == "yourown.chat/substrate-private-gar-release/v2"' "${stack_variables}" ||
+  fail 'the staged Cloud Deploy admission branch must name private Substrate evidence schema v2'
+grep -Fq 'false &&' "${stack_variables}" ||
+  fail 'private-v2 Cloud Deploy admission must remain closed until exact .private.3 evidence is pinned'
+grep -Fq 'kagent-preview/substrate/substrate-release-verify@sha256:' "${stack_variables}" ||
+  fail 'Cloud Deploy admission must require the verifier from the private Substrate registry'
+for component in ateapi atecontroller atenet; do
+  grep -Fq ".image_refs.${component} == \"europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate/${component}@\${var.kagent_substrate_delivery.helm_set_values[\"substrate\"][\"image.digests.${component}\"]}\"" "${stack_variables}" ||
+    fail "the staged private-v2 branch must bind ${component} evidence to the chart-consumed Helm digest"
+done
+if grep -Fq 'artifact_schema_version == "yourown.chat/substrate-release/v1"' "${stack_variables}"; then
+  fail 'generic producer evidence schema must not bypass the private-only Substrate contract'
+fi
 grep -Fq 'condition     = var.source_tag == "v0.0.22"' "${module_dir}/variables.tf" ||
   fail 'reviewed annotated source tag is not fixed'
 grep -Fq 'condition     = var.source_tag_object == "00a6a684cea3b3feea67461cf79347332ec759ef"' "${module_dir}/variables.tf" ||
   fail 'reviewed annotated tag object is not fixed'
 grep -Fq 'condition     = var.source_commit == "e9ed68e587b56df2aa2a7f0267a744598c4d48b4"' "${module_dir}/variables.tf" ||
   fail 'reviewed peeled source commit is not fixed'
-grep -Fq 'readonly expected_release_version="0.0.22-private.2"' "${invoker}" ||
+grep -Fq 'readonly expected_release_version="0.0.22-private.3"' "${invoker}" ||
   fail 'manual submitter must reject any coordinate not authorized by the applied configuration'
 grep -Fq 'gcloud pubsub topics publish substrate-private-release' "${invoker}" ||
   fail 'manual request must use the IAM-protected Google Pub/Sub topic'
@@ -90,11 +103,15 @@ grep -Fq 'gcloud pubsub topics publish substrate-private-release' "${invoker}" |
 expected_component_block=$'readonly required_components=(\n  agentgateway\n  ateapi\n  atecontroller\n  atenet\n)'
 actual_component_block="$(sed -n '/^readonly required_components=(/,/^)/p' "${driver}")"
 [[ "${actual_component_block}" == "${expected_component_block}" ]] ||
-  fail 'private release component scope must remain exactly agentgateway, ateapi, atecontroller and atenet'
-grep -Fq 'readonly all_components=("${required_components[@]}")' "${driver}" ||
-  fail 'all staging, scan and promotion loops must derive from the closed required component set'
+  fail 'private release runtime component scope must remain exactly the four profile images'
+expected_auxiliary_block=$'readonly auxiliary_components=(\n  releaseVerifier\n)'
+actual_auxiliary_block="$(sed -n '/^readonly auxiliary_components=(/,/^)/p' "${driver}")"
+[[ "${actual_auxiliary_block}" == "${expected_auxiliary_block}" ]] ||
+  fail 'private release auxiliary component scope must remain exactly releaseVerifier'
+grep -Fq 'readonly all_components=("${required_components[@]}" "${auxiliary_components[@]}")' "${driver}" ||
+  fail 'all staging, scan and promotion loops must derive from the closed runtime and auxiliary sets'
 
-for excluded in atelet ateom-gvisor ateom-microvm podcertcontroller substrate-release-verify; do
+for excluded in atelet ateom-gvisor ateom-microvm podcertcontroller; do
   if grep -Fq -- "${excluded}" "${driver}"; then
     fail "profile-excluded component leaked into private release driver: ${excluded}"
   fi
@@ -103,7 +120,8 @@ done
 for required in \
   'readonly expected_release_prefix="europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate"' \
   'readonly expected_staging_prefix="europe-west3-docker.pkg.dev/yourown-chat/kagent-staging/substrate"' \
-  '[[ "${release_version}" == "0.0.22-private.2" ]]' \
+  'releaseVerifier)' \
+  '[[ "${release_version}" == "0.0.22-private.3" ]]' \
   '[[ "${source_tag}" == "v0.0.22" ]]' \
   '[[ "${source_commit}" == "e9ed68e587b56df2aa2a7f0267a744598c4d48b4" ]]' \
   'docker buildx imagetools create --tag "${candidate}" "${source_ref}"' \
@@ -123,13 +141,14 @@ for required in \
   'gcloud storage cp - "${lock_uri}" --if-generation-match=0' \
   'docker buildx imagetools create --tag "${final}" "${staging_repository}@${expected}"' \
   'registry_visibility: "private"' \
-  'schema_version: "yourown.chat/substrate-private-gar-release/v1"' \
+  'schema_version: "yourown.chat/substrate-private-gar-release/v2"' \
   'supported_profiles: ["external-control-plane-only"]' \
   'required_components: ["agentgateway", "ateapi", "atecontroller", "atenet"]' \
+  'auxiliary_components: ["releaseVerifier"]' \
   '$evidence.copy_provenance.source_image_refs == {' \
-  '($evidence.images | keys) == ["agentgateway", "ateapi", "atecontroller", "atenet"]' \
-  '($evidence.platform_image_digests | keys) == ["agentgateway", "ateapi", "atecontroller", "atenet"]' \
-  'all($evidence.required_components[];' \
+  '($evidence.images | keys) == ["agentgateway", "ateapi", "atecontroller", "atenet", "releaseVerifier"]' \
+  '($evidence.platform_image_digests | keys) == ["agentgateway", "ateapi", "atecontroller", "atenet", "releaseVerifier"]' \
+  'all(($evidence.required_components + $evidence.auxiliary_components)[];' \
   '. as $component |' \
   '$evidence.images[$component].digest ==' \
   'capture("@(?<digest>sha256:[0-9a-f]{64})$").digest)' \
@@ -144,6 +163,8 @@ for required in \
   'gcloud storage cp "${path}" "${destination}/${name}" --if-generation-match=0'; do
   grep -Fq -- "${required}" "${driver}" || fail "missing fail-closed driver contract: ${required}"
 done
+grep -Fq "printf '%s' 'substrate-release-verify'" "${driver}" ||
+  fail 'releaseVerifier must map to the substrate-release-verify repository'
 
 guard_filter="$({
   sed -n '/# RELEASE_EVIDENCE_GUARD_BEGIN/,/# RELEASE_EVIDENCE_GUARD_END/p' "${driver}" |
@@ -158,27 +179,36 @@ release_prefix='europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrat
 valid_evidence="${test_dir}/valid-evidence.json"
 cat > "${valid_evidence}" <<'JSON'
 {
+  "schema_version": "yourown.chat/substrate-private-gar-release/v2",
+  "publication": {
+    "registry_visibility": "private",
+    "release_prefix": "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate"
+  },
   "supported_profiles": ["external-control-plane-only"],
   "required_components": ["agentgateway", "ateapi", "atecontroller", "atenet"],
+  "auxiliary_components": ["releaseVerifier"],
   "copy_provenance": {
     "source_image_refs": {
       "agentgateway": "ghcr.io/kagent-dev/substrate/agentgateway@sha256:068028a256bd63c91fd6e85a471269c014747297b0ffa785feaef6967eb0c429",
       "ateapi": "ghcr.io/pilprod/substrate/ateapi@sha256:8a4cf985f809cc768e32091e39d45bce5f2e95fe43cd67f01d5e60c7df2ea868",
       "atecontroller": "ghcr.io/pilprod/substrate/atecontroller@sha256:0845893ae2ecfd15f580bc410db22c8daae0d6b0388eca67541154a6ec98f554",
-      "atenet": "ghcr.io/pilprod/substrate/atenet@sha256:01d96092c93fd623dbe051479a76573da551b56be29121b11b760d9067fc8c4c"
+      "atenet": "ghcr.io/pilprod/substrate/atenet@sha256:01d96092c93fd623dbe051479a76573da551b56be29121b11b760d9067fc8c4c",
+      "releaseVerifier": "ghcr.io/pilprod/substrate/substrate-release-verify@sha256:850d8d8ec018f49486b410a15dd38e965f1fbb4d02f8a8be36d5256f33eef74b"
     }
   },
   "images": {
     "agentgateway": {"digest": "sha256:068028a256bd63c91fd6e85a471269c014747297b0ffa785feaef6967eb0c429", "ref": "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate/agentgateway@sha256:068028a256bd63c91fd6e85a471269c014747297b0ffa785feaef6967eb0c429"},
     "ateapi": {"digest": "sha256:8a4cf985f809cc768e32091e39d45bce5f2e95fe43cd67f01d5e60c7df2ea868", "ref": "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate/ateapi@sha256:8a4cf985f809cc768e32091e39d45bce5f2e95fe43cd67f01d5e60c7df2ea868"},
     "atecontroller": {"digest": "sha256:0845893ae2ecfd15f580bc410db22c8daae0d6b0388eca67541154a6ec98f554", "ref": "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate/atecontroller@sha256:0845893ae2ecfd15f580bc410db22c8daae0d6b0388eca67541154a6ec98f554"},
-    "atenet": {"digest": "sha256:01d96092c93fd623dbe051479a76573da551b56be29121b11b760d9067fc8c4c", "ref": "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate/atenet@sha256:01d96092c93fd623dbe051479a76573da551b56be29121b11b760d9067fc8c4c"}
+    "atenet": {"digest": "sha256:01d96092c93fd623dbe051479a76573da551b56be29121b11b760d9067fc8c4c", "ref": "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate/atenet@sha256:01d96092c93fd623dbe051479a76573da551b56be29121b11b760d9067fc8c4c"},
+    "releaseVerifier": {"digest": "sha256:850d8d8ec018f49486b410a15dd38e965f1fbb4d02f8a8be36d5256f33eef74b", "ref": "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate/substrate-release-verify@sha256:850d8d8ec018f49486b410a15dd38e965f1fbb4d02f8a8be36d5256f33eef74b"}
   },
   "platform_image_digests": {
     "agentgateway": {"linux_amd64": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "linux_arm64": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
     "ateapi": {"linux_amd64": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "linux_arm64": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
     "atecontroller": {"linux_amd64": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "linux_arm64": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
-    "atenet": {"linux_amd64": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "linux_arm64": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}
+    "atenet": {"linux_amd64": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "linux_arm64": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+    "releaseVerifier": {"linux_amd64": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "linux_arm64": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}
   }
 }
 JSON
@@ -200,25 +230,62 @@ jq '.copy_provenance.source_image_refs.ateapi = "ghcr.io/pilprod/substrate/ateap
     .images.ateapi.ref = "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate/ateapi@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"' \
   "${valid_evidence}" > "${source_ref_mismatch}"
 if jq -e --arg release_prefix "${release_prefix}" "${guard_filter}" "${source_ref_mismatch}" >/dev/null; then
-  fail 'runtime evidence guard accepted a source ref outside the four reviewed GHCR pins'
+  fail 'runtime evidence guard accepted a source ref outside the five reviewed GHCR pins'
+fi
+
+missing_verifier="${test_dir}/missing-verifier.json"
+jq 'del(.auxiliary_components[-1], .copy_provenance.source_image_refs.releaseVerifier,
+        .images.releaseVerifier, .platform_image_digests.releaseVerifier)' \
+  "${valid_evidence}" > "${missing_verifier}"
+if jq -e --arg release_prefix "${release_prefix}" "${guard_filter}" "${missing_verifier}" >/dev/null; then
+  fail 'runtime evidence guard accepted missing releaseVerifier evidence'
+fi
+
+public_verifier="${test_dir}/public-verifier.json"
+jq '.images.releaseVerifier.ref = .copy_provenance.source_image_refs.releaseVerifier' \
+  "${valid_evidence}" > "${public_verifier}"
+if jq -e --arg release_prefix "${release_prefix}" "${guard_filter}" "${public_verifier}" >/dev/null; then
+  fail 'runtime evidence guard accepted a public releaseVerifier deployment ref'
+fi
+
+mutable_verifier="${test_dir}/mutable-verifier.json"
+jq '.images.releaseVerifier.ref = "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate/substrate-release-verify:v0.0.22-private.3"' \
+  "${valid_evidence}" > "${mutable_verifier}"
+if jq -e --arg release_prefix "${release_prefix}" "${guard_filter}" "${mutable_verifier}" >/dev/null; then
+  fail 'runtime evidence guard accepted a mutable releaseVerifier tag'
+fi
+
+wrong_registry="${test_dir}/wrong-registry.json"
+jq '.images.releaseVerifier.ref = "us-docker.pkg.dev/yourown-chat/kagent-preview/substrate/substrate-release-verify@sha256:850d8d8ec018f49486b410a15dd38e965f1fbb4d02f8a8be36d5256f33eef74b"' \
+  "${valid_evidence}" > "${wrong_registry}"
+if jq -e --arg release_prefix "${release_prefix}" "${guard_filter}" "${wrong_registry}" >/dev/null; then
+  fail 'runtime evidence guard accepted a releaseVerifier registry mismatch'
+fi
+
+wrong_schema="${test_dir}/wrong-schema.json"
+jq '.schema_version = "yourown.chat/substrate-private-gar-release/v1"' \
+  "${valid_evidence}" > "${wrong_schema}"
+if jq -e --arg release_prefix "${release_prefix}" "${guard_filter}" "${wrong_schema}" >/dev/null; then
+  fail 'runtime evidence guard accepted a stale private evidence schema'
 fi
 
 for source_ref in \
   'ghcr.io/kagent-dev/substrate/agentgateway@sha256:068028a256bd63c91fd6e85a471269c014747297b0ffa785feaef6967eb0c429' \
   'ghcr.io/pilprod/substrate/ateapi@sha256:8a4cf985f809cc768e32091e39d45bce5f2e95fe43cd67f01d5e60c7df2ea868' \
   'ghcr.io/pilprod/substrate/atecontroller@sha256:0845893ae2ecfd15f580bc410db22c8daae0d6b0388eca67541154a6ec98f554' \
-  'ghcr.io/pilprod/substrate/atenet@sha256:01d96092c93fd623dbe051479a76573da551b56be29121b11b760d9067fc8c4c'; do
+  'ghcr.io/pilprod/substrate/atenet@sha256:01d96092c93fd623dbe051479a76573da551b56be29121b11b760d9067fc8c4c' \
+  'ghcr.io/pilprod/substrate/substrate-release-verify@sha256:850d8d8ec018f49486b410a15dd38e965f1fbb4d02f8a8be36d5256f33eef74b'; do
   [[ "$(grep -Fc -- "${source_ref}" "${driver}")" -eq 2 ]] ||
     fail "pinned source ref must appear once in the copier and once in the runtime evidence guard: ${source_ref}"
 done
 
 images_block="$(sed -n '/^        images: {/,/^        },/p' "${driver}")"
-for component in agentgateway ateapi atecontroller atenet; do
+for component in agentgateway ateapi atecontroller atenet releaseVerifier; do
   grep -Eq "^[[:space:]]+${component}: \\{ref:" <<<"${images_block}" ||
     fail "release evidence images is missing required component ${component}"
 done
-[[ "$(grep -Ec '^[[:space:]]+[a-z][a-z0-9-]*: \{ref:' <<<"${images_block}")" -eq 4 ]] ||
-  fail 'release evidence images must contain exactly the four required profile components'
+[[ "$(grep -Ec '^[[:space:]]+[A-Za-z][A-Za-z0-9-]*: \{ref:' <<<"${images_block}")" -eq 5 ]] ||
+  fail 'release evidence images must contain exactly the four runtime images plus releaseVerifier'
 
 [[ "$(grep -Fc 'package_sha256: $application_package_sha' "${driver}")" -eq 2 ]] ||
   fail 'application archive SHA must be retained in both release evidence and receipt'
@@ -259,12 +326,12 @@ for required in \
   'source_tag        = "v0.0.22"' \
   'source_tag_object = "00a6a684cea3b3feea67461cf79347332ec759ef"' \
   'source_commit     = "e9ed68e587b56df2aa2a7f0267a744598c4d48b4"' \
-  'release_version   = "0.0.22-private.2"' \
+  'release_version   = "0.0.22-private.3"' \
   'submitter_members = []'; do
   grep -Fq "${required}" "${inputs}" || fail "applied private release input is missing: ${required}"
 done
 
-if "${invoker}" 0.0.22-private.1 >/dev/null 2>&1; then
+if "${invoker}" 0.0.22-private.2 >/dev/null 2>&1; then
   fail 'manual submitter accepted a coordinate not authorized by the applied configuration'
 fi
 
