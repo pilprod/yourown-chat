@@ -140,17 +140,25 @@ output "application_source_trigger_ids" {
 
 output "kagent_preview_publisher" {
   type = object({
-    enabled               = bool
-    service_account_email = string
-    evidence_bucket_name  = string
-    ghcr_secret_id        = string
+    enabled                    = bool
+    service_account_email      = string
+    evidence_bucket_name       = string
+    source_uri                 = string
+    trigger_id                 = string
+    release_request_topic      = string
+    artifact_repository_prefix = string
+    ghcr_secret_id             = string
   })
   description = "Non-sensitive coordinates of the dedicated kagent fork preview publication infrastructure."
   value = {
-    enabled               = component.kagent_preview_publisher.enabled
-    service_account_email = component.kagent_preview_publisher.service_account_email
-    evidence_bucket_name  = component.kagent_preview_publisher.evidence_bucket_name
-    ghcr_secret_id        = component.kagent_preview_publisher.ghcr_secret_id
+    enabled                    = component.kagent_preview_publisher.enabled
+    service_account_email      = component.kagent_preview_publisher.service_account_email
+    evidence_bucket_name       = component.kagent_preview_publisher.evidence_bucket_name
+    source_uri                 = component.kagent_preview_publisher.source_uri
+    trigger_id                 = component.kagent_preview_publisher.trigger_id
+    release_request_topic      = component.kagent_preview_publisher.release_request_topic
+    artifact_repository_prefix = component.kagent_preview_publisher.artifact_repository_prefix
+    ghcr_secret_id             = component.kagent_preview_publisher.ghcr_secret_id
   }
 }
 

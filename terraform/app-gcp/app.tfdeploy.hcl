@@ -46,6 +46,9 @@ deployment "eu" {
     workload_identity_emails        = upstream_input.platform.workload_identity_emails
     artifact_registry_location      = upstream_input.platform.artifact_registry_location
     artifact_registry_repository_id = upstream_input.platform.artifact_registry_repository_id
+    kagent_registry_repository_id   = upstream_input.platform.kagent_registry_repository_id
+    kagent_staging_registry_repository_id = upstream_input.platform.kagent_staging_registry_repository_id
+    kagent_registry_location = upstream_input.platform.kagent_registry_location
     # Platform Helm chart repository (helm/platform profiles as OCI artifacts).
     helm_registry_repository_id = upstream_input.platform.helm_registry_repository_id
     cmek_key_id                 = upstream_input.platform.cmek_key_id

@@ -183,12 +183,18 @@ locals {
     external_broker_smoke_ready        = false
   }
 
-  # Creates only infrastructure and an empty Secret Manager container. The
-  # dedicated write:packages token is added as an exact external version after
-  # an action-time GitHub confirmation; no token byte enters this repository or
-  # Terraform state.
+  # app-gcp owns the complete Google Cloud release rail. An explicit invocation
+  # with an annotated gcp-v tag starts Cloud Build, which builds and scans in the private
+  # platform staging registry, promotes passing digests into the separate
+  # private immutable registry, and writes immutable GCS evidence.
+  # The gcp-v namespace avoids the fork's legacy v*.kap.* Actions trigger.
+  # GitHub is source-only: no Actions runner, GHCR token or gh CLI session is
+  # part of this path. The old empty GHCR secret container is retained only to
+  # keep this migration non-destructive.
   kagent_preview_publisher = {
     enabled                    = true
+    source_commit              = "a23b96ec863315ea3ca0ccd2ea829197882bd509"
+    release_tag_regex          = "^gcp-v0\\.0\\.0-external-slot\\.kap\\.[0-9]+$"
     evidence_bucket_name       = "yourown-chat-kagent-preview-evidence-europe-west3"
     evidence_retention_seconds = 31536000
     ghcr_secret_id             = "kagent-ghcr-write"

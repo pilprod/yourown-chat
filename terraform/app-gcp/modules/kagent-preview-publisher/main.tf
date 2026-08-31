@@ -1,5 +1,20 @@
 locals {
-  count = var.enabled ? 1 : 0
+  count                      = var.enabled ? 1 : 0
+  registry_host              = "${var.artifact_registry_location}-docker.pkg.dev"
+  artifact_repository_prefix = "${local.registry_host}/${var.project_id}/${var.artifact_registry_repository_id}/kagent"
+  staging_repository_prefix  = "${local.registry_host}/${var.project_id}/${var.staging_registry_repository_id}/kagent"
+  publication_driver_base64  = base64encode(file("${path.module}/scripts/publish-artifact-registry.sh"))
+  publication_driver_sha256  = filesha256("${path.module}/scripts/publish-artifact-registry.sh")
+  publication_driver_chunks = [
+    for index in range(ceil(length(local.publication_driver_base64) / 8000)) :
+    substr(local.publication_driver_base64, index * 8000, 8000)
+  ]
+  publication_environment = [
+    "KAGENT_ARTIFACT_PREFIX=${local.artifact_repository_prefix}",
+    "KAGENT_EVIDENCE_BUCKET=${var.evidence_bucket_name}",
+    "KAGENT_REGISTRY_HOST=${local.registry_host}",
+    "KAGENT_STAGING_PREFIX=${local.staging_repository_prefix}",
+  ]
   submitter_members = var.enabled ? setunion(
     toset(["serviceAccount:${var.apply_service_account_email}"]),
     var.submitter_members,
@@ -20,6 +35,61 @@ resource "google_project_iam_member" "log_writer" {
 
   project = var.project_id
   role    = "roles/logging.logWriter"
+  member  = "serviceAccount:${google_service_account.publisher[0].email}"
+}
+
+# Passing release artifacts land in the dedicated private immutable repository.
+# No writer permission is granted on the shared Mattermost/application repo.
+resource "google_artifact_registry_repository_iam_member" "release_writer" {
+  count = local.count
+
+  project    = var.project_id
+  location   = var.artifact_registry_location
+  repository = var.artifact_registry_repository_id
+  role       = "roles/artifactregistry.writer"
+  member     = "serviceAccount:${google_service_account.publisher[0].email}"
+}
+
+
+# Candidate image refs remain private and disposable until On-Demand Scanning
+# succeeds. platform-gcp applies a bounded cleanup policy to this repository.
+resource "google_artifact_registry_repository_iam_member" "staging_writer" {
+  count = local.count
+
+  project    = var.project_id
+  location   = var.artifact_registry_location
+  repository = var.staging_registry_repository_id
+  role       = "roles/artifactregistry.writer"
+  member     = "serviceAccount:${google_service_account.publisher[0].email}"
+}
+
+resource "google_project_iam_member" "scanner" {
+  count = local.count
+
+  project = var.project_id
+  role    = "roles/ondemandscanning.admin"
+  member  = "serviceAccount:${google_service_account.publisher[0].email}"
+}
+
+# Cloud Build requires the configured trigger identity to create the build.
+# platform-gcp disables both default-SA selection constraints, so this identity
+# can submit only as an explicitly named service account on which it has actAs.
+resource "google_project_iam_custom_role" "build_invoker" {
+  count = local.count
+
+  project     = var.project_id
+  role_id     = "kagentPreviewBuildInvoker"
+  title       = "kagent preview build invoker"
+  description = "Allows only the kagent preview trigger identity to create its Cloud Build invocation."
+  permissions = ["cloudbuild.builds.create"]
+  stage       = "GA"
+}
+
+resource "google_project_iam_member" "build_invoker" {
+  count = local.count
+
+  project = var.project_id
+  role    = google_project_iam_custom_role.build_invoker[0].id
   member  = "serviceAccount:${google_service_account.publisher[0].email}"
 }
 
@@ -59,9 +129,9 @@ resource "google_storage_bucket_iam_member" "evidence_creator" {
   member = "serviceAccount:${google_service_account.publisher[0].email}"
 }
 
-# Deliberately creates only the container. A dedicated classic GitHub PAT with
-# the minimal write:packages scope is added as one exact Secret Manager version
-# outside Terraform so no credential byte can enter configuration or state.
+# Legacy empty container retained only so adopting the Artifact Registry build
+# path does not mix a destructive secret deletion into the release change. The
+# trigger below has no secret injection and never reads this resource.
 resource "google_secret_manager_secret" "ghcr_write" {
   count = local.count
 
@@ -85,22 +155,393 @@ resource "google_secret_manager_secret" "ghcr_write" {
   }
 }
 
-resource "google_secret_manager_secret_iam_member" "publisher_accessor" {
+# The Terraform apply identity needs actAs to create a trigger that names the
+# publisher. Release submitters do not: they can only publish to the dedicated
+# request topic below.
+resource "google_service_account_iam_member" "apply_acts_as_publisher" {
   count = local.count
-
-  project   = var.project_id
-  secret_id = google_secret_manager_secret.ghcr_write[0].secret_id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${google_service_account.publisher[0].email}"
-}
-
-# The apply identity always needs actAs to materialize a Cloud Build submission
-# that names this SA. Additional human or MCP submitters must be named
-# explicitly; no project-wide serviceAccountUser grant is used.
-resource "google_service_account_iam_member" "submitter" {
-  for_each = local.submitter_members
 
   service_account_id = google_service_account.publisher[0].name
   role               = "roles/iam.serviceAccountUser"
-  member             = each.value
+  member             = "serviceAccount:${var.apply_service_account_email}"
+}
+
+# The trigger executes as the publisher and can act as no other service
+# account. Combined with the platform org-policy override, recursive builds
+# cannot fall back to the legacy or Compute Engine default service accounts.
+resource "google_service_account_iam_member" "publisher_acts_as_self" {
+  count = local.count
+
+  service_account_id = google_service_account.publisher[0].name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_service_account.publisher[0].email}"
+}
+
+# google provider 6.x requires every BuildTrigger to declare an event/source.
+# A dedicated Pub/Sub topic supplies that event without a GitHub connection or
+# shared webhook credential. IAM on this exact topic is the release-submit
+# boundary; the build independently validates the annotated tag and commit.
+resource "google_pubsub_topic" "release_request" {
+  count = local.count
+
+  project = var.project_id
+  name    = "kagent-preview-release"
+  labels  = var.labels
+}
+
+resource "google_pubsub_topic_iam_member" "release_submitter" {
+  for_each = local.submitter_members
+
+  project = var.project_id
+  topic   = google_pubsub_topic.release_request[0].name
+  role    = "roles/pubsub.publisher"
+  member  = each.value
+}
+
+# An annotated immutable source tag and an IAM-authenticated Pub/Sub message are
+# the release request. The build clones the public fork itself, so no Cloud
+# Build GitHub connection, GitHub OAuth authorizer or Actions runner is needed.
+resource "google_cloudbuild_trigger" "release" {
+  count = local.count
+
+  project         = var.project_id
+  location        = var.region
+  name            = "kagent-preview-release"
+  description     = "Build reviewed kagent fork previews into Google Artifact Registry and write immutable GCS evidence."
+  service_account = google_service_account.publisher[0].id
+
+  pubsub_config {
+    topic = google_pubsub_topic.release_request[0].id
+  }
+
+  substitutions = {
+    _RELEASE_TAG = "$(body.message.attributes.releaseTag)"
+  }
+
+  filter = "_RELEASE_TAG != \"\""
+
+  build {
+    timeout = var.build_timeout
+
+    step {
+      id         = "checkout-reviewed-source"
+      name       = "gcr.io/cloud-builders/git@sha256:bfcbd8719280b196bd860e89531c3c9b598daab4a07aef1d17a163c822d569bd"
+      entrypoint = "bash"
+      args = [
+        "-ceu",
+        <<-EOT
+          set -o pipefail
+          tag="$_RELEASE_TAG"
+          printf '%s\n' "$$tag" | grep -Eq '${var.release_tag_regex}'
+
+          git clone --filter=blob:none --no-tags \
+            "${var.github_remote_uri}" /workspace/source
+          cd /workspace/source
+          git fetch --force origin \
+            refs/heads/yourown-chat:refs/remotes/origin/yourown-chat
+          git fetch --force origin \
+            "refs/tags/$$tag:refs/tags/$$tag"
+          test "$$(git cat-file -t "refs/tags/$$tag")" = tag
+          tag_commit="$$(git rev-parse "refs/tags/$$tag^{}")"
+          test "$$tag_commit" = "${var.source_commit}"
+          git checkout --detach "${var.source_commit}"
+          git merge-base --is-ancestor \
+            "${var.source_commit}" origin/yourown-chat
+          test -z "$$(git status --porcelain)"
+
+          version="$$(printf '%s' "$$tag" | sed 's/^gcp-v//')"
+          build_date="$$(git show -s --format=%cs HEAD)"
+          [[ "$$build_date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$$ ]]
+          printf '%s' "$$version" > /workspace/kagent-release-version
+          printf '%s' "$$tag" > /workspace/kagent-source-tag
+          printf '%s' "${var.source_commit}" > /workspace/kagent-source-commit
+          printf '%s' "$BUILD_ID" > /workspace/kagent-build-id
+          printf '%s' "$$build_date" > /workspace/kagent-build-date
+        EOT
+      ]
+    }
+
+    step {
+      id         = "materialize-release-driver"
+      name       = "gcr.io/google.com/cloudsdktool/google-cloud-cli:573.0.0@sha256:f0b4abeb30773243f9ae95abe201ec01de07d5ed582b56ca52879eb3dbe209c3"
+      entrypoint = "bash"
+      args = concat(
+        [
+          "-ceu",
+          <<-EOT
+            output=/workspace/publish-kagent-artifact-registry.sh
+            printf '%s' "$$@" | base64 -d > "$$output"
+            printf '%s  %s\n' '${local.publication_driver_sha256}' "$$output" \
+              | sha256sum --check --status
+            chmod 0555 "$$output"
+          EOT
+          ,
+          "materialize-release-driver",
+        ],
+        local.publication_driver_chunks,
+      )
+    }
+
+    step {
+      id   = "build-pinned-release-toolbox"
+      name = "gcr.io/cloud-builders/docker@sha256:d1797996867921778f1adbb7e493baaaf2f6b21e107599c0aab48c2ec06ff311"
+      args = [
+        "build",
+        "--pull",
+        "--tag",
+        "gcr.io/$PROJECT_ID/kagent-fork-preview-tools:$BUILD_ID",
+        "--file",
+        "/workspace/source/.github/cloud-build/fork-preview-tools.Dockerfile",
+        "/workspace/source",
+      ]
+    }
+
+    step {
+      id         = "reject-existing-final-refs"
+      name       = "gcr.io/google.com/cloudsdktool/google-cloud-cli:573.0.0@sha256:f0b4abeb30773243f9ae95abe201ec01de07d5ed582b56ca52879eb3dbe209c3"
+      entrypoint = "bash"
+      env        = local.publication_environment
+      args       = ["/workspace/publish-kagent-artifact-registry.sh", "reject-existing"]
+    }
+
+    step {
+      id         = "verify-release-source"
+      name       = "gcr.io/cloud-builders/docker@sha256:d1797996867921778f1adbb7e493baaaf2f6b21e107599c0aab48c2ec06ff311"
+      entrypoint = "bash"
+      args = [
+        "-ceu",
+        <<-EOT
+          docker run --rm \
+            --volume /workspace:/workspace \
+            --workdir /workspace/source \
+            "gcr.io/$PROJECT_ID/kagent-fork-preview-tools:$BUILD_ID" \
+            /workspace/source/scripts/verify-cloud-build-fork-preview-source.sh \
+            "$$(< /workspace/kagent-release-version)" \
+            "${var.source_commit}"
+        EOT
+      ]
+    }
+
+    step {
+      id   = "install-multiarch-emulation"
+      name = "docker.io/tonistiigi/binfmt@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0"
+      args = ["--install", "all"]
+    }
+
+    step {
+      id         = "build-candidate-images"
+      name       = "gcr.io/cloud-builders/docker@sha256:d1797996867921778f1adbb7e493baaaf2f6b21e107599c0aab48c2ec06ff311"
+      entrypoint = "bash"
+      env        = concat(local.publication_environment, ["BUILDX_NO_DEFAULT_ATTESTATIONS=1"])
+      args       = ["/workspace/publish-kagent-artifact-registry.sh", "build-images"]
+    }
+
+    step {
+      id         = "record-buildkit-image-digests"
+      name       = "gcr.io/cloud-builders/docker@sha256:d1797996867921778f1adbb7e493baaaf2f6b21e107599c0aab48c2ec06ff311"
+      entrypoint = "bash"
+      env        = local.publication_environment
+      args = [
+        "-ceu",
+        <<-EOT
+          docker run --rm \
+            --volume /workspace:/workspace \
+            --env KAGENT_ARTIFACT_PREFIX \
+            --env KAGENT_REGISTRY_HOST \
+            --env KAGENT_STAGING_PREFIX \
+            "gcr.io/$PROJECT_ID/kagent-fork-preview-tools:$BUILD_ID" \
+            /workspace/publish-kagent-artifact-registry.sh record-images
+        EOT
+      ]
+    }
+
+    step {
+      id         = "verify-candidate-image-indexes"
+      name       = "gcr.io/cloud-builders/docker@sha256:d1797996867921778f1adbb7e493baaaf2f6b21e107599c0aab48c2ec06ff311"
+      entrypoint = "bash"
+      env        = local.publication_environment
+      args       = ["/workspace/publish-kagent-artifact-registry.sh", "verify-candidates"]
+    }
+
+    step {
+      id         = "record-candidate-platform-digests"
+      name       = "gcr.io/cloud-builders/docker@sha256:d1797996867921778f1adbb7e493baaaf2f6b21e107599c0aab48c2ec06ff311"
+      entrypoint = "bash"
+      env        = local.publication_environment
+      args = [
+        "-ceu",
+        <<-EOT
+          docker run --rm \
+            --volume /workspace:/workspace \
+            --env KAGENT_ARTIFACT_PREFIX \
+            --env KAGENT_REGISTRY_HOST \
+            --env KAGENT_STAGING_PREFIX \
+            "gcr.io/$PROJECT_ID/kagent-fork-preview-tools:$BUILD_ID" \
+            /workspace/publish-kagent-artifact-registry.sh record-platforms
+        EOT
+      ]
+    }
+
+    step {
+      id         = "package-and-reproduce-charts"
+      name       = "gcr.io/cloud-builders/docker@sha256:d1797996867921778f1adbb7e493baaaf2f6b21e107599c0aab48c2ec06ff311"
+      entrypoint = "bash"
+      args = [
+        "-ceu",
+        <<-EOT
+          docker run --rm \
+            --volume /workspace:/workspace \
+            --workdir /workspace/source \
+            "gcr.io/$PROJECT_ID/kagent-fork-preview-tools:$BUILD_ID" \
+            /workspace/source/scripts/cloud-build-fork-preview-charts.sh \
+            package "$$(< /workspace/kagent-release-version)"
+        EOT
+      ]
+    }
+
+    step {
+      id         = "scan-candidate-images"
+      name       = "gcr.io/google.com/cloudsdktool/google-cloud-cli:573.0.0@sha256:f0b4abeb30773243f9ae95abe201ec01de07d5ed582b56ca52879eb3dbe209c3"
+      entrypoint = "bash"
+      env        = local.publication_environment
+      args       = ["/workspace/publish-kagent-artifact-registry.sh", "scan-images"]
+    }
+
+    # A generation-zero object serializes publication of one immutable version.
+    # If a build fails after taking the lock, that version remains deliberately
+    # unusable and the next reviewed release must use a new tag.
+    step {
+      id         = "acquire-immutable-release-lock"
+      name       = "gcr.io/google.com/cloudsdktool/google-cloud-cli:573.0.0@sha256:f0b4abeb30773243f9ae95abe201ec01de07d5ed582b56ca52879eb3dbe209c3"
+      entrypoint = "bash"
+      env        = local.publication_environment
+      args       = ["/workspace/publish-kagent-artifact-registry.sh", "acquire-lock"]
+    }
+
+    step {
+      id         = "recheck-final-refs"
+      name       = "gcr.io/google.com/cloudsdktool/google-cloud-cli:573.0.0@sha256:f0b4abeb30773243f9ae95abe201ec01de07d5ed582b56ca52879eb3dbe209c3"
+      entrypoint = "bash"
+      env        = local.publication_environment
+      args       = ["/workspace/publish-kagent-artifact-registry.sh", "reject-existing"]
+    }
+
+    step {
+      id         = "promote-final-image-aliases"
+      name       = "gcr.io/cloud-builders/docker@sha256:d1797996867921778f1adbb7e493baaaf2f6b21e107599c0aab48c2ec06ff311"
+      entrypoint = "bash"
+      env        = local.publication_environment
+      args       = ["/workspace/publish-kagent-artifact-registry.sh", "promote-images"]
+    }
+
+    step {
+      id         = "publish-final-charts"
+      name       = "gcr.io/cloud-builders/docker@sha256:d1797996867921778f1adbb7e493baaaf2f6b21e107599c0aab48c2ec06ff311"
+      entrypoint = "bash"
+      env        = local.publication_environment
+      args = [
+        "-ceu",
+        <<-EOT
+          docker run --rm \
+            --network cloudbuild \
+            --volume /workspace:/workspace \
+            --env KAGENT_ARTIFACT_PREFIX \
+            --env KAGENT_REGISTRY_HOST \
+            --env KAGENT_STAGING_PREFIX \
+            "gcr.io/$PROJECT_ID/kagent-fork-preview-tools:$BUILD_ID" \
+            /workspace/publish-kagent-artifact-registry.sh publish-charts
+        EOT
+      ]
+    }
+
+    step {
+      id         = "verify-all-final-registry-digests"
+      name       = "gcr.io/google.com/cloudsdktool/google-cloud-cli:573.0.0@sha256:f0b4abeb30773243f9ae95abe201ec01de07d5ed582b56ca52879eb3dbe209c3"
+      entrypoint = "bash"
+      env        = local.publication_environment
+      args       = ["/workspace/publish-kagent-artifact-registry.sh", "verify-finals"]
+    }
+
+    step {
+      id         = "assemble-deployment-evidence"
+      name       = "gcr.io/cloud-builders/docker@sha256:d1797996867921778f1adbb7e493baaaf2f6b21e107599c0aab48c2ec06ff311"
+      entrypoint = "bash"
+      env        = local.publication_environment
+      args = [
+        "-ceu",
+        <<-EOT
+          docker run --rm \
+            --volume /workspace:/workspace \
+            --env KAGENT_ARTIFACT_PREFIX \
+            --env KAGENT_REGISTRY_HOST \
+            --env KAGENT_STAGING_PREFIX \
+            "gcr.io/$PROJECT_ID/kagent-fork-preview-tools:$BUILD_ID" \
+            /workspace/publish-kagent-artifact-registry.sh assemble-evidence
+        EOT
+      ]
+    }
+
+    step {
+      id         = "append-scan-evidence"
+      name       = "gcr.io/google.com/cloudsdktool/google-cloud-cli:573.0.0@sha256:f0b4abeb30773243f9ae95abe201ec01de07d5ed582b56ca52879eb3dbe209c3"
+      entrypoint = "bash"
+      env        = local.publication_environment
+      args       = ["/workspace/publish-kagent-artifact-registry.sh", "append-scan-evidence"]
+    }
+
+    step {
+      id         = "finalize-cloud-build-receipt"
+      name       = "gcr.io/cloud-builders/docker@sha256:d1797996867921778f1adbb7e493baaaf2f6b21e107599c0aab48c2ec06ff311"
+      entrypoint = "bash"
+      args = [
+        "-ceu",
+        <<-EOT
+          docker run --rm \
+            --volume /workspace:/workspace \
+            --entrypoint python3 \
+            "gcr.io/$PROJECT_ID/kagent-fork-preview-tools:$BUILD_ID" \
+            /workspace/source/scripts/finalize-cloud-build-fork-preview-receipt.py \
+            "$BUILD_ID" "$PROJECT_ID" "${var.source_commit}" \
+            "$$(< /workspace/kagent-release-version)" /workspace/release
+        EOT
+      ]
+    }
+
+    step {
+      id         = "upload-immutable-release-receipt"
+      name       = "gcr.io/cloud-builders/gcloud@sha256:3bcfea90f299ae18ced1c0bce4ec035bc4d19049f16c22690ba7c4e730478fbc"
+      entrypoint = "bash"
+      dir        = "/workspace/release"
+      args = [
+        "-ceu",
+        <<-EOT
+          version="$$(< /workspace/kagent-release-version)"
+          cat release-evidence.json
+          cat release-evidence.json.sha256
+          gcloud storage cp ./* \
+            "gs://${google_storage_bucket.evidence[0].name}/kagent/$$version/$BUILD_ID/"
+          printf 'release receipt: gs://%s/kagent/%s/%s/\n' \
+            "${google_storage_bucket.evidence[0].name}" "$$version" "$BUILD_ID"
+        EOT
+      ]
+    }
+
+    options {
+      disk_size_gb = 200
+      logging      = "CLOUD_LOGGING_ONLY"
+      machine_type = "E2_HIGHCPU_32"
+    }
+  }
+
+  depends_on = [
+    google_artifact_registry_repository_iam_member.release_writer,
+    google_artifact_registry_repository_iam_member.staging_writer,
+    google_project_iam_member.log_writer,
+    google_project_iam_member.scanner,
+    google_project_iam_member.build_invoker,
+    google_pubsub_topic_iam_member.release_submitter,
+    google_service_account_iam_member.apply_acts_as_publisher,
+    google_service_account_iam_member.publisher_acts_as_self,
+    google_storage_bucket_iam_member.evidence_creator,
+  ]
 }

@@ -1,6 +1,6 @@
 variable "enabled" {
   type        = bool
-  description = "Materialize the dedicated kagent fork preview publication identity, evidence bucket and empty GHCR credential container."
+  description = "Materialize the Terraform-owned Cloud Build and Artifact Registry rail for kagent fork previews."
   default     = false
 }
 
@@ -12,6 +12,64 @@ variable "project_id" {
 variable "region" {
   type        = string
   description = "Region for the evidence bucket and Secret Manager replica."
+}
+
+variable "github_remote_uri" {
+  type        = string
+  description = "Read-only HTTPS source URL for the reviewed kagent fork."
+
+  validation {
+    condition     = var.github_remote_uri == "https://github.com/pilprod/kagent.git"
+    error_message = "The kagent preview publisher accepts only the reviewed pilprod/kagent fork."
+  }
+}
+
+variable "source_commit" {
+  type        = string
+  description = "Exact reviewed kagent fork commit accepted by the manual release trigger."
+
+  validation {
+    condition     = !var.enabled || can(regex("^[0-9a-f]{40}$", var.source_commit))
+    error_message = "An enabled publisher requires an exact lowercase 40-character source_commit."
+  }
+}
+
+variable "release_tag_regex" {
+  type        = string
+  description = "Immutable fork-preview tag family accepted by the manual Cloud Build trigger. The gcp-v prefix deliberately avoids the fork's legacy GitHub Actions tag glob."
+  default     = "^gcp-v[0-9]+\\.[0-9]+\\.[0-9]+-external-slot\\.kap\\.[0-9]+$"
+
+  validation {
+    condition = (
+      startswith(var.release_tag_regex, "^gcp-v") &&
+      endswith(var.release_tag_regex, "$") &&
+      !strcontains(var.release_tag_regex, "'") &&
+      !strcontains(var.release_tag_regex, "\n") &&
+      !strcontains(var.release_tag_regex, "\r")
+    )
+    error_message = "release_tag_regex must be an anchored gcp-v-prefixed regular expression."
+  }
+}
+
+variable "artifact_registry_location" {
+  type        = string
+  description = "Location of the existing platform-owned Artifact Registry repository."
+}
+
+variable "artifact_registry_repository_id" {
+  type        = string
+  description = "Dedicated private immutable platform-owned Artifact Registry repository receiving only passing kagent preview images and charts."
+}
+
+variable "staging_registry_repository_id" {
+  type        = string
+  description = "Dedicated private platform-owned Artifact Registry repository receiving disposable kagent candidate images before scan and promotion."
+}
+
+variable "build_timeout" {
+  type        = string
+  description = "Maximum Cloud Build duration for multi-architecture images, chart verification and scanning."
+  default     = "7200s"
 }
 
 variable "apply_service_account_email" {
@@ -62,7 +120,7 @@ variable "evidence_retention_seconds" {
 
 variable "ghcr_secret_id" {
   type        = string
-  description = "Secret Manager container name for the dedicated minimal GHCR write token. No version is Terraform-managed."
+  description = "Deprecated empty GHCR Secret Manager container retained for a non-destructive migration. The Artifact Registry trigger never reads it and no version is Terraform-managed."
   default     = "kagent-ghcr-write"
 
   validation {

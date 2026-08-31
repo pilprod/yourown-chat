@@ -108,6 +108,21 @@ variable "artifact_registry_repository_id" {
   description = "Artifact Registry repository ID the image CI pushes to. Published by the platform stack."
 }
 
+variable "kagent_registry_repository_id" {
+  type        = string
+  description = "Dedicated immutable Artifact Registry repository ID for reviewed kagent fork preview images and OCI charts. Published by platform-gcp."
+}
+
+variable "kagent_registry_location" {
+  type        = string
+  description = "Location shared by the dedicated private immutable kagent release and private candidate repositories. Published by platform-gcp."
+}
+
+variable "kagent_staging_registry_repository_id" {
+  type        = string
+  description = "Dedicated private Artifact Registry repository ID for disposable kagent candidates built and scanned before promotion. Published by platform-gcp."
+}
+
 variable "cmek_key_id" {
   type        = string
   description = "Shared CMEK key resource ID encrypting this stack's secrets and the release-source bucket (null when the platform runs cmek_enabled = false). Published by the platform stack."
@@ -615,14 +630,18 @@ variable "dev_team_rbac_subjects" {
 variable "kagent_preview_publisher" {
   type = object({
     enabled                    = bool
+    source_commit              = string
+    release_tag_regex          = string
     evidence_bucket_name       = string
     evidence_retention_seconds = number
     ghcr_secret_id             = string
     submitter_members          = set(string)
   })
-  description = "Dedicated Cloud Build publication infrastructure for immutable kagent fork previews. It creates an empty Secret Manager container only; credential values never enter Terraform."
+  description = "Terraform-owned Cloud Build publication rail for immutable kagent fork previews in the platform Artifact Registry. The legacy empty GHCR container is retained but not consumed."
   default = {
     enabled                    = false
+    source_commit              = ""
+    release_tag_regex          = "^gcp-v[0-9]+\\.[0-9]+\\.[0-9]+-external-slot\\.kap\\.[0-9]+$"
     evidence_bucket_name       = "disabled-kagent-preview-evidence"
     evidence_retention_seconds = 31536000
     ghcr_secret_id             = "kagent-ghcr-write"
@@ -632,5 +651,10 @@ variable "kagent_preview_publisher" {
   validation {
     condition     = !var.kagent_preview_publisher.enabled || var.kagent_preview_publisher.evidence_bucket_name != "disabled-kagent-preview-evidence"
     error_message = "An enabled kagent_preview_publisher requires an explicit evidence_bucket_name."
+  }
+
+  validation {
+    condition     = !var.kagent_preview_publisher.enabled || can(regex("^[0-9a-f]{40}$", var.kagent_preview_publisher.source_commit))
+    error_message = "An enabled kagent_preview_publisher requires an exact reviewed source_commit."
   }
 }
