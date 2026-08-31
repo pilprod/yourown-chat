@@ -68,9 +68,10 @@ from this receipt. Cloud Deploy renders one `kagent-substrate` release with a
 `kagent-dev` stage and an approval-gated `kagent-prod` stage. Both stages consume
 the same digest set; promotion never rebuilds the fork.
 
-The release namespace is deliberately `gcp-v...`, not `v...`: the fork still
-contains a legacy GitHub Actions glob for `v*.kap.*`, and the Google-only rail
-must not start that workflow. Publish the annotated tag to the dedicated topic
+The release namespace is deliberately `gcp-v...`, not `v...`. The two public
+GitHub release workflows are disabled at repository level and their current
+fork definitions fail closed; the private source verifier checks that external
+state again before it builds. Publish the annotated tag to the dedicated topic
 using Google IAM; no Cloud Build GitHub connection authorization or shared
 webhook secret is involved. Submitters receive only `pubsub.publisher` on that
 single topic.
@@ -80,7 +81,7 @@ commit, submit it without GitHub or Secret Manager credentials:
 
 ```bash
 terraform/app-gcp/modules/kagent-preview-publisher/scripts/publish-release-request.sh \
-  gcp-v0.0.0-external-slot.kap.2
+  gcp-v0.0.0-external-slot.kap.3
 ```
 
 The script uses the existing Google CLI OAuth session only. Build status and
