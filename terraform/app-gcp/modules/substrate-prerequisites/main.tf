@@ -376,6 +376,7 @@ resource "helm_release" "substrate_application" {
     kubernetes_network_policy_v1.substrate_controller_api_egress,
     kubernetes_network_policy_v1.substrate_dns_egress,
     kubernetes_network_policy_v1.substrate_internal_api_egress,
+    kubernetes_network_policy_v1.substrate_internal_api_ingress,
     kubernetes_network_policy_v1.substrate_internal_egress_gateway_egress,
   ]
 }
@@ -659,6 +660,41 @@ resource "kubernetes_network_policy_v1" "substrate_internal_api_egress" {
       to {
         pod_selector {
           match_labels = { app = "ate-api-server" }
+        }
+      }
+      ports {
+        port     = "443"
+        protocol = "TCP"
+      }
+    }
+  }
+
+  depends_on = [kubernetes_namespace_v1.substrate]
+}
+
+# The chart-owned ate-api ingress policy already admits ate-controller and the
+# reviewed kagent/enrollment clients. Phase A adds atenet-egress as a separate
+# exact same-namespace policy so Kubernetes unions the new authorizer path with
+# those existing peers without broadening any chart-owned rule.
+resource "kubernetes_network_policy_v1" "substrate_internal_api_ingress" {
+  count = var.bootstrap_enabled ? 1 : 0
+
+  metadata {
+    name      = "substrate-api-exact-atenet-ingress"
+    namespace = local.substrate_namespace
+    labels    = local.common_labels
+  }
+
+  spec {
+    pod_selector {
+      match_labels = { app = "ate-api-server" }
+    }
+    policy_types = ["Ingress"]
+
+    ingress {
+      from {
+        pod_selector {
+          match_labels = { app = "atenet-egress" }
         }
       }
       ports {

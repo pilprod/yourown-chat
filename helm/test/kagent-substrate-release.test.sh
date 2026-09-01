@@ -3,6 +3,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 renderer="${repo_root}/helm/kagent/render-release.py"
+evidence_fixture_writer="${repo_root}/helm/test/write-kagent-schema3-evidence-fixture.py"
 work="$(mktemp -d)"
 trap 'rm -rf "${work}"' EXIT
 
@@ -32,6 +33,17 @@ d9="$(jq -er '.dependency_images.agentgateway.digest' "${consumer_evidence}")"
 d10="$(jq -er '.images.releaseVerifier.digest' "${consumer_evidence}")"
 d11="sha256:$(hex 6 64)"
 kagent_registry="europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/kagent"
+kagent_evidence="${work}/kagent-release-evidence.json"
+python3 "${evidence_fixture_writer}" \
+  --output "${kagent_evidence}" \
+  --controller "${d1}" \
+  --ui "${d2}" \
+  --application "${d5}" \
+  --crds "${d6}" \
+  --kagent-harness "${d7}" \
+  --codex-harness "${d11}"
+kagent_evidence_sha="$(sha256_file "${kagent_evidence}")"
+kagent_evidence_uri="gs://yourown-chat-kagent-preview-evidence-europe-west3/kagent/0.0.0-external-slot.kap.5/00000000-0000-4000-8000-000000000001/release-evidence.json#1"
 
 contract="${work}/contract.json"
 jq -n \
@@ -41,6 +53,9 @@ jq -n \
   --arg d7 "${d7}" --arg d8 "${d8}" --arg d9 "${d9}" --arg d10 "${d10}" --arg d11 "${d11}" \
   --arg consumer_evidence_path "${consumer_evidence_path}" \
   --arg consumer_evidence_sha "${consumer_evidence_sha}" \
+  --arg kagent_evidence_sha "${kagent_evidence_sha}" \
+  --arg kagent_evidence_uri "${kagent_evidence_uri}" \
+  --rawfile kagent_evidence "${kagent_evidence}" \
   --arg kagent_registry "${kagent_registry}" \
   --arg substrate_version "${substrate_version}" \
   --arg substrate_application_ref "${substrate_application_ref}" \
@@ -55,11 +70,15 @@ jq -n \
     native_secret_sync_ready: true,
     production_eligible: true,
     external_broker_smoke_ready: false,
+    kagent_release_evidence: {
+      uri: $kagent_evidence_uri,
+      manifest_json: $kagent_evidence
+    },
     artifacts: {
       kagent: {
         source_repository: "https://github.com/pilprod/kagent",
         source_commit: $kc,
-        artifact_manifest_sha256: ($kc + $kc[0:24]),
+        artifact_manifest_sha256: $kagent_evidence_sha,
         artifact_schema_version: "3",
         charts: {
           application: {ref: ("oci://" + $kagent_registry + "/helm/kagent@" + $d5), version: "0.0.0-external-slot.kap.5"},
@@ -227,6 +246,65 @@ expect_kagent_identity_failure wrong-kagent-source \
 expect_kagent_identity_failure wrong-kagent-version \
   '.artifacts.kagent.charts.application.version = "0.0.0-external-slot.kap.6"' \
   'reviewed .kap.5 release version'
+
+expect_kagent_evidence_failure() {
+  local label="$1"
+  local filter="$2"
+  local message="$3"
+  local candidate="${work}/${label}.json"
+  local error="${work}/${label}.err"
+
+  jq "${filter}" "${contract}" > "${candidate}"
+  if KAGENT_SUBSTRATE_RELEASE_JSON="$(<"${candidate}")" \
+    python3 "${renderer}" --source-root "${repo_root}/helm" --output "${work}/${label}.yaml" 2>"${error}"; then
+    echo "${label} unexpectedly rendered" >&2
+    exit 1
+  fi
+  grep -Fq "${message}" "${error}"
+}
+
+# All substitutions remain in the admitted private registry and retain valid
+# digest syntax. They must still fail because the exact evidence bytes are the
+# authority, not the repository prefix.
+expect_kagent_evidence_failure same-registry-application-substitution \
+  '.artifacts.kagent.charts.application.ref = "oci://europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/kagent/helm/kagent@sha256:9999999999999999999999999999999999999999999999999999999999999999"' \
+  'exactly match the checksum-bound schema-3 release evidence'
+expect_kagent_evidence_failure same-registry-crds-substitution \
+  '.artifacts.kagent.charts.crds.ref = "oci://europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/kagent/helm/kagent-crds@sha256:9999999999999999999999999999999999999999999999999999999999999999"' \
+  'exactly match the checksum-bound schema-3 release evidence'
+expect_kagent_evidence_failure same-registry-controller-substitution \
+  '.artifacts.kagent.image_refs.controller = "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/kagent/controller@sha256:9999999999999999999999999999999999999999999999999999999999999999"
+   | .helm_set_values.kagent["controller.image.tag"] = "0.0.0-external-slot.kap.5@sha256:9999999999999999999999999999999999999999999999999999999999999999"' \
+  'exactly match the checksum-bound schema-3 release evidence'
+expect_kagent_evidence_failure same-registry-ui-substitution \
+  '.artifacts.kagent.image_refs.ui = "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/kagent/ui@sha256:9999999999999999999999999999999999999999999999999999999999999999"
+   | .helm_set_values.kagent["ui.image.tag"] = "0.0.0-external-slot.kap.5@sha256:9999999999999999999999999999999999999999999999999999999999999999"' \
+  'exactly match the checksum-bound schema-3 release evidence'
+expect_kagent_evidence_failure same-registry-kagent-runtime-substitution \
+  '.artifacts.kagent.runtime_images.kagentHarness = "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/kagent/golang-adk@sha256:9999999999999999999999999999999999999999999999999999999999999999"' \
+  'exactly match the checksum-bound schema-3 release evidence'
+expect_kagent_evidence_failure same-registry-runtime-substitution \
+  '.artifacts.kagent.runtime_images.codexHarness = "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/kagent/codex-harness@sha256:9999999999999999999999999999999999999999999999999999999999999999"' \
+  'exactly match the checksum-bound schema-3 release evidence'
+expect_kagent_evidence_failure changed-kagent-evidence-checksum \
+  '.artifacts.kagent.artifact_manifest_sha256 = "9999999999999999999999999999999999999999999999999999999999999999"' \
+  'exactly match the checksum-bound schema-3 release evidence'
+expect_kagent_evidence_failure helm-only-ui-substitution \
+  '.helm_set_values.kagent["ui.image.tag"] = "0.0.0-external-slot.kap.5@sha256:9999999999999999999999999999999999999999999999999999999999999999"' \
+  'must map ui as chart-version@digest'
+expect_kagent_evidence_failure non-generation-qualified-kagent-evidence \
+  '.kagent_release_evidence.uri = "gs://yourown-chat-kagent-preview-evidence-europe-west3/kagent/0.0.0-external-slot.kap.5/release-evidence.json"' \
+  'exact generation-qualified private .kap.5 object'
+expect_kagent_evidence_failure mutated-kagent-evidence-body \
+  '.kagent_release_evidence.manifest_json |= (fromjson | .channel = "production" | tojson + "\n")' \
+  'reviewed .kap.5 preview'
+expect_kagent_evidence_failure scan-platform-digest-mismatch \
+  '.kagent_release_evidence.manifest_json |= (
+     fromjson
+     | .security_scans.targets["controller-linux-amd64"].imageReference = "europe-west3-docker.pkg.dev/yourown-chat/kagent-staging/kagent/controller@sha256:9999999999999999999999999999999999999999999999999999999999999999"
+     | tojson + "\n"
+   )' \
+  'image digest does not match platform_image_digests'
 
 # The producer path is a separate fail-closed private contract. It must render
 # the same release with all five Substrate images and both charts in private GAR.

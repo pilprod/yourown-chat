@@ -7,6 +7,9 @@ source_manifest="${repo_root}/helm/kagent/evidence/substrate/v0.0.22/substrate-v
 source_checksum="${source_manifest}.sha256"
 source_module="${repo_root}/helm/kagent/substrate_consumer_evidence.py"
 source_renderer="${repo_root}/terraform/app-gcp/scripts/render-substrate-semver-consumer-pin-fragment.py"
+kagent_evidence_renderer="${repo_root}/terraform/app-gcp/scripts/render-kagent-release-evidence-binding.py"
+kagent_evidence_fixture_writer="${repo_root}/helm/test/write-kagent-schema3-evidence-fixture.py"
+kagent_scan_evaluator="${repo_root}/terraform/app-gcp/modules/kagent-preview-publisher/scripts/evaluate-scan-vulnerabilities.sh"
 stack_variables="${repo_root}/terraform/app-gcp/variables.tfcomponent.hcl"
 
 fail() {
@@ -166,9 +169,49 @@ output "bootstrap_enabled" {
 HCL
 
 valid_contract="${work}/valid-bootstrap-contract.json"
+kagent_evidence="${work}/kagent-release-evidence.json"
+kagent_application_digest="sha256:1111111111111111111111111111111111111111111111111111111111111111"
+kagent_crds_digest="sha256:2222222222222222222222222222222222222222222222222222222222222222"
+kagent_controller_digest="sha256:3333333333333333333333333333333333333333333333333333333333333333"
+kagent_ui_digest="sha256:4444444444444444444444444444444444444444444444444444444444444444"
+kagent_harness_digest="sha256:5555555555555555555555555555555555555555555555555555555555555555"
+codex_harness_digest="sha256:6666666666666666666666666666666666666666666666666666666666666666"
+python3 "${kagent_evidence_fixture_writer}" \
+  --output "${kagent_evidence}" \
+  --controller "${kagent_controller_digest}" \
+  --ui "${kagent_ui_digest}" \
+  --application "${kagent_application_digest}" \
+  --crds "${kagent_crds_digest}" \
+  --kagent-harness "${kagent_harness_digest}" \
+  --codex-harness "${codex_harness_digest}"
+kagent_evidence_sha="$(sha256_file "${kagent_evidence}")"
+kagent_evidence_uri="gs://yourown-chat-kagent-preview-evidence-europe-west3/kagent/0.0.0-external-slot.kap.5/00000000-0000-4000-8000-000000000001/release-evidence.json#1"
+fake_gcloud="${work}/gcloud"
+cat >"${fake_gcloud}" <<'EOF'
+#!/usr/bin/env bash
+set -o errexit -o nounset -o pipefail
+
+if [[ "$#" -ne 3 || "$1" != "storage" || "$2" != "cat" || "$3" != "${KAGENT_TEST_EVIDENCE_URI:?}" ]]; then
+  printf 'unexpected gcloud storage cat request\n' >&2
+  exit 41
+fi
+/bin/cat "${KAGENT_TEST_EVIDENCE_FILE:?}"
+EOF
+chmod +x "${fake_gcloud}"
+export KAGENT_TEST_EVIDENCE_FILE="${kagent_evidence}"
+export KAGENT_TEST_EVIDENCE_URI="${kagent_evidence_uri}"
+reviewed_evaluator_sha="$(
+  PYTHONPATH="${repo_root}/helm/kagent" python3 -c \
+    'from kagent_release_evidence import SCAN_POLICY_EVALUATOR_SHA256; print(SCAN_POLICY_EVALUATOR_SHA256)'
+)"
+[[ "${reviewed_evaluator_sha}" == "$(sha256_file "${kagent_scan_evaluator}")" ]] || \
+  fail "consumer scan evaluator pin drifted from the reviewed publisher implementation"
 jq -n \
   --arg manifest_sha "${expected_sha}" \
   --arg manifest_path 'kagent/evidence/substrate/v0.0.22/substrate-v0.0.22.consumer-evidence.json' \
+  --arg kagent_evidence_sha "${kagent_evidence_sha}" \
+  --arg kagent_evidence_uri "${kagent_evidence_uri}" \
+  --rawfile kagent_evidence "${kagent_evidence}" \
   --slurpfile evidence "${source_manifest}" \
   '{
     bootstrap_enabled: true,
@@ -179,11 +222,15 @@ jq -n \
     crd_ownership_ready: false,
     controller_namespace_handoff_ready: false,
     external_broker_smoke_ready: false,
+    kagent_release_evidence: {
+      uri: $kagent_evidence_uri,
+      manifest_json: $kagent_evidence
+    },
     artifacts: {
       kagent: {
         source_repository: "https://github.com/pilprod/kagent",
         source_commit: "547cfe605940005173eb0372238339384102faa0",
-        artifact_manifest_sha256: "1111111111111111111111111111111111111111111111111111111111111111",
+        artifact_manifest_sha256: $kagent_evidence_sha,
         artifact_schema_version: "3",
         charts: {
           application: {ref: "oci://europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/kagent/helm/kagent@sha256:1111111111111111111111111111111111111111111111111111111111111111", version: "0.0.0-external-slot.kap.5"},
@@ -225,7 +272,14 @@ jq -n \
       substrate_go_module_commit: $evidence[0].source.commit
     },
     helm_set_values: {
-      kagent: {"controller.image.tag": "0.0.0-external-slot.kap.5@sha256:3333333333333333333333333333333333333333333333333333333333333333"},
+      kagent: {
+        "controller.image.registry": "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/kagent",
+        "controller.image.repository": "controller",
+        "controller.image.tag": "0.0.0-external-slot.kap.5@sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "ui.image.registry": "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/kagent",
+        "ui.image.repository": "ui",
+        "ui.image.tag": "0.0.0-external-slot.kap.5@sha256:4444444444444444444444444444444444444444444444444444444444444444"
+      },
       substrate: $evidence[0].helm_set_values
     },
     values_sha256: {
@@ -241,6 +295,66 @@ jq -n \
     broker_service_port: 8443,
     atenet_egress_destinations: {}
   }' >"${valid_contract}"
+
+kagent_fragment="${work}/kagent-fragment.hcl"
+"${kagent_evidence_renderer}" \
+  --evidence "${kagent_evidence}" \
+  --evidence-uri "${kagent_evidence_uri}" \
+  --evidence-sha256 "${kagent_evidence_sha}" \
+  --gcloud "${fake_gcloud}" >"${kagent_fragment}" || \
+  fail "checksum-bound kagent schema-3 evidence was rejected"
+require_literal "${kagent_fragment}" "uri           = \"${kagent_evidence_uri}\""
+require_literal "${kagent_fragment}" "artifact_manifest_sha256 = \"${kagent_evidence_sha}\""
+require_literal "${kagent_fragment}" 'controller = "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/kagent/controller@sha256:3333333333333333333333333333333333333333333333333333333333333333"'
+require_literal "${kagent_fragment}" 'codexHarness  = "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/kagent/codex-harness@sha256:6666666666666666666666666666666666666666666666666666666666666666"'
+kagent_wrapper="${work}/kagent-fragment.tf"
+{
+  printf 'locals {\n'
+  sed -e '/^#/d' -e '/^$/b' -e 's/^/  /' "${kagent_fragment}"
+  printf '}\n'
+} >"${kagent_wrapper}"
+terraform fmt -check "${kagent_wrapper}" >/dev/null || fail "rendered kagent HCL fragment is not terraform-fmt clean"
+
+if "${kagent_evidence_renderer}" \
+  --evidence "${kagent_evidence}" \
+  --evidence-uri "${kagent_evidence_uri}" \
+  --evidence-sha256 "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" \
+  --gcloud "${fake_gcloud}" \
+  >"${work}/wrong-kagent-sha.out" 2>"${work}/wrong-kagent-sha.err"; then
+  fail "renderer accepted kagent evidence with a mismatched authoritative checksum"
+fi
+[[ ! -s "${work}/wrong-kagent-sha.out" ]] || fail "failed kagent evidence rendering emitted a partial fragment"
+require_literal "${work}/wrong-kagent-sha.err" 'evidence bytes do not match --evidence-sha256'
+
+nonexistent_kagent_evidence_uri="gs://yourown-chat-kagent-preview-evidence-europe-west3/kagent/0.0.0-external-slot.kap.5/ffffffff-ffff-4fff-8fff-ffffffffffff/release-evidence.json#9999999999999999999"
+if "${kagent_evidence_renderer}" \
+  --evidence "${kagent_evidence}" \
+  --evidence-uri "${nonexistent_kagent_evidence_uri}" \
+  --evidence-sha256 "${kagent_evidence_sha}" \
+  --gcloud "${fake_gcloud}" \
+  >"${work}/missing-kagent-generation.out" 2>"${work}/missing-kagent-generation.err"; then
+  fail "renderer accepted a nonexistent kagent evidence generation"
+fi
+[[ ! -s "${work}/missing-kagent-generation.out" ]] || \
+  fail "missing kagent evidence generation emitted a partial fragment"
+require_literal "${work}/missing-kagent-generation.err" \
+  'gcloud storage cat could not read the exact evidence generation'
+
+remote_kagent_evidence="${work}/remote-kagent-release-evidence.json"
+printf '{}\n' >"${remote_kagent_evidence}"
+if KAGENT_TEST_EVIDENCE_FILE="${remote_kagent_evidence}" \
+  "${kagent_evidence_renderer}" \
+  --evidence "${kagent_evidence}" \
+  --evidence-uri "${kagent_evidence_uri}" \
+  --evidence-sha256 "${kagent_evidence_sha}" \
+  --gcloud "${fake_gcloud}" \
+  >"${work}/mismatched-remote-evidence.out" 2>"${work}/mismatched-remote-evidence.err"; then
+  fail "renderer accepted local evidence that differs from the exact remote generation"
+fi
+[[ ! -s "${work}/mismatched-remote-evidence.out" ]] || \
+  fail "mismatched remote kagent evidence emitted a partial fragment"
+require_literal "${work}/mismatched-remote-evidence.err" \
+  'remote evidence generation bytes do not match local evidence'
 
 valid_tfvars="${work}/valid-bootstrap.tfvars.json"
 jq '{kagent_substrate_delivery: .}' "${valid_contract}" >"${valid_tfvars}"
@@ -258,7 +372,7 @@ expect_bootstrap_failure() {
     -var-file="${tfvars}" >"${output}" 2>&1; then
     fail "${label} bootstrap contract unexpectedly passed Stack validation"
   fi
-  if ! grep -Fq -- 'v0.0.22 semver consumer evidence contract' "${output}"; then
+  if ! grep -Fq -- 'Invalid value for variable' "${output}"; then
     sed -n '1,160p' "${output}" >&2
     fail "${label} did not fail through the canonical consumer evidence gate"
   fi
@@ -286,6 +400,30 @@ expect_bootstrap_failure changed-kagent-application-version \
   '| .artifacts.kagent.charts.application.version = "0.0.0-external-slot.kap.6"'
 expect_bootstrap_failure changed-kagent-crd-version \
   '| .artifacts.kagent.charts.crds.version = "0.0.0-external-slot.kap.6"'
+expect_bootstrap_failure missing-kagent-evidence-binding \
+  '| del(.kagent_release_evidence)'
+expect_bootstrap_failure non-generation-qualified-kagent-evidence \
+  '| .kagent_release_evidence.uri = "gs://yourown-chat-kagent-preview-evidence-europe-west3/kagent/0.0.0-external-slot.kap.5/release-evidence.json"'
+expect_bootstrap_failure changed-kagent-evidence-checksum \
+  '| .artifacts.kagent.artifact_manifest_sha256 = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"'
+expect_bootstrap_failure changed-kagent-evidence-body \
+  '| .kagent_release_evidence.manifest_json |= (fromjson | .channel = "production" | tojson + "\n")'
+expect_bootstrap_failure same-registry-kagent-application-substitution \
+  '| .artifacts.kagent.charts.application.ref = "oci://europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/kagent/helm/kagent@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"'
+expect_bootstrap_failure same-registry-kagent-crds-substitution \
+  '| .artifacts.kagent.charts.crds.ref = "oci://europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/kagent/helm/kagent-crds@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"'
+expect_bootstrap_failure same-registry-kagent-controller-substitution \
+  '| .artifacts.kagent.image_refs.controller = "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/kagent/controller@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+   | .helm_set_values.kagent["controller.image.tag"] = "0.0.0-external-slot.kap.5@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"'
+expect_bootstrap_failure same-registry-kagent-ui-substitution \
+  '| .artifacts.kagent.image_refs.ui = "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/kagent/ui@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+   | .helm_set_values.kagent["ui.image.tag"] = "0.0.0-external-slot.kap.5@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"'
+expect_bootstrap_failure same-registry-kagent-harness-substitution \
+  '| .artifacts.kagent.runtime_images.kagentHarness = "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/kagent/golang-adk@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"'
+expect_bootstrap_failure same-registry-kagent-runtime-substitution \
+  '| .artifacts.kagent.runtime_images.codexHarness = "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/kagent/codex-harness@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"'
+expect_bootstrap_failure helm-only-kagent-ui-substitution \
+  '| .helm_set_values.kagent["ui.image.tag"] = "0.0.0-external-slot.kap.5@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"'
 expect_bootstrap_failure public-kagent-application-chart \
   '| .artifacts.kagent.charts.application.ref = "oci://ghcr.io/pilprod/kagent/helm/kagent@sha256:1111111111111111111111111111111111111111111111111111111111111111"'
 expect_bootstrap_failure public-kagent-crd-chart \
@@ -298,6 +436,58 @@ expect_bootstrap_failure public-kagent-harness \
   '| .artifacts.kagent.runtime_images.kagentHarness = "ghcr.io/pilprod/kagent/golang-adk@sha256:5555555555555555555555555555555555555555555555555555555555555555"'
 expect_bootstrap_failure public-codex-harness \
   '| .artifacts.kagent.runtime_images.codexHarness = "ghcr.io/pilprod/kagent/codex-harness@sha256:6666666666666666666666666666666666666666666666666666666666666666"'
+
+expect_kagent_manifest_failure() {
+  local label="$1"
+  local filter="$2"
+  local candidate="${work}/${label}.json"
+  local candidate_before_sha="${work}/${label}.before-sha.json"
+  local manifest="${work}/${label}.manifest.json"
+  local tfvars="${work}/${label}.tfvars.json"
+  local output="${work}/${label}.plan"
+  local manifest_sha
+
+  jq "${filter}" "${valid_contract}" >"${candidate_before_sha}"
+  jq -j '.kagent_release_evidence.manifest_json' "${candidate_before_sha}" >"${manifest}"
+  manifest_sha="$(sha256_file "${manifest}")"
+  jq --arg manifest_sha "${manifest_sha}" \
+    '.artifacts.kagent.artifact_manifest_sha256 = $manifest_sha' \
+    "${candidate_before_sha}" >"${candidate}"
+  jq '{kagent_substrate_delivery: .}' "${candidate}" >"${tfvars}"
+
+  if terraform -chdir="${gate_module}" plan -refresh=false -input=false -lock=false -no-color \
+    -var-file="${tfvars}" >"${output}" 2>&1; then
+    fail "${label} checksum-consistent malicious manifest unexpectedly passed Stack validation"
+  fi
+  if ! grep -Fq -- 'Invalid value for variable' "${output}"; then
+    sed -n '1,160p' "${output}" >&2
+    fail "${label} did not fail through the canonical consumer evidence gate"
+  fi
+}
+
+# Recompute the exact evidence checksum after each mutation so these cases
+# exercise the Stack scan-policy gate rather than failing only at byte binding.
+expect_kagent_manifest_failure changed-kagent-scan-policy \
+  '.kagent_release_evidence.manifest_json |= (
+     fromjson
+     | .security_scans.policy.id = "unreviewed-policy"
+     | .security_scans.policy.evaluatorSha256 = ("9" * 64)
+     | .security_scans.policy.blockedEffectiveSeverities = ["CRITICAL"]
+     | tojson + "\n"
+   )'
+expect_kagent_manifest_failure changed-kagent-scan-decision \
+  '.kagent_release_evidence.manifest_json |= (
+     fromjson
+     | .security_scans.targets["controller-linux-amd64"].highCriticalFindingCount = 1
+     | .security_scans.targets["controller-linux-amd64"].blockingHighCriticalFindingCount = 1
+     | tojson + "\n"
+   )'
+expect_kagent_manifest_failure changed-kagent-scan-platform-digest \
+  '.kagent_release_evidence.manifest_json |= (
+     fromjson
+     | .security_scans.targets["controller-linux-amd64"].imageReference = "europe-west3-docker.pkg.dev/yourown-chat/kagent-staging/kagent/controller@sha256:9999999999999999999999999999999999999999999999999999999999999999"
+     | tojson + "\n"
+   )'
 
 # Exercise the private producer-v2 branch through Terraform as well. The
 # shared Substrate Helm release is applied before the Cloud Deploy renderer, so
@@ -346,7 +536,7 @@ expect_private_failure() {
     -var-file="${tfvars}" >"${output}" 2>&1; then
     fail "${label} private bootstrap contract unexpectedly passed Stack validation"
   fi
-  require_literal "${output}" 'exact immutable 0.0.22-private.3 GAR evidence contract'
+  require_literal "${output}" 'Invalid value for variable'
 }
 
 expect_private_failure private-changed-evidence-hash \
