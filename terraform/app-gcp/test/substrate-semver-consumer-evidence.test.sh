@@ -354,7 +354,7 @@ expect_bootstrap_failure non-generation-qualified-kagent-evidence \
 expect_bootstrap_failure changed-kagent-evidence-checksum \
   '| .artifacts.kagent.artifact_manifest_sha256 = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"'
 expect_bootstrap_failure changed-kagent-evidence-body \
-  '| .kagent_release_evidence.manifest_json |= sub("\\\"channel\\\": \\\"preview\\\""; "\\\"channel\\\": \\\"production\\\"")'
+  '| .kagent_release_evidence.manifest_json |= (fromjson | .channel = "production" | tojson + "\n")'
 expect_bootstrap_failure same-registry-kagent-application-substitution \
   '| .artifacts.kagent.charts.application.ref = "oci://europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/kagent/helm/kagent@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"'
 expect_bootstrap_failure same-registry-kagent-crds-substitution \
@@ -383,6 +383,58 @@ expect_bootstrap_failure public-kagent-harness \
   '| .artifacts.kagent.runtime_images.kagentHarness = "ghcr.io/pilprod/kagent/golang-adk@sha256:5555555555555555555555555555555555555555555555555555555555555555"'
 expect_bootstrap_failure public-codex-harness \
   '| .artifacts.kagent.runtime_images.codexHarness = "ghcr.io/pilprod/kagent/codex-harness@sha256:6666666666666666666666666666666666666666666666666666666666666666"'
+
+expect_kagent_manifest_failure() {
+  local label="$1"
+  local filter="$2"
+  local candidate="${work}/${label}.json"
+  local candidate_before_sha="${work}/${label}.before-sha.json"
+  local manifest="${work}/${label}.manifest.json"
+  local tfvars="${work}/${label}.tfvars.json"
+  local output="${work}/${label}.plan"
+  local manifest_sha
+
+  jq "${filter}" "${valid_contract}" >"${candidate_before_sha}"
+  jq -j '.kagent_release_evidence.manifest_json' "${candidate_before_sha}" >"${manifest}"
+  manifest_sha="$(sha256_file "${manifest}")"
+  jq --arg manifest_sha "${manifest_sha}" \
+    '.artifacts.kagent.artifact_manifest_sha256 = $manifest_sha' \
+    "${candidate_before_sha}" >"${candidate}"
+  jq '{kagent_substrate_delivery: .}' "${candidate}" >"${tfvars}"
+
+  if terraform -chdir="${gate_module}" plan -refresh=false -input=false -lock=false -no-color \
+    -var-file="${tfvars}" >"${output}" 2>&1; then
+    fail "${label} checksum-consistent malicious manifest unexpectedly passed Stack validation"
+  fi
+  if ! grep -Fq -- 'Invalid value for variable' "${output}"; then
+    sed -n '1,160p' "${output}" >&2
+    fail "${label} did not fail through the canonical consumer evidence gate"
+  fi
+}
+
+# Recompute the exact evidence checksum after each mutation so these cases
+# exercise the Stack scan-policy gate rather than failing only at byte binding.
+expect_kagent_manifest_failure changed-kagent-scan-policy \
+  '.kagent_release_evidence.manifest_json |= (
+     fromjson
+     | .security_scans.policy.id = "unreviewed-policy"
+     | .security_scans.policy.evaluatorSha256 = ("9" * 64)
+     | .security_scans.policy.blockedEffectiveSeverities = ["CRITICAL"]
+     | tojson + "\n"
+   )'
+expect_kagent_manifest_failure changed-kagent-scan-decision \
+  '.kagent_release_evidence.manifest_json |= (
+     fromjson
+     | .security_scans.targets["controller-linux-amd64"].highCriticalFindingCount = 1
+     | .security_scans.targets["controller-linux-amd64"].blockingHighCriticalFindingCount = 1
+     | tojson + "\n"
+   )'
+expect_kagent_manifest_failure changed-kagent-scan-platform-digest \
+  '.kagent_release_evidence.manifest_json |= (
+     fromjson
+     | .security_scans.targets["controller-linux-amd64"].imageReference = "europe-west3-docker.pkg.dev/yourown-chat/kagent-staging/kagent/controller@sha256:9999999999999999999999999999999999999999999999999999999999999999"
+     | tojson + "\n"
+   )'
 
 # Exercise the private producer-v2 branch through Terraform as well. The
 # shared Substrate Helm release is applied before the Cloud Deploy renderer, so
@@ -431,7 +483,7 @@ expect_private_failure() {
     -var-file="${tfvars}" >"${output}" 2>&1; then
     fail "${label} private bootstrap contract unexpectedly passed Stack validation"
   fi
-  require_literal "${output}" 'exact immutable 0.0.22-private.3 GAR evidence contract'
+  require_literal "${output}" 'Invalid value for variable'
 }
 
 expect_private_failure private-changed-evidence-hash \
