@@ -81,7 +81,7 @@ commit, submit it without GitHub or Secret Manager credentials:
 
 ```bash
 terraform/app-gcp/modules/kagent-preview-publisher/scripts/publish-release-request.sh \
-  gcp-v0.0.0-external-slot.kap.3
+  gcp-v0.0.0-external-slot.kap.4
 ```
 
 The script uses the existing Google CLI OAuth session only. Build status and

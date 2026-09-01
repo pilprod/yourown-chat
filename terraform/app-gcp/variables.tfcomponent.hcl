@@ -328,27 +328,25 @@ variable "kagent_substrate_delivery" {
           var.kagent_substrate_delivery.helm_set_values["substrate"]["image.digests.atenet"] == "sha256:01d96092c93fd623dbe051479a76573da551b56be29121b11b760d9067fc8c4c" &&
           var.kagent_substrate_delivery.helm_set_values["substrate"]["images.agentgateway"] == "ghcr.io/kagent-dev/substrate/agentgateway@sha256:068028a256bd63c91fd6e85a471269c014747297b0ffa785feaef6967eb0c429"
           ) || (
-          # Keep the new producer schema unreachable until .private.3 exists
-          # and a follow-up pins its exact evidence checksum and every digest.
-          false &&
           var.kagent_substrate_delivery.artifacts["substrate"].artifact_schema_version == "yourown.chat/substrate-private-gar-release/v2" &&
           var.kagent_substrate_delivery.artifacts["substrate"].source_commit == "e9ed68e587b56df2aa2a7f0267a744598c4d48b4" &&
+          var.kagent_substrate_delivery.artifacts["substrate"].artifact_manifest_sha256 == "b5aad6d44d359cd63fb2753c000579d948b1bb70c94bf0fbc3cdf21698c9789b" &&
           var.kagent_substrate_delivery.artifacts["substrate"].artifact_manifest_path == "" &&
+          var.kagent_substrate_delivery.artifacts["substrate"].charts.application.ref == "oci://europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate/helm/substrate@sha256:51beebd226d0d2755b96dc70cf03072210222ab18f1f370b7b7c63fdd770a3af" &&
           var.kagent_substrate_delivery.artifacts["substrate"].charts.application.version == "0.0.22-private.3" &&
-          can(regex("^oci://europe-west3-docker\\.pkg\\.dev/yourown-chat/kagent-preview/substrate/helm/substrate@sha256:[0-9a-f]{64}$", var.kagent_substrate_delivery.artifacts["substrate"].charts.application.ref)) &&
+          var.kagent_substrate_delivery.artifacts["substrate"].charts.crds.ref == "oci://europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate/helm/substrate-crds@sha256:5333915d94c5a17c94e33533cc4698967a746b0ec686a8f19aef713ed5cab2c2" &&
           var.kagent_substrate_delivery.artifacts["substrate"].charts.crds.version == "0.0.22-private.3" &&
-          can(regex("^oci://europe-west3-docker\\.pkg\\.dev/yourown-chat/kagent-preview/substrate/helm/substrate-crds@sha256:[0-9a-f]{64}$", var.kagent_substrate_delivery.artifacts["substrate"].charts.crds.ref)) &&
-          can(regex("^europe-west3-docker\\.pkg\\.dev/yourown-chat/kagent-preview/substrate/ateapi@sha256:[0-9a-f]{64}$", var.kagent_substrate_delivery.artifacts["substrate"].image_refs.ateapi)) &&
-          can(regex("^europe-west3-docker\\.pkg\\.dev/yourown-chat/kagent-preview/substrate/atecontroller@sha256:[0-9a-f]{64}$", var.kagent_substrate_delivery.artifacts["substrate"].image_refs.atecontroller)) &&
-          can(regex("^europe-west3-docker\\.pkg\\.dev/yourown-chat/kagent-preview/substrate/atenet@sha256:[0-9a-f]{64}$", var.kagent_substrate_delivery.artifacts["substrate"].image_refs.atenet)) &&
-          can(regex("^europe-west3-docker\\.pkg\\.dev/yourown-chat/kagent-preview/substrate/agentgateway@sha256:[0-9a-f]{64}$", var.kagent_substrate_delivery.artifacts["substrate"].image_refs.agentgateway)) &&
-          can(regex("^europe-west3-docker\\.pkg\\.dev/yourown-chat/kagent-preview/substrate/substrate-release-verify@sha256:[0-9a-f]{64}$", var.kagent_substrate_delivery.artifacts["substrate"].image_refs.releaseVerifier)) &&
+          var.kagent_substrate_delivery.artifacts["substrate"].image_refs.ateapi == "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate/ateapi@sha256:8a4cf985f809cc768e32091e39d45bce5f2e95fe43cd67f01d5e60c7df2ea868" &&
+          var.kagent_substrate_delivery.artifacts["substrate"].image_refs.atecontroller == "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate/atecontroller@sha256:0845893ae2ecfd15f580bc410db22c8daae0d6b0388eca67541154a6ec98f554" &&
+          var.kagent_substrate_delivery.artifacts["substrate"].image_refs.atenet == "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate/atenet@sha256:01d96092c93fd623dbe051479a76573da551b56be29121b11b760d9067fc8c4c" &&
+          var.kagent_substrate_delivery.artifacts["substrate"].image_refs.agentgateway == "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate/agentgateway@sha256:068028a256bd63c91fd6e85a471269c014747297b0ffa785feaef6967eb0c429" &&
+          var.kagent_substrate_delivery.artifacts["substrate"].image_refs.releaseVerifier == "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate/substrate-release-verify@sha256:850d8d8ec018f49486b410a15dd38e965f1fbb4d02f8a8be36d5256f33eef74b" &&
           toset(keys(var.kagent_substrate_delivery.helm_set_values["substrate"])) == toset(["image.registry", "image.digests.ateapi", "image.digests.atecontroller", "image.digests.atenet", "images.agentgateway"]) &&
           var.kagent_substrate_delivery.helm_set_values["substrate"]["image.registry"] == "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate" &&
-          var.kagent_substrate_delivery.artifacts["substrate"].image_refs.ateapi == "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate/ateapi@${var.kagent_substrate_delivery.helm_set_values["substrate"]["image.digests.ateapi"]}" &&
-          var.kagent_substrate_delivery.artifacts["substrate"].image_refs.atecontroller == "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate/atecontroller@${var.kagent_substrate_delivery.helm_set_values["substrate"]["image.digests.atecontroller"]}" &&
-          var.kagent_substrate_delivery.artifacts["substrate"].image_refs.atenet == "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate/atenet@${var.kagent_substrate_delivery.helm_set_values["substrate"]["image.digests.atenet"]}" &&
-          var.kagent_substrate_delivery.helm_set_values["substrate"]["images.agentgateway"] == var.kagent_substrate_delivery.artifacts["substrate"].image_refs.agentgateway
+          var.kagent_substrate_delivery.helm_set_values["substrate"]["image.digests.ateapi"] == "sha256:8a4cf985f809cc768e32091e39d45bce5f2e95fe43cd67f01d5e60c7df2ea868" &&
+          var.kagent_substrate_delivery.helm_set_values["substrate"]["image.digests.atecontroller"] == "sha256:0845893ae2ecfd15f580bc410db22c8daae0d6b0388eca67541154a6ec98f554" &&
+          var.kagent_substrate_delivery.helm_set_values["substrate"]["image.digests.atenet"] == "sha256:01d96092c93fd623dbe051479a76573da551b56be29121b11b760d9067fc8c4c" &&
+          var.kagent_substrate_delivery.helm_set_values["substrate"]["images.agentgateway"] == "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate/agentgateway@sha256:068028a256bd63c91fd6e85a471269c014747297b0ffa785feaef6967eb0c429"
         )
       ) &&
       alltrue([
@@ -405,7 +403,7 @@ variable "kagent_substrate_delivery" {
         destination.port <= 65535
       ])
     )
-    error_message = "Enabled bootstrap or release requires kagent evidence schema 3 with controller/UI image refs and exact kagentHarness/codexHarness runtime refs, plus the exact checked-in v0.0.22 semver consumer evidence contract (source, checksum/path/schema, charts, images and Helm values). Private Substrate GAR evidence schema v2 remains closed until the immutable .private.3 checksum and every produced digest are pinned in a follow-up. Both artifacts require digest-qualified app+CRD charts/images, an exact Substrate dependency commit, RBAC/Gateway API capabilities, a same-registry verifier and testbed-only endpoints. Use either explicit atenet destinations or local_provider_only=true with no Actor/MCP egress; External Broker smoke is a post-bootstrap local-agent-ready gate."
+    error_message = "Enabled bootstrap or release requires kagent evidence schema 3 with controller/UI image refs and exact kagentHarness/codexHarness runtime refs, plus either the exact checked-in v0.0.22 semver consumer evidence contract or the exact immutable 0.0.22-private.3 GAR evidence contract (source, checksum/path/schema, charts, images and Helm values). Both artifacts require digest-qualified app+CRD charts/images, an exact Substrate dependency commit, RBAC/Gateway API capabilities, an exact release verifier and testbed-only endpoints. Use either explicit atenet destinations or local_provider_only=true with no Actor/MCP egress; External Broker smoke is a post-bootstrap local-agent-ready gate."
   }
 
   validation {

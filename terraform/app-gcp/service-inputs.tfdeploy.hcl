@@ -278,14 +278,14 @@ locals {
   # keep this migration non-destructive.
   kagent_preview_publisher = {
     enabled                    = true
-    source_commit              = "5a6e37f41d7ff71d89dca8de0ee6d9bafc1fa0c9"
+    source_commit              = "6a22e639512c5be49f4b6800c98cdcfe26113ee3"
     release_tag_regex          = "^gcp-v0\\.0\\.0-external-slot\\.kap\\.[0-9]+$"
     evidence_bucket_name       = "yourown-chat-kagent-preview-evidence-europe-west3"
     evidence_retention_seconds = 31536000
     ghcr_secret_id             = "kagent-ghcr-write"
     # Exact generation-qualified evidence emitted by the successful private
-    # Substrate build and verified by the reviewed .kap.3 kagent source.
-    substrate_release_evidence_uri = "gs://yourown-chat-kagent-preview-evidence-europe-west3/substrate/0.0.22-private.2/release-evidence.json#1788214261713293"
+    # Substrate build and verified by the reviewed .kap.4 kagent source.
+    substrate_release_evidence_uri = "gs://yourown-chat-kagent-preview-evidence-europe-west3/substrate/0.0.22-private.3/release-evidence.json#1788220783329855"
     submitter_members              = []
   }
 
