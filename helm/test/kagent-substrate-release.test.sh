@@ -296,8 +296,15 @@ expect_kagent_evidence_failure non-generation-qualified-kagent-evidence \
   '.kagent_release_evidence.uri = "gs://yourown-chat-kagent-preview-evidence-europe-west3/kagent/0.0.0-external-slot.kap.5/release-evidence.json"' \
   'exact generation-qualified private .kap.5 object'
 expect_kagent_evidence_failure mutated-kagent-evidence-body \
-  '.kagent_release_evidence.manifest_json |= sub("\\\"channel\\\": \\\"preview\\\""; "\\\"channel\\\": \\\"production\\\"")' \
+  '.kagent_release_evidence.manifest_json |= (fromjson | .channel = "production" | tojson + "\n")' \
   'reviewed .kap.5 preview'
+expect_kagent_evidence_failure scan-platform-digest-mismatch \
+  '.kagent_release_evidence.manifest_json |= (
+     fromjson
+     | .security_scans.targets["controller-linux-amd64"].imageReference = "europe-west3-docker.pkg.dev/yourown-chat/kagent-staging/kagent/controller@sha256:9999999999999999999999999999999999999999999999999999999999999999"
+     | tojson + "\n"
+   )' \
+  'image digest does not match platform_image_digests'
 
 # The producer path is a separate fail-closed private contract. It must render
 # the same release with all five Substrate images and both charts in private GAR.

@@ -225,11 +225,15 @@ def parse_manifest(manifest_json: object) -> tuple[dict, str]:
             fail(f"security scan target {key} identity is inconsistent")
         if target["os"] != "linux" or architecture not in {"amd64", "arm64"}:
             fail(f"security scan target {key} platform is not reviewed")
+        image_reference = str(target["imageReference"])
         if not re.fullmatch(
             rf"{re.escape(STAGING_REGISTRY)}/{re.escape(component)}@sha256:[0-9a-f]{{64}}",
-            str(target["imageReference"]),
+            image_reference,
         ):
             fail(f"security scan target {key} imageReference is invalid")
+        platform_digest = platform_digests[component][f"linux_{architecture}"]
+        if image_reference.rsplit("@", 1)[1] != platform_digest:
+            fail(f"security scan target {key} image digest does not match platform_image_digests")
         if not isinstance(target["scanId"], str) or not SCAN_ID.fullmatch(target["scanId"]):
             fail(f"security scan target {key} scanId is invalid")
         if target["decision"] != "pass" or target["evaluatorSha256"] != evaluator:
