@@ -9,6 +9,7 @@ source_module="${repo_root}/helm/kagent/substrate_consumer_evidence.py"
 source_renderer="${repo_root}/terraform/app-gcp/scripts/render-substrate-semver-consumer-pin-fragment.py"
 kagent_evidence_renderer="${repo_root}/terraform/app-gcp/scripts/render-kagent-release-evidence-binding.py"
 kagent_evidence_fixture_writer="${repo_root}/helm/test/write-kagent-schema3-evidence-fixture.py"
+kagent_scan_evaluator="${repo_root}/terraform/app-gcp/modules/kagent-preview-publisher/scripts/evaluate-scan-vulnerabilities.sh"
 stack_variables="${repo_root}/terraform/app-gcp/variables.tfcomponent.hcl"
 
 fail() {
@@ -185,6 +186,12 @@ python3 "${kagent_evidence_fixture_writer}" \
   --codex-harness "${codex_harness_digest}"
 kagent_evidence_sha="$(sha256_file "${kagent_evidence}")"
 kagent_evidence_uri="gs://yourown-chat-kagent-preview-evidence-europe-west3/kagent/0.0.0-external-slot.kap.5/00000000-0000-4000-8000-000000000001/release-evidence.json#1"
+reviewed_evaluator_sha="$(
+  PYTHONPATH="${repo_root}/helm/kagent" python3 -c \
+    'from kagent_release_evidence import SCAN_POLICY_EVALUATOR_SHA256; print(SCAN_POLICY_EVALUATOR_SHA256)'
+)"
+[[ "${reviewed_evaluator_sha}" == "$(sha256_file "${kagent_scan_evaluator}")" ]] || \
+  fail "consumer scan evaluator pin drifted from the reviewed publisher implementation"
 jq -n \
   --arg manifest_sha "${expected_sha}" \
   --arg manifest_path 'kagent/evidence/substrate/v0.0.22/substrate-v0.0.22.consumer-evidence.json' \

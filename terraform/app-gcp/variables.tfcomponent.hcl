@@ -355,7 +355,7 @@ variable "kagent_substrate_delivery" {
       try(jsondecode(var.kagent_substrate_delivery.kagent_release_evidence.manifest_json).security_scans.decision, "") == "pass" &&
       try(toset(keys(jsondecode(var.kagent_substrate_delivery.kagent_release_evidence.manifest_json).security_scans.policy)), toset([])) == toset(["id", "evaluatorSha256", "blockedEffectiveSeverities"]) &&
       try(jsondecode(var.kagent_substrate_delivery.kagent_release_evidence.manifest_json).security_scans.policy.id, "") == "kagent-istio-pseudoversion-google-scanner-v1" &&
-      can(regex("^[0-9a-f]{64}$", try(jsondecode(var.kagent_substrate_delivery.kagent_release_evidence.manifest_json).security_scans.policy.evaluatorSha256, ""))) &&
+      try(jsondecode(var.kagent_substrate_delivery.kagent_release_evidence.manifest_json).security_scans.policy.evaluatorSha256, "") == "661f3833e61ddf815b71427d93dc120d20e787fe1ff974395bff13091824b108" &&
       try(jsondecode(var.kagent_substrate_delivery.kagent_release_evidence.manifest_json).security_scans.policy.blockedEffectiveSeverities, []) == ["HIGH", "CRITICAL"] &&
       can(regex("^[0-9a-f]{64}$", try(jsondecode(var.kagent_substrate_delivery.kagent_release_evidence.manifest_json).security_scans.evidenceManifestSha256, ""))) &&
       try(toset(keys(jsondecode(var.kagent_substrate_delivery.kagent_release_evidence.manifest_json).security_scans.releaseLock)), toset([])) == toset(["uri", "sha256"]) &&

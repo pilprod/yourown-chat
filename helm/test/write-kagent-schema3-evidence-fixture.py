@@ -7,6 +7,12 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import sys
+
+
+KAGENT_MODULE_DIR = Path(__file__).resolve().parents[1] / "kagent"
+sys.path.insert(0, str(KAGENT_MODULE_DIR))
+from kagent_release_evidence import SCAN_POLICY_EVALUATOR_SHA256  # noqa: E402
 
 
 SOURCE_COMMIT = "547cfe605940005173eb0372238339384102faa0"
@@ -34,7 +40,7 @@ def main() -> int:
     parser.add_argument("--codex-harness", required=True)
     args = parser.parse_args()
 
-    evaluator = sha("test-only-evaluator")
+    evaluator = SCAN_POLICY_EVALUATOR_SHA256
     components = ("controller", "ui", "golang-adk", "codex-harness")
     platforms = {
         component: {

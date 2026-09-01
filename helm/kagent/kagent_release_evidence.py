@@ -44,6 +44,7 @@ TARGETS = {
     for component in PLATFORM_COMPONENTS
     for architecture in ("amd64", "arm64")
 }
+SCAN_POLICY_EVALUATOR_SHA256 = "661f3833e61ddf815b71427d93dc120d20e787fe1ff974395bff13091824b108"
 
 
 def fail(message: str) -> NoReturn:
@@ -191,6 +192,8 @@ def parse_manifest(manifest_json: object) -> tuple[dict, str]:
     if policy["id"] != "kagent-istio-pseudoversion-google-scanner-v1":
         fail("kagent release evidence security scan policy is not reviewed")
     evaluator = _sha256(policy["evaluatorSha256"], "security scan evaluatorSha256")
+    if evaluator != SCAN_POLICY_EVALUATOR_SHA256:
+        fail("kagent release evidence security scan evaluator is not the reviewed policy implementation")
     if policy["blockedEffectiveSeverities"] != ["HIGH", "CRITICAL"]:
         fail("kagent release evidence must block HIGH and CRITICAL findings")
     _sha256(scans["evidenceManifestSha256"], "security scan evidenceManifestSha256")
