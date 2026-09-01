@@ -9,6 +9,7 @@ outputs="${app_dir}/outputs.tfcomponent.hcl"
 service_inputs="${app_dir}/service-inputs.tfdeploy.hcl"
 app_deploy="${app_dir}/app.tfdeploy.hcl"
 prerequisites_dir="${app_dir}/modules/substrate-prerequisites"
+substrate_values="$(cd "${app_dir}/../.." && pwd -P)/helm/kagent/substrate.values.yaml"
 
 fail() {
   printf 'substrate bootstrap gate test failed: %s\n' "$*" >&2
@@ -163,6 +164,39 @@ forbidden_block_literal "${internal_api_egress_block}" "${internal_api_egress_ad
 forbidden_block_literal "${internal_api_egress_block}" "${internal_api_egress_address}" 'match_labels = { app = "atenet-egress" }'
 forbidden_block_literal "${internal_api_egress_block}" "${internal_api_egress_address}" 'port     = "8443"'
 
+internal_api_ingress_address='kubernetes_network_policy_v1.substrate_internal_api_ingress'
+internal_api_ingress_block="$(resource_block "${prerequisites_dir}/main.tf" kubernetes_network_policy_v1 substrate_internal_api_ingress)"
+require_block_literal "${internal_api_ingress_block}" "${internal_api_ingress_address}" 'count = var.bootstrap_enabled ? 1 : 0'
+require_block_literal "${internal_api_ingress_block}" "${internal_api_ingress_address}" 'name      = "substrate-api-exact-atenet-ingress"'
+require_block_literal "${internal_api_ingress_block}" "${internal_api_ingress_address}" 'namespace = local.substrate_namespace'
+require_block_literal "${internal_api_ingress_block}" "${internal_api_ingress_address}" 'match_labels = { app = "ate-api-server" }'
+require_block_literal "${internal_api_ingress_block}" "${internal_api_ingress_address}" 'policy_types = ["Ingress"]'
+require_block_literal "${internal_api_ingress_block}" "${internal_api_ingress_address}" 'match_labels = { app = "atenet-egress" }'
+require_block_literal "${internal_api_ingress_block}" "${internal_api_ingress_address}" 'port     = "443"'
+require_block_literal "${internal_api_ingress_block}" "${internal_api_ingress_address}" 'protocol = "TCP"'
+require_block_literal "${internal_api_ingress_block}" "${internal_api_ingress_address}" 'depends_on = [kubernetes_namespace_v1.substrate]'
+require_block_literal_order "${internal_api_ingress_block}" "${internal_api_ingress_address}" 'match_labels = { app = "ate-api-server" }' 'policy_types = ["Ingress"]'
+require_block_literal_order "${internal_api_ingress_block}" "${internal_api_ingress_address}" 'policy_types = ["Ingress"]' 'match_labels = { app = "atenet-egress" }'
+require_block_literal_order "${internal_api_ingress_block}" "${internal_api_ingress_address}" 'match_labels = { app = "atenet-egress" }' 'port     = "443"'
+forbidden_block_literal "${internal_api_ingress_block}" "${internal_api_ingress_address}" 'namespace_selector {'
+forbidden_block_literal "${internal_api_ingress_block}" "${internal_api_ingress_address}" 'ip_block {'
+forbidden_block_literal "${internal_api_ingress_block}" "${internal_api_ingress_address}" 'app = "ate-controller"'
+forbidden_block_literal "${internal_api_ingress_block}" "${internal_api_ingress_address}" 'policy_types = ["Egress"]'
+forbidden_block_literal "${internal_api_ingress_block}" "${internal_api_ingress_address}" 'port     = "8443"'
+
+# Exercise the complete atenet-egress -> ate-api-server path and its additive
+# ingress semantics. The bootstrap pair must agree on both exact Pod endpoints
+# and TCP/443, while the chart retains ate-controller as a separate peer in the
+# union and delegates only the missing atenet-egress peer to Terraform.
+require_block_literal "${internal_api_egress_block}" "${internal_api_egress_address}" 'values   = ["ate-controller", "atenet-egress"]'
+require_block_literal "${internal_api_egress_block}" "${internal_api_egress_address}" 'match_labels = { app = "ate-api-server" }'
+require_block_literal "${internal_api_ingress_block}" "${internal_api_ingress_address}" 'match_labels = { app = "ate-api-server" }'
+require_block_literal "${internal_api_ingress_block}" "${internal_api_ingress_address}" 'match_labels = { app = "atenet-egress" }'
+chart_api_ingress_block="$(sed -n '/^    apiIngress:$/,/^    brokerIngress:/p' "${substrate_values}")"
+[[ -n "${chart_api_ingress_block}" ]] || fail "${substrate_values} is missing networkPolicy.apiIngress"
+[[ "${chart_api_ingress_block}" == *'app: ate-controller'* ]] || fail "chart apiIngress no longer contributes the ate-controller peer to the policy union"
+[[ "${chart_api_ingress_block}" != *'app: atenet-egress'* ]] || fail "chart apiIngress must leave the exact atenet-egress peer to the bootstrap policy"
+
 internal_gateway_egress_address='kubernetes_network_policy_v1.substrate_internal_egress_gateway_egress'
 internal_gateway_egress_block="$(resource_block "${prerequisites_dir}/main.tf" kubernetes_network_policy_v1 substrate_internal_egress_gateway_egress)"
 require_block_literal "${internal_gateway_egress_block}" "${internal_gateway_egress_address}" 'count = var.bootstrap_enabled ? 1 : 0'
@@ -183,6 +217,7 @@ forbidden_block_literal "${internal_gateway_egress_block}" "${internal_gateway_e
 
 substrate_application_block="$(resource_block "${prerequisites_dir}/main.tf" helm_release substrate_application)"
 require_block_literal "${substrate_application_block}" 'helm_release.substrate_application' 'kubernetes_network_policy_v1.substrate_internal_api_egress'
+require_block_literal "${substrate_application_block}" 'helm_release.substrate_application' 'kubernetes_network_policy_v1.substrate_internal_api_ingress'
 require_block_literal "${substrate_application_block}" 'helm_release.substrate_application' 'kubernetes_network_policy_v1.substrate_internal_egress_gateway_egress'
 require_literal "${prerequisites_dir}/main.tf" 'resource "kubernetes_network_policy_v1" "enrollment_admin_default_deny"'
 require_literal "${prerequisites_dir}/main.tf" 'resource "kubernetes_config_map_v1" "production_promotion_gate"'
