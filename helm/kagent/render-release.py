@@ -16,6 +16,7 @@ from substrate_consumer_evidence import (
     SCHEMA_VERSION as SUBSTRATE_CONSUMER_EVIDENCE_SCHEMA,
     validate_artifact as validate_substrate_consumer_artifact,
 )
+from kagent_release_evidence import validate_binding as validate_kagent_release_evidence
 
 
 CHART_REF = re.compile(r"^oci://[^\s@]+@sha256:[0-9a-f]{64}$")
@@ -374,6 +375,11 @@ def validate_contract(contract: dict, source_root: Path) -> None:
             if not HELM_KEY.fullmatch(str(key)) or not isinstance(value, str):
                 fail(f"helm_set_values.{artifact_name} entries must be string keys and values")
     validate_image_overrides(contract)
+    validate_kagent_release_evidence(
+        contract.get("kagent_release_evidence"),
+        artifacts["kagent"],
+        helm_set_values["kagent"],
+    )
 
     values_sha256 = contract.get("values_sha256")
     if not isinstance(values_sha256, dict) or set(values_sha256) != EXPECTED_VALUES:

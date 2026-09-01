@@ -266,6 +266,13 @@ variable "kagent_substrate_delivery" {
       substrate_gateway_api_v1            = false
       substrate_go_module_commit          = ""
     })
+    kagent_release_evidence = optional(object({
+      uri           = string
+      manifest_json = string
+      }), {
+      uri           = ""
+      manifest_json = ""
+    })
     helm_set_values     = optional(map(map(string)), {})
     values_sha256       = optional(map(string), {})
     kagent_health_url   = optional(string, "")
@@ -306,6 +313,42 @@ variable "kagent_substrate_delivery" {
       var.kagent_substrate_delivery.artifacts["kagent"].source_commit == "547cfe605940005173eb0372238339384102faa0" &&
       var.kagent_substrate_delivery.artifacts["kagent"].artifact_schema_version == "3" &&
       var.kagent_substrate_delivery.artifacts["kagent"].artifact_manifest_path == "" &&
+      can(regex("^gs://yourown-chat-kagent-preview-evidence-europe-west3/kagent/0\\.0\\.0-external-slot\\.kap\\.5/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/release-evidence\\.json#[1-9][0-9]*$", var.kagent_substrate_delivery.kagent_release_evidence.uri)) &&
+      var.kagent_substrate_delivery.kagent_release_evidence.manifest_json != "" &&
+      sha256(var.kagent_substrate_delivery.kagent_release_evidence.manifest_json) == var.kagent_substrate_delivery.artifacts["kagent"].artifact_manifest_sha256 &&
+      try(jsondecode(var.kagent_substrate_delivery.kagent_release_evidence.manifest_json).schemaVersion, null) == 3 &&
+      try(jsondecode(var.kagent_substrate_delivery.kagent_release_evidence.manifest_json).channel, "") == "preview" &&
+      try(jsondecode(var.kagent_substrate_delivery.kagent_release_evidence.manifest_json).tag, "") == "v0.0.0-external-slot.kap.5" &&
+      try(jsondecode(var.kagent_substrate_delivery.kagent_release_evidence.manifest_json).source_repository, "") == var.kagent_substrate_delivery.artifacts["kagent"].source_repository &&
+      try(jsondecode(var.kagent_substrate_delivery.kagent_release_evidence.manifest_json).source_commit, "") == var.kagent_substrate_delivery.artifacts["kagent"].source_commit &&
+      try(jsondecode(var.kagent_substrate_delivery.kagent_release_evidence.manifest_json).chart_source.path, "") == "helm/kagent" &&
+      can(regex("^[0-9a-f]{40}$", try(jsondecode(var.kagent_substrate_delivery.kagent_release_evidence.manifest_json).chart_source.tree, ""))) &&
+      try(jsondecode(var.kagent_substrate_delivery.kagent_release_evidence.manifest_json).chart_source.skills_init_removal_commit, "") == "059c01b68584dea113ccdf80f2e356c2d051e02a" &&
+      try(jsondecode(var.kagent_substrate_delivery.kagent_release_evidence.manifest_json).charts.application.ref, "") == var.kagent_substrate_delivery.artifacts["kagent"].charts.application.ref &&
+      try(jsondecode(var.kagent_substrate_delivery.kagent_release_evidence.manifest_json).charts.application.version, "") == var.kagent_substrate_delivery.artifacts["kagent"].charts.application.version &&
+      try(jsondecode(var.kagent_substrate_delivery.kagent_release_evidence.manifest_json).charts.crds.ref, "") == var.kagent_substrate_delivery.artifacts["kagent"].charts.crds.ref &&
+      try(jsondecode(var.kagent_substrate_delivery.kagent_release_evidence.manifest_json).charts.crds.version, "") == var.kagent_substrate_delivery.artifacts["kagent"].charts.crds.version &&
+      try(jsondecode(var.kagent_substrate_delivery.kagent_release_evidence.manifest_json).image_refs.controller, "") == var.kagent_substrate_delivery.artifacts["kagent"].image_refs.controller &&
+      try(jsondecode(var.kagent_substrate_delivery.kagent_release_evidence.manifest_json).image_refs.ui, "") == var.kagent_substrate_delivery.artifacts["kagent"].image_refs.ui &&
+      try(jsondecode(var.kagent_substrate_delivery.kagent_release_evidence.manifest_json).runtime_images.kagentHarness, "") == var.kagent_substrate_delivery.artifacts["kagent"].runtime_images.kagentHarness &&
+      try(jsondecode(var.kagent_substrate_delivery.kagent_release_evidence.manifest_json).runtime_images.codexHarness, "") == var.kagent_substrate_delivery.artifacts["kagent"].runtime_images.codexHarness &&
+      toset(keys(try(var.kagent_substrate_delivery.helm_set_values["kagent"], {}))) == toset(["controller.image.registry", "controller.image.repository", "controller.image.tag", "ui.image.registry", "ui.image.repository", "ui.image.tag"]) &&
+      try(var.kagent_substrate_delivery.helm_set_values["kagent"]["controller.image.registry"], "") == "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/kagent" &&
+      try(var.kagent_substrate_delivery.helm_set_values["kagent"]["controller.image.repository"], "") == "controller" &&
+      try(var.kagent_substrate_delivery.helm_set_values["kagent"]["controller.image.tag"], "") == "0.0.0-external-slot.kap.5@${try(split("@", jsondecode(var.kagent_substrate_delivery.kagent_release_evidence.manifest_json).image_refs.controller)[1], "")}" &&
+      try(var.kagent_substrate_delivery.helm_set_values["kagent"]["ui.image.registry"], "") == "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/kagent" &&
+      try(var.kagent_substrate_delivery.helm_set_values["kagent"]["ui.image.repository"], "") == "ui" &&
+      try(var.kagent_substrate_delivery.helm_set_values["kagent"]["ui.image.tag"], "") == "0.0.0-external-slot.kap.5@${try(split("@", jsondecode(var.kagent_substrate_delivery.kagent_release_evidence.manifest_json).image_refs.ui)[1], "")}" &&
+      try(toset(keys(jsondecode(var.kagent_substrate_delivery.kagent_release_evidence.manifest_json).platform_image_digests)), toset([])) == toset(["controller", "ui", "golang-adk", "codex-harness"]) &&
+      try(alltrue(flatten([
+        for platform_digests in values(jsondecode(var.kagent_substrate_delivery.kagent_release_evidence.manifest_json).platform_image_digests) : [
+          toset(keys(platform_digests)) == toset(["linux_amd64", "linux_arm64"]),
+          alltrue([for digest in values(platform_digests) : can(regex("^sha256:[0-9a-f]{64}$", digest))]),
+        ]
+      ])), false) &&
+      try(jsondecode(var.kagent_substrate_delivery.kagent_release_evidence.manifest_json).security_scans.schema, "") == "yourown.chat/kagent-platform-scan-evidence/v1" &&
+      try(jsondecode(var.kagent_substrate_delivery.kagent_release_evidence.manifest_json).security_scans.scanner, "") == "Google Artifact Analysis On-Demand Scanning" &&
+      try(jsondecode(var.kagent_substrate_delivery.kagent_release_evidence.manifest_json).security_scans.decision, "") == "pass" &&
       var.kagent_substrate_delivery.artifacts["kagent"].charts.application.version == "0.0.0-external-slot.kap.5" &&
       var.kagent_substrate_delivery.artifacts["kagent"].charts.crds.version == "0.0.0-external-slot.kap.5" &&
       can(regex("^oci://europe-west3-docker\\.pkg\\.dev/yourown-chat/kagent-preview/kagent/helm/kagent@sha256:[0-9a-f]{64}$", var.kagent_substrate_delivery.artifacts["kagent"].charts.application.ref)) &&
@@ -412,7 +455,7 @@ variable "kagent_substrate_delivery" {
         destination.port <= 65535
       ])
     )
-    error_message = "Enabled bootstrap or release requires kagent evidence schema 3 with application/CRD charts, controller/UI images and exact kagentHarness/codexHarness runtime refs from europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/kagent only, plus either the exact checked-in v0.0.22 semver consumer evidence contract or the exact immutable 0.0.22-private.3 GAR evidence contract (source, checksum/path/schema, charts, images and Helm values). Both artifacts require digest-qualified app+CRD charts/images, an exact Substrate dependency commit, RBAC/Gateway API capabilities, an exact release verifier and testbed-only endpoints. Use either explicit atenet destinations or local_provider_only=true with no Actor/MCP egress; External Broker smoke is a post-bootstrap local-agent-ready gate."
+    error_message = "Enabled bootstrap or release requires a generation-qualified private .kap.5 schema-3 evidence object whose exact JSON bytes hash to artifact_manifest_sha256 and whose source, chart, controller/UI and kagentHarness/codexHarness refs exactly match the consumer contract; repository-prefix or same-registry digest substitution is not evidence. It also requires either the exact checked-in v0.0.22 semver consumer evidence contract or the exact immutable 0.0.22-private.3 GAR evidence contract (source, checksum/path/schema, charts, images and Helm values). Both artifacts require digest-qualified app+CRD charts/images, an exact Substrate dependency commit, RBAC/Gateway API capabilities, an exact release verifier and testbed-only endpoints. Use either explicit atenet destinations or local_provider_only=true with no Actor/MCP egress; External Broker smoke is a post-bootstrap local-agent-ready gate."
   }
 
   validation {
