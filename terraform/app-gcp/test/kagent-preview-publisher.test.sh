@@ -22,9 +22,9 @@ grep -Fq 'gcloud pubsub topics publish' "${invoker}" ||
   fail 'release request must use the IAM-protected Pub/Sub topic'
 
 main="$(cat "${module_dir}/main.tf")"
-expected_substrate_evidence_case="'gs://\${var.evidence_bucket_name}/substrate/0.0.22-private.2/release-evidence.json#'[1-9][0-9]*) ;;"
+expected_substrate_evidence_case="'gs://\${var.evidence_bucket_name}/substrate/0.0.22-private.3/release-evidence.json#'[1-9][0-9]*) ;;"
 
-grep -Fq '0\\.0\\.22-private\\.2/release-evidence\\.json#[1-9][0-9]*$' "${module_dir}/variables.tf" ||
+grep -Fq '0\\.0\\.22-private\\.3/release-evidence\\.json#[1-9][0-9]*$' "${module_dir}/variables.tf" ||
   fail 'private Substrate evidence input must accept only the replacement coordinate'
 
 for required in \
@@ -71,7 +71,7 @@ for required in \
   'roles/storage.objectCreator' \
   'resource "google_storage_bucket_iam_member" "evidence_viewer"' \
   'roles/storage.objectViewer' \
-  'resource.name.startsWith(\"projects/_/buckets/${google_storage_bucket.evidence[0].name}/objects/substrate/0.0.22-private.2/\")' \
+  'resource.name.startsWith(\"projects/_/buckets/${google_storage_bucket.evidence[0].name}/objects/substrate/0.0.22-private.3/\")' \
   'resource "google_secret_manager_secret" "ghcr_write"' \
   'resource "google_service_account_iam_member" "submitter"' \
   'for_each = var.enabled ? toset(["serviceAccount:${var.apply_service_account_email}"]) : toset([])' \
@@ -157,9 +157,9 @@ grep -Fq 'staging_registry_repository_id  = var.kagent_staging_registry_reposito
   fail 'platform-owned private kagent staging repository is not wired'
 grep -Fq 'enabled                    = true' "${inputs}" ||
   fail 'service input does not materialize the publisher infrastructure'
-grep -Fq 'source_commit              = "5a6e37f41d7ff71d89dca8de0ee6d9bafc1fa0c9"' "${inputs}" ||
+grep -Fq 'source_commit              = "6a22e639512c5be49f4b6800c98cdcfe26113ee3"' "${inputs}" ||
   fail 'reviewed kagent source commit is not pinned'
-grep -Fq 'substrate_release_evidence_uri = "gs://yourown-chat-kagent-preview-evidence-europe-west3/substrate/0.0.22-private.2/release-evidence.json#1788214261713293"' "${inputs}" ||
+grep -Fq 'substrate_release_evidence_uri = "gs://yourown-chat-kagent-preview-evidence-europe-west3/substrate/0.0.22-private.3/release-evidence.json#1788220783329855"' "${inputs}" ||
   fail 'generation-qualified private Substrate evidence is not pinned'
 grep -Fq 'release_tag_regex          = "^gcp-v0\\.0\\.0-external-slot\\.kap\\.[0-9]+$"' "${inputs}" ||
   fail 'release tags must remain in the gcp-v namespace that cannot dispatch the fork v*.kap.* workflow'

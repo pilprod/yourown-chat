@@ -77,17 +77,43 @@ grep -Fq 'condition     = var.release_version == "0.0.22-private.3"' "${module_d
 grep -Fq 'var.substrate_preview_publisher.release_version == "0.0.22-private.3"' "${stack_variables}" ||
   fail 'Stack input must authorize exactly the replacement private release coordinate'
 grep -Fq 'artifact_schema_version == "yourown.chat/substrate-private-gar-release/v2"' "${stack_variables}" ||
-  fail 'the staged Cloud Deploy admission branch must name private Substrate evidence schema v2'
-grep -Fq 'false &&' "${stack_variables}" ||
-  fail 'private-v2 Cloud Deploy admission must remain closed until exact .private.3 evidence is pinned'
-grep -Fq 'kagent-preview/substrate/substrate-release-verify@sha256:' "${stack_variables}" ||
-  fail 'Cloud Deploy admission must require the verifier from the private Substrate registry'
-for component in ateapi atecontroller atenet; do
-  grep -Fq ".image_refs.${component} == \"europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate/${component}@\${var.kagent_substrate_delivery.helm_set_values[\"substrate\"][\"image.digests.${component}\"]}\"" "${stack_variables}" ||
-    fail "the staged private-v2 branch must bind ${component} evidence to the chart-consumed Helm digest"
+  fail 'Cloud Deploy admission must name private Substrate evidence schema v2'
+grep -Fq 'artifact_manifest_sha256 == "b5aad6d44d359cd63fb2753c000579d948b1bb70c94bf0fbc3cdf21698c9789b"' "${stack_variables}" ||
+  fail 'Cloud Deploy admission must pin the exact .private.3 evidence checksum'
+grep -Fq 'artifact_manifest_path == ""' "${stack_variables}" ||
+  fail 'private producer evidence must remain external and must not claim a repository manifest path'
+for exact_chart_ref in \
+  'charts.application.ref == "oci://europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate/helm/substrate@sha256:51beebd226d0d2755b96dc70cf03072210222ab18f1f370b7b7c63fdd770a3af"' \
+  'charts.crds.ref == "oci://europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate/helm/substrate-crds@sha256:5333915d94c5a17c94e33533cc4698967a746b0ec686a8f19aef713ed5cab2c2"'; do
+  grep -Fq "${exact_chart_ref}" "${stack_variables}" ||
+    fail "Cloud Deploy admission is missing exact private chart pin: ${exact_chart_ref}"
 done
+for exact_image_ref in \
+  'image_refs.ateapi == "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate/ateapi@sha256:8a4cf985f809cc768e32091e39d45bce5f2e95fe43cd67f01d5e60c7df2ea868"' \
+  'image_refs.atecontroller == "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate/atecontroller@sha256:0845893ae2ecfd15f580bc410db22c8daae0d6b0388eca67541154a6ec98f554"' \
+  'image_refs.atenet == "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate/atenet@sha256:01d96092c93fd623dbe051479a76573da551b56be29121b11b760d9067fc8c4c"' \
+  'image_refs.agentgateway == "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate/agentgateway@sha256:068028a256bd63c91fd6e85a471269c014747297b0ffa785feaef6967eb0c429"' \
+  'image_refs.releaseVerifier == "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate/substrate-release-verify@sha256:850d8d8ec018f49486b410a15dd38e965f1fbb4d02f8a8be36d5256f33eef74b"'; do
+  grep -Fq "${exact_image_ref}" "${stack_variables}" ||
+    fail "Cloud Deploy admission is missing exact private image pin: ${exact_image_ref}"
+done
+for exact_helm_value in \
+  '["image.registry"] == "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate"' \
+  '["image.digests.ateapi"] == "sha256:8a4cf985f809cc768e32091e39d45bce5f2e95fe43cd67f01d5e60c7df2ea868"' \
+  '["image.digests.atecontroller"] == "sha256:0845893ae2ecfd15f580bc410db22c8daae0d6b0388eca67541154a6ec98f554"' \
+  '["image.digests.atenet"] == "sha256:01d96092c93fd623dbe051479a76573da551b56be29121b11b760d9067fc8c4c"' \
+  '["images.agentgateway"] == "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate/agentgateway@sha256:068028a256bd63c91fd6e85a471269c014747297b0ffa785feaef6967eb0c429"'; do
+  grep -Fq "${exact_helm_value}" "${stack_variables}" ||
+    fail "Cloud Deploy admission is missing exact private Helm pin: ${exact_helm_value}"
+done
+if grep -Eq '^[[:space:]]*false &&[[:space:]]*$' "${stack_variables}"; then
+  fail 'the verified .private.3 admission must not remain artificially closed'
+fi
 if grep -Fq 'artifact_schema_version == "yourown.chat/substrate-release/v1"' "${stack_variables}"; then
   fail 'generic producer evidence schema must not bypass the private-only Substrate contract'
+fi
+if grep -Eq 'private-gar-release/v2.*can\(regex|can\(regex.*kagent-preview/substrate/(helm/)?(substrate|ateapi|atecontroller|atenet|agentgateway|substrate-release-verify)' "${stack_variables}"; then
+  fail 'private-v2 admission must use exact evidence pins, not a generic shape-only acceptance path'
 fi
 grep -Fq 'condition     = var.source_tag == "v0.0.22"' "${module_dir}/variables.tf" ||
   fail 'reviewed annotated source tag is not fixed'

@@ -288,36 +288,78 @@ private_registry='europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substr
 private_contract="${work}/valid-private-bootstrap-contract.json"
 jq --arg registry "${private_registry}" \
   '.artifacts.substrate.artifact_schema_version = "yourown.chat/substrate-private-gar-release/v2"
+   | .artifacts.substrate.artifact_manifest_sha256 = "b5aad6d44d359cd63fb2753c000579d948b1bb70c94bf0fbc3cdf21698c9789b"
    | .artifacts.substrate.artifact_manifest_path = ""
    | .artifacts.substrate.charts.application = {
-       ref: ("oci://" + $registry + "/helm/substrate@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+       ref: ("oci://" + $registry + "/helm/substrate@sha256:51beebd226d0d2755b96dc70cf03072210222ab18f1f370b7b7c63fdd770a3af"),
        version: "0.0.22-private.3"
      }
    | .artifacts.substrate.charts.crds = {
-       ref: ("oci://" + $registry + "/helm/substrate-crds@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+       ref: ("oci://" + $registry + "/helm/substrate-crds@sha256:5333915d94c5a17c94e33533cc4698967a746b0ec686a8f19aef713ed5cab2c2"),
        version: "0.0.22-private.3"
      }
    | .artifacts.substrate.image_refs = {
-       ateapi: ($registry + "/ateapi@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"),
-       atecontroller: ($registry + "/atecontroller@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"),
-       atenet: ($registry + "/atenet@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"),
-       agentgateway: ($registry + "/agentgateway@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"),
-       releaseVerifier: ($registry + "/substrate-release-verify@sha256:9999999999999999999999999999999999999999999999999999999999999999")
+       ateapi: ($registry + "/ateapi@sha256:8a4cf985f809cc768e32091e39d45bce5f2e95fe43cd67f01d5e60c7df2ea868"),
+       atecontroller: ($registry + "/atecontroller@sha256:0845893ae2ecfd15f580bc410db22c8daae0d6b0388eca67541154a6ec98f554"),
+       atenet: ($registry + "/atenet@sha256:01d96092c93fd623dbe051479a76573da551b56be29121b11b760d9067fc8c4c"),
+       agentgateway: ($registry + "/agentgateway@sha256:068028a256bd63c91fd6e85a471269c014747297b0ffa785feaef6967eb0c429"),
+       releaseVerifier: ($registry + "/substrate-release-verify@sha256:850d8d8ec018f49486b410a15dd38e965f1fbb4d02f8a8be36d5256f33eef74b")
      }
    | .helm_set_values.substrate = {
        "image.registry": $registry,
-       "image.digests.ateapi": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-       "image.digests.atecontroller": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
-       "image.digests.atenet": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-       "images.agentgateway": ($registry + "/agentgateway@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
+       "image.digests.ateapi": "sha256:8a4cf985f809cc768e32091e39d45bce5f2e95fe43cd67f01d5e60c7df2ea868",
+       "image.digests.atecontroller": "sha256:0845893ae2ecfd15f580bc410db22c8daae0d6b0388eca67541154a6ec98f554",
+       "image.digests.atenet": "sha256:01d96092c93fd623dbe051479a76573da551b56be29121b11b760d9067fc8c4c",
+       "images.agentgateway": ($registry + "/agentgateway@sha256:068028a256bd63c91fd6e85a471269c014747297b0ffa785feaef6967eb0c429")
      }' "${valid_contract}" >"${private_contract}"
 
-private_tfvars="${work}/closed-private-bootstrap.tfvars.json"
+private_tfvars="${work}/valid-private-bootstrap.tfvars.json"
 jq '{kagent_substrate_delivery: .}' "${private_contract}" >"${private_tfvars}"
-if terraform -chdir="${gate_module}" plan -refresh=false -input=false -lock=false -no-color \
-  -var-file="${private_tfvars}" >"${work}/closed-private-bootstrap.plan" 2>&1; then
-  fail "unpinned private-v2 bootstrap contract unexpectedly passed Stack validation"
-fi
-require_literal "${work}/closed-private-bootstrap.plan" 'evidence schema v2 remains closed'
+terraform -chdir="${gate_module}" plan -refresh=false -input=false -lock=false -no-color \
+  -var-file="${private_tfvars}" >/dev/null || fail "exact 0.0.22-private.3 bootstrap contract was rejected"
+
+expect_private_failure() {
+  local label="$1"
+  local filter="$2"
+  local tfvars="${work}/${label}.tfvars.json"
+  local output="${work}/${label}.plan"
+  jq "{kagent_substrate_delivery: (. ${filter})}" "${private_contract}" >"${tfvars}"
+  if terraform -chdir="${gate_module}" plan -refresh=false -input=false -lock=false -no-color \
+    -var-file="${tfvars}" >"${output}" 2>&1; then
+    fail "${label} private bootstrap contract unexpectedly passed Stack validation"
+  fi
+  require_literal "${output}" 'exact immutable 0.0.22-private.3 GAR evidence contract'
+}
+
+expect_private_failure private-changed-evidence-hash \
+  '| .artifacts.substrate.artifact_manifest_sha256 = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"'
+expect_private_failure private-nonempty-evidence-path \
+  '| .artifacts.substrate.artifact_manifest_path = "release-evidence.json"'
+expect_private_failure private-changed-application-chart \
+  '| .artifacts.substrate.charts.application.ref = "oci://europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate/helm/substrate@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"'
+expect_private_failure private-changed-crd-chart \
+  '| .artifacts.substrate.charts.crds.ref = "oci://europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate/helm/substrate-crds@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"'
+
+for component in ateapi atecontroller atenet agentgateway; do
+  expect_private_failure "private-changed-image-${component}" \
+    "| .artifacts.substrate.image_refs.${component} = \"${private_registry}/${component}@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\""
+done
+expect_private_failure private-changed-image-releaseVerifier \
+  "| .artifacts.substrate.image_refs.releaseVerifier = \"${private_registry}/substrate-release-verify@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\""
+
+expect_private_failure private-changed-helm-registry \
+  '| .helm_set_values.substrate["image.registry"] = "us-docker.pkg.dev/yourown-chat/kagent-preview/substrate"'
+expect_private_failure private-changed-helm-ateapi \
+  '| .helm_set_values.substrate["image.digests.ateapi"] = "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"'
+expect_private_failure private-changed-helm-atecontroller \
+  '| .helm_set_values.substrate["image.digests.atecontroller"] = "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"'
+expect_private_failure private-changed-helm-atenet \
+  '| .helm_set_values.substrate["image.digests.atenet"] = "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"'
+expect_private_failure private-changed-helm-agentgateway \
+  '| .helm_set_values.substrate["images.agentgateway"] = "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate/agentgateway@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"'
+expect_private_failure private-extra-image-key \
+  '| .artifacts.substrate.image_refs.unreviewed = "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/substrate/unreviewed@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"'
+expect_private_failure private-extra-helm-key \
+  '| .helm_set_values.substrate.unreviewed = "true"'
 
 printf 'Substrate semver consumer evidence tests passed\n'

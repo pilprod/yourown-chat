@@ -74,9 +74,9 @@ variable "substrate_release_evidence_uri" {
   validation {
     condition = (
       var.substrate_release_evidence_uri == "" ||
-      can(regex("^gs://[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]/substrate/0\\.0\\.22-private\\.2/release-evidence\\.json#[1-9][0-9]*$", var.substrate_release_evidence_uri))
+      can(regex("^gs://[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]/substrate/0\\.0\\.22-private\\.3/release-evidence\\.json#[1-9][0-9]*$", var.substrate_release_evidence_uri))
     )
-    error_message = "substrate_release_evidence_uri must be empty or the exact generation-qualified private 0.0.22-private.2 release-evidence.json URI."
+    error_message = "substrate_release_evidence_uri must be empty or the exact generation-qualified private 0.0.22-private.3 release-evidence.json URI."
   }
 }
 
