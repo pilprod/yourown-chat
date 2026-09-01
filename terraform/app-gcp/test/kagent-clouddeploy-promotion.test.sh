@@ -32,6 +32,8 @@ predeploy_line="$(grep -Fn 'predeploy_actions=["require-external-broker-smoke"]'
 
 grep -Fq 'kagent-substrate=kagent-substrate-dev|kagent-substrate-prod' "${mcp_values}" ||
   fail 'Google Cloud MCP target allowlist must expose both promotion targets'
+grep -Fq 'GOOGLE_CLOUD_SECURITY_REPOSITORIES: "docker,kagent-preview,kagent-staging"' "${mcp_values}" ||
+  fail 'Google Cloud MCP security allowlist must expose both private kagent repositories'
 
 release_block="$(sed -n '/if \[ "${try(var.kagent_substrate_delivery.release_enabled, false)}" = "true" \]/,/^          fi$/p' "${release}")"
 [[ "$(grep -Fc 'create_release \' <<<"${release_block}")" -eq 1 ]] ||

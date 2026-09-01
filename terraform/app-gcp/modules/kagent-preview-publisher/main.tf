@@ -9,10 +9,22 @@ locals {
     for index in range(ceil(length(local.publication_driver_base64) / 8000)) :
     substr(local.publication_driver_base64, index * 8000, 8000)
   ]
+  scan_policy_evaluator_base64 = base64encode(file("${path.module}/scripts/evaluate-scan-vulnerabilities.sh"))
+  scan_policy_evaluator_sha256 = filesha256("${path.module}/scripts/evaluate-scan-vulnerabilities.sh")
+  scan_policy_evaluator_chunks = [
+    for index in range(ceil(length(local.scan_policy_evaluator_base64) / 8000)) :
+    substr(local.scan_policy_evaluator_base64, index * 8000, 8000)
+  ]
   publication_environment = [
     "KAGENT_ARTIFACT_PREFIX=${local.artifact_repository_prefix}",
     "KAGENT_EVIDENCE_BUCKET=${var.evidence_bucket_name}",
+    "KAGENT_EXPECTED_BUILD_ID=$BUILD_ID",
+    "KAGENT_EXPECTED_PROJECT_ID=${var.project_id}",
+    "KAGENT_EXPECTED_SOURCE_COMMIT=${var.source_commit}",
+    "KAGENT_EXPECTED_SOURCE_TAG=$_RELEASE_TAG",
+    "KAGENT_PUBLICATION_DRIVER_SHA256=${local.publication_driver_sha256}",
     "KAGENT_REGISTRY_HOST=${local.registry_host}",
+    "KAGENT_SCAN_POLICY_EVALUATOR_SHA256=${local.scan_policy_evaluator_sha256}",
     "KAGENT_STAGING_PREFIX=${local.staging_repository_prefix}",
   ]
   submitter_members = var.enabled ? setunion(
@@ -130,8 +142,8 @@ resource "google_storage_bucket_iam_member" "evidence_creator" {
 }
 
 # Source verification reads the generation-qualified private Substrate receipt
-# from this same bucket. It cannot list, mutate or delete objects beyond the
-# read semantics of the bucket-scoped viewer role.
+# and publication verifies its own immutable kagent lock/receipt generations.
+# The identity cannot mutate or delete any existing object.
 resource "google_storage_bucket_iam_member" "evidence_viewer" {
   count = local.count
 
@@ -140,9 +152,9 @@ resource "google_storage_bucket_iam_member" "evidence_viewer" {
   member = "serviceAccount:${google_service_account.publisher[0].email}"
 
   condition {
-    title       = "substrate-0.0.22-private.3-read"
-    description = "Read only the exact private Substrate evidence handoff consumed by this kagent rail."
-    expression  = "resource.name.startsWith(\"projects/_/buckets/${google_storage_bucket.evidence[0].name}/objects/substrate/0.0.22-private.3/\")"
+    title       = "substrate-input-and-kagent-output-read"
+    description = "Read the exact private Substrate handoff and immutable kagent release evidence owned by this rail."
+    expression  = "resource.name.startsWith(\"projects/_/buckets/${google_storage_bucket.evidence[0].name}/objects/substrate/0.0.22-private.3/\") || resource.name.startsWith(\"projects/_/buckets/${google_storage_bucket.evidence[0].name}/objects/kagent/\")"
   }
 }
 
@@ -414,6 +426,49 @@ resource "google_cloudbuild_trigger" "release" {
       ]
     }
 
+    # Run every source-owned chart/plugin action before trusted image digest
+    # evidence is recorded. A pinned git step then proves the source checkout
+    # still matches the reviewed commit before any candidate image is built.
+    step {
+      id         = "package-and-reproduce-charts"
+      name       = "gcr.io/cloud-builders/docker@sha256:d1797996867921778f1adbb7e493baaaf2f6b21e107599c0aab48c2ec06ff311"
+      entrypoint = "bash"
+      args = [
+        "-ceu",
+        <<-EOT
+          docker run --rm \
+            --volume /workspace:/workspace \
+            --workdir /workspace/source \
+            "gcr.io/$PROJECT_ID/kagent-fork-preview-tools:$BUILD_ID" \
+            /workspace/source/scripts/cloud-build-fork-preview-charts.sh \
+            package "$$(< /workspace/kagent-release-version)"
+        EOT
+      ]
+    }
+
+    step {
+      id         = "reverify-reviewed-source-after-packaging"
+      name       = "gcr.io/cloud-builders/git@sha256:bfcbd8719280b196bd860e89531c3c9b598daab4a07aef1d17a163c822d569bd"
+      entrypoint = "bash"
+      args = [
+        "-ceu",
+        <<-EOT
+          cd /workspace/source
+          test "$$(git rev-parse HEAD)" = "${var.source_commit}"
+          test -z "$$(git status --porcelain)"
+          test "$$(< /workspace/kagent-source-commit)" = "${var.source_commit}"
+          test "$$(< /workspace/kagent-source-tag)" = "$_RELEASE_TAG"
+          test "$$(< /workspace/kagent-build-id)" = "$BUILD_ID"
+          version="$$(printf '%s' "$_RELEASE_TAG" | sed 's/^gcp-v//')"
+          test "$$(< /workspace/kagent-release-version)" = "$$version"
+          test ! -e /workspace/release-inputs
+          test ! -e /workspace/release
+          [[ -d /workspace/chart-dist && ! -L /workspace/chart-dist ]]
+          [[ -d /workspace/chart-dist-reproducibility-check && ! -L /workspace/chart-dist-reproducibility-check ]]
+        EOT
+      ]
+    }
+
     step {
       id   = "install-multiarch-emulation"
       name = "docker.io/tonistiigi/binfmt@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0"
@@ -439,7 +494,9 @@ resource "google_cloudbuild_trigger" "release" {
           docker run --rm \
             --volume /workspace:/workspace \
             --env KAGENT_ARTIFACT_PREFIX \
+            --env KAGENT_PUBLICATION_DRIVER_SHA256 \
             --env KAGENT_REGISTRY_HOST \
+            --env KAGENT_SCAN_POLICY_EVALUATOR_SHA256 \
             --env KAGENT_STAGING_PREFIX \
             "gcr.io/$PROJECT_ID/kagent-fork-preview-tools:$BUILD_ID" \
             /workspace/publish-kagent-artifact-registry.sh record-images
@@ -466,27 +523,12 @@ resource "google_cloudbuild_trigger" "release" {
           docker run --rm \
             --volume /workspace:/workspace \
             --env KAGENT_ARTIFACT_PREFIX \
+            --env KAGENT_PUBLICATION_DRIVER_SHA256 \
             --env KAGENT_REGISTRY_HOST \
+            --env KAGENT_SCAN_POLICY_EVALUATOR_SHA256 \
             --env KAGENT_STAGING_PREFIX \
             "gcr.io/$PROJECT_ID/kagent-fork-preview-tools:$BUILD_ID" \
             /workspace/publish-kagent-artifact-registry.sh record-platforms
-        EOT
-      ]
-    }
-
-    step {
-      id         = "package-and-reproduce-charts"
-      name       = "gcr.io/cloud-builders/docker@sha256:d1797996867921778f1adbb7e493baaaf2f6b21e107599c0aab48c2ec06ff311"
-      entrypoint = "bash"
-      args = [
-        "-ceu",
-        <<-EOT
-          docker run --rm \
-            --volume /workspace:/workspace \
-            --workdir /workspace/source \
-            "gcr.io/$PROJECT_ID/kagent-fork-preview-tools:$BUILD_ID" \
-            /workspace/source/scripts/cloud-build-fork-preview-charts.sh \
-            package "$$(< /workspace/kagent-release-version)"
         EOT
       ]
     }
@@ -496,7 +538,39 @@ resource "google_cloudbuild_trigger" "release" {
       name       = "gcr.io/google.com/cloudsdktool/google-cloud-cli:573.0.0@sha256:f0b4abeb30773243f9ae95abe201ec01de07d5ed582b56ca52879eb3dbe209c3"
       entrypoint = "bash"
       env        = local.publication_environment
-      args       = ["/workspace/publish-kagent-artifact-registry.sh", "scan-images"]
+      args = concat(
+        [
+          "-ceu",
+          <<-EOT
+            driver=/workspace/publish-kagent-artifact-registry.sh
+            evaluator=/workspace/evaluate-kagent-scan-vulnerabilities.sh
+            driver_tmp="$$(mktemp /workspace/.publish-kagent.XXXXXX)"
+            evaluator_tmp="$$(mktemp /workspace/.evaluate-kagent-scan.XXXXXX)"
+            trap 'rm -f "$$driver_tmp" "$$evaluator_tmp"' EXIT
+            driver_chunk_count="$$1"
+            shift
+            [[ "$$driver_chunk_count" =~ ^[1-9][0-9]*$$ ]]
+            driver_chunks=("$$${@:1:driver_chunk_count}")
+            shift "$$driver_chunk_count"
+            printf '%s' "$$${driver_chunks[@]}" | base64 -d > "$$driver_tmp"
+            printf '%s' "$$@" | base64 -d > "$$evaluator_tmp"
+            printf '%s  %s\n' '${local.publication_driver_sha256}' "$$driver_tmp" \
+              | sha256sum --check --status
+            printf '%s  %s\n' '${local.scan_policy_evaluator_sha256}' "$$evaluator_tmp" \
+              | sha256sum --check --status
+            chmod 0555 "$$driver_tmp" "$$evaluator_tmp"
+            mv -f "$$driver_tmp" "$$driver"
+            mv -f "$$evaluator_tmp" "$$evaluator"
+            trap - EXIT
+            exec "$$driver" scan-images
+          EOT
+          ,
+          "scan-candidate-images",
+          tostring(length(local.publication_driver_chunks)),
+        ],
+        local.publication_driver_chunks,
+        local.scan_policy_evaluator_chunks,
+      )
     }
 
     # A generation-zero object serializes publication of one immutable version.
@@ -538,7 +612,9 @@ resource "google_cloudbuild_trigger" "release" {
             --network cloudbuild \
             --volume /workspace:/workspace \
             --env KAGENT_ARTIFACT_PREFIX \
+            --env KAGENT_PUBLICATION_DRIVER_SHA256 \
             --env KAGENT_REGISTRY_HOST \
+            --env KAGENT_SCAN_POLICY_EVALUATOR_SHA256 \
             --env KAGENT_STAGING_PREFIX \
             "gcr.io/$PROJECT_ID/kagent-fork-preview-tools:$BUILD_ID" \
             /workspace/publish-kagent-artifact-registry.sh publish-charts
@@ -563,14 +639,48 @@ resource "google_cloudbuild_trigger" "release" {
         "-ceu",
         <<-EOT
           docker run --rm \
+            --network cloudbuild \
             --volume /workspace:/workspace \
             --env KAGENT_ARTIFACT_PREFIX \
+            --env KAGENT_EVIDENCE_BUCKET \
+            --env KAGENT_PUBLICATION_DRIVER_SHA256 \
             --env KAGENT_REGISTRY_HOST \
+            --env KAGENT_SCAN_POLICY_EVALUATOR_SHA256 \
             --env KAGENT_STAGING_PREFIX \
             "gcr.io/$PROJECT_ID/kagent-fork-preview-tools:$BUILD_ID" \
             /workspace/publish-kagent-artifact-registry.sh assemble-evidence
         EOT
       ]
+    }
+
+    # The source-built toolbox had writable workspace access while assembling
+    # evidence. Re-materialize the Terraform-pinned driver in a pinned Docker
+    # builder and re-read every staging index before trusting that evidence.
+    step {
+      id         = "reverify-platform-bindings-after-assembly"
+      name       = "gcr.io/cloud-builders/docker@sha256:d1797996867921778f1adbb7e493baaaf2f6b21e107599c0aab48c2ec06ff311"
+      entrypoint = "bash"
+      env        = local.publication_environment
+      args = concat(
+        [
+          "-ceu",
+          <<-EOT
+            driver=/workspace/publish-kagent-artifact-registry.sh
+            driver_tmp="$$(mktemp /workspace/.publish-kagent-post-assemble.XXXXXX)"
+            trap 'rm -f "$$driver_tmp"' EXIT
+            printf '%s' "$$@" | base64 -d > "$$driver_tmp"
+            printf '%s  %s\n' '${local.publication_driver_sha256}' "$$driver_tmp" \
+              | sha256sum --check --status
+            chmod 0555 "$$driver_tmp"
+            mv -f "$$driver_tmp" "$$driver"
+            trap - EXIT
+            exec "$$driver" verify-platform-bindings
+          EOT
+          ,
+          "reverify-platform-bindings-after-assembly",
+        ],
+        local.publication_driver_chunks,
+      )
     }
 
     step {
@@ -583,40 +693,158 @@ resource "google_cloudbuild_trigger" "release" {
 
     step {
       id         = "finalize-cloud-build-receipt"
-      name       = "gcr.io/cloud-builders/docker@sha256:d1797996867921778f1adbb7e493baaaf2f6b21e107599c0aab48c2ec06ff311"
+      name       = "gcr.io/google.com/cloudsdktool/google-cloud-cli:573.0.0@sha256:f0b4abeb30773243f9ae95abe201ec01de07d5ed582b56ca52879eb3dbe209c3"
       entrypoint = "bash"
-      args = [
-        "-ceu",
-        <<-EOT
-          docker run --rm \
-            --volume /workspace:/workspace \
-            --entrypoint python3 \
-            "gcr.io/$PROJECT_ID/kagent-fork-preview-tools:$BUILD_ID" \
-            /workspace/source/scripts/finalize-cloud-build-fork-preview-receipt.py \
-            "$BUILD_ID" "$PROJECT_ID" "${var.source_commit}" \
-            "$$(< /workspace/kagent-release-version)" \
-            "$$(< /workspace/kagent-source-tag)" /workspace/release
-        EOT
-      ]
+      env        = local.publication_environment
+      args = concat(
+        [
+          "-ceu",
+          <<-EOT
+            driver=/workspace/publish-kagent-artifact-registry.sh
+            driver_tmp="$$(mktemp /workspace/.publish-kagent-finalizer.XXXXXX)"
+            trap 'rm -f "$$driver_tmp"' EXIT
+            printf '%s' "$$@" | base64 -d > "$$driver_tmp"
+            printf '%s  %s\n' '${local.publication_driver_sha256}' "$$driver_tmp" \
+              | sha256sum --check --status
+            chmod 0555 "$$driver_tmp"
+            mv -f "$$driver_tmp" "$$driver"
+            trap - EXIT
+            exec "$$driver" finalize-receipt
+          EOT
+          ,
+          "finalize-cloud-build-receipt",
+        ],
+        local.publication_driver_chunks,
+      )
     }
 
     step {
       id         = "upload-immutable-release-receipt"
-      name       = "gcr.io/cloud-builders/gcloud@sha256:3bcfea90f299ae18ced1c0bce4ec035bc4d19049f16c22690ba7c4e730478fbc"
+      name       = "gcr.io/google.com/cloudsdktool/google-cloud-cli:573.0.0@sha256:f0b4abeb30773243f9ae95abe201ec01de07d5ed582b56ca52879eb3dbe209c3"
       entrypoint = "bash"
       dir        = "/workspace/release"
-      args = [
-        "-ceu",
-        <<-EOT
-          version="$$(< /workspace/kagent-release-version)"
-          cat release-evidence.json
-          cat release-evidence.json.sha256
-          gcloud storage cp ./* \
-            "gs://${google_storage_bucket.evidence[0].name}/kagent/$$version/$BUILD_ID/"
-          printf 'release receipt: gs://%s/kagent/%s/%s/\n' \
-            "${google_storage_bucket.evidence[0].name}" "$$version" "$BUILD_ID"
-        EOT
-      ]
+      env        = local.publication_environment
+      args = concat(
+        [
+          "-ceu",
+          <<-EOT
+          set -o pipefail
+          driver=/workspace/publish-kagent-artifact-registry.sh
+          driver_tmp="$$(mktemp /workspace/.publish-kagent-uploader.XXXXXX)"
+          trap 'rm -f "$$driver_tmp"' EXIT
+          printf '%s' "$$@" | base64 -d > "$$driver_tmp"
+          printf '%s  %s\n' '${local.publication_driver_sha256}' "$$driver_tmp" \
+            | sha256sum --check --status
+          chmod 0555 "$$driver_tmp"
+          mv -f "$$driver_tmp" "$$driver"
+          trap - EXIT
+          trusted_anchors="$$("$$driver" prepare-upload)"
+          anchor_sha() {
+            awk -v name="$$1" '
+              $$2 == name { count += 1; sha = $$1 }
+              END { if (count != 1) exit 1; print sha }
+            ' <<<"$$trusted_anchors"
+          }
+          version="$$(printf '%s' "$$KAGENT_EXPECTED_SOURCE_TAG" | sed 's/^gcp-v//')"
+          test "$$KAGENT_EXPECTED_SOURCE_TAG" = "gcp-v$$version"
+          expected=(
+            cloud-build-receipt.json
+            "kagent-$$version.tgz"
+            "kagent-crds-$$version.tgz"
+            release-evidence.json
+            release-lock.json
+            scan-evidence.sha256
+          )
+          for component in controller ui golang-adk codex-harness; do
+            for architecture in amd64 arm64; do
+              for suffix in scan-id.txt vulnerabilities.json severities.txt scan-policy.json; do
+                expected+=("$$component-linux-$$architecture-$$suffix")
+              done
+            done
+          done
+
+          names_file="$$(mktemp)"
+          trap 'rm -f "$$names_file"' EXIT
+          awk '
+            NF != 2 || $$1 !~ /^[0-9a-f]{64}$$/ || $$2 !~ /^[A-Za-z0-9._-]+$$/ { exit 1 }
+            { print $$2 }
+          ' SHA256SUMS > "$$names_file"
+          [[ "$$(wc -l < "$$names_file" | tr -d ' ')" -eq "$$${#expected[@]}" ]]
+          mapfile -t actual < <(sort -u "$$names_file")
+          mapfile -t wanted < <(printf '%s\n' "$$${expected[@]}" | sort -u)
+          [[ "$$${#actual[@]}" -eq "$$${#expected[@]}" ]]
+          [[ "$$${#wanted[@]}" -eq "$$${#expected[@]}" ]]
+          [[ "$$(printf '%s\n' "$$${actual[@]}")" == "$$(printf '%s\n' "$$${wanted[@]}")" ]]
+          for name in "$$${expected[@]}" SHA256SUMS release-evidence.json.sha256; do
+            [[ -f "$$name" && ! -L "$$name" ]]
+          done
+          sha256sum --check --strict SHA256SUMS
+          sha256sum --check --strict release-evidence.json.sha256
+
+          evidence_sha="$$(anchor_sha release-evidence.json)"
+          checksums_sha="$$(anchor_sha SHA256SUMS)"
+          test ! -e release-receipt.json
+          test ! -e release-receipt.json.sha256
+          jq -n \
+            --arg build_id "$BUILD_ID" \
+            --arg source_commit '${var.source_commit}' \
+            --arg version "$$version" \
+            --arg evidence_sha "$$evidence_sha" \
+            --arg checksums_sha "$$checksums_sha" '
+              {
+                schema: "yourown.chat/kagent-private-gar-receipt/v1",
+                schemaVersion: 1,
+                buildId: $$build_id,
+                sourceCommit: $$source_commit,
+                version: $$version,
+                releaseEvidenceSha256: $$evidence_sha,
+                checksumsSha256: $$checksums_sha
+              }
+            ' > release-receipt.json
+          sha256sum release-receipt.json > release-receipt.json.sha256
+          [[ -f release-receipt.json && ! -L release-receipt.json ]]
+          [[ -f release-receipt.json.sha256 && ! -L release-receipt.json.sha256 ]]
+          receipt_sha="$$(sha256sum release-receipt.json | cut -d' ' -f1)"
+          receipt_sidecar_sha="$$(sha256sum release-receipt.json.sha256 | cut -d' ' -f1)"
+          trusted_anchors="$$(printf '%s\n%s  release-receipt.json\n%s  release-receipt.json.sha256\n' \
+            "$$trusted_anchors" "$$receipt_sha" "$$receipt_sidecar_sha")"
+
+          upload=(
+            "$$${expected[@]}"
+            SHA256SUMS
+            release-evidence.json.sha256
+            release-receipt.json.sha256
+            # The receipt is the commit marker and is uploaded only after every
+            # object it roots has been generation-read back and hash-verified.
+            release-receipt.json
+          )
+          prefix="gs://${google_storage_bucket.evidence[0].name}/kagent/$$version/$BUILD_ID"
+          for name in "$$${upload[@]}"; do
+            anchored_sha="$$(anchor_sha "$$name")"
+            [[ "$$anchored_sha" =~ ^[0-9a-f]{64}$$ ]]
+            [[ "$$(sha256sum "$$name" | cut -d' ' -f1)" == "$$anchored_sha" ]]
+            destination="$$prefix/$$name"
+            gcloud storage cp "$$name" "$$destination" --if-generation-match=0
+            generation="$$(gcloud storage objects describe "$$destination" --format='value(generation)')"
+            [[ "$$generation" =~ ^[1-9][0-9]*$$ ]]
+            remote_sha="$$(gcloud storage cat "$$destination#$$generation" | sha256sum | cut -d' ' -f1)"
+            [[ "$$remote_sha" == "$$anchored_sha" ]]
+            printf 'immutable object: %s#%s\n' "$$destination" "$$generation"
+            case "$$name" in
+              release-evidence.json) evidence_generation="$$generation" ;;
+              release-receipt.json) receipt_generation="$$generation" ;;
+            esac
+          done
+          printf 'evidence_uri=%s/release-evidence.json#%s\n' "$$prefix" "$$evidence_generation"
+          printf 'evidence_sha256=%s\n' "$$evidence_sha"
+          printf 'receipt_uri=%s/release-receipt.json#%s\n' "$$prefix" "$$receipt_generation"
+          printf 'receipt_sha256=%s\n' "$$receipt_sha"
+          EOT
+          ,
+          "upload-immutable-release-receipt",
+        ],
+        local.publication_driver_chunks,
+      )
     }
 
     options {

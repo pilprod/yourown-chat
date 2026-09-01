@@ -231,9 +231,11 @@ Google Cloud administration:
 - fixed project `yourown-chat` and location `europe-west3`;
 - Cloud Build access is read-only: list builds, inspect complete step/result
   state, and read build-scoped Cloud Logging entries;
-- only the `mattermost`, dev-only `mattermost-preview`, and `mcp` pipelines
-  and their committed targets are accepted; `mattermost-preview` exposes only
-  `mattermost-preview-dev` and therefore cannot be promoted to production;
+- only the `mattermost`, dev-only `mattermost-preview`, `mcp`, and
+  `kagent-substrate` pipelines and their committed targets are accepted;
+  `mattermost-preview` exposes only `mattermost-preview-dev` and therefore
+  cannot be promoted to production, while `kagent-substrate` is limited to
+  `kagent-substrate-dev` and approval-gated `kagent-substrate-prod`;
 - releases, rollouts, phases, and their deploy/verify/pre/post job runs can be
   listed and inspected without the Cloud SDK;
 - promotion is a two-call `plan_promote` → `promote` flow and requires the
@@ -263,6 +265,10 @@ unrelated service accounts. Release creation remains owned by the tag-triggered
 Cloud Build pipeline. The dev pod uses `mcp-observability-dev`, which has only
 Logging, Monitoring, Trace, Artifact Registry, and Artifact Analysis read
 access; build and mutating lifecycle tools are not advertised.
+
+Artifact security inspection is restricted to the exact repository IDs
+`docker`, `kagent-preview`, and `kagent-staging`; arbitrary Artifact
+Registry repositories remain outside the MCP boundary.
 
 Operational agents must use these MCP tools for build/deploy state and actions:
 

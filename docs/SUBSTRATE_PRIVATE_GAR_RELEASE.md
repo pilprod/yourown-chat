@@ -79,7 +79,7 @@ disabled until their separate deployment reviews open those gates.
    successor change. The current pin is
    `release-evidence.json#1788220783329855` with SHA-256
    `b5aad6d44d359cd63fb2753c000579d948b1bb70c94bf0fbc3cdf21698c9789b`;
-   the successor kagent tag is `gcp-v0.0.0-external-slot.kap.4`. Its build
+   the successor kagent tag is `gcp-v0.0.0-external-slot.kap.5`. Its build
    identity reads the private object and obtains a short-lived Artifact
    Registry token; the verifier receives those values only as ephemeral files
    inside Cloud Build. An empty or different URI makes publication fail closed.
