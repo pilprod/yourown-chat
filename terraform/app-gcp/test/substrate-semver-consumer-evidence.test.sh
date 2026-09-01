@@ -186,6 +186,20 @@ python3 "${kagent_evidence_fixture_writer}" \
   --codex-harness "${codex_harness_digest}"
 kagent_evidence_sha="$(sha256_file "${kagent_evidence}")"
 kagent_evidence_uri="gs://yourown-chat-kagent-preview-evidence-europe-west3/kagent/0.0.0-external-slot.kap.5/00000000-0000-4000-8000-000000000001/release-evidence.json#1"
+fake_gcloud="${work}/gcloud"
+cat >"${fake_gcloud}" <<'EOF'
+#!/usr/bin/env bash
+set -o errexit -o nounset -o pipefail
+
+if [[ "$#" -ne 3 || "$1" != "storage" || "$2" != "cat" || "$3" != "${KAGENT_TEST_EVIDENCE_URI:?}" ]]; then
+  printf 'unexpected gcloud storage cat request\n' >&2
+  exit 41
+fi
+/bin/cat "${KAGENT_TEST_EVIDENCE_FILE:?}"
+EOF
+chmod +x "${fake_gcloud}"
+export KAGENT_TEST_EVIDENCE_FILE="${kagent_evidence}"
+export KAGENT_TEST_EVIDENCE_URI="${kagent_evidence_uri}"
 reviewed_evaluator_sha="$(
   PYTHONPATH="${repo_root}/helm/kagent" python3 -c \
     'from kagent_release_evidence import SCAN_POLICY_EVALUATOR_SHA256; print(SCAN_POLICY_EVALUATOR_SHA256)'
@@ -286,7 +300,8 @@ kagent_fragment="${work}/kagent-fragment.hcl"
 "${kagent_evidence_renderer}" \
   --evidence "${kagent_evidence}" \
   --evidence-uri "${kagent_evidence_uri}" \
-  --evidence-sha256 "${kagent_evidence_sha}" >"${kagent_fragment}" || \
+  --evidence-sha256 "${kagent_evidence_sha}" \
+  --gcloud "${fake_gcloud}" >"${kagent_fragment}" || \
   fail "checksum-bound kagent schema-3 evidence was rejected"
 require_literal "${kagent_fragment}" "uri           = \"${kagent_evidence_uri}\""
 require_literal "${kagent_fragment}" "artifact_manifest_sha256 = \"${kagent_evidence_sha}\""
@@ -304,11 +319,42 @@ if "${kagent_evidence_renderer}" \
   --evidence "${kagent_evidence}" \
   --evidence-uri "${kagent_evidence_uri}" \
   --evidence-sha256 "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" \
+  --gcloud "${fake_gcloud}" \
   >"${work}/wrong-kagent-sha.out" 2>"${work}/wrong-kagent-sha.err"; then
   fail "renderer accepted kagent evidence with a mismatched authoritative checksum"
 fi
 [[ ! -s "${work}/wrong-kagent-sha.out" ]] || fail "failed kagent evidence rendering emitted a partial fragment"
 require_literal "${work}/wrong-kagent-sha.err" 'evidence bytes do not match --evidence-sha256'
+
+nonexistent_kagent_evidence_uri="gs://yourown-chat-kagent-preview-evidence-europe-west3/kagent/0.0.0-external-slot.kap.5/ffffffff-ffff-4fff-8fff-ffffffffffff/release-evidence.json#9999999999999999999"
+if "${kagent_evidence_renderer}" \
+  --evidence "${kagent_evidence}" \
+  --evidence-uri "${nonexistent_kagent_evidence_uri}" \
+  --evidence-sha256 "${kagent_evidence_sha}" \
+  --gcloud "${fake_gcloud}" \
+  >"${work}/missing-kagent-generation.out" 2>"${work}/missing-kagent-generation.err"; then
+  fail "renderer accepted a nonexistent kagent evidence generation"
+fi
+[[ ! -s "${work}/missing-kagent-generation.out" ]] || \
+  fail "missing kagent evidence generation emitted a partial fragment"
+require_literal "${work}/missing-kagent-generation.err" \
+  'gcloud storage cat could not read the exact evidence generation'
+
+remote_kagent_evidence="${work}/remote-kagent-release-evidence.json"
+printf '{}\n' >"${remote_kagent_evidence}"
+if KAGENT_TEST_EVIDENCE_FILE="${remote_kagent_evidence}" \
+  "${kagent_evidence_renderer}" \
+  --evidence "${kagent_evidence}" \
+  --evidence-uri "${kagent_evidence_uri}" \
+  --evidence-sha256 "${kagent_evidence_sha}" \
+  --gcloud "${fake_gcloud}" \
+  >"${work}/mismatched-remote-evidence.out" 2>"${work}/mismatched-remote-evidence.err"; then
+  fail "renderer accepted local evidence that differs from the exact remote generation"
+fi
+[[ ! -s "${work}/mismatched-remote-evidence.out" ]] || \
+  fail "mismatched remote kagent evidence emitted a partial fragment"
+require_literal "${work}/mismatched-remote-evidence.err" \
+  'remote evidence generation bytes do not match local evidence'
 
 valid_tfvars="${work}/valid-bootstrap.tfvars.json"
 jq '{kagent_substrate_delivery: .}' "${valid_contract}" >"${valid_tfvars}"

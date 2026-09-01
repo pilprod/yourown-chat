@@ -24,6 +24,7 @@ def main() -> int:
     parser.add_argument("--evidence", type=Path, required=True)
     parser.add_argument("--evidence-uri", required=True)
     parser.add_argument("--evidence-sha256", required=True)
+    parser.add_argument("--gcloud", default="gcloud")
     args = parser.parse_args()
 
     script_dir = Path(__file__).resolve().parent
@@ -39,16 +40,36 @@ def main() -> int:
         module_dir = repository_root / "helm/kagent"
         sys.path.insert(0, str(module_dir))
         from kagent_release_evidence import (  # pylint: disable=import-outside-toplevel
+            EVIDENCE_URI,
             expected_artifact,
             expected_helm_set_values,
             parse_manifest,
             validate_binding,
         )
 
-        evidence_path = args.evidence.resolve(strict=True)
-        if not evidence_path.is_file() or evidence_path.is_symlink():
+        if args.evidence.is_symlink():
             raise ValueError("evidence must be a regular non-symlink file")
-        manifest_json = evidence_path.read_bytes().decode("utf-8")
+        evidence_path = args.evidence.resolve(strict=True)
+        if not evidence_path.is_file():
+            raise ValueError("evidence must be a regular non-symlink file")
+        if not EVIDENCE_URI.fullmatch(args.evidence_uri):
+            raise ValueError(
+                "kagent release evidence URI must be the exact generation-qualified private .kap.5 object"
+            )
+        evidence_bytes = evidence_path.read_bytes()
+        try:
+            remote_evidence = subprocess.run(
+                [args.gcloud, "storage", "cat", args.evidence_uri],
+                check=True,
+                capture_output=True,
+            ).stdout
+        except (OSError, subprocess.CalledProcessError) as error:
+            raise ValueError(
+                "gcloud storage cat could not read the exact evidence generation"
+            ) from error
+        if remote_evidence != evidence_bytes:
+            raise ValueError("remote evidence generation bytes do not match local evidence")
+        manifest_json = evidence_bytes.decode("utf-8")
         manifest, digest = parse_manifest(manifest_json)
         if digest != args.evidence_sha256:
             raise ValueError("evidence bytes do not match --evidence-sha256")
