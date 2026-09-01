@@ -139,6 +139,7 @@ for required in \
   'local.scan_policy_evaluator_sha256' \
   'KAGENT_PUBLICATION_DRIVER_SHA256=${local.publication_driver_sha256}' \
   'KAGENT_SCAN_POLICY_EVALUATOR_SHA256=${local.scan_policy_evaluator_sha256}' \
+  'KAGENT_TRUSTED_JQ_SHA256=${local.trusted_jq_sha256}' \
   'KAGENT_EXPECTED_BUILD_ID=$BUILD_ID' \
   'KAGENT_EXPECTED_PROJECT_ID=${var.project_id}' \
   'KAGENT_EXPECTED_SOURCE_COMMIT=${var.source_commit}' \
@@ -153,6 +154,58 @@ for required in \
   grep -Fq -- "${required}" "${driver}" "${module_dir}/main.tf" ||
     fail "missing Artifact Registry publication contract: ${required}"
 done
+grep -Eq 'trusted_jq_index[[:space:]]*=[[:space:]]*"ghcr.io/jqlang/jq:1\.8\.2@sha256:b9c68867e5766576263a222e91db3de422d802069c7af70440e667a95344e486"' "${module_dir}/main.tf" ||
+  fail 'trusted JSON parser must retain the exact official jq multi-arch index provenance'
+grep -Eq 'trusted_jq_amd64_image[[:space:]]*=[[:space:]]*"ghcr.io/jqlang/jq@sha256:1e7ad54d387c3ee4cb921f8a9de0d7f2359b375f04a37d10255fda4cd119029a"' "${module_dir}/main.tf" ||
+  fail 'trusted JSON parser must pull the exact linux/amd64 child manifest'
+grep -Eq 'trusted_jq_amd64_layer[[:space:]]*=[[:space:]]*"sha256:45f05cf73251ac39adec8657aba8dc90b26a9aa53ccb34323f2fb6929eb0fc74"' "${module_dir}/main.tf" ||
+  fail 'trusted JSON parser must pin the exact linux/amd64 rootfs layer'
+grep -Eq 'trusted_jq_sha256[[:space:]]*=[[:space:]]*"b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f"' "${module_dir}/main.tf" ||
+  fail 'trusted amd64 jq binary bytes must be pinned independently of the image index'
+parser_block="$(sed -n '/id         = "materialize-pinned-json-parser"/,/^    }/p' "${module_dir}/main.tf")"
+for required in \
+  'gcr.io/cloud-builders/docker@sha256:d1797996867921778f1adbb7e493baaaf2f6b21e107599c0aab48c2ec06ff311' \
+  "docker pull --platform linux/amd64 '\${local.trusted_jq_amd64_image}'" \
+  "docker create --platform linux/amd64 '\${local.trusted_jq_amd64_image}'" \
+  'docker cp "$$container:/jq" "$$parser_stage/jq"' \
+  "docker buildx imagetools inspect --raw '\${local.trusted_jq_index}'" \
+  "docker buildx imagetools inspect --raw '\${local.trusted_jq_amd64_image}'" \
+  '] == [$$child]' \
+  'any(.layers[]; .digest == $$layer)' \
+  "'\${local.trusted_jq_sha256}'" \
+  'sha256sum --check --status'; do
+  grep -Fq -- "${required}" <<<"${parser_block}" ||
+    fail "missing pinned JSON parser materialization contract: ${required}"
+done
+if grep -Eq 'apt-get|apk add|dnf install|yum install|curl|wget' <<<"${parser_block}"; then
+  fail 'trusted JSON parser must be extracted from pinned image bytes, not installed from a mutable package or URL'
+fi
+toolchain_block="$(sed -n '/id         = "verify-pinned-cloud-sdk-tool-contract"/,/^    }/p' "${module_dir}/main.tf")"
+for required in \
+  'gcr.io/google.com/cloudsdktool/google-cloud-cli:573.0.0@sha256:f0b4abeb30773243f9ae95abe201ec01de07d5ed582b56ca52879eb3dbe209c3' \
+  'parser=/workspace/trusted-bin/jq' \
+  "'\${local.trusted_jq_sha256}'" \
+  'sha256sum --check --status' \
+  'test "$$($$parser --version)"' \
+  "jq-1.8.2" \
+  'test -x /usr/bin/python3' \
+  'for tool in awk base64 chmod cmp cut grep mktemp mv sed sha256sum sort tr wc' \
+  'test "$$(type -t mapfile)" = builtin' \
+  'if command -v docker >/dev/null 2>&1'; do
+  grep -Fq -- "${required}" <<<"${toolchain_block}" ||
+    fail "missing early pinned Cloud SDK tool contract: ${required}"
+done
+grep -Fq 'trusted JSON parser integrity check failed' "${driver}" ||
+  fail 'every trusted driver action must verify the pinned JSON parser bytes'
+grep -Fq 'export KAGENT_JQ_PATH="${trusted_jq}"' "${driver}" ||
+  fail 'driver must pass the explicit verified jq path to the scan policy evaluator'
+grep -Fq 'trusted_jq="${KAGENT_JQ_PATH}"' "${module_dir}/scripts/evaluate-scan-vulnerabilities.sh" ||
+  fail 'scan policy evaluator must use the explicit verified jq path'
+grep -Fq '/usr/bin/python3 - "${vulnerabilities_json}"' "${module_dir}/scripts/evaluate-scan-vulnerabilities.sh" ||
+  fail 'scan policy evaluator must use the exact Python path proven by the early Cloud SDK tool contract'
+if rg -n '^[[:space:]]*jq[[:space:]]' "${driver}" "${module_dir}/scripts/evaluate-scan-vulnerabilities.sh"; then
+  fail 'trusted driver and evaluator must not resolve jq from PATH'
+fi
 grep -Fq 'tag: ("v" + $version)' "${driver}" ||
   fail 'release evidence must retain the canonical artifact tag'
 grep -Fq 'exec "$$driver" finalize-receipt' "${module_dir}/main.tf" ||
@@ -185,6 +238,10 @@ grep -Fq 'toset([var.workload_identity_members.mcp])' "${components}" ||
   fail 'Google Cloud MCP identity must be the default release-topic publisher'
 
 scan_line="$(grep -n 'id         = "scan-candidate-images"' "${module_dir}/main.tf" | cut -d: -f1)"
+pre_scan_verify_line="$(grep -n 'id         = "reverify-platform-bindings-before-scan"' "${module_dir}/main.tf" | cut -d: -f1)"
+parser_line="$(grep -n 'id         = "materialize-pinned-json-parser"' "${module_dir}/main.tf" | cut -d: -f1)"
+toolchain_line="$(grep -n 'id         = "verify-pinned-cloud-sdk-tool-contract"' "${module_dir}/main.tf" | cut -d: -f1)"
+candidate_build_line="$(grep -n 'id         = "build-candidate-images"' "${module_dir}/main.tf" | cut -d: -f1)"
 package_line="$(grep -n 'id         = "package-and-reproduce-charts"' "${module_dir}/main.tf" | cut -d: -f1)"
 record_line="$(grep -n 'id         = "record-buildkit-image-digests"' "${module_dir}/main.tf" | cut -d: -f1)"
 lock_line="$(grep -n 'id         = "acquire-immutable-release-lock"' "${module_dir}/main.tf" | cut -d: -f1)"
@@ -193,6 +250,14 @@ assemble_line="$(grep -n 'id         = "assemble-deployment-evidence"' "${module
 post_assemble_verify_line="$(grep -n 'id         = "reverify-platform-bindings-after-assembly"' "${module_dir}/main.tf" | cut -d: -f1)"
 [[ "${package_line}" -lt "${record_line}" ]] ||
   fail 'all source-owned chart packaging must finish before trusted image digest recording'
+[[ "${parser_line}" -lt "${toolchain_line}" && "${toolchain_line}" -lt "${candidate_build_line}" ]] ||
+  fail 'exact parser and Cloud SDK tool closure must fail before the expensive candidate build'
+[[ "${pre_scan_verify_line}" -lt "${scan_line}" ]] ||
+  fail 'pinned Docker-builder platform binding must run before the Cloud SDK scan'
+previous_step_id="$(sed -n "1,$((scan_line - 1))p" "${module_dir}/main.tf" |
+  grep -E '^[[:space:]]+id[[:space:]]+=' | tail -n 1 | sed -E 's/.*"([^"]+)".*/\1/')"
+[[ "${previous_step_id}" == "reverify-platform-bindings-before-scan" ]] ||
+  fail 'pinned Docker-builder platform binding must be immediately before the Cloud SDK scan'
 [[ "${scan_line}" -lt "${lock_line}" && "${lock_line}" -lt "${promote_line}" ]] ||
   fail 'candidate scan and release lock must complete before any final image is promoted'
 [[ "${assemble_line}" -lt "${post_assemble_verify_line}" ]] ||
@@ -206,8 +271,14 @@ grep -Fq 'docker buildx imagetools inspect --raw "${candidate_digest}"' "${drive
   fail 'platform child digests must be extracted from the exact candidate index digest, never a mutable staging tag'
 scan_action="$(sed -n '/^  scan-images)/,/^    ;;/p' "${driver}")"
 promotion_action="$(sed -n '/^  promote-images)/,/^    ;;/p' "${driver}")"
-grep -Fq 'verify_remote_platform_binding "${component}"' <<<"${scan_action}" ||
-  fail 'scan must re-derive and compare the index platform children from the exact registry digest'
+if grep -Eq '^[[:space:]]*docker[[:space:]]|verify_remote_platform_binding|inspect_digest' <<<"${scan_action}"; then
+  fail 'Cloud SDK scan action must not require Docker or repeat registry index inspection'
+fi
+grep -Fq 'reference="$(staging_image_repository "${component}")@${digest}"' <<<"${scan_action}" ||
+  fail 'scan must address each child by immutable staging digest only'
+if grep -Fq 'candidate_tag' <<<"${scan_action}"; then
+  fail 'scan action must not use a mutable staging tag'
+fi
 grep -Fq 'verify_remote_platform_binding "${component}"' <<<"${promotion_action}" ||
   fail 'promotion must re-derive and compare the index platform children from the exact registry digest'
 grep -Fq '.annotations["vnd.docker.reference.type"] == "attestation-manifest"' "${driver}" ||
@@ -216,6 +287,42 @@ if grep -Fq 'shift' <<<"$(sed -n '/id         = "materialize-release-driver"/,/^
   fail 'driver materialization must preserve every base64 chunk passed after bash argv[0]'
 fi
 scan_block="$(sed -n '/id         = "scan-candidate-images"/,/^    }/p' "${module_dir}/main.tf")"
+pre_scan_verify_block="$(sed -n '/id         = "reverify-platform-bindings-before-scan"/,/^    }/p' "${module_dir}/main.tf")"
+grep -Fq 'gcr.io/cloud-builders/docker@sha256:d1797996867921778f1adbb7e493baaaf2f6b21e107599c0aab48c2ec06ff311' <<<"${pre_scan_verify_block}" ||
+  fail 'pre-scan platform binding must run in the pinned Docker builder'
+grep -Fq 'local.publication_driver_chunks' <<<"${pre_scan_verify_block}" ||
+  fail 'pre-scan platform binding must reconstruct the Terraform-pinned driver'
+grep -Fq "printf '%s  %s\\n' '\${local.publication_driver_sha256}'" <<<"${pre_scan_verify_block}" ||
+  fail 'pre-scan platform binding must verify the Terraform-pinned driver hash'
+grep -Fq 'exec "$$driver" verify-platform-bindings' <<<"${pre_scan_verify_block}" ||
+  fail 'pre-scan Docker builder must re-read exact index platform children'
+if grep -Fq 'kagent-fork-preview-tools' <<<"${pre_scan_verify_block}"; then
+  fail 'source-built toolbox must not be trusted for final pre-scan platform binding'
+fi
+if grep -Eq '^[[:space:]]*docker[[:space:]]|cloud-builders/docker|kagent-fork-preview-tools' <<<"${scan_block}"; then
+  fail 'pinned Cloud SDK scan step must not require Docker or a source-built toolbox'
+fi
+
+for source_step in \
+  verify-release-source \
+  package-and-reproduce-charts \
+  record-buildkit-image-digests \
+  record-candidate-platform-digests \
+  publish-final-charts \
+  assemble-deployment-evidence; do
+  source_block="$(sed -n "/id         = \"${source_step}\"/,/^    }/p" "${module_dir}/main.tf")"
+  grep -Fq -- '--volume /workspace/trusted-bin:/workspace/trusted-bin:ro' <<<"${source_block}" ||
+    fail "source-built toolbox step ${source_step} must receive the trusted parser read-only"
+done
+for source_driver_step in \
+  record-buildkit-image-digests \
+  record-candidate-platform-digests \
+  publish-final-charts \
+  assemble-deployment-evidence; do
+  source_driver_block="$(sed -n "/id         = \"${source_driver_step}\"/,/^    }/p" "${module_dir}/main.tf")"
+  grep -Fq -- '--env KAGENT_TRUSTED_JQ_SHA256' <<<"${source_driver_block}" ||
+    fail "nested trusted driver step ${source_driver_step} must receive the parser SHA pin"
+done
 grep -Fq 'driver_chunks=("$$${@:1:driver_chunk_count}")' <<<"${scan_block}" ||
   fail 'scan step must reconstruct the trusted driver from its Terraform chunks'
 grep -Fq 'local.publication_driver_chunks' <<<"${scan_block}" ||
@@ -268,6 +375,12 @@ for trusted_block in "${finalizer_block}" "${upload_block}"; do
   grep -Fq "'\${local.publication_driver_sha256}'" <<<"${trusted_block}" ||
     fail 'finalization and upload must each verify the Terraform-pinned driver digest'
 done
+grep -Fq 'jq_path=/workspace/trusted-bin/jq' <<<"${upload_block}" ||
+  fail 'receipt uploader must use the explicit pinned JSON parser path'
+grep -Fq "'\${local.trusted_jq_sha256}' \"\$\$jq_path\"" <<<"${upload_block}" ||
+  fail 'receipt uploader must verify the parser SHA immediately before inline JSON generation'
+grep -Fq '"$$jq_path" -n' <<<"${upload_block}" ||
+  fail 'receipt uploader must not resolve jq from the Cloud SDK image PATH'
 if grep -Eq '(^|[^$])\$\$\{' "${module_dir}/main.tf"; then
   fail 'Terraform must render braced shell expansions as Cloud Build $$ escapes, never single-dollar substitutions'
 fi
