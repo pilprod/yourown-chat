@@ -111,8 +111,12 @@ mkdir -p "${log_dir}"
 } >> "${log_dir}/calls.log"
 
 all_args="$*"
-if [[ "${all_args}" == *' delete pod/'* && "${FAKE_POD_DELETE_FAIL:-0}" == 1 ]]; then
+if [[ "${all_args}" == *' delete pod/substrate-enrollment-'* && "${FAKE_POD_DELETE_FAIL:-0}" == 1 ]]; then
   exit 75
+fi
+if [[ "${all_args}" == *' delete pod/substrate-atespace-'* &&
+  "${FAKE_ATESPACE_CONTROL_POD_DELETE_FAIL:-0}" == 1 ]]; then
+  exit 74
 fi
 if [[ "${all_args}" == config\ get-contexts* ]]; then
   printf '%s\n' 'fixture-context'
@@ -142,19 +146,82 @@ if [[ "${all_args}" == *' create configmap '* ]]; then
 fi
 if [[ "${all_args}" == *' create -f -'* ]]; then
   manifest="${log_dir}/incoming.$$.yaml"
+  pod_is_atespace_control=0
   while IFS= read -r line; do
     printf '%s\n' "${line}" >> "${manifest}"
   done
   kind="$(awk '/^kind: / {print $2; exit}' "${manifest}")"
   case "${kind}" in
     NetworkPolicy) cp "${manifest}" "${log_dir}/networkpolicy.yaml" ;;
-    Pod) cp "${manifest}" "${log_dir}/pod.yaml" ;;
+    Pod)
+      pod_name="$(awk '
+        $0 == "metadata:" { in_metadata = 1; next }
+        in_metadata && $1 == "name:" { print $2; exit }
+      ' "${manifest}")"
+      [[ -n "${pod_name}" ]] || exit 99
+      atespace_name="$(awk '
+        $0 == "        - atespace" {
+          getline
+          sub(/^[[:space:]]*- /, "")
+          print
+          exit
+        }
+      ' "${manifest}")"
+      if grep -Fq -- '        - external-provider-enrollment' "${manifest}"; then
+        cp "${manifest}" "${log_dir}/pod.yaml"
+        printf '%s\n' '<image-command> <admin> <create> <external-provider-enrollment>' >> "${log_dir}/calls.log"
+        printf '%s\n' "${FAKE_MAIN_EXIT_CODE:-0}" > "${log_dir}/pod-exit.${pod_name}"
+      elif grep -Fq -- '        - create' "${manifest}" &&
+        grep -Fq -- '        - atespace' "${manifest}"; then
+        pod_is_atespace_control=1
+        cp "${manifest}" "${log_dir}/atespace-create-pod.yaml"
+        printf '<image-command> <create> <atespace> <%s>\n' "${atespace_name}" >> "${log_dir}/calls.log"
+        printf '%s\n' "${FAKE_IMAGE_ATESPACE_CREATE_EXIT_CODE:-0}" > "${log_dir}/pod-exit.${pod_name}"
+      elif grep -Fq -- '        - get' "${manifest}" &&
+        grep -Fq -- '        - atespace' "${manifest}"; then
+        pod_is_atespace_control=1
+        cp "${manifest}" "${log_dir}/atespace-get-pod.yaml"
+        printf '<image-command> <get> <atespace> <%s>\n' "${atespace_name}" >> "${log_dir}/calls.log"
+        printf '%s\n' "${FAKE_IMAGE_ATESPACE_GET_EXIT_CODE:-0}" > "${log_dir}/pod-exit.${pod_name}"
+      else
+        cp "${manifest}" "${log_dir}/pod.yaml"
+        printf '%s\n' "${FAKE_MAIN_EXIT_CODE:-0}" > "${log_dir}/pod-exit.${pod_name}"
+      fi
+      ;;
     *) exit 91 ;;
   esac
+  if [[ "${pod_is_atespace_control}" -eq 1 &&
+    "${FAKE_IMAGE_CONTROL_POD_CREATE_FAIL:-0}" == 1 ]]; then
+    exit 73
+  fi
   exit 0
 fi
+if [[ "${all_args}" == *' get pod/substrate-atespace-'* &&
+  "${all_args}" == *'--output=name'* ]]; then
+  for argument in "$@"; do
+    case "${argument}" in
+      pod/*) pod_name="${argument#pod/}" ;;
+    esac
+  done
+  [[ -n "${pod_name:-}" ]] || exit 100
+  if [[ "${FAKE_IMAGE_CONTROL_POD_CONFIRM_AFTER_CREATE_FAILURE:-0}" == 1 ]]; then
+    printf 'pod/%s\n' "${pod_name}"
+    exit 0
+  fi
+  exit 72
+fi
 if [[ "${all_args}" == *' get pod/'* && "${all_args}" == *'jsonpath='* ]]; then
-  printf '%s\n' "${FAKE_MAIN_EXIT_CODE:-0}"
+  for argument in "$@"; do
+    case "${argument}" in
+      pod/*) pod_name="${argument#pod/}" ;;
+    esac
+  done
+  [[ -n "${pod_name:-}" ]] || exit 100
+  if [[ -f "${log_dir}/pod-exit.${pod_name}" ]]; then
+    cat "${log_dir}/pod-exit.${pod_name}"
+  else
+    printf '%s\n' "${FAKE_MAIN_EXIT_CODE:-0}"
+  fi
   exit 0
 fi
 if [[ "${all_args}" == *' exec -i pod/'* && "${all_args}" == *'/bin/sh -ceu'* &&
@@ -173,6 +240,18 @@ if [[ "${all_args}" == *' exec pod/'* && "${all_args}" == *' -- sha256sum '* &&
   fi
   printf '%s  %s\n' "${FAKE_REMOTE_BINARY_SHA256:-${default_remote_sha}}" \
     '/var/run/substrate-runtime/bin/kubectl-ate'
+  exit 0
+fi
+if [[ "${all_args}" == *' exec pod/'* &&
+  "${all_args}" == *'/var/run/substrate-runtime/bin/kubectl-ate'* &&
+  "${all_args}" == *' create atespace '* ]]; then
+  [[ "${FAKE_NATIVE_ATESPACE_CREATE_FAIL:-0}" != 1 ]] || exit 80
+  exit 0
+fi
+if [[ "${all_args}" == *' exec pod/'* &&
+  "${all_args}" == *'/var/run/substrate-runtime/bin/kubectl-ate'* &&
+  "${all_args}" == *' get atespace '* ]]; then
+  [[ "${FAKE_NATIVE_ATESPACE_GET_FAIL:-0}" != 1 ]] || exit 81
   exit 0
 fi
 if [[ "${all_args}" == *' exec pod/'* &&
@@ -417,11 +496,16 @@ invoke_with_source() {
   REAL_SHASUM="${real_shasum_command}" \
   FAKE_KUBECTL_LOG_DIR="${FAKE_KUBECTL_LOG_DIR}" \
   FAKE_MAIN_EXIT_CODE="${FAKE_MAIN_EXIT_CODE:-0}" \
+  FAKE_IMAGE_ATESPACE_CREATE_EXIT_CODE="${FAKE_IMAGE_ATESPACE_CREATE_EXIT_CODE:-0}" \
+  FAKE_IMAGE_ATESPACE_GET_EXIT_CODE="${FAKE_IMAGE_ATESPACE_GET_EXIT_CODE:-0}" \
+  FAKE_IMAGE_CONTROL_POD_CREATE_FAIL="${FAKE_IMAGE_CONTROL_POD_CREATE_FAIL:-0}" \
+  FAKE_IMAGE_CONTROL_POD_CONFIRM_AFTER_CREATE_FAILURE="${FAKE_IMAGE_CONTROL_POD_CONFIRM_AFTER_CREATE_FAILURE:-0}" \
   FAKE_CREDENTIAL_READY="${FAKE_CREDENTIAL_READY:-1}" \
   FAKE_CREDENTIAL="${FAKE_CREDENTIAL:-enrollment_A1-b2}" \
   FAKE_CREDENTIAL_MODE="${FAKE_CREDENTIAL_MODE:-valid}" \
   FAKE_PERSISTENT_POLICY_CONTRACT="${FAKE_PERSISTENT_POLICY_CONTRACT:-substrate-enrollment-admin|enrollment-admin|kagent-substrate-testbed|3|0|Ingress,Egress,|0|0}" \
   FAKE_POD_DELETE_FAIL="${FAKE_POD_DELETE_FAIL:-0}" \
+  FAKE_ATESPACE_CONTROL_POD_DELETE_FAIL="${FAKE_ATESPACE_CONTROL_POD_DELETE_FAIL:-0}" \
   FAKE_CAT_FAIL="${FAKE_CAT_FAIL:-0}" \
   FAKE_POLICY_SWAP_ON_PIN_STAT="${FAKE_POLICY_SWAP_ON_PIN_STAT:-0}" \
   FAKE_POLICY_SWAP_MARKER="${FAKE_POLICY_SWAP_MARKER:-${temporary_dir}/unused-policy-swap-marker}" \
@@ -436,6 +520,8 @@ invoke_with_source() {
   FAKE_REMOTE_DIGEST_FAIL="${FAKE_REMOTE_DIGEST_FAIL:-0}" \
   FAKE_REMOTE_BINARY_SHA256="${FAKE_REMOTE_BINARY_SHA256:-}" \
   FAKE_NATIVE_EXEC_FAIL="${FAKE_NATIVE_EXEC_FAIL:-0}" \
+  FAKE_NATIVE_ATESPACE_CREATE_FAIL="${FAKE_NATIVE_ATESPACE_CREATE_FAIL:-0}" \
+  FAKE_NATIVE_ATESPACE_GET_FAIL="${FAKE_NATIVE_ATESPACE_GET_FAIL:-0}" \
   FAKE_CURL_FAIL="${FAKE_CURL_FAIL:-0}" \
   FAKE_CHECKSUMS_MISMATCH="${FAKE_CHECKSUMS_MISMATCH:-0}" \
   FAKE_GH_AUTHENTICATED="${FAKE_GH_AUTHENTICATED:-0}" \
@@ -550,7 +636,31 @@ forbid_pattern "${temporary_dir}/success.stderr" 'enrollment_A1-b2'
 forbid_pattern "${success_log}/calls.log" 'enrollment_A1-b2'
 
 pod_manifest="${success_log}/pod.yaml"
+atespace_create_pod_manifest="${success_log}/atespace-create-pod.yaml"
+atespace_get_pod_manifest="${success_log}/atespace-get-pod.yaml"
 networkpolicy_manifest="${success_log}/networkpolicy.yaml"
+for control_manifest in "${atespace_create_pod_manifest}" "${atespace_get_pod_manifest}"; do
+  require_literal "${control_manifest}" 'kind: Pod'
+  require_literal "${control_manifest}" "image: ${valid_kubectl_image}"
+  require_literal "${control_manifest}" 'serviceAccountName: ate-enrollment-admin'
+  require_literal "${control_manifest}" '    app.kubernetes.io/name: substrate-enrollment-admin'
+  require_literal "${control_manifest}" '    app.kubernetes.io/component: enrollment-admin'
+  require_literal "${control_manifest}" '    app.kubernetes.io/part-of: kagent-substrate-testbed'
+  require_literal "${control_manifest}" 'automountServiceAccountToken: false'
+  require_literal "${control_manifest}" 'enableServiceLinks: false'
+  require_literal "${control_manifest}" '              audience: api.ate-system.svc'
+  require_literal "${control_manifest}" '        secretName: substrate-ate-controller-tls'
+  require_literal "${control_manifest}" '        - api.ate-system.svc:443'
+  require_literal "${control_manifest}" '        - --server-name'
+  require_literal "${control_manifest}" '        allowPrivilegeEscalation: false'
+  require_literal "${control_manifest}" '        readOnlyRootFilesystem: true'
+  require_literal "${control_manifest}" '        runAsNonRoot: true'
+  require_literal "${control_manifest}" '        - atespace'
+  require_literal "${control_manifest}" '        - tenant-a'
+  forbid_pattern "${control_manifest}" '^kind: Secret$|external-provider-enrollment|enrollment_A1-b2'
+done
+require_literal "${atespace_create_pod_manifest}" '        - create'
+require_literal "${atespace_get_pod_manifest}" '        - get'
 require_literal "${pod_manifest}" 'kind: Pod'
 require_literal "${pod_manifest}" "image: ${valid_kubectl_image}"
 [[ "$(grep -Fc -- "image: ${valid_transfer_image}" "${pod_manifest}")" -eq 2 ]] ||
@@ -613,6 +723,15 @@ awk '
   /<create> <configmap>/ { create = NR }
   END { exit(preflight > 0 && create > preflight ? 0 : 1) }
 ' "${success_log}/calls.log" || fail "persistent default-deny preflight must precede ephemeral resource creation"
+awk '
+  /<image-command> <create> <atespace> <tenant-a>/ { ensure = NR }
+  /<image-command> <get> <atespace> <tenant-a>/ { readback = NR }
+  /<image-command> <admin> <create> <external-provider-enrollment>/ { enrollment = NR }
+  END {
+    exit(ensure > 0 && readback > ensure && enrollment > readback ? 0 : 1)
+  }
+' "${success_log}/calls.log" ||
+  fail "image atespace ensure and readback must precede enrollment issuance"
 
 require_literal "${substrate_values}" 'app.kubernetes.io/name: substrate-enrollment-admin'
 require_literal "${substrate_values}" 'app.kubernetes.io/component: enrollment-admin'
@@ -655,6 +774,15 @@ require_literal "${native_release_log}/calls.log" '<--> <sha256sum> </var/run/su
 require_literal "${native_release_log}/calls.log" '</var/run/substrate-runtime/bin/kubectl-ate>'
 require_literal "${native_release_log}/calls.log" '<admin> <create> <external-provider-enrollment>'
 require_literal "${native_release_log}/calls.log" '<--credential-file> </var/run/substrate-enrollment/private/enrollment-credential>'
+awk '
+  /<create> <atespace> <tenant-a>/ { ensure = NR }
+  /<get> <atespace> <tenant-a>/ { readback = NR }
+  /<admin> <create> <external-provider-enrollment>/ { enrollment = NR }
+  END {
+    exit(ensure > 0 && readback > ensure && enrollment > readback ? 0 : 1)
+  }
+' "${native_release_log}/calls.log" ||
+  fail "native atespace ensure and readback must precede enrollment issuance"
 forbid_pattern "${native_release_log}/calls.log" 'enrollment_A1-b2|port-forward'
 require_literal "${native_release_log}/curl.log" '<https://api.github.com/repos/pilprod/substrate/releases/tags/v0.0.22>'
 require_literal "${native_release_log}/curl.log" '<https://github.com/pilprod/substrate/releases/download/v0.0.22/kubectl-ate-v0.0.22-linux-amd64.tar.gz>'
@@ -697,6 +825,84 @@ require_literal "${subject}" 'readonly kubectl_ate_release_commit="e9ed68e587b56
 require_literal "${subject}" 'readonly kubectl_ate_linux_amd64_sha256="ea43473b1bc144236541d1e9213a375f23f0a1705254332eae5465d500ce7e15"'
 require_literal "${subject}" 'readonly kubectl_ate_linux_arm64_sha256="fa6b8356c2745761ebf24e4448960fcc4e067721bcadeec603bb11364f60f211"'
 forbid_pattern "${subject}" 'gh auth (login|refresh)|^[[:space:]]*kubectl[[:space:]]+cp'
+
+image_idempotent_log="${temporary_dir}/image-idempotent-atespace-log"
+mkdir -p "${image_idempotent_log}"
+image_idempotent_output="${private_dir}/image-idempotent-atespace-token"
+FAKE_KUBECTL_LOG_DIR="${image_idempotent_log}" \
+FAKE_IMAGE_ATESPACE_CREATE_EXIT_CODE=6 \
+  invoke_subject "${image_idempotent_output}" \
+  > "${temporary_dir}/image-idempotent.stdout" 2> "${temporary_dir}/image-idempotent.stderr"
+[[ -f "${image_idempotent_output}" ]] ||
+  fail "image ALREADY_EXISTS/ambiguous atespace create did not recover through readback"
+require_literal "${image_idempotent_log}/calls.log" '<image-command> <get> <atespace> <tenant-a>'
+require_literal "${image_idempotent_log}/calls.log" '<image-command> <admin> <create> <external-provider-enrollment>'
+
+image_ambiguous_pod_create_log="${temporary_dir}/image-ambiguous-pod-create-log"
+mkdir -p "${image_ambiguous_pod_create_log}"
+image_ambiguous_pod_create_output="${private_dir}/image-ambiguous-pod-create-token"
+FAKE_KUBECTL_LOG_DIR="${image_ambiguous_pod_create_log}" \
+FAKE_IMAGE_CONTROL_POD_CREATE_FAIL=1 \
+FAKE_IMAGE_CONTROL_POD_CONFIRM_AFTER_CREATE_FAILURE=1 \
+  invoke_subject "${image_ambiguous_pod_create_output}" \
+  > "${temporary_dir}/image-ambiguous-pod-create.stdout" \
+  2> "${temporary_dir}/image-ambiguous-pod-create.stderr"
+[[ -f "${image_ambiguous_pod_create_output}" ]] ||
+  fail "confirmed ambiguous atespace control Pod create did not continue"
+require_literal "${image_ambiguous_pod_create_log}/calls.log" '<get> <pod/substrate-atespace-create-'
+require_literal "${image_ambiguous_pod_create_log}/calls.log" '<--output=name>'
+require_literal "${image_ambiguous_pod_create_log}/calls.log" '<image-command> <admin> <create> <external-provider-enrollment>'
+awk '
+  /<get> <pod\/substrate-atespace-create-[^>]*> <--output=name>/ { confirmation = NR }
+  /<get> <pod\/substrate-atespace-create-[^>]*> <--output=jsonpath=/ { status_wait = NR }
+  END { exit(confirmation > 0 && status_wait > confirmation ? 0 : 1) }
+' "${image_ambiguous_pod_create_log}/calls.log" ||
+  fail "ambiguous control Pod create must be confirmed before status waiting"
+
+image_unconfirmed_pod_create_log="${temporary_dir}/image-unconfirmed-pod-create-log"
+mkdir -p "${image_unconfirmed_pod_create_log}"
+FAKE_KUBECTL_LOG_DIR="${image_unconfirmed_pod_create_log}" \
+FAKE_IMAGE_CONTROL_POD_CREATE_FAIL=1 \
+FAKE_IMAGE_CONTROL_POD_CONFIRM_AFTER_CREATE_FAILURE=0 \
+  expect_failure image-unconfirmed-control-pod-create \
+    'could not confirm the restricted atespace control Pod after its create request failed' \
+    "${private_dir}/image-unconfirmed-control-pod-create-token"
+require_literal "${image_unconfirmed_pod_create_log}/calls.log" '<get> <pod/substrate-atespace-create-'
+require_literal "${image_unconfirmed_pod_create_log}/calls.log" '<--output=name>'
+forbid_pattern "${image_unconfirmed_pod_create_log}/calls.log" \
+  '<get> <pod/substrate-atespace-create-[^>]*> <--output=jsonpath='
+forbid_pattern "${image_unconfirmed_pod_create_log}/calls.log" \
+  '<image-command> <admin> <create> <external-provider-enrollment>'
+require_literal "${image_unconfirmed_pod_create_log}/calls.log" 'delete> <configmap/substrate-enrollment-policy-'
+require_literal "${image_unconfirmed_pod_create_log}/calls.log" 'delete> <networkpolicy/substrate-enrollment-egress-'
+
+image_control_delete_failure_log="${temporary_dir}/image-control-delete-failure-log"
+mkdir -p "${image_control_delete_failure_log}"
+FAKE_KUBECTL_LOG_DIR="${image_control_delete_failure_log}" \
+FAKE_ATESPACE_CONTROL_POD_DELETE_FAIL=1 \
+  expect_failure image-control-pod-delete \
+    'could not confirm deletion of the restricted atespace control Pod' \
+    "${private_dir}/image-control-pod-delete-token"
+require_literal "${temporary_dir}/image-control-pod-delete.stderr" \
+  'cleanup could not confirm atespace control Pod deletion; retaining NetworkPolicy and ConfigMap'
+[[ "$(grep -Fc -- 'delete> <pod/substrate-atespace-create-' "${image_control_delete_failure_log}/calls.log")" -ge 2 ]] ||
+  fail "atespace control Pod delete failure was not retried during cleanup"
+forbid_pattern "${image_control_delete_failure_log}/calls.log" \
+  'external-provider-enrollment|delete> <configmap/substrate-enrollment-policy-|delete> <networkpolicy/substrate-enrollment-egress-'
+forbid_pattern "${temporary_dir}/image-control-pod-delete.stderr" 'DO NOT RETRY automatically'
+
+image_readback_failure_log="${temporary_dir}/image-readback-failure-log"
+mkdir -p "${image_readback_failure_log}"
+FAKE_KUBECTL_LOG_DIR="${image_readback_failure_log}" \
+FAKE_IMAGE_ATESPACE_GET_EXIT_CODE=7 \
+  expect_failure image-atespace-readback \
+    'exact owner atespace could not be read back in-cluster; enrollment was not issued' \
+    "${private_dir}/image-atespace-readback-token"
+forbid_pattern "${image_readback_failure_log}/calls.log" 'external-provider-enrollment'
+require_literal "${image_readback_failure_log}/calls.log" 'delete> <pod/substrate-atespace-get-'
+require_literal "${image_readback_failure_log}/calls.log" 'delete> <configmap/substrate-enrollment-policy-'
+require_literal "${image_readback_failure_log}/calls.log" 'delete> <networkpolicy/substrate-enrollment-egress-'
+forbid_pattern "${temporary_dir}/image-atespace-readback.stderr" 'DO NOT RETRY automatically'
 
 failure_log="${temporary_dir}/main-failure-log"
 mkdir -p "${failure_log}"
@@ -759,6 +965,8 @@ TRANSFER_IMAGE='registry.k8s.io/busybox:1.37' \
   expect_failure tagged-transfer '--transfer-image must be an exact' "${private_dir}/tagged-transfer"
 NAMESPACE='Bad_Namespace' \
   expect_failure bad-namespace '--namespace must be one DNS-1123 label' "${private_dir}/bad-namespace"
+OWNER_ATESPACE='Bad_owner' \
+  expect_failure bad-owner-atespace '--owner-atespace must be one DNS-1123 label' "${private_dir}/bad-owner-atespace"
 API_ENDPOINT='10.0.0.1:443' \
   expect_failure wrong-endpoint '--api-endpoint must be exactly api.ate-system.svc:443' "${private_dir}/wrong-endpoint"
 SERVER_NAME='unexpected.example' \
@@ -861,6 +1069,28 @@ FAKE_KUBECTL_LOG_DIR="${native_upload_failure_log}" FAKE_NATIVE_UPLOAD_FAIL=1 \
     "${private_dir}/native-upload-failure"
 forbid_pattern "${temporary_dir}/native-upload-failure.stderr" 'DO NOT RETRY automatically'
 require_literal "${native_upload_failure_log}/calls.log" 'delete> <pod/substrate-enrollment-'
+
+native_idempotent_log="${temporary_dir}/native-idempotent-atespace-log"
+mkdir -p "${native_idempotent_log}"
+native_idempotent_output="${private_dir}/native-idempotent-atespace-token"
+FAKE_KUBECTL_LOG_DIR="${native_idempotent_log}" \
+FAKE_NATIVE_ATESPACE_CREATE_FAIL=1 \
+  invoke_native_release "${native_idempotent_output}" \
+  > "${temporary_dir}/native-idempotent.stdout" 2> "${temporary_dir}/native-idempotent.stderr"
+[[ -f "${native_idempotent_output}" ]] ||
+  fail "native ALREADY_EXISTS/ambiguous atespace create did not recover through readback"
+require_literal "${native_idempotent_log}/calls.log" '<get> <atespace> <tenant-a>'
+require_literal "${native_idempotent_log}/calls.log" '<admin> <create> <external-provider-enrollment>'
+
+native_readback_failure_log="${temporary_dir}/native-readback-failure-log"
+mkdir -p "${native_readback_failure_log}"
+FAKE_KUBECTL_LOG_DIR="${native_readback_failure_log}" \
+FAKE_NATIVE_ATESPACE_GET_FAIL=1 \
+  expect_native_release_failure native-atespace-readback \
+    'exact owner atespace could not be read back in-cluster; enrollment was not issued' \
+    "${private_dir}/native-atespace-readback-token"
+forbid_pattern "${native_readback_failure_log}/calls.log" '<admin> <create> <external-provider-enrollment>'
+forbid_pattern "${temporary_dir}/native-atespace-readback.stderr" 'DO NOT RETRY automatically'
 
 native_exec_failure_log="${temporary_dir}/native-exec-failure-log"
 mkdir -p "${native_exec_failure_log}"

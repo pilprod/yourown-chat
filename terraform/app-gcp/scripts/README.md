@@ -124,9 +124,12 @@ never fills them with placeholders or defaults.
 
 `issue-substrate-external-provider-enrollment.sh` issues the single-use local
 Agent Host enrollment through the in-cluster ate-api service. It creates one
-unique restricted Pod, one policy ConfigMap and one run-scoped allow
-NetworkPolicy in the Substrate namespace, then removes all three on success or
-failure. Terraform installs the persistent
+unique restricted enrollment Pod, one policy ConfigMap and one run-scoped allow
+NetworkPolicy in the Substrate namespace, then removes them on success or
+failure. The legacy image-backed path also uses two sequential restricted
+control Pods for the atespace create attempt and mandatory readback; native mode
+runs both commands inside the verified transfer Pod. Terraform installs the
+persistent
 `substrate-enrollment-admin-default-deny` NetworkPolicy during bootstrap; the
 script verifies its exact fixed-label, empty ingress/egress contract before it
 creates any ephemeral resource. It never creates a Kubernetes Secret for the
@@ -142,6 +145,19 @@ projected ServiceAccount audience to agree exactly as
 `api.ate-system.svc:443` and `api.ate-system.svc`. The selected ServiceAccount
 must already be listed in `externalProviderEnrollmentAdmins`; app-gcp creates
 `ate-system/ate-enrollment-admin` for this purpose.
+
+Immediately before enrollment issuance, the helper attempts
+`create atespace <owner>` with the exact validated `--owner-atespace`, then
+requires `get atespace <owner>` to succeed through the same pinned in-cluster
+`kubectl-ate v0.0.22` path. The create exit is deliberately non-authoritative:
+both `ALREADY_EXISTS` and a transport failure after a committed create are
+resolved by the exact-name readback. A failed or missing readback stops before
+`admin create external-provider-enrollment`; no enrollment credential can be
+issued on that path. In legacy image mode, an error while creating either
+control Pod triggers one immediate exact-name Pod readback. The helper enters
+the bounded status wait only when that Pod object is confirmed; an unconfirmed
+create fails closed immediately, while a confirmed object handles the valid
+"request committed, response lost" case.
 
 Before running it:
 

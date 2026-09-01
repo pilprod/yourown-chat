@@ -444,6 +444,16 @@ refresh action. The helper does not pass credential bytes through Terraform
 state, a Kubernetes Secret, ConfigMap, Pod logs, command arguments, or a
 port-forward.
 
+Before the enrollment RPC, the exact validated owner atespace is ensured over
+that same in-cluster control path: `create atespace <owner>` is attempted and
+`get atespace <owner>` must then succeed. The create result is not trusted by
+itself because an existing atespace and an ambiguous transport failure after a
+server-side commit are both safe only after exact-name readback. A failed
+readback blocks `admin create external-provider-enrollment` entirely. If the
+legacy image path receives an error while creating a control Pod, it performs
+an immediate exact-name Pod readback and enters the bounded status wait only
+when that object is confirmed; an unconfirmed create fails closed immediately.
+
 The enrollment helper is not part of the native Secret bootstrap and does not
 change any activation attestation. Run it only after the app-gcp bootstrap
 prerequisites and the reviewed immutable transfer image digest exist.

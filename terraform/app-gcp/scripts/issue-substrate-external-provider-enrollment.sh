@@ -28,8 +28,8 @@ readonly kubectl_ate_binary_path="/var/run/substrate-runtime/bin/kubectl-ate"
 
 usage() {
   cat <<'EOF'
-Issue one scoped Substrate external-provider enrollment from an ephemeral,
-restricted in-cluster Pod. The credential is never sent through Terraform,
+Issue one scoped Substrate external-provider enrollment from restricted,
+ephemeral in-cluster Pods. The credential is never sent through Terraform,
 a Kubernetes Secret, Pod logs, or a port-forward.
 
 Usage:
@@ -62,6 +62,12 @@ upload. An existing authenticated compatible gh CLI adds GitHub's signed
 immutable-release attestation check without prompting or changing auth. A
 supplied archive must be an owner-only regular file and match the same release
 digest. Darwin assets are not accepted because the binary executes on Linux.
+
+Before issuing the enrollment, the exact validated owner atespace is ensured
+through the same pinned in-cluster kubectl-ate v0.0.22 control path. A create is
+always attempted, then an exact-name get is mandatory. Create failure alone is
+not authoritative (ALREADY_EXISTS and an ambiguous committed request are both
+valid); enrollment remains blocked unless the readback succeeds.
 
 Every supplied container image must be an exact sha256 digest reference without
 a tag. The transfer image must be a reviewed, minimal image that provides
@@ -598,9 +604,11 @@ local_partial=""
 staged_archive=""
 runtime_binary=""
 pod_name=""
+atespace_control_pod_name=""
 configmap_name=""
 networkpolicy_name=""
 pod_may_exist=0
+atespace_control_pod_may_exist=0
 configmap_may_exist=0
 networkpolicy_may_exist=0
 issuance_may_have_happened=0
@@ -623,6 +631,15 @@ cleanup() {
       pod_absent=0
       cleanup_failed=1
       printf 'Substrate enrollment cleanup could not confirm Pod deletion; retaining NetworkPolicy and ConfigMap for safe operator cleanup\n' >&2
+    fi
+  fi
+
+  if [[ "${atespace_control_pod_may_exist}" -eq 1 ]]; then
+    if ! kubectl --context="${kube_context}" --namespace="${namespace}" --request-timeout=30s \
+      delete "pod/${atespace_control_pod_name}" --ignore-not-found --wait=true --timeout=60s >/dev/null 2>&1; then
+      pod_absent=0
+      cleanup_failed=1
+      printf 'Substrate enrollment cleanup could not confirm atespace control Pod deletion; retaining NetworkPolicy and ConfigMap for safe operator cleanup\n' >&2
     fi
   fi
 
@@ -687,6 +704,35 @@ cleanup() {
 }
 trap cleanup EXIT
 trap 'exit 130' INT TERM HUP
+
+wait_for_atespace_control_pod_exit() {
+  local description="$1"
+  local status_file="${scratch_dir}/${description}-exit-code"
+  local deadline=$((SECONDS + wait_timeout_seconds))
+
+  atespace_control_exit=""
+  while (( SECONDS < deadline )); do
+    : > "${status_file}"
+    if kubectl --context="${kube_context}" --namespace="${namespace}" --request-timeout=30s \
+      get "pod/${atespace_control_pod_name}" \
+      --output='jsonpath={range .status.containerStatuses[?(@.name=="atespace-control")]}{.state.terminated.exitCode}{end}' \
+      > "${status_file}"; then
+      IFS= read -r atespace_control_exit < "${status_file}" || [[ -n "${atespace_control_exit}" ]]
+      [[ -z "${atespace_control_exit}" ]] || return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+delete_atespace_control_pod() {
+  if ! kubectl --context="${kube_context}" --namespace="${namespace}" --request-timeout=30s \
+    delete "pod/${atespace_control_pod_name}" --ignore-not-found --wait=true --timeout=60s >/dev/null 2>&1; then
+    fail "could not confirm deletion of the restricted atespace control Pod"
+  fi
+  atespace_control_pod_may_exist=0
+  atespace_control_pod_name=""
+}
 
 scratch_dir="$(mktemp -d /tmp/yourown-chat-enrollment.XXXXXXXX)"
 chmod 0700 "${scratch_dir}"
@@ -1004,13 +1050,147 @@ spec:
           port: 443
 EOF
 
-# The API server can accept the Pod while the client sees an ambiguous create
-# failure. The image mode starts issuance as part of Pod startup, so its
-# no-automatic-retry fence begins before create. Native mode starts only a
-# transfer sleeper and delays that fence until the explicit exec below.
-pod_may_exist=1
+# The image-backed CLI cannot be assumed to contain a shell, so its idempotent
+# atespace ensure uses two short-lived, sequential control Pods. Failure from
+# `create atespace` is deliberately not authoritative: ALREADY_EXISTS and a
+# transport failure after server-side commit are both resolved by the mandatory
+# `get atespace` readback. The readback Pod must terminate successfully before
+# the enrollment Pod is even submitted.
+run_image_atespace_control() {
+  local verb="$1"
+  local description="atespace-${verb}"
+  local control_completed=0
+  local pod_create_failed=0
+  local pod_confirmation_file="${scratch_dir}/${description}-pod-confirmation"
+
+  atespace_control_pod_name="substrate-${description}-${run_suffix}"
+  atespace_control_pod_may_exist=1
+  if ! kubectl --context="${kube_context}" --namespace="${namespace}" --request-timeout=30s \
+    create -f - >/dev/null <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ${atespace_control_pod_name}
+  namespace: ${namespace}
+  labels:
+    app.kubernetes.io/name: substrate-enrollment-admin
+    app.kubernetes.io/component: enrollment-admin
+    app.kubernetes.io/part-of: kagent-substrate-testbed
+    yourown.chat/enrollment-run: ${run_suffix}
+spec:
+  restartPolicy: Never
+  activeDeadlineSeconds: 120
+  automountServiceAccountToken: false
+  enableServiceLinks: false
+  terminationGracePeriodSeconds: 5
+  serviceAccountName: ${service_account}
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    fsGroup: 65532
+    fsGroupChangePolicy: OnRootMismatch
+    seccompProfile:
+      type: RuntimeDefault
+  volumes:
+    - name: substrate-token
+      projected:
+        defaultMode: 0440
+        sources:
+          - serviceAccountToken:
+              path: token
+              audience: ${expected_server_name}
+              expirationSeconds: 600
+    - name: substrate-server-ca
+      secret:
+        secretName: ${ca_secret}
+        defaultMode: 0444
+        items:
+          - key: server-ca.pem
+            path: server-ca.pem
+  containers:
+    - name: atespace-control
+      image: ${kubectl_ate_image}
+      imagePullPolicy: IfNotPresent
+      args:
+        - --endpoint
+        - ${api_endpoint}
+        - --token-file
+        - ${token_path}
+        - --server-ca-file
+        - ${server_ca_path}
+        - --server-name
+        - ${server_name}
+        - ${verb}
+        - atespace
+        - ${owner_atespace}
+      terminationMessagePolicy: File
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        capabilities:
+          drop:
+            - ALL
+      resources:
+        requests:
+          cpu: 5m
+          memory: 16Mi
+        limits:
+          cpu: 100m
+          memory: 64Mi
+      volumeMounts:
+        - name: substrate-token
+          mountPath: /var/run/secrets/substrate
+          readOnly: true
+        - name: substrate-server-ca
+          mountPath: /var/run/secrets/substrate-ca
+          readOnly: true
+EOF
+  then
+    pod_create_failed=1
+  fi
+
+  if [[ "${pod_create_failed}" -eq 1 ]]; then
+    # A failed create can mean either that the API server rejected the request
+    # or that it committed the Pod but the response was lost. Resolve that
+    # ambiguity immediately with one authoritative exact-name readback. Never
+    # enter the long status wait unless the Pod itself is confirmed.
+    : > "${pod_confirmation_file}"
+    if ! kubectl --context="${kube_context}" --namespace="${namespace}" --request-timeout=30s \
+      get "pod/${atespace_control_pod_name}" --output=name > "${pod_confirmation_file}" ||
+      ! awk -v expected="pod/${atespace_control_pod_name}" '
+        NR == 1 && $0 == expected { exact = 1; next }
+        { exact = 0 }
+        END { exit(exact ? 0 : 1) }
+      ' "${pod_confirmation_file}"; then
+      fail "could not confirm the restricted atespace control Pod after its create request failed"
+    fi
+  fi
+
+  if wait_for_atespace_control_pod_exit "${description}"; then
+    control_completed=1
+  fi
+  delete_atespace_control_pod
+
+  if [[ "${verb}" == "get" ]]; then
+    [[ "${control_completed}" -eq 1 && "${atespace_control_exit}" == "0" ]] ||
+      fail "the exact owner atespace could not be read back in-cluster; enrollment was not issued"
+  fi
+}
+
+# The API server can accept the enrollment Pod while the client sees an
+# ambiguous create failure. Image mode starts issuance as part of Pod startup,
+# so its no-automatic-retry fence begins only after the atespace readback.
+# Native mode starts only a transfer sleeper and delays that fence until the
+# explicit enrollment exec below.
 if [[ "${kubectl_ate_mode}" == "image" ]]; then
+  run_image_atespace_control create
+  run_image_atespace_control get
   issuance_may_have_happened=1
+  pod_may_exist=1
   kubectl --context="${kube_context}" --namespace="${namespace}" --request-timeout=30s \
     create -f - >/dev/null <<EOF
 apiVersion: v1
@@ -1207,6 +1387,7 @@ EOF
   [[ "${main_exit}" == "0" ]] ||
     fail "the in-cluster enrollment command exited unsuccessfully; credential output was not read"
 else
+  pod_may_exist=1
   kubectl --context="${kube_context}" --namespace="${namespace}" --request-timeout=30s \
     create -f - >/dev/null <<EOF
 apiVersion: v1
@@ -1341,6 +1522,29 @@ EOF
     fail "the in-cluster kubectl-ate digest response was malformed"
   [[ "${remote_binary_digest}" == "${expected_binary_sha256}" ]] ||
     fail "the transferred in-cluster kubectl-ate binary digest does not match the pinned release"
+
+  # Creation is idempotent only when paired with a successful readback. Ignore
+  # the create exit because ALREADY_EXISTS and a transport failure after commit
+  # are indistinguishable here; the exact-name get is the mandatory fence that
+  # proves the owner atespace exists before enrollment issuance.
+  if ! kubectl --context="${kube_context}" --namespace="${namespace}" --request-timeout=120s \
+    exec "pod/${pod_name}" -c transfer -- "${kubectl_ate_binary_path}" \
+      --endpoint "${api_endpoint}" \
+      --token-file "${token_path}" \
+      --server-ca-file "${server_ca_path}" \
+      --server-name "${server_name}" \
+      create atespace "${owner_atespace}" >/dev/null 2>&1; then
+    :
+  fi
+  if ! kubectl --context="${kube_context}" --namespace="${namespace}" --request-timeout=120s \
+    exec "pod/${pod_name}" -c transfer -- "${kubectl_ate_binary_path}" \
+      --endpoint "${api_endpoint}" \
+      --token-file "${token_path}" \
+      --server-ca-file "${server_ca_path}" \
+      --server-name "${server_name}" \
+      get atespace "${owner_atespace}" >/dev/null 2>&1; then
+    fail "the exact owner atespace could not be read back in-cluster; enrollment was not issued"
+  fi
 
   # The exec request may reach the Pod even if the local kubectl process reports
   # a transport error, so all failures from this point are issuance-ambiguous.
