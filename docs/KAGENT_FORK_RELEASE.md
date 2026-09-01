@@ -51,7 +51,11 @@ The BuildKit daemon image is digest-pinned and recorded in the receipt. Each
 candidate index is resolved into its exact `linux/amd64` and `linux/arm64`
 child manifests; both child digests are scanned before any final image or chart
 reference is published. A High or Critical result on either platform fails the
-build.
+build except for the exact, audited Istio pseudo-version findings recorded by
+policy `kagent-istio-pseudoversion-google-scanner-v1`. That exception is limited
+to the controller, the reviewed module version, two named architectures and five
+named CVEs; any schema drift, unknown severity or additional finding fails
+closed. The policy decision binds the raw scanner response and evaluator hashes.
 
 The build writes a build-ID-specific, write-once receipt below:
 
@@ -60,9 +64,12 @@ gs://yourown-chat-kagent-preview-evidence-europe-west3/kagent/<version>/<build-i
 ```
 
 The receipt contains schema-3 `release-evidence.json`, its checksum, both chart
-archives, scan results and a schema-2 Cloud Build identity receipt. The release
-evidence keeps the canonical `v<version>` artifact tag, while the identity
-receipt records the reviewed `gcp-v<version>` source tag separately. The deployment input
+archives, scan results, a schema-2 Cloud Build identity receipt and an app-gcp
+release receipt that binds the evidence and checksum-manifest hashes. Every
+object is uploaded from an exact whitelist with create-only preconditions; the
+build emits generation-qualified evidence and receipt URIs. The release evidence
+keeps the canonical `v<version>` artifact tag, while the identity receipt records
+the reviewed `gcp-v<version>` source tag separately. The deployment input
 must copy only the immutable digest references and the verified manifest hash
 from this receipt. Cloud Deploy renders one `kagent-substrate` release with a
 `kagent-dev` stage and an approval-gated `kagent-prod` stage. Both stages consume
@@ -81,7 +88,7 @@ commit, submit it without GitHub or Secret Manager credentials:
 
 ```bash
 terraform/app-gcp/modules/kagent-preview-publisher/scripts/publish-release-request.sh \
-  gcp-v0.0.0-external-slot.kap.4
+  gcp-v0.0.0-external-slot.kap.5
 ```
 
 The script uses the existing Google CLI OAuth session only. Build status and

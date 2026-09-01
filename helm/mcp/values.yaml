@@ -139,7 +139,7 @@ servers:
       GOOGLE_CLOUD_PROJECT: "yourown-chat"
       GOOGLE_CLOUD_SECURITY_PROJECT: "yourown-chat"
       GOOGLE_CLOUD_SECURITY_LOCATION: "europe-west3"
-      GOOGLE_CLOUD_SECURITY_REPOSITORIES: "docker"
+      GOOGLE_CLOUD_SECURITY_REPOSITORIES: "docker,kagent-preview,kagent-staging"
       GOOGLE_CLOUD_QUOTA_PROJECT: "yourown-chat"
       GOOGLE_CLOUD_DEPLOY_ENABLED: "true"
       GOOGLE_CLOUD_DEPLOY_PROJECT: "yourown-chat"
