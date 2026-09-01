@@ -14,6 +14,15 @@ image_reference="$4"
 scan_id="$5"
 output_json="$6"
 
+: "${KAGENT_JQ_PATH:?KAGENT_JQ_PATH is required}"
+: "${KAGENT_TRUSTED_JQ_SHA256:?KAGENT_TRUSTED_JQ_SHA256 is required}"
+trusted_jq="${KAGENT_JQ_PATH}"
+if [[ ! -f "${trusted_jq}" || -L "${trusted_jq}" || ! -x "${trusted_jq}" ]] ||
+  [[ "$(sha256sum "${trusted_jq}" | cut -d' ' -f1)" != "${KAGENT_TRUSTED_JQ_SHA256}" ]]; then
+  printf 'trusted JSON parser integrity check failed in scan policy evaluator\n' >&2
+  exit 1
+fi
+
 evaluator_sha256="$(sha256sum "$0" | cut -d' ' -f1)"
 input_sha256="$(sha256sum "${vulnerabilities_json}" | cut -d' ' -f1)"
 
@@ -35,7 +44,7 @@ trap 'rm -f "${temporary_output}" "${validated_input}"' EXIT
 # before any semantic evaluation. The nested type and enum checks also ensure
 # a future Container Analysis schema drift cannot silently turn a blocking
 # severity into a non-match.
-python3 - "${vulnerabilities_json}" "${validated_input}" "${image_reference}" <<'PY'
+/usr/bin/python3 - "${vulnerabilities_json}" "${validated_input}" "${image_reference}" <<'PY'
 import json
 import re
 import sys
@@ -194,7 +203,7 @@ PY
 # Every other HIGH/CRITICAL finding stays fail-closed. CVE-2022-31045 is
 # deliberately eligible only if Google raises its effective severity from
 # MEDIUM to HIGH/CRITICAL.
-jq -e \
+"${trusted_jq}" -e \
   --arg component "${component}" \
   --arg architecture "${architecture}" \
   --arg image_reference "${image_reference}" \
@@ -362,8 +371,8 @@ mv "${temporary_output}" "${output_json}"
 rm -f "${validated_input}"
 trap - EXIT
 
-if [[ "$(jq -er '.decision' "${output_json}")" != "pass" ]]; then
-  jq -c '{target, blockingHighCriticalFindings}' "${output_json}" >&2
+if [[ "$("${trusted_jq}" -er '.decision' "${output_json}")" != "pass" ]]; then
+  "${trusted_jq}" -c '{target, blockingHighCriticalFindings}' "${output_json}" >&2
   printf 'High or Critical vulnerability blocks kagent image %s for linux/%s\n' \
     "${component}" "${architecture}" >&2
   exit 1

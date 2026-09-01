@@ -24,11 +24,20 @@ scan_policy_evaluator="${workspace_root}/evaluate-kagent-scan-vulnerabilities.sh
 : "${KAGENT_REGISTRY_HOST:?KAGENT_REGISTRY_HOST is required}"
 : "${KAGENT_SCAN_POLICY_EVALUATOR_SHA256:?KAGENT_SCAN_POLICY_EVALUATOR_SHA256 is required}"
 : "${KAGENT_STAGING_PREFIX:?KAGENT_STAGING_PREFIX is required}"
+: "${KAGENT_TRUSTED_JQ_SHA256:?KAGENT_TRUSTED_JQ_SHA256 is required}"
 
 if [[ "$(sha256sum "$0" | cut -d' ' -f1)" != "${KAGENT_PUBLICATION_DRIVER_SHA256}" ]]; then
   printf 'publication driver integrity check failed\n' >&2
   exit 1
 fi
+
+trusted_jq="${workspace_root}/trusted-bin/jq"
+if [[ ! -f "${trusted_jq}" || -L "${trusted_jq}" || ! -x "${trusted_jq}" ]] ||
+  [[ "$(sha256sum "${trusted_jq}" | cut -d' ' -f1)" != "${KAGENT_TRUSTED_JQ_SHA256}" ]]; then
+  printf 'trusted JSON parser integrity check failed\n' >&2
+  exit 1
+fi
+export KAGENT_JQ_PATH="${trusted_jq}"
 
 components=(controller ui golang-adk codex-harness)
 charts=(kagent kagent-crds)
@@ -103,7 +112,7 @@ platform_digests_json() {
   golang_adk_arm64="$(platform_digest_file golang-adk arm64)" || return 1
   codex_harness_amd64="$(platform_digest_file codex-harness amd64)" || return 1
   codex_harness_arm64="$(platform_digest_file codex-harness arm64)" || return 1
-  jq -n \
+  "${trusted_jq}" -n \
     --arg controller_amd64 "${controller_amd64}" \
     --arg controller_arm64 "${controller_arm64}" \
     --arg ui_amd64 "${ui_amd64}" \
@@ -166,11 +175,11 @@ write_scan_evidence_manifest() {
       scan_id_value="$(< "${scan_id_file}")" || return 1
       reference="$(staging_image_repository "${component}")@$(platform_digest_file "${component}" "${architecture}")" || return 1
       cmp -s \
-        <(jq -r '.[].vulnerability.effectiveSeverity' \
+        <("${trusted_jq}" -r '.[].vulnerability.effectiveSeverity' \
           "${release_dir}/${evidence_prefix}-vulnerabilities.json") \
         "${severity_file}" || return 1
 
-      jq -e \
+      "${trusted_jq}" -e \
         --arg component "${component}" \
         --arg architecture "${architecture}" \
         --arg reference "${reference}" \
@@ -225,10 +234,10 @@ scan_evidence_targets_json() {
       local scan_id_value reference record high_critical_count suppressed_count blocking_count
       scan_id_value="$(< "${prefix}-scan-id.txt")" || return 1
       reference="$(staging_image_repository "${component}")@$(platform_digest_file "${component}" "${architecture}")" || return 1
-      high_critical_count="$(jq -er '.highCriticalFindingCount' "${prefix}-scan-policy.json")" || return 1
-      suppressed_count="$(jq -er '.suppressedHighCriticalFindings | length' "${prefix}-scan-policy.json")" || return 1
-      blocking_count="$(jq -er '.blockingHighCriticalFindings | length' "${prefix}-scan-policy.json")" || return 1
-      record="$(jq -n \
+      high_critical_count="$("${trusted_jq}" -er '.highCriticalFindingCount' "${prefix}-scan-policy.json")" || return 1
+      suppressed_count="$("${trusted_jq}" -er '.suppressedHighCriticalFindings | length' "${prefix}-scan-policy.json")" || return 1
+      blocking_count="$("${trusted_jq}" -er '.blockingHighCriticalFindings | length' "${prefix}-scan-policy.json")" || return 1
+      record="$("${trusted_jq}" -n \
         --arg component "${component}" \
         --arg architecture "${architecture}" \
         --arg reference "${reference}" \
@@ -260,7 +269,7 @@ scan_evidence_targets_json() {
             }
           }
         ')" || return 1
-      targets="$(jq -c --arg key "${key}" --argjson record "${record}" \
+      targets="$("${trusted_jq}" -c --arg key "${key}" --argjson record "${record}" \
         '. + {($key): $record}' <<<"${targets}")" || return 1
     done
   done
@@ -271,7 +280,7 @@ validate_platform_index_binding() {
   local component="$1"
   local manifest_file="$2"
 
-  jq -e '
+  "${trusted_jq}" -e '
     [
       .manifests[]
       | select(
@@ -291,12 +300,12 @@ validate_platform_index_binding() {
 
   for architecture in amd64 arm64; do
     local count actual expected
-    count="$(jq -er \
+    count="$("${trusted_jq}" -er \
       --arg architecture "${architecture}" \
       '[.manifests[] | select(.platform.os == "linux" and .platform.architecture == $architecture)] | length' \
       "${manifest_file}")" || return 1
     [[ "${count}" == 1 ]] || return 1
-    actual="$(jq -er \
+    actual="$("${trusted_jq}" -er \
       --arg architecture "${architecture}" \
       '.manifests[] | select(.platform.os == "linux" and .platform.architecture == $architecture) | .digest' \
       "${manifest_file}")" || return 1
@@ -352,7 +361,7 @@ verify_remote_release_lock() {
   [[ -f "${release_dir}/release-lock.json" && ! -L "${release_dir}/release-lock.json" ]] || return 1
   remote_lock="$(mktemp)" || return 1
   gcloud storage cat "${lock_base_uri}#${generation}" > "${remote_lock}" || return 1
-  jq -e \
+  "${trusted_jq}" -e \
     --arg build_id "${build_id}" \
     --arg source_commit "${source_commit}" \
     --arg version "${version}" \
@@ -391,11 +400,11 @@ validate_release_evidence() {
   release_lock_sha256="${verified_release_lock_sha256}"
   lock_uri="${verified_release_lock_uri}"
   platform_digests="$(platform_digests_json)" || return 1
-  jq -e --argjson expected "${platform_digests}" \
+  "${trusted_jq}" -e --argjson expected "${platform_digests}" \
     '. == $expected' "${release_inputs}/platform-image-digests.json" >/dev/null || return 1
   expected_scan_targets="$(scan_evidence_targets_json)" || return 1
 
-  jq -e \
+  "${trusted_jq}" -e \
     --arg source_commit "${source_commit}" \
     --arg tag "v${version}" \
     --arg evaluator_sha256 "${KAGENT_SCAN_POLICY_EVALUATOR_SHA256}" \
@@ -549,7 +558,7 @@ case "${action}" in
     mkdir -p "${release_inputs}"
     for component in "${components[@]}"; do
       metadata="${release_inputs}/build-${component}.json"
-      digest="$(jq -er '."containerimage.digest"' "${metadata}")"
+      digest="$("${trusted_jq}" -er '."containerimage.digest"' "${metadata}")"
       [[ "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]
       printf '%s=%s\n' "${component}" "${digest}" \
         > "${release_inputs}/image-${component}.txt"
@@ -575,7 +584,7 @@ case "${action}" in
     for component in "${components[@]}"; do
       manifest_file="${release_inputs}/index-${component}.json"
       [[ -f "${manifest_file}" ]]
-      jq -e '
+      "${trusted_jq}" -e '
         [
           .manifests[]
           | select(
@@ -593,12 +602,12 @@ case "${action}" in
         | length == 0
       ' "${manifest_file}" >/dev/null
       for architecture in amd64 arm64; do
-        count="$(jq -er \
+        count="$("${trusted_jq}" -er \
           --arg architecture "${architecture}" \
           '[.manifests[] | select(.platform.os == "linux" and .platform.architecture == $architecture)] | length' \
           "${manifest_file}")"
         [[ "${count}" == 1 ]]
-        digest="$(jq -er \
+        digest="$("${trusted_jq}" -er \
           --arg architecture "${architecture}" \
           '.manifests[] | select(.platform.os == "linux" and .platform.architecture == $architecture) | .digest' \
           "${manifest_file}")"
@@ -619,7 +628,7 @@ case "${action}" in
     scan_evidence_sha256="$(file_sha256 "${release_dir}/scan-evidence.sha256")"
     lock_uri="gs://${KAGENT_EVIDENCE_BUCKET}/kagent/${version}/release.lock"
     lock_file="${release_inputs}/release-lock.json"
-    jq -n \
+    "${trusted_jq}" -n \
       --arg build_id "${build_id}" \
       --arg source_commit "${source_commit}" \
       --arg version "${version}" \
@@ -692,9 +701,10 @@ case "${action}" in
       exit 1
     fi
     for component in "${components[@]}"; do
-      # Re-read the immutable index from the registry immediately before
-      # scanning either child. Stored workspace evidence alone is not trusted.
-      verify_remote_platform_binding "${component}"
+      # The immediately preceding pinned Docker-builder step re-read this
+      # immutable index and bound both platform children. This Cloud SDK-only
+      # action consumes those verified immutable child refs and never invokes
+      # Docker, which is intentionally absent from the scanner image.
       for architecture in amd64 arm64; do
         digest="$(platform_digest_file "${component}" "${architecture}")"
         reference="$(staging_image_repository "${component}")@${digest}"
@@ -711,7 +721,7 @@ case "${action}" in
           "${release_dir}/${evidence_prefix}-vulnerabilities.json" \
           "${component}" "${architecture}" "${reference}" "${scan}" \
           "${release_dir}/${evidence_prefix}-scan-policy.json"
-        jq -r '.[].vulnerability.effectiveSeverity' \
+        "${trusted_jq}" -r '.[].vulnerability.effectiveSeverity' \
           "${release_dir}/${evidence_prefix}-vulnerabilities.json" \
           > "${release_dir}/${evidence_prefix}-severities.txt"
       done
@@ -730,7 +740,7 @@ case "${action}" in
     verified_lock="${release_dir}/release-lock.json"
     test ! -e "${verified_lock}"
     gcloud storage cp "${lock_uri}" "${verified_lock}"
-    jq -e \
+    "${trusted_jq}" -e \
       --arg build_id "${build_id}" \
       --arg source_commit "${source_commit}" \
       --arg version "${version}" \
@@ -756,7 +766,7 @@ case "${action}" in
     crds="$(digest_file chart kagent-crds)"
     platform_digests="$(platform_digests_json)"
 
-    jq -n \
+    "${trusted_jq}" -n \
       --arg application "${application}" \
       --arg chart_tree "${chart_tree}" \
       --arg codex_harness "${codex_harness}" \
@@ -863,7 +873,7 @@ case "${action}" in
     evidence_sha256="$(file_sha256 "${release_dir}/release-evidence.json")"
     printf '%s\n' "${evidence_sha256}" > "${trusted_evidence_sha_file}"
     chmod 0400 "${trusted_evidence_sha_file}"
-    jq -n \
+    "${trusted_jq}" -n \
       --arg artifact_tag "v${version}" \
       --arg build_id "${build_id}" \
       --arg project_id "yourown-chat" \

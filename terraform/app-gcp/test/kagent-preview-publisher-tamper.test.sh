@@ -9,7 +9,8 @@ trap 'rm -rf "${temporary_dir}"' EXIT
 workspace="${temporary_dir}/workspace"
 mkdir -p \
   "${workspace}/release-inputs" "${workspace}/release" \
-  "${temporary_dir}/bin" "${temporary_dir}/indexes" "${temporary_dir}/registry"
+  "${workspace}/trusted-bin" "${temporary_dir}/bin" \
+  "${temporary_dir}/indexes" "${temporary_dir}/registry"
 
 fail() {
   printf 'kagent preview publisher tamper test failed: %s\n' "$1" >&2
@@ -25,6 +26,13 @@ printf '%s' "gcp-v${version}" > "${workspace}/kagent-source-tag"
 printf '%s' "${source_commit}" > "${workspace}/kagent-source-commit"
 printf '%s' "${build_id}" > "${workspace}/kagent-build-id"
 printf '%s' '2026-08-31' > "${workspace}/kagent-build-date"
+export TEST_JQ_REAL="$(command -v jq)"
+cat > "${workspace}/trusted-bin/jq" <<'SCRIPT'
+#!/usr/bin/env bash
+: "${TEST_JQ_REAL:?TEST_JQ_REAL is required}"
+exec "${TEST_JQ_REAL}" "$@"
+SCRIPT
+chmod 0555 "${workspace}/trusted-bin/jq"
 
 export KAGENT_WORKSPACE_ROOT="${workspace}"
 export KAGENT_ARTIFACT_PREFIX="europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/kagent"
@@ -37,6 +45,7 @@ export KAGENT_EXPECTED_SOURCE_COMMIT="${source_commit}"
 export KAGENT_EXPECTED_SOURCE_TAG="gcp-v${version}"
 export KAGENT_PUBLICATION_DRIVER_SHA256="$(sha256sum "${driver}" | cut -d' ' -f1)"
 export KAGENT_SCAN_POLICY_EVALUATOR_SHA256="${evaluator_sha}"
+export KAGENT_TRUSTED_JQ_SHA256="$(sha256sum "${workspace}/trusted-bin/jq" | cut -d' ' -f1)"
 
 components=(controller ui golang-adk codex-harness)
 counter=1

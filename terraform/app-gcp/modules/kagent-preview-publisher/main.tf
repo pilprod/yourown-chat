@@ -15,6 +15,10 @@ locals {
     for index in range(ceil(length(local.scan_policy_evaluator_base64) / 8000)) :
     substr(local.scan_policy_evaluator_base64, index * 8000, 8000)
   ]
+  trusted_jq_index       = "ghcr.io/jqlang/jq:1.8.2@sha256:b9c68867e5766576263a222e91db3de422d802069c7af70440e667a95344e486"
+  trusted_jq_amd64_image = "ghcr.io/jqlang/jq@sha256:1e7ad54d387c3ee4cb921f8a9de0d7f2359b375f04a37d10255fda4cd119029a"
+  trusted_jq_amd64_layer = "sha256:45f05cf73251ac39adec8657aba8dc90b26a9aa53ccb34323f2fb6929eb0fc74"
+  trusted_jq_sha256      = "b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f"
   publication_environment = [
     "KAGENT_ARTIFACT_PREFIX=${local.artifact_repository_prefix}",
     "KAGENT_EVIDENCE_BUCKET=${var.evidence_bucket_name}",
@@ -26,6 +30,7 @@ locals {
     "KAGENT_REGISTRY_HOST=${local.registry_host}",
     "KAGENT_SCAN_POLICY_EVALUATOR_SHA256=${local.scan_policy_evaluator_sha256}",
     "KAGENT_STAGING_PREFIX=${local.staging_repository_prefix}",
+    "KAGENT_TRUSTED_JQ_SHA256=${local.trusted_jq_sha256}",
   ]
   submitter_members = var.enabled ? setunion(
     toset(["serviceAccount:${var.apply_service_account_email}"]),
@@ -324,6 +329,99 @@ resource "google_cloudbuild_trigger" "release" {
       ]
     }
 
+    # The exact Google Cloud SDK image intentionally does not install jq.
+    # Extract the official statically linked amd64 jq binary from its pinned
+    # multi-arch index and bind its bytes before any trusted driver action.
+    # Every driver invocation rechecks this Terraform-pinned digest.
+    step {
+      id         = "materialize-pinned-json-parser"
+      name       = "gcr.io/cloud-builders/docker@sha256:d1797996867921778f1adbb7e493baaaf2f6b21e107599c0aab48c2ec06ff311"
+      entrypoint = "bash"
+      args = [
+        "-ceu",
+        <<-EOT
+          parser_dir=/workspace/trusted-bin
+          parser="$$parser_dir/jq"
+          parser_stage="$$(mktemp -d /workspace/.jq-stage.XXXXXX)"
+          index_manifest="$$(mktemp /workspace/.jq-index.XXXXXX)"
+          child_manifest="$$(mktemp /workspace/.jq-child.XXXXXX)"
+          container=''
+          cleanup() {
+            rm -f "$$parser_stage/jq"
+            rmdir "$$parser_stage" >/dev/null 2>&1 || true
+            rm -f "$$index_manifest" "$$child_manifest"
+            if [[ -n "$$container" ]]; then
+              docker rm -f "$$container" >/dev/null 2>&1 || true
+            fi
+          }
+          trap cleanup EXIT
+          install -d -m 0755 "$$parser_dir"
+          [[ -d "$$parser_dir" && ! -L "$$parser_dir" ]]
+          test ! -e "$$parser"
+          # The index, selected linux/amd64 child, rootfs layer and final /jq
+          # bytes are all pinned independently in Terraform.
+          test '${local.trusted_jq_index}' = 'ghcr.io/jqlang/jq:1.8.2@sha256:b9c68867e5766576263a222e91db3de422d802069c7af70440e667a95344e486'
+          test '${local.trusted_jq_amd64_layer}' = 'sha256:45f05cf73251ac39adec8657aba8dc90b26a9aa53ccb34323f2fb6929eb0fc74'
+          docker pull --platform linux/amd64 '${local.trusted_jq_amd64_image}' >/dev/null
+          container="$$(docker create --platform linux/amd64 '${local.trusted_jq_amd64_image}')"
+          docker cp "$$container:/jq" "$$parser_stage/jq"
+          printf '%s  %s\n' '${local.trusted_jq_sha256}' "$$parser_stage/jq" \
+            | sha256sum --check --status
+          chmod 0555 "$$parser_stage/jq"
+          docker buildx imagetools inspect --raw '${local.trusted_jq_index}' > "$$index_manifest"
+          "$$parser_stage/jq" -e \
+            --arg child 'sha256:1e7ad54d387c3ee4cb921f8a9de0d7f2359b375f04a37d10255fda4cd119029a' '
+              [
+                .manifests[]
+                | select(.platform.os == "linux" and .platform.architecture == "amd64")
+                | .digest
+              ] == [$$child]
+            ' "$$index_manifest" >/dev/null
+          docker buildx imagetools inspect --raw '${local.trusted_jq_amd64_image}' > "$$child_manifest"
+          "$$parser_stage/jq" -e \
+            --arg layer '${local.trusted_jq_amd64_layer}' '
+              any(.layers[]; .digest == $$layer)
+            ' "$$child_manifest" >/dev/null
+          mv -f "$$parser_stage/jq" "$$parser"
+          rmdir "$$parser_stage"
+          rm -f "$$index_manifest" "$$child_manifest"
+          docker rm -f "$$container" >/dev/null
+          container=''
+          trap - EXIT
+        EOT
+      ]
+    }
+
+    # Fail before the multi-architecture build if the exact Cloud SDK image
+    # cannot execute the independently pinned parser or Python stdlib used by
+    # the trusted scanner/evidence actions. Docker must remain absent here.
+    step {
+      id         = "verify-pinned-cloud-sdk-tool-contract"
+      name       = "gcr.io/google.com/cloudsdktool/google-cloud-cli:573.0.0@sha256:f0b4abeb30773243f9ae95abe201ec01de07d5ed582b56ca52879eb3dbe209c3"
+      entrypoint = "bash"
+      args = [
+        "-ceu",
+        <<-EOT
+          parser=/workspace/trusted-bin/jq
+          [[ -f "$$parser" && ! -L "$$parser" && -x "$$parser" ]]
+          printf '%s  %s\n' '${local.trusted_jq_sha256}' "$$parser" \
+            | sha256sum --check --status
+          test "$$($$parser --version)" = 'jq-1.8.2'
+          test -x /usr/bin/python3
+          /usr/bin/python3 -c 'import json; assert json.loads("{}") == {}'
+          for tool in awk base64 chmod cmp cut grep mktemp mv sed sha256sum sort tr wc; do
+            command -v "$$tool" >/dev/null
+          done
+          test "$$(type -t mapfile)" = builtin
+          if command -v docker >/dev/null 2>&1; then
+            printf 'Docker unexpectedly present in pinned Cloud SDK scanner image\n' >&2
+            exit 1
+          fi
+          gcloud version >/dev/null
+        EOT
+      ]
+    }
+
     step {
       id         = "materialize-release-driver"
       name       = "gcr.io/google.com/cloudsdktool/google-cloud-cli:573.0.0@sha256:f0b4abeb30773243f9ae95abe201ec01de07d5ed582b56ca52879eb3dbe209c3"
@@ -414,6 +512,7 @@ resource "google_cloudbuild_trigger" "release" {
           trap cleanup EXIT
           docker run --rm \
             --volume /workspace:/workspace \
+            --volume /workspace/trusted-bin:/workspace/trusted-bin:ro \
             --workdir /workspace/source \
             --env SUBSTRATE_RELEASE_EVIDENCE=/workspace/private-substrate/release-evidence.json \
             --env SUBSTRATE_RELEASE_EVIDENCE_URI='${var.substrate_release_evidence_uri}' \
@@ -438,6 +537,7 @@ resource "google_cloudbuild_trigger" "release" {
         <<-EOT
           docker run --rm \
             --volume /workspace:/workspace \
+            --volume /workspace/trusted-bin:/workspace/trusted-bin:ro \
             --workdir /workspace/source \
             "gcr.io/$PROJECT_ID/kagent-fork-preview-tools:$BUILD_ID" \
             /workspace/source/scripts/cloud-build-fork-preview-charts.sh \
@@ -493,11 +593,13 @@ resource "google_cloudbuild_trigger" "release" {
         <<-EOT
           docker run --rm \
             --volume /workspace:/workspace \
+            --volume /workspace/trusted-bin:/workspace/trusted-bin:ro \
             --env KAGENT_ARTIFACT_PREFIX \
             --env KAGENT_PUBLICATION_DRIVER_SHA256 \
             --env KAGENT_REGISTRY_HOST \
             --env KAGENT_SCAN_POLICY_EVALUATOR_SHA256 \
             --env KAGENT_STAGING_PREFIX \
+            --env KAGENT_TRUSTED_JQ_SHA256 \
             "gcr.io/$PROJECT_ID/kagent-fork-preview-tools:$BUILD_ID" \
             /workspace/publish-kagent-artifact-registry.sh record-images
         EOT
@@ -522,17 +624,52 @@ resource "google_cloudbuild_trigger" "release" {
         <<-EOT
           docker run --rm \
             --volume /workspace:/workspace \
+            --volume /workspace/trusted-bin:/workspace/trusted-bin:ro \
             --env KAGENT_ARTIFACT_PREFIX \
             --env KAGENT_PUBLICATION_DRIVER_SHA256 \
             --env KAGENT_REGISTRY_HOST \
             --env KAGENT_SCAN_POLICY_EVALUATOR_SHA256 \
             --env KAGENT_STAGING_PREFIX \
+            --env KAGENT_TRUSTED_JQ_SHA256 \
             "gcr.io/$PROJECT_ID/kagent-fork-preview-tools:$BUILD_ID" \
             /workspace/publish-kagent-artifact-registry.sh record-platforms
         EOT
       ]
     }
 
+    # Re-read every immutable staging index and bind both recorded platform
+    # children immediately before scanning. The driver is reconstructed from
+    # Terraform-owned chunks and verified inside the pinned Docker builder;
+    # the source-built toolbox is not trusted for this final binding.
+    step {
+      id         = "reverify-platform-bindings-before-scan"
+      name       = "gcr.io/cloud-builders/docker@sha256:d1797996867921778f1adbb7e493baaaf2f6b21e107599c0aab48c2ec06ff311"
+      entrypoint = "bash"
+      env        = local.publication_environment
+      args = concat(
+        [
+          "-ceu",
+          <<-EOT
+            driver=/workspace/publish-kagent-artifact-registry.sh
+            driver_tmp="$$(mktemp /workspace/.publish-kagent-pre-scan.XXXXXX)"
+            trap 'rm -f "$$driver_tmp"' EXIT
+            printf '%s' "$$@" | base64 -d > "$$driver_tmp"
+            printf '%s  %s\n' '${local.publication_driver_sha256}' "$$driver_tmp" \
+              | sha256sum --check --status
+            chmod 0555 "$$driver_tmp"
+            mv -f "$$driver_tmp" "$$driver"
+            trap - EXIT
+            exec "$$driver" verify-platform-bindings
+          EOT
+          ,
+          "reverify-platform-bindings-before-scan",
+        ],
+        local.publication_driver_chunks,
+      )
+    }
+
+    # The scanner image intentionally has no Docker CLI. It scans only the
+    # immutable child digest refs bound by the immediately preceding step.
     step {
       id         = "scan-candidate-images"
       name       = "gcr.io/google.com/cloudsdktool/google-cloud-cli:573.0.0@sha256:f0b4abeb30773243f9ae95abe201ec01de07d5ed582b56ca52879eb3dbe209c3"
@@ -611,11 +748,13 @@ resource "google_cloudbuild_trigger" "release" {
           docker run --rm \
             --network cloudbuild \
             --volume /workspace:/workspace \
+            --volume /workspace/trusted-bin:/workspace/trusted-bin:ro \
             --env KAGENT_ARTIFACT_PREFIX \
             --env KAGENT_PUBLICATION_DRIVER_SHA256 \
             --env KAGENT_REGISTRY_HOST \
             --env KAGENT_SCAN_POLICY_EVALUATOR_SHA256 \
             --env KAGENT_STAGING_PREFIX \
+            --env KAGENT_TRUSTED_JQ_SHA256 \
             "gcr.io/$PROJECT_ID/kagent-fork-preview-tools:$BUILD_ID" \
             /workspace/publish-kagent-artifact-registry.sh publish-charts
         EOT
@@ -641,12 +780,14 @@ resource "google_cloudbuild_trigger" "release" {
           docker run --rm \
             --network cloudbuild \
             --volume /workspace:/workspace \
+            --volume /workspace/trusted-bin:/workspace/trusted-bin:ro \
             --env KAGENT_ARTIFACT_PREFIX \
             --env KAGENT_EVIDENCE_BUCKET \
             --env KAGENT_PUBLICATION_DRIVER_SHA256 \
             --env KAGENT_REGISTRY_HOST \
             --env KAGENT_SCAN_POLICY_EVALUATOR_SHA256 \
             --env KAGENT_STAGING_PREFIX \
+            --env KAGENT_TRUSTED_JQ_SHA256 \
             "gcr.io/$PROJECT_ID/kagent-fork-preview-tools:$BUILD_ID" \
             /workspace/publish-kagent-artifact-registry.sh assemble-evidence
         EOT
@@ -730,6 +871,10 @@ resource "google_cloudbuild_trigger" "release" {
           <<-EOT
           set -o pipefail
           driver=/workspace/publish-kagent-artifact-registry.sh
+          jq_path=/workspace/trusted-bin/jq
+          [[ -f "$$jq_path" && ! -L "$$jq_path" && -x "$$jq_path" ]]
+          printf '%s  %s\n' '${local.trusted_jq_sha256}' "$$jq_path" \
+            | sha256sum --check --status
           driver_tmp="$$(mktemp /workspace/.publish-kagent-uploader.XXXXXX)"
           trap 'rm -f "$$driver_tmp"' EXIT
           printf '%s' "$$@" | base64 -d > "$$driver_tmp"
@@ -785,7 +930,7 @@ resource "google_cloudbuild_trigger" "release" {
           checksums_sha="$$(anchor_sha SHA256SUMS)"
           test ! -e release-receipt.json
           test ! -e release-receipt.json.sha256
-          jq -n \
+          "$$jq_path" -n \
             --arg build_id "$BUILD_ID" \
             --arg source_commit '${var.source_commit}' \
             --arg version "$$version" \
