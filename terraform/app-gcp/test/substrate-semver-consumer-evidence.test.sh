@@ -182,20 +182,20 @@ jq -n \
     artifacts: {
       kagent: {
         source_repository: "https://github.com/pilprod/kagent",
-        source_commit: "1111111111111111111111111111111111111111",
+        source_commit: "547cfe605940005173eb0372238339384102faa0",
         artifact_manifest_sha256: "1111111111111111111111111111111111111111111111111111111111111111",
         artifact_schema_version: "3",
         charts: {
-          application: {ref: "oci://ghcr.io/pilprod/kagent/helm/kagent@sha256:1111111111111111111111111111111111111111111111111111111111111111", version: "0.10.0"},
-          crds: {ref: "oci://ghcr.io/pilprod/kagent/helm/kagent-crds@sha256:2222222222222222222222222222222222222222222222222222222222222222", version: "0.10.0"}
+          application: {ref: "oci://europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/kagent/helm/kagent@sha256:1111111111111111111111111111111111111111111111111111111111111111", version: "0.0.0-external-slot.kap.5"},
+          crds: {ref: "oci://europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/kagent/helm/kagent-crds@sha256:2222222222222222222222222222222222222222222222222222222222222222", version: "0.0.0-external-slot.kap.5"}
         },
         image_refs: {
-          controller: "ghcr.io/pilprod/kagent/controller@sha256:3333333333333333333333333333333333333333333333333333333333333333",
-          ui: "ghcr.io/pilprod/kagent/ui@sha256:4444444444444444444444444444444444444444444444444444444444444444"
+          controller: "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/kagent/controller@sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          ui: "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/kagent/ui@sha256:4444444444444444444444444444444444444444444444444444444444444444"
         },
         runtime_images: {
-          kagentHarness: "ghcr.io/pilprod/kagent/golang-adk@sha256:5555555555555555555555555555555555555555555555555555555555555555",
-          codexHarness: "ghcr.io/pilprod/kagent/codex-harness@sha256:6666666666666666666666666666666666666666666666666666666666666666"
+          kagentHarness: "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/kagent/golang-adk@sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          codexHarness: "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/kagent/codex-harness@sha256:6666666666666666666666666666666666666666666666666666666666666666"
         }
       },
       substrate: {
@@ -225,7 +225,7 @@ jq -n \
       substrate_go_module_commit: $evidence[0].source.commit
     },
     helm_set_values: {
-      kagent: {"controller.image.tag": "0.10.0@sha256:3333333333333333333333333333333333333333333333333333333333333333"},
+      kagent: {"controller.image.tag": "0.0.0-external-slot.kap.5@sha256:3333333333333333333333333333333333333333333333333333333333333333"},
       substrate: $evidence[0].helm_set_values
     },
     values_sha256: {
@@ -280,6 +280,24 @@ expect_bootstrap_failure changed-evidence-path \
   '| .artifacts.substrate.artifact_manifest_path = "kagent/evidence/substrate/v0.0.23/substrate-v0.0.23.consumer-evidence.json"'
 expect_bootstrap_failure changed-evidence-schema \
   '| .artifacts.substrate.artifact_schema_version = "yourown.chat/substrate-semver-consumer-evidence/v2"'
+expect_bootstrap_failure changed-kagent-source \
+  '| .artifacts.kagent.source_commit = "ffffffffffffffffffffffffffffffffffffffff"'
+expect_bootstrap_failure changed-kagent-application-version \
+  '| .artifacts.kagent.charts.application.version = "0.0.0-external-slot.kap.6"'
+expect_bootstrap_failure changed-kagent-crd-version \
+  '| .artifacts.kagent.charts.crds.version = "0.0.0-external-slot.kap.6"'
+expect_bootstrap_failure public-kagent-application-chart \
+  '| .artifacts.kagent.charts.application.ref = "oci://ghcr.io/pilprod/kagent/helm/kagent@sha256:1111111111111111111111111111111111111111111111111111111111111111"'
+expect_bootstrap_failure public-kagent-crd-chart \
+  '| .artifacts.kagent.charts.crds.ref = "oci://ghcr.io/pilprod/kagent/helm/kagent-crds@sha256:2222222222222222222222222222222222222222222222222222222222222222"'
+expect_bootstrap_failure public-kagent-controller \
+  '| .artifacts.kagent.image_refs.controller = "ghcr.io/pilprod/kagent/controller@sha256:3333333333333333333333333333333333333333333333333333333333333333"'
+expect_bootstrap_failure public-kagent-ui \
+  '| .artifacts.kagent.image_refs.ui = "ghcr.io/pilprod/kagent/ui@sha256:4444444444444444444444444444444444444444444444444444444444444444"'
+expect_bootstrap_failure public-kagent-harness \
+  '| .artifacts.kagent.runtime_images.kagentHarness = "ghcr.io/pilprod/kagent/golang-adk@sha256:5555555555555555555555555555555555555555555555555555555555555555"'
+expect_bootstrap_failure public-codex-harness \
+  '| .artifacts.kagent.runtime_images.codexHarness = "ghcr.io/pilprod/kagent/codex-harness@sha256:6666666666666666666666666666666666666666666666666666666666666666"'
 
 # Exercise the private producer-v2 branch through Terraform as well. The
 # shared Substrate Helm release is applied before the Cloud Deploy renderer, so
