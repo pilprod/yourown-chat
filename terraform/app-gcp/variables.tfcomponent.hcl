@@ -303,8 +303,17 @@ variable "kagent_substrate_delivery" {
       (!var.kagent_substrate_delivery.release_enabled || var.kagent_substrate_delivery.production_eligible) &&
       toset(keys(var.kagent_substrate_delivery.artifacts)) == toset(["kagent", "substrate"]) &&
       var.kagent_substrate_delivery.artifacts["kagent"].source_repository == "https://github.com/pilprod/kagent" &&
+      var.kagent_substrate_delivery.artifacts["kagent"].source_commit == "547cfe605940005173eb0372238339384102faa0" &&
       var.kagent_substrate_delivery.artifacts["kagent"].artifact_schema_version == "3" &&
       var.kagent_substrate_delivery.artifacts["kagent"].artifact_manifest_path == "" &&
+      var.kagent_substrate_delivery.artifacts["kagent"].charts.application.version == "0.0.0-external-slot.kap.5" &&
+      var.kagent_substrate_delivery.artifacts["kagent"].charts.crds.version == "0.0.0-external-slot.kap.5" &&
+      can(regex("^oci://europe-west3-docker\\.pkg\\.dev/yourown-chat/kagent-preview/kagent/helm/kagent@sha256:[0-9a-f]{64}$", var.kagent_substrate_delivery.artifacts["kagent"].charts.application.ref)) &&
+      can(regex("^oci://europe-west3-docker\\.pkg\\.dev/yourown-chat/kagent-preview/kagent/helm/kagent-crds@sha256:[0-9a-f]{64}$", var.kagent_substrate_delivery.artifacts["kagent"].charts.crds.ref)) &&
+      can(regex("^europe-west3-docker\\.pkg\\.dev/yourown-chat/kagent-preview/kagent/controller@sha256:[0-9a-f]{64}$", try(var.kagent_substrate_delivery.artifacts["kagent"].image_refs.controller, ""))) &&
+      can(regex("^europe-west3-docker\\.pkg\\.dev/yourown-chat/kagent-preview/kagent/ui@sha256:[0-9a-f]{64}$", try(var.kagent_substrate_delivery.artifacts["kagent"].image_refs.ui, ""))) &&
+      can(regex("^europe-west3-docker\\.pkg\\.dev/yourown-chat/kagent-preview/kagent/golang-adk@sha256:[0-9a-f]{64}$", try(var.kagent_substrate_delivery.artifacts["kagent"].runtime_images.kagentHarness, ""))) &&
+      can(regex("^europe-west3-docker\\.pkg\\.dev/yourown-chat/kagent-preview/kagent/codex-harness@sha256:[0-9a-f]{64}$", try(var.kagent_substrate_delivery.artifacts["kagent"].runtime_images.codexHarness, ""))) &&
       var.kagent_substrate_delivery.artifacts["substrate"].source_repository == "https://github.com/pilprod/substrate" &&
       (
         (
@@ -403,7 +412,7 @@ variable "kagent_substrate_delivery" {
         destination.port <= 65535
       ])
     )
-    error_message = "Enabled bootstrap or release requires kagent evidence schema 3 with controller/UI image refs and exact kagentHarness/codexHarness runtime refs, plus either the exact checked-in v0.0.22 semver consumer evidence contract or the exact immutable 0.0.22-private.3 GAR evidence contract (source, checksum/path/schema, charts, images and Helm values). Both artifacts require digest-qualified app+CRD charts/images, an exact Substrate dependency commit, RBAC/Gateway API capabilities, an exact release verifier and testbed-only endpoints. Use either explicit atenet destinations or local_provider_only=true with no Actor/MCP egress; External Broker smoke is a post-bootstrap local-agent-ready gate."
+    error_message = "Enabled bootstrap or release requires kagent evidence schema 3 with application/CRD charts, controller/UI images and exact kagentHarness/codexHarness runtime refs from europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/kagent only, plus either the exact checked-in v0.0.22 semver consumer evidence contract or the exact immutable 0.0.22-private.3 GAR evidence contract (source, checksum/path/schema, charts, images and Helm values). Both artifacts require digest-qualified app+CRD charts/images, an exact Substrate dependency commit, RBAC/Gateway API capabilities, an exact release verifier and testbed-only endpoints. Use either explicit atenet destinations or local_provider_only=true with no Actor/MCP egress; External Broker smoke is a post-bootstrap local-agent-ready gate."
   }
 
   validation {

@@ -38,6 +38,21 @@ KAGENT_IMAGE_PATHS = {
     "ui": "ui.image",
 }
 KAGENT_RUNTIME_IMAGES = {"kagentHarness", "codexHarness"}
+KAGENT_PRIVATE_REGISTRY = "europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/kagent"
+KAGENT_PRIVATE_SOURCE_COMMIT = "547cfe605940005173eb0372238339384102faa0"
+KAGENT_PRIVATE_VERSION = "0.0.0-external-slot.kap.5"
+KAGENT_PRIVATE_CHART_REPOSITORIES = {
+    "application": "kagent",
+    "crds": "kagent-crds",
+}
+KAGENT_PRIVATE_IMAGE_REPOSITORIES = {
+    "controller": "controller",
+    "ui": "ui",
+}
+KAGENT_PRIVATE_RUNTIME_REPOSITORIES = {
+    "kagentHarness": "golang-adk",
+    "codexHarness": "codex-harness",
+}
 SUBSTRATE_COMPONENT_IMAGES = {"ateapi", "atecontroller", "atenet"}
 SUBSTRATE_ARTIFACT_IMAGES = SUBSTRATE_COMPONENT_IMAGES | {"agentgateway", "releaseVerifier"}
 SUBSTRATE_PRIVATE_PRODUCER_EVIDENCE_SCHEMA = "yourown.chat/substrate-private-gar-release/v2"
@@ -119,6 +134,8 @@ def validate_artifact(name: str, artifact: object, source_root: Path) -> None:
         fail("kagent artifact must use release evidence schema 3")
     if name == "kagent" and artifact.get("artifact_manifest_path", ""):
         fail("kagent producer evidence must not use an app-gcp artifact_manifest_path")
+    if name == "kagent" and artifact.get("source_commit") != KAGENT_PRIVATE_SOURCE_COMMIT:
+        fail("kagent artifact must use the reviewed .kap.5 source commit")
     if name == "substrate":
         schema = artifact.get("artifact_schema_version")
         manifest_path = artifact.get("artifact_manifest_path", "")
@@ -145,6 +162,18 @@ def validate_artifact(name: str, artifact: object, source_root: Path) -> None:
     for image_name, ref in images.items():
         if not IMAGE_REF.fullmatch(str(ref)):
             fail(f"image {name}/{image_name} must be registry/repository@sha256")
+    if name == "kagent":
+        if any(chart["version"] != KAGENT_PRIVATE_VERSION for chart in charts.values()):
+            fail("kagent application and CRD charts must use the reviewed .kap.5 release version")
+        for chart_kind, repository in KAGENT_PRIVATE_CHART_REPOSITORIES.items():
+            expected_prefix = f"oci://{KAGENT_PRIVATE_REGISTRY}/helm/{repository}@"
+            if not str(charts[chart_kind]["ref"]).startswith(expected_prefix):
+                fail(f"kagent chart {chart_kind} must come from the reviewed private kagent GAR registry")
+        if set(KAGENT_PRIVATE_IMAGE_REPOSITORIES).issubset(images):
+            for image_name, repository in KAGENT_PRIVATE_IMAGE_REPOSITORIES.items():
+                expected_prefix = f"{KAGENT_PRIVATE_REGISTRY}/{repository}@"
+                if not str(images[image_name]).startswith(expected_prefix):
+                    fail(f"kagent image {image_name} must come from the reviewed private kagent GAR registry")
     if name == "substrate" and artifact.get("artifact_schema_version") == SUBSTRATE_PRIVATE_PRODUCER_EVIDENCE_SCHEMA:
         application_version = str(charts["application"]["version"])
         if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+-private\.[0-9]+", application_version):
@@ -166,6 +195,12 @@ def validate_artifact(name: str, artifact: object, source_root: Path) -> None:
     for image_name, ref in runtime_images.items():
         if not IMAGE_REF.fullmatch(str(ref)):
             fail(f"runtime image {name}/{image_name} must be registry/repository@sha256")
+    if name == "kagent":
+        if set(KAGENT_PRIVATE_RUNTIME_REPOSITORIES).issubset(runtime_images):
+            for image_name, repository in KAGENT_PRIVATE_RUNTIME_REPOSITORIES.items():
+                expected_prefix = f"{KAGENT_PRIVATE_REGISTRY}/{repository}@"
+                if not str(runtime_images[image_name]).startswith(expected_prefix):
+                    fail(f"kagent runtime image {image_name} must come from the reviewed private kagent GAR registry")
 
 
 def split_image_ref(ref: str) -> tuple[str, str, str]:

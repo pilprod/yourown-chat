@@ -30,6 +30,45 @@ require_literal_count() {
   [[ "${actual}" == "${expected}" ]] || fail "${file} has ${actual} occurrences of ${literal}; expected ${expected}"
 }
 
+resource_block() {
+  local file="$1"
+  local resource_type="$2"
+  local resource_name="$3"
+  local declaration="resource \"${resource_type}\" \"${resource_name}\""
+  local block
+
+  require_literal_count "${file}" "${declaration}" 1
+  block="$(awk -v start="${declaration} {" '
+    $0 == start { in_block = 1 }
+    in_block { print }
+    in_block && $0 == "}" { exit }
+  ' "${file}")"
+  [[ -n "${block}" ]] || fail "${file} is missing resource block ${resource_type}.${resource_name}"
+  printf '%s\n' "${block}"
+}
+
+require_block_literal() {
+  local block="$1"
+  local resource_address="$2"
+  local literal="$3"
+  [[ "${block}" == *"${literal}"* ]] || fail "${resource_address} is missing: ${literal}"
+}
+
+require_block_literal_order() {
+  local block="$1"
+  local resource_address="$2"
+  local first="$3"
+  local second="$4"
+  [[ "${block}" == *"${first}"*"${second}"* ]] || fail "${resource_address} must contain ${first} before ${second}"
+}
+
+forbidden_block_literal() {
+  local block="$1"
+  local resource_address="$2"
+  local literal="$3"
+  [[ "${block}" != *"${literal}"* ]] || fail "${resource_address} contains forbidden literal: ${literal}"
+}
+
 forbidden_literal() {
   local file="$1"
   local literal="$2"
@@ -103,6 +142,48 @@ require_literal "${prerequisites_dir}/main.tf" 'for migration_key, namespace in 
 require_literal "${prerequisites_dir}/main.tf" 'var.local_provider_only ||'
 require_literal "${prerequisites_dir}/main.tf" 'expected_derived_secret_contract'
 require_literal "${prerequisites_dir}/main.tf" 'resource "kubernetes_network_policy_v1" "substrate_dns_egress"'
+
+internal_api_egress_address='kubernetes_network_policy_v1.substrate_internal_api_egress'
+internal_api_egress_block="$(resource_block "${prerequisites_dir}/main.tf" kubernetes_network_policy_v1 substrate_internal_api_egress)"
+require_block_literal "${internal_api_egress_block}" "${internal_api_egress_address}" 'count = var.bootstrap_enabled ? 1 : 0'
+require_block_literal "${internal_api_egress_block}" "${internal_api_egress_address}" 'name      = "substrate-control-plane-exact-api-egress"'
+require_block_literal "${internal_api_egress_block}" "${internal_api_egress_address}" 'namespace = local.substrate_namespace'
+require_block_literal "${internal_api_egress_block}" "${internal_api_egress_address}" 'key      = "app"'
+require_block_literal "${internal_api_egress_block}" "${internal_api_egress_address}" 'operator = "In"'
+require_block_literal "${internal_api_egress_block}" "${internal_api_egress_address}" 'values   = ["ate-controller", "atenet-egress"]'
+require_block_literal "${internal_api_egress_block}" "${internal_api_egress_address}" 'policy_types = ["Egress"]'
+require_block_literal "${internal_api_egress_block}" "${internal_api_egress_address}" 'match_labels = { app = "ate-api-server" }'
+require_block_literal "${internal_api_egress_block}" "${internal_api_egress_address}" 'port     = "443"'
+require_block_literal "${internal_api_egress_block}" "${internal_api_egress_address}" 'protocol = "TCP"'
+require_block_literal "${internal_api_egress_block}" "${internal_api_egress_address}" 'depends_on = [kubernetes_namespace_v1.substrate]'
+require_block_literal_order "${internal_api_egress_block}" "${internal_api_egress_address}" 'values   = ["ate-controller", "atenet-egress"]' 'match_labels = { app = "ate-api-server" }'
+require_block_literal_order "${internal_api_egress_block}" "${internal_api_egress_address}" 'match_labels = { app = "ate-api-server" }' 'port     = "443"'
+forbidden_block_literal "${internal_api_egress_block}" "${internal_api_egress_address}" 'namespace_selector {'
+forbidden_block_literal "${internal_api_egress_block}" "${internal_api_egress_address}" 'ip_block {'
+forbidden_block_literal "${internal_api_egress_block}" "${internal_api_egress_address}" 'match_labels = { app = "atenet-egress" }'
+forbidden_block_literal "${internal_api_egress_block}" "${internal_api_egress_address}" 'port     = "8443"'
+
+internal_gateway_egress_address='kubernetes_network_policy_v1.substrate_internal_egress_gateway_egress'
+internal_gateway_egress_block="$(resource_block "${prerequisites_dir}/main.tf" kubernetes_network_policy_v1 substrate_internal_egress_gateway_egress)"
+require_block_literal "${internal_gateway_egress_block}" "${internal_gateway_egress_address}" 'count = var.bootstrap_enabled ? 1 : 0'
+require_block_literal "${internal_gateway_egress_block}" "${internal_gateway_egress_address}" 'name      = "substrate-api-exact-egress-gateway-egress"'
+require_block_literal "${internal_gateway_egress_block}" "${internal_gateway_egress_address}" 'namespace = local.substrate_namespace'
+require_block_literal "${internal_gateway_egress_block}" "${internal_gateway_egress_address}" 'match_labels = { app = "ate-api-server" }'
+require_block_literal "${internal_gateway_egress_block}" "${internal_gateway_egress_address}" 'policy_types = ["Egress"]'
+require_block_literal "${internal_gateway_egress_block}" "${internal_gateway_egress_address}" 'match_labels = { app = "atenet-egress" }'
+require_block_literal "${internal_gateway_egress_block}" "${internal_gateway_egress_address}" 'port     = "8443"'
+require_block_literal "${internal_gateway_egress_block}" "${internal_gateway_egress_address}" 'protocol = "TCP"'
+require_block_literal "${internal_gateway_egress_block}" "${internal_gateway_egress_address}" 'depends_on = [kubernetes_namespace_v1.substrate]'
+require_block_literal_order "${internal_gateway_egress_block}" "${internal_gateway_egress_address}" 'match_labels = { app = "ate-api-server" }' 'match_labels = { app = "atenet-egress" }'
+require_block_literal_order "${internal_gateway_egress_block}" "${internal_gateway_egress_address}" 'match_labels = { app = "atenet-egress" }' 'port     = "8443"'
+forbidden_block_literal "${internal_gateway_egress_block}" "${internal_gateway_egress_address}" 'namespace_selector {'
+forbidden_block_literal "${internal_gateway_egress_block}" "${internal_gateway_egress_address}" 'ip_block {'
+forbidden_block_literal "${internal_gateway_egress_block}" "${internal_gateway_egress_address}" 'values   = ["ate-controller", "atenet-egress"]'
+forbidden_block_literal "${internal_gateway_egress_block}" "${internal_gateway_egress_address}" 'port     = "443"'
+
+substrate_application_block="$(resource_block "${prerequisites_dir}/main.tf" helm_release substrate_application)"
+require_block_literal "${substrate_application_block}" 'helm_release.substrate_application' 'kubernetes_network_policy_v1.substrate_internal_api_egress'
+require_block_literal "${substrate_application_block}" 'helm_release.substrate_application' 'kubernetes_network_policy_v1.substrate_internal_egress_gateway_egress'
 require_literal "${prerequisites_dir}/main.tf" 'resource "kubernetes_network_policy_v1" "enrollment_admin_default_deny"'
 require_literal "${prerequisites_dir}/main.tf" 'resource "kubernetes_config_map_v1" "production_promotion_gate"'
 require_literal "${prerequisites_dir}/main.tf" 'name      = "kagent-production-promotion-gate"'

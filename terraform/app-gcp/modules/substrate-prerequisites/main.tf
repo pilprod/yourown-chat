@@ -375,6 +375,8 @@ resource "helm_release" "substrate_application" {
     kubernetes_network_policy_v1.substrate_api_external_egress,
     kubernetes_network_policy_v1.substrate_controller_api_egress,
     kubernetes_network_policy_v1.substrate_dns_egress,
+    kubernetes_network_policy_v1.substrate_internal_api_egress,
+    kubernetes_network_policy_v1.substrate_internal_egress_gateway_egress,
   ]
 }
 
@@ -620,6 +622,83 @@ resource "kubernetes_network_policy_v1" "substrate_dns_egress" {
       ports {
         port     = "53"
         protocol = "UDP"
+      }
+    }
+  }
+
+  depends_on = [kubernetes_namespace_v1.substrate]
+}
+
+# Both the controller and atenet authorizer resolve and call the private
+# Substrate API on TCP/443. Once either Pod is selected by an Egress policy,
+# Kubernetes denies every destination not admitted by the union of matching
+# policies; DNS and Kubernetes-API rules alone would therefore cut this
+# required same-namespace control path during the bootstrap-before-upgrade
+# phase. Keep the allowance scoped to the exact client/server Pod labels and
+# service port rather than opening namespace-wide egress.
+resource "kubernetes_network_policy_v1" "substrate_internal_api_egress" {
+  count = var.bootstrap_enabled ? 1 : 0
+
+  metadata {
+    name      = "substrate-control-plane-exact-api-egress"
+    namespace = local.substrate_namespace
+    labels    = local.common_labels
+  }
+
+  spec {
+    pod_selector {
+      match_expressions {
+        key      = "app"
+        operator = "In"
+        values   = ["ate-controller", "atenet-egress"]
+      }
+    }
+    policy_types = ["Egress"]
+
+    egress {
+      to {
+        pod_selector {
+          match_labels = { app = "ate-api-server" }
+        }
+      }
+      ports {
+        port     = "443"
+        protocol = "TCP"
+      }
+    }
+  }
+
+  depends_on = [kubernetes_namespace_v1.substrate]
+}
+
+# ate-api stamps and uses the private atenet gateway for controlled actor
+# egress. The bootstrap policy selecting ate-api would otherwise allow only
+# Kubernetes, Cloud SQL and DNS until the target application chart is adopted,
+# cutting the already-running same-namespace gateway path during Phase A.
+resource "kubernetes_network_policy_v1" "substrate_internal_egress_gateway_egress" {
+  count = var.bootstrap_enabled ? 1 : 0
+
+  metadata {
+    name      = "substrate-api-exact-egress-gateway-egress"
+    namespace = local.substrate_namespace
+    labels    = local.common_labels
+  }
+
+  spec {
+    pod_selector {
+      match_labels = { app = "ate-api-server" }
+    }
+    policy_types = ["Egress"]
+
+    egress {
+      to {
+        pod_selector {
+          match_labels = { app = "atenet-egress" }
+        }
+      }
+      ports {
+        port     = "8443"
+        protocol = "TCP"
       }
     }
   }

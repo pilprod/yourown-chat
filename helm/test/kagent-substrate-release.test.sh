@@ -12,7 +12,7 @@ sha256_file() {
   else shasum -a 256 "$1" | awk '{print $1}'; fi
 }
 
-kagent_commit="$(hex 1 40)"
+kagent_commit="547cfe605940005173eb0372238339384102faa0"
 consumer_evidence="${repo_root}/helm/kagent/evidence/substrate/v0.0.22/substrate-v0.0.22.consumer-evidence.json"
 consumer_evidence_path="kagent/evidence/substrate/v0.0.22/substrate-v0.0.22.consumer-evidence.json"
 consumer_evidence_sha="$(sha256_file "${consumer_evidence}")"
@@ -31,6 +31,7 @@ d8="$(jq -er '.images.atenet.digest' "${consumer_evidence}")"
 d9="$(jq -er '.dependency_images.agentgateway.digest' "${consumer_evidence}")"
 d10="$(jq -er '.images.releaseVerifier.digest' "${consumer_evidence}")"
 d11="sha256:$(hex 6 64)"
+kagent_registry="europe-west3-docker.pkg.dev/yourown-chat/kagent-preview/kagent"
 
 contract="${work}/contract.json"
 jq -n \
@@ -40,6 +41,7 @@ jq -n \
   --arg d7 "${d7}" --arg d8 "${d8}" --arg d9 "${d9}" --arg d10 "${d10}" --arg d11 "${d11}" \
   --arg consumer_evidence_path "${consumer_evidence_path}" \
   --arg consumer_evidence_sha "${consumer_evidence_sha}" \
+  --arg kagent_registry "${kagent_registry}" \
   --arg substrate_version "${substrate_version}" \
   --arg substrate_application_ref "${substrate_application_ref}" \
   --arg substrate_crds_ref "${substrate_crds_ref}" \
@@ -60,16 +62,16 @@ jq -n \
         artifact_manifest_sha256: ($kc + $kc[0:24]),
         artifact_schema_version: "3",
         charts: {
-          application: {ref: ("oci://ghcr.io/pilprod/kagent/helm/kagent@" + $d5), version: "0.10.0"},
-          crds: {ref: ("oci://ghcr.io/pilprod/kagent/helm/kagent-crds@" + $d6), version: "0.10.0"}
+          application: {ref: ("oci://" + $kagent_registry + "/helm/kagent@" + $d5), version: "0.0.0-external-slot.kap.5"},
+          crds: {ref: ("oci://" + $kagent_registry + "/helm/kagent-crds@" + $d6), version: "0.0.0-external-slot.kap.5"}
         },
         image_refs: {
-          controller: ("ghcr.io/pilprod/kagent/controller@" + $d1),
-          ui: ("ghcr.io/pilprod/kagent/ui@" + $d2)
+          controller: ($kagent_registry + "/controller@" + $d1),
+          ui: ($kagent_registry + "/ui@" + $d2)
         },
         runtime_images: {
-          kagentHarness: ("ghcr.io/pilprod/kagent/golang-adk@" + $d7),
-          codexHarness: ("ghcr.io/pilprod/kagent/codex-harness@" + $d11)
+          kagentHarness: ($kagent_registry + "/golang-adk@" + $d7),
+          codexHarness: ($kagent_registry + "/codex-harness@" + $d11)
         }
       },
       substrate: {
@@ -100,12 +102,12 @@ jq -n \
     },
     helm_set_values: {
       kagent: {
-        "controller.image.registry": "ghcr.io/pilprod/kagent",
+        "controller.image.registry": $kagent_registry,
         "controller.image.repository": "controller",
-        "controller.image.tag": ("0.10.0@" + $d1),
-        "ui.image.registry": "ghcr.io/pilprod/kagent",
+        "controller.image.tag": ("0.0.0-external-slot.kap.5@" + $d1),
+        "ui.image.registry": $kagent_registry,
         "ui.image.repository": "ui",
-        "ui.image.tag": ("0.10.0@" + $d2)
+        "ui.image.tag": ("0.0.0-external-slot.kap.5@" + $d2)
       },
       substrate: {
         "image.registry": "ghcr.io/pilprod/substrate",
@@ -147,8 +149,8 @@ grep -Fq 'configmap/kagent-production-promotion-gate' "${output}"
 grep -Fq 'go-template={{index .data "external_broker_smoke_ready"}}|{{index .data "cloud_deploy_release"}}' "${output}"
 grep -Fq 'attestation}" != "true|${CLOUD_DEPLOY_RELEASE}"' "${output}"
 grep -Fq 'gcr.io/cloud-builders/kubectl@sha256:3744bfd3765ac2a09133a164fcd74c8468fac192af8accadbdfbccbb20643961' "${output}"
-grep -Fq "runtime_images.kagentHarness=ghcr.io/pilprod/kagent/golang-adk@${d7}" "${output}"
-grep -Fq "runtime_images.codexHarness=ghcr.io/pilprod/kagent/codex-harness@${d11}" "${output}"
+grep -Fq "runtime_images.kagentHarness=${kagent_registry}/golang-adk@${d7}" "${output}"
+grep -Fq "runtime_images.codexHarness=${kagent_registry}/codex-harness@${d11}" "${output}"
 ! grep -Fq 'controller.agentImage' "${output}"
 grep -Fq "image: \"ghcr.io/pilprod/substrate/substrate-release-verify@${d10}\"" "${output}"
 grep -Fq 'command: ["/ko-app/substrate-release-verify"]' "${output}"
@@ -167,15 +169,64 @@ grep -Fq 'app.kubernetes.io/part-of: kagent-substrate-testbed' "${repo_root}/hel
 ! grep -Fq 'app.kubernetes.io/part-of: kagent-promotion' "${repo_root}/helm/kagent/verify/promotion-job.yaml"
 grep -Fq 'runAsUser: 65532' "${repo_root}/helm/kagent/verify/promotion-job.yaml"
 grep -Fq 'runAsGroup: 65532' "${repo_root}/helm/kagent/verify/promotion-job.yaml"
-grep -Fq "\"controller.image.tag\": \"0.10.0@${d1}\"" "${output}"
-grep -Fq "\"ui.image.tag\": \"0.10.0@${d2}\"" "${output}"
+grep -Fq "\"controller.image.tag\": \"0.0.0-external-slot.kap.5@${d1}\"" "${output}"
+grep -Fq "\"ui.image.tag\": \"0.0.0-external-slot.kap.5@${d2}\"" "${output}"
 ! grep -Fq '  agentImage:' "${repo_root}/helm/kagent/kagent.values.yaml"
 ! grep -Fq 'controller.image.digest' "${output}"
 ! grep -Fq 'ui.image.digest' "${output}"
 [[ "$(grep -c '^  - name: kagent-' "${output}")" -eq 2 ]]
-[[ "$(grep -Fc '"controller.image.tag": "0.10.0@'"${d1}"'"' "${output}")" -eq 2 ]]
-[[ "$(grep -Fc '"ui.image.tag": "0.10.0@'"${d2}"'"' "${output}")" -eq 2 ]]
+[[ "$(grep -Fc '"controller.image.tag": "0.0.0-external-slot.kap.5@'"${d1}"'"' "${output}")" -eq 2 ]]
+[[ "$(grep -Fc '"ui.image.tag": "0.0.0-external-slot.kap.5@'"${d2}"'"' "${output}")" -eq 2 ]]
 grep -Fq 'jobManifestPath: kagent/verify/promotion-job.yaml' "${output}"
+
+expect_kagent_private_failure() {
+  local label="$1"
+  local filter="$2"
+  local digest="$3"
+  local candidate="${work}/${label}.json"
+  local error="${work}/${label}.err"
+
+  jq --arg digest "${digest}" "${filter}" "${contract}" > "${candidate}"
+  if KAGENT_SUBSTRATE_RELEASE_JSON="$(<"${candidate}")" \
+    python3 "${renderer}" --source-root "${repo_root}/helm" --output "${work}/${label}.yaml" 2>"${error}"; then
+    echo "${label} unexpectedly rendered" >&2
+    exit 1
+  fi
+  grep -Fq 'reviewed private kagent GAR registry' "${error}"
+}
+
+expect_kagent_private_failure public-kagent-chart \
+  '.artifacts.kagent.charts.application.ref = ("oci://ghcr.io/pilprod/kagent/helm/kagent@" + $digest)' \
+  "${d5}"
+expect_kagent_private_failure public-kagent-controller \
+  '.artifacts.kagent.image_refs.controller = ("ghcr.io/pilprod/kagent/controller@" + $digest)' \
+  "${d1}"
+expect_kagent_private_failure public-kagent-runtime \
+  '.artifacts.kagent.runtime_images.kagentHarness = ("ghcr.io/pilprod/kagent/golang-adk@" + $digest)' \
+  "${d7}"
+
+expect_kagent_identity_failure() {
+  local label="$1"
+  local filter="$2"
+  local message="$3"
+  local candidate="${work}/${label}.json"
+  local error="${work}/${label}.err"
+
+  jq "${filter}" "${contract}" > "${candidate}"
+  if KAGENT_SUBSTRATE_RELEASE_JSON="$(<"${candidate}")" \
+    python3 "${renderer}" --source-root "${repo_root}/helm" --output "${work}/${label}.yaml" 2>"${error}"; then
+    echo "${label} unexpectedly rendered" >&2
+    exit 1
+  fi
+  grep -Fq "${message}" "${error}"
+}
+
+expect_kagent_identity_failure wrong-kagent-source \
+  '.artifacts.kagent.source_commit = "ffffffffffffffffffffffffffffffffffffffff"' \
+  'reviewed .kap.5 source commit'
+expect_kagent_identity_failure wrong-kagent-version \
+  '.artifacts.kagent.charts.application.version = "0.0.0-external-slot.kap.6"' \
+  'reviewed .kap.5 release version'
 
 # The producer path is a separate fail-closed private contract. It must render
 # the same release with all five Substrate images and both charts in private GAR.
