@@ -153,6 +153,13 @@ component "workload_identity_mcp" {
     display_name = "Google Cloud MCP workload identity"
     namespace    = local.ns.mcp.namespace
     ksa_name     = local.ns.mcp.ksa
+    # Platform-profile wrapper releases name the Kubernetes ServiceAccount
+    # after the workload (mcp-google-cloud). Keep the legacy binding until the
+    # legacy chart is retired.
+    additional_ksa_bindings = [{
+      namespace = local.ns.mcp.namespace
+      ksa_name  = "mcp-google-cloud"
+    }]
     project_roles = [
       "roles/logging.viewer",
       "roles/monitoring.viewer",
@@ -223,6 +230,11 @@ component "workload_identity_mcp_dev" {
     display_name = "Dev Google Cloud MCP observability identity"
     namespace    = local.ns.dev.namespace
     ksa_name     = "mcp-servers"
+    # Wrapper release workload name in the dev namespace.
+    additional_ksa_bindings = [{
+      namespace = local.ns.dev.namespace
+      ksa_name  = "dev-mcp-google-cloud"
+    }]
     project_roles = [
       "roles/logging.viewer",
       "roles/monitoring.viewer",
@@ -250,10 +262,17 @@ component "workload_identity_mcp_terraform_stacks" {
     display_name = "Terraform Stacks MCP Secret Manager identity"
     namespace    = local.ns["mcp-terraform-stacks"].namespace
     ksa_name     = local.ns["mcp-terraform-stacks"].ksa
-    additional_ksa_bindings = [{
-      namespace = local.ns.dev.namespace
-      ksa_name  = local.ns["mcp-terraform-stacks"].ksa
-    }]
+    additional_ksa_bindings = [
+      {
+        namespace = local.ns.dev.namespace
+        ksa_name  = local.ns["mcp-terraform-stacks"].ksa
+      },
+      # Wrapper release workload name in the dev namespace.
+      {
+        namespace = local.ns.dev.namespace
+        ksa_name  = "dev-mcp-terraform-stacks"
+      },
+    ]
   }
 
   providers  = { google = provider.google.this }
